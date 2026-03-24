@@ -28,8 +28,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       return {
         room_id:   editBooking.room_id,
         title:     editBooking.title,
-        start:     fmtTS(editBooking.start_at),  // "HH:MM"
-        end:       fmtTS(editBooking.end_at),
+        start:     tsTime(editBooking.start_at),  // "HH:MM" 24시간 형식 유지
+        end:       tsTime(editBooking.end_at),
         memo:      editBooking.memo || "",
         attendees: editBooking.attendees || [],
       };
@@ -95,7 +95,10 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
     return unique.filter(t => timeToMin(t) > timeToMin(form.start) && timeToMin(t) <= 19*60);
   })();
   // 오늘인데 예약 가능한 시작 슬롯이 없는 경우 (18:45 이후)
-  const noTimeLeft = bookingDate === todayStr() && tOpts.length === 0;
+  // 오늘이고 현재시각이 18:45 이후(= 시작 슬롯 없음) → 예약 불가 안내
+  const noTimeLeft     = bookingDate === todayStr() && tOpts.length === 0;
+  // 오늘이고 현재시각이 19:00 이상 → "오후 7시 이후 예약 불가" 안내
+  const isAfter7pm     = bookingDate === todayStr() && nowMinutes() >= 19 * 60;
 
   const validTime   = form.start < form.end;
   const durMin      = timeToMin(form.end) - timeToMin(form.start);
@@ -388,6 +391,20 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
 
     return (
       <div style={{display:"flex", flexDirection:"column", gap:10}}>
+
+        {/* ── 19시 이후 안내 문구 ── */}
+        {isAfter7pm && (
+          <div style={{
+            display:"flex", alignItems:"center", gap:6,
+            padding:"7px 12px", borderRadius:8,
+            background:"#FFF7ED", border:"1px solid #FED7AA",
+          }}>
+            <AlertCircle size={13} color="#F97316" strokeWidth={2} style={{flexShrink:0}}/>
+            <span style={{fontSize:11, fontWeight:600, color:"#C2410C"}}>
+              오후 7시 이후에는 예약할 수 없습니다.
+            </span>
+          </div>
+        )}
 
         {/* ── 시작 시간 섹션 ── */}
         <div style={{
@@ -901,7 +918,15 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             </div>
             {/* 시간 — 두 개 select + → */}
             <div>
-              <label style={{fontSize:13,fontWeight:700,color:"#111",display:"block",marginBottom:8}}>시간 <span style={{color:"#EF4444"}}>*</span></label>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                <label style={{fontSize:13,fontWeight:700,color:"#111"}}>시간 <span style={{color:"#EF4444"}}>*</span></label>
+                {isAfter7pm && (
+                  <span style={{fontSize:11,fontWeight:600,color:"#C2410C",display:"flex",alignItems:"center",gap:4}}>
+                    <AlertCircle size={11} color="#F97316" strokeWidth={2}/>
+                    오후 7시 이후에는 예약할 수 없습니다.
+                  </span>
+                )}
+              </div>
               {noTimeLeft ? (
                 <div style={{display:"flex",alignItems:"center",justifyContent:"center",
                   background:"#F8FAFC",border:"1.5px dashed #CBD5E1",borderRadius:10,
