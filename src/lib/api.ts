@@ -1,0 +1,193 @@
+/**
+ * api.ts — Supabase 기반 데이터 레이어
+ *
+ * 버그 수정:
+ *  1. UTC→KST 변환: Supabase는 timestamptz를 UTC로 반환 → +9h 보정 필요
+ *  2. .single() → .maybeSingle(): seed 예약은 DB에 없어 0행 반환 시 에러 방지
+ */
+
+import { supabase, isSupabaseEnabled } from './supabase'
+import type { Booking } from '../types'
+
+// ── UTC → KST 변환 ───────────────────────────────────────────────────────────
+// Supabase가 UTC ISO 문자열로 반환하므로 앱 기준인 KST로 보정
+function utcToKST(ts: string): string {
+  if (!ts) return ts
+  if (ts.includes('+09:00')) return ts  // 이미 KST면 패스
+  const d  = new Date(ts)
+  const k  = new Date(d.getTime() + 9 * 60 * 60 * 1000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${k.getUTCFullYear()}-${pad(k.getUTCMonth()+1)}-${pad(k.getUTCDate())}` +
+         `T${pad(k.getUTCHours())}:${pad(k.getUTCMinutes())}:${pad(k.getUTCSeconds())}+09:00`
+}
+
+// ── DB row → Booking ─────────────────────────────────────────────────────────
+function rowToBooking(row: Record<string, any>): Booking {
+  return {
+    id:            row.id,
+    room_id:       row.room_id,
+    title:         row.title,
+    memo:          row.memo ?? '',
+    attendees:     row.attendees ?? [],
+    start_at:      utcToKST(row.start_at),   // ★ 버그2 수정
+    end_at:        utcToKST(row.end_at),     // ★ 버그2 수정
+    user:          row.user_name,
+    dept:          row.user_dept,
+    checkedIn:     row.checked_in,
+    autoCancelled: row.auto_cancelled,
+    earlyEnded:    row.early_ended ?? false,
+    recurGroupId:  row.recur_group_id ?? null,
+    createdAt:     new Date(row.created_at).getTime(),
+    _seed:         false,
+  }
+}
+
+// ── Booking → DB row ─────────────────────────────────────────────────────────
+function bookingToRow(b: Booking, userId: string) {
+  return {
+    id:             b.id,
+    room_id:        b.room_id,
+    title:          b.title,
+    memo:           b.memo ?? '',
+    attendees:      b.attendees ?? [],
+    start_at:       b.start_at,  // +09:00 포함 → Supabase가 UTC로 저장
+    end_at:         b.end_at,
+    user_id:        userId,
+    user_name:      b.user,
+    user_dept:      b.dept,
+    checked_in:     b.checkedIn,
+    auto_cancelled: b.autoCancelled,
+    early_ended:    b.earlyEnded ?? false,
+    recur_group_id: b.recurGroupId ?? null,
+  }
+}
+
+// ── 전체 조회 (날짜 범위 필터링) ─────────────────────────────────────────────
+// 오늘 기준 과거 7일 ~ 미래 60일 범위만 로딩
+export async function loadBookings(): Promise<Booking[]> {
+  if (!isSupabaseEnabled) return localLoadBookings([])
+  try {
+    const from = new Date()
+    from.setDate(from.getDate() - 7)
+    const to = new Date()
+    to.setDate(to.getDate() + 60)
+
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('*')
+      .gte('start_at', from.toISOString())
+      .lte('start_at', to.toISOString())
+      .order('start_at', { ascending: true })
+
+    if (error) throw error
+    return (data ?? []).map(rowToBooking)
+  } catch (e) {
+    console.error('[api] loadBookings 실패:', e)
+    return []
+  }
+}
+
+// ── saveBookings (하위 호환) ──────────────────────────────────────────────────
+export async function saveBookings(bookings: Booking[]): Promise<void> {
+  if (!isSupabaseEnabled) { localSaveBookings(bookings); return }
+  const { data: { user } } = await supabase.auth.getUser()
+  const rows = bookings.map(b => bookingToRow(b, user?.id ?? ''))
+  const { error } = await supabase.from('bookings').upsert(rows, { onConflict: 'id' })
+  if (error) console.error('[api] saveBookings 오류:', error)
+}
+
+// ── 단건 생성 ────────────────────────────────────────────────────────────────
+export async function insertBooking(booking: Booking): Promise<Booking> {
+  if (!isSupabaseEnabled) {
+    localSaveBookings([...localGetBookings(), booking])
+    return booking
+  }
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // 서버사이드 충돌 검사
+  const { data: conflict } = await supabase.rpc('check_booking_conflict', {
+    p_room_id: booking.room_id, p_start_at: booking.start_at,
+    p_end_at:  booking.end_at,  p_exclude_id: null,
+  })
+  if (conflict) throw new Error('해당 시간에 이미 예약이 있습니다.')
+
+  const { data, error } = await supabase
+    .from('bookings').insert(bookingToRow(booking, user?.id ?? '')).select().single()
+
+  if (error) {
+    // DB Exclusion Constraint 위반 (23P01) — 동시 요청으로 인한 더블부킹 차단
+    if (error.code === '23P01' || error.message.includes('exclusion')) {
+      throw new Error('해당 시간에 이미 예약이 있습니다. 다른 시간을 선택해 주세요.')
+    }
+    // 기타 DB 오류
+    throw new Error('예약 저장 중 오류가 발생했습니다. 다시 시도해 주세요.')
+  }
+  return rowToBooking(data)
+}
+
+// ── 단건 수정 ────────────────────────────────────────────────────────────────
+export async function updateBooking(
+  id: string, changes: Partial<Booking>
+): Promise<Booking | null> {
+  if (!isSupabaseEnabled) {
+    const all = localGetBookings()
+    const updated = all.map(b => b.id === id ? { ...b, ...changes } : b)
+    localSaveBookings(updated)
+    return updated.find(b => b.id === id) ?? null
+  }
+
+  const dbChanges: Record<string, any> = {}
+  if (changes.checkedIn     !== undefined) dbChanges.checked_in     = changes.checkedIn
+  if (changes.autoCancelled !== undefined) dbChanges.auto_cancelled = changes.autoCancelled
+  if (changes.earlyEnded    !== undefined) dbChanges.early_ended    = changes.earlyEnded
+  if (changes.end_at        !== undefined) dbChanges.end_at         = changes.end_at
+  if (changes.title         !== undefined) dbChanges.title          = changes.title
+  if (changes.memo          !== undefined) dbChanges.memo           = changes.memo
+  if (changes.attendees     !== undefined) dbChanges.attendees      = changes.attendees
+  if (changes.start_at      !== undefined) dbChanges.start_at       = changes.start_at
+  if (changes.room_id       !== undefined) dbChanges.room_id        = changes.room_id
+
+  const { data, error } = await supabase
+    .from('bookings').update(dbChanges).eq('id', id).select()
+
+  if (error) throw new Error(error.message)
+
+  // data가 빈 배열 → DB에 없는 row(seed) 이거나 RLS 차단
+  // 두 경우 모두 UI는 낙관적 업데이트 상태 유지, 조용히 null 반환
+  if (!data || data.length === 0) {
+    console.warn('[api] updateBooking: 업데이트 0행 (seed 또는 RLS 차단), id=', id)
+    return null
+  }
+  return rowToBooking(data[0])
+}
+
+// ── 취소 ─────────────────────────────────────────────────────────────────────
+export async function cancelBooking(id: string): Promise<void> {
+  await updateBooking(id, { autoCancelled: true })
+}
+
+// ── Realtime 구독 ────────────────────────────────────────────────────────────
+export function subscribeBookings(onUpdate: () => void) {
+  if (!isSupabaseEnabled) return () => {}
+  const channel = supabase
+    .channel('bookings-realtime')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => onUpdate())
+    .subscribe()
+  return () => { supabase.removeChannel(channel) }
+}
+
+// ── localStorage fallback ────────────────────────────────────────────────────
+const LS_KEY = 'cnr-bookings-v1'
+function localGetBookings(): Booking[] {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) ?? '[]') } catch { return [] }
+}
+function localSaveBookings(bookings: Booking[]) {
+  localStorage.setItem(LS_KEY, JSON.stringify(bookings.filter(b => b._seed === false)))
+}
+function localLoadBookings(seed: Booking[]): Booking[] {
+  const user = localGetBookings()
+  const ids  = new Set(user.map(b => b.id))
+  return [...seed.filter(b => !ids.has(b.id)), ...user]
+}
+
+export { loadRooms, saveRooms, loadUsers, saveUsers } from '../utils/seed'

@@ -1,0 +1,222 @@
+// @ts-nocheck
+/**
+ * checkin-reminder Edge Function
+ *
+ * 두 가지 알림을 매 분 체크:
+ *   ① 예약 시작 10분 전  → "곧 시작합니다" 알림
+ *   ② 예약 시작 후 5분   → "5분 후 자동취소" 경고 알림
+ *
+ * Cron: '* * * * *' (매 분)
+ */
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
+const FROM_EMAIL     = 'C&R Booking <onboarding@resend.dev>'
+const APP_URL        = Deno.env.get('APP_URL') ?? 'https://cnr-booking.vercel.app'
+
+async function sendEmail(to: string[], subject: string, html: string) {
+  if (!RESEND_API_KEY || to.length === 0) return
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ from: FROM_EMAIL, to, subject, html }),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+function fmtTime(ts: string): string {
+  const d = new Date(ts)
+  const k = new Date(d.getTime() + 9 * 60 * 60 * 1000)
+  const p = (n: number) => String(n).padStart(2, '0')
+  const h = k.getUTCHours()
+  return `${h < 12 ? '오전' : '오후'} ${h === 0 ? 12 : h > 12 ? h - 12 : h}:${p(k.getUTCMinutes())}`
+}
+
+// ── 이메일 템플릿 ──────────────────────────────────────────────────────────
+
+function makeBefore10Html(b: any, recipientName: string, isAttendee: boolean): string {
+  return `<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#F8FAFC;font-family:'Apple SD Gothic Neo',sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC;padding:32px 16px;">
+  <tr><td align="center">
+    <table width="100%" style="max-width:500px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+      <tr><td style="background:#0891B2;padding:22px 28px;">
+        <p style="margin:0;font-size:19px;font-weight:700;color:#fff;">⏰ 10분 후 시작합니다</p>
+        <p style="margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.85);">C&amp;R Booking Room</p>
+      </td></tr>
+      <tr><td style="padding:22px 28px;">
+        <p style="margin:0 0 4px;font-size:13px;color:#6B7280;">안녕하세요, ${recipientName}님${isAttendee ? ' (참석자)' : ''} 👋</p>
+        <p style="margin:0 0 18px;font-size:14px;color:#374151;font-weight:600;">${b.title}</p>
+        <table width="100%" style="background:#F0F9FF;border-radius:10px;padding:14px 18px;">
+          <tr><td style="padding:5px 0;">
+            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">시작</span>
+            <span style="font-size:13px;color:#0E7490;font-weight:700;">${fmtTime(b.start_at)}</span>
+          </td></tr>
+          <tr><td style="padding:5px 0;">
+            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">종료</span>
+            <span style="font-size:13px;color:#111;">${fmtTime(b.end_at)}</span>
+          </td></tr>
+          <tr><td style="padding:5px 0;">
+            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">회의실</span>
+            <span style="font-size:13px;color:#111;">${b.room_name ?? b.room_id + 'F'}</span>
+          </td></tr>
+        </table>
+        <div style="margin:16px 0 0;padding:12px 14px;background:#ECFDF5;border-radius:8px;border-left:3px solid #10B981;">
+          <p style="margin:0;font-size:12px;color:#065F46;font-weight:600;">✅ 예약 시작 시 반드시 체크인해 주세요</p>
+          <p style="margin:5px 0 0;font-size:12px;color:#047857;">시작 후 10분 내 체크인하지 않으면 자동 취소됩니다.</p>
+        </div>
+        <div style="margin:18px 0 0;text-align:center;">
+          <a href="${APP_URL}" style="display:inline-block;background:#0891B2;color:#fff;padding:11px 24px;border-radius:9px;text-decoration:none;font-size:13px;font-weight:700;">
+            앱에서 체크인 →
+          </a>
+        </div>
+      </td></tr>
+      <tr><td style="padding:14px 28px 18px;border-top:1px solid #F1F5F9;">
+        <p style="margin:0;font-size:11px;color:#9CA3AF;text-align:center;">CNR Research 회의실 예약 시스템 자동 발송</p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>`
+}
+
+function makeAfter5Html(b: any, recipientName: string, isAttendee: boolean): string {
+  return `<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#F8FAFC;font-family:'Apple SD Gothic Neo',sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC;padding:32px 16px;">
+  <tr><td align="center">
+    <table width="100%" style="max-width:500px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+      <tr><td style="background:#DC2626;padding:22px 28px;">
+        <p style="margin:0;font-size:19px;font-weight:700;color:#fff;">⚠️ 5분 후 자동 취소됩니다</p>
+        <p style="margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.85);">C&amp;R Booking Room</p>
+      </td></tr>
+      <tr><td style="padding:22px 28px;">
+        <p style="margin:0 0 4px;font-size:13px;color:#6B7280;">안녕하세요, ${recipientName}님${isAttendee ? ' (참석자)' : ''}</p>
+        <p style="margin:0 0 18px;font-size:14px;color:#374151;font-weight:600;">${b.title}</p>
+        <div style="margin:0 0 16px;padding:14px 16px;background:#FEF2F2;border-radius:10px;border:1.5px solid #FECACA;">
+          <p style="margin:0;font-size:14px;color:#991B1B;font-weight:700;">아직 체크인이 완료되지 않았습니다!</p>
+          <p style="margin:6px 0 0;font-size:13px;color:#DC2626;">지금 바로 체크인하지 않으면 <strong>5분 후 예약이 자동 취소</strong>됩니다.</p>
+        </div>
+        <table width="100%" style="background:#F8FAFC;border-radius:10px;padding:12px 16px;">
+          <tr><td style="padding:4px 0;">
+            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">회의명</span>
+            <span style="font-size:13px;color:#111;font-weight:600;">${b.title}</span>
+          </td></tr>
+          <tr><td style="padding:4px 0;">
+            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">시작</span>
+            <span style="font-size:13px;color:#111;">${fmtTime(b.start_at)}</span>
+          </td></tr>
+          <tr><td style="padding:4px 0;">
+            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">회의실</span>
+            <span style="font-size:13px;color:#111;">${b.room_name ?? b.room_id + 'F'}</span>
+          </td></tr>
+        </table>
+        <div style="margin:16px 0 0;text-align:center;">
+          <a href="${APP_URL}" style="display:inline-block;background:#DC2626;color:#fff;padding:12px 28px;border-radius:9px;text-decoration:none;font-size:14px;font-weight:700;">
+            지금 바로 체크인하기 →
+          </a>
+        </div>
+      </td></tr>
+      <tr><td style="padding:14px 28px 18px;border-top:1px solid #F1F5F9;">
+        <p style="margin:0;font-size:11px;color:#9CA3AF;text-align:center;">CNR Research 회의실 예약 시스템 자동 발송</p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>`
+}
+
+// ── 메인 핸들러 ──────────────────────────────────────────────────────────
+
+Deno.serve(async (_req: Request) => {
+  try {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    )
+
+    const now = new Date()
+    let totalSent = 0
+
+    // ── ① 예약 시작 10분 전 알림 ──────────────────────────────────────
+    const before10 = new Date(now.getTime() + 10 * 60 * 1000)
+    const { data: upcoming } = await supabase
+      .from('bookings')
+      .select('*, profiles!bookings_user_id_fkey(email, name)')
+      .gte('start_at', new Date(before10.getTime() - 30000).toISOString())
+      .lte('start_at', new Date(before10.getTime() + 30000).toISOString())
+      .eq('auto_cancelled', false)
+      .eq('early_ended',    false)
+      .eq('checked_in',     false)
+
+    for (const b of upcoming ?? []) {
+      const userEmail = b.profiles?.email
+      const userName  = b.profiles?.name ?? b.user_name
+      if (!userEmail) continue
+
+      const subject = `[C&R Booking] ⏰ 10분 후 시작 — ${b.title}`
+
+      // 생성자
+      await sendEmail([userEmail], subject, makeBefore10Html(b, userName, false))
+      totalSent++
+
+      // 참석자 (attendees 배열에 이메일이 있으면 발송)
+      if (b.attendees?.length > 0) {
+        const attendeeEmails = b.attendees.filter((e: string) => e !== userEmail)
+        if (attendeeEmails.length > 0) {
+          await sendEmail(attendeeEmails, subject, makeBefore10Html(b, '참석자', true))
+          totalSent++
+        }
+      }
+    }
+
+    // ── ② 예약 시작 후 5분 경과 → 자동취소 5분 전 경고 ──────────────
+    const after5 = new Date(now.getTime() - 5 * 60 * 1000)
+    const { data: started } = await supabase
+      .from('bookings')
+      .select('*, profiles!bookings_user_id_fkey(email, name)')
+      .gte('start_at', new Date(after5.getTime() - 30000).toISOString())
+      .lte('start_at', new Date(after5.getTime() + 30000).toISOString())
+      .eq('auto_cancelled', false)
+      .eq('early_ended',    false)
+      .eq('checked_in',     false)
+      .gt('end_at', now.toISOString())   // 아직 종료 안 됨
+
+    for (const b of started ?? []) {
+      const userEmail = b.profiles?.email
+      const userName  = b.profiles?.name ?? b.user_name
+      if (!userEmail) continue
+
+      const subject = `[C&R Booking] ⚠️ 5분 후 자동취소 — ${b.title}`
+
+      // 생성자
+      await sendEmail([userEmail], subject, makeAfter5Html(b, userName, false))
+      totalSent++
+
+      // 참석자
+      if (b.attendees?.length > 0) {
+        const attendeeEmails = b.attendees.filter((e: string) => e !== userEmail)
+        if (attendeeEmails.length > 0) {
+          await sendEmail(attendeeEmails, subject, makeAfter5Html(b, '참석자', true))
+          totalSent++
+        }
+      }
+    }
+
+    return new Response(
+      JSON.stringify({ success: true, sent: totalSent, time: now.toISOString() }),
+      { headers: { 'Content-Type': 'application/json' } }
+    )
+
+  } catch (err: any) {
+    console.error('[checkin-reminder] 오류:', err)
+    return new Response(JSON.stringify({ error: String(err) }), { status: 500 })
+  }
+})
