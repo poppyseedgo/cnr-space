@@ -146,11 +146,17 @@ export async function updateBooking(
   if (changes.attendees     !== undefined) dbChanges.attendees      = changes.attendees
   if (changes.start_at      !== undefined) dbChanges.start_at       = changes.start_at
   if (changes.room_id       !== undefined) dbChanges.room_id        = changes.room_id
+  // ↑ DB 컬럼과 매핑되는 필드만 명시적으로 포함
+  // user_employee_id, _seed, createdAt 등 프론트 전용 필드는 제외됨
 
   const { data, error } = await supabase
     .from('bookings').update(dbChanges).eq('id', id).select()
 
-  if (error) throw new Error(error.message)
+  if (error) {
+    // 400 Bad Request 상세 로그
+    console.error('[api] updateBooking 오류:', error.message, '| dbChanges:', JSON.stringify(dbChanges))
+    throw new Error(error.message)
+  }
 
   // data가 빈 배열 → DB에 없는 row(seed) 이거나 RLS 차단
   // 두 경우 모두 UI는 낙관적 업데이트 상태 유지, 조용히 null 반환
