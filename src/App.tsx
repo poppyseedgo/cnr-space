@@ -5,7 +5,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from './utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById } from './data/master'
-import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers } from './lib/api'
+import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages } from './lib/api'
 import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView, RoomDetailModal } from './components/room/HomeView'
@@ -55,7 +55,14 @@ function AppContent() {
     }
     setLoading(true);
     Promise.all([loadBookings(), loadRooms(), loadUsers()])
-      .then(([b, r, u]) => { setBookings(b); setRooms(r); setUsers(u); })
+      .then(async ([b, r, u]) => {
+        // rooms 테이블에서 이미지 URL 병합
+        const roomsWithImages = await Promise.all(r.map(async room => {
+          const imgs = await loadRoomImages(room.room_id)
+          return { ...room, thumbnail: imgs.thumbnail_url, gallery: imgs.gallery_urls }
+        }))
+        setBookings(b); setRooms(roomsWithImages); setUsers(u);
+      })
       .catch(err => { console.error('[App] 초기 데이터 로딩 실패:', err); })
       .finally(() => { setLoading(false); });
   }, [authLoading, authUser?.user_id]);

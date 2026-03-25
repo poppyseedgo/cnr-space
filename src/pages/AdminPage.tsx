@@ -5,7 +5,8 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, FLOORS, getFloor, getRoomFeatures, getRoomById, getRoomThumbnail, getRoomGallery } from '../data/master'
-import { loadBookings, saveBookings, loadRooms, saveRooms, loadUsers, saveUsers } from '../utils/seed'
+import { uploadRoomImage, deleteRoomImage, saveRoomImages, loadRoomImages, cancelBooking as apiCancelBooking } from '../lib/api'
+import { Upload, ImagePlus, Trash2, X as XIcon } from 'lucide-react'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../types'
 
 export function AdminView({bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet}) {
@@ -62,11 +63,7 @@ export function AdminBookings({bookings,setBookings,rooms,showToast,isMobile,PER
 
   const doCancel=(id)=>{
     const reason = cancelReason||"관리자 강제 취소";
-    setBookings(prev => {
-      const u = prev.map(b=>b.id===id?{...b,autoCancelled:true,cancelReason:reason}:b);
-      saveBookings(u);
-      return u;
-    });
+    setBookings(prev => prev.map(b=>b.id===id?{...b,autoCancelled:true,cancelledBy:'user'}:b));
     showToast("예약이 강제 취소되었습니다.","info");setCancelModal(null);setCancelReason("");
   };
 
@@ -173,15 +170,74 @@ export function AdminBookings({bookings,setBookings,rooms,showToast,isMobile,PER
 export function AdminRooms({rooms,setRooms,showToast,isMobile}){
   const [editRoom,setEditRoom]=useState(null);
   const [form,setForm]=useState<Record<string,any>>({});
-  const openEdit=(r)=>{setForm({room_name:r?.room_name||"",room_name_ko:r?.room_name_ko||"",floor_id:r?.floor_id||1,capacity:r?.capacity||4,notes:r?.notes||"",thumbnail:r?.thumbnail||"",is_active:r?.is_active??true});setEditRoom(r||{room_id:null});};
-  const saveEdit=()=>{
-    if(!form.room_name.trim()){showToast("회의실명을 입력해주세요.","error");return;}
-    let updated;
-    if(editRoom.room_id){updated=rooms.map(r=>r.room_id===editRoom.room_id?{...r,...form,capacity:Number(form.capacity),floor_id:Number(form.floor_id)}:r);}
-    else{const nid=Math.max(...rooms.map(r=>r.room_id),0)+1;updated=[...rooms,{room_id:nid,room_code:`ROOM_${nid}`,color:"#111111",...form,capacity:Number(form.capacity),floor_id:Number(form.floor_id)}];}
-    setRooms(updated);saveRooms(updated);showToast(editRoom.room_id?"회의실 정보가 수정되었습니다.":"회의실이 추가되었습니다.");setEditRoom(null);
+  // 이미지 관련 상태
+  const [thumbnail, setThumbnail]       = useState('');
+  const [gallery,   setGallery]         = useState<string[]>([]);
+  const [uploading, setUploading]       = useState(false);
+  const thumbRef  = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
+
+  const openEdit = async (r) => {
+    setForm({room_name:r?.room_name||"",room_name_ko:r?.room_name_ko||"",floor_id:r?.floor_id||1,capacity:r?.capacity||4,notes:r?.notes||"",is_active:r?.is_active??true});
+    setEditRoom(r||{room_id:null});
+    // 기존 이미지 로드
+    if (r?.room_id) {
+      const imgs = await loadRoomImages(r.room_id);
+      setThumbnail(imgs.thumbnail_url);
+      setGallery(imgs.gallery_urls);
+    } else {
+      setThumbnail(''); setGallery([]);
+    }
   };
-  const toggleActive=(rid)=>{const updated=rooms.map(r=>r.room_id===rid?{...r,is_active:!r.is_active}:r);setRooms(updated);saveRooms(updated);showToast(updated.find(x=>x.room_id===rid).is_active?"활성화되었습니다.":"비활성화되었습니다.","info");};
+
+  // 대표 이미지 업로드
+  const handleThumbnailUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file || !editRoom?.room_id) return;
+    setUploading(true);
+    try {
+      if (thumbnail) await deleteRoomImage(thumbnail); // 기존 삭제
+      const url = await uploadRoomImage(editRoom.room_id, file, 'thumbnail');
+      setThumbnail(url);
+      showToast('대표 이미지가 업로드되었습니다.');
+    } catch (err: any) { showToast(err.message, 'error'); }
+    finally { setUploading(false); e.target.value = ''; }
+  };
+
+  // 갤러리 이미지 업로드 (여러 장)
+  const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []); if (!files.length || !editRoom?.room_id) return;
+    setUploading(true);
+    try {
+      const urls = await Promise.all(files.map(f => uploadRoomImage(editRoom.room_id, f, 'gallery')));
+      setGallery(prev => [...prev, ...urls]);
+      showToast(`갤러리 이미지 ${urls.length}장이 추가되었습니다.`);
+    } catch (err: any) { showToast(err.message, 'error'); }
+    finally { setUploading(false); e.target.value = ''; }
+  };
+
+  // 갤러리 이미지 삭제
+  const removeGalleryImage = async (url: string) => {
+    await deleteRoomImage(url);
+    setGallery(prev => prev.filter(u => u !== url));
+    showToast('이미지가 삭제되었습니다.', 'info');
+  };
+
+  const saveEdit = async () => {
+    if(!form.room_name.trim()){showToast("회의실명을 입력해주세요.","error");return;}
+    try {
+      // rooms 테이블에 이미지 저장
+      if (editRoom.room_id) {
+        await saveRoomImages(editRoom.room_id, thumbnail, gallery);
+      }
+      let updated;
+      if(editRoom.room_id){updated=rooms.map(r=>r.room_id===editRoom.room_id?{...r,...form,capacity:Number(form.capacity),floor_id:Number(form.floor_id),thumbnail}:r);}
+      else{const nid=Math.max(...rooms.map(r=>r.room_id),0)+1;updated=[...rooms,{room_id:nid,room_code:`ROOM_${nid}`,color:"#111111",...form,capacity:Number(form.capacity),floor_id:Number(form.floor_id),thumbnail}];}
+      setRooms(updated);
+      showToast(editRoom.room_id?"회의실 정보가 수정되었습니다.":"회의실이 추가되었습니다.");
+      setEditRoom(null);
+    } catch (err: any) { showToast(err.message, 'error'); }
+  };
+  const toggleActive=(rid)=>{const updated=rooms.map(r=>r.room_id===rid?{...r,is_active:!r.is_active}:r);setRooms(updated);showToast(updated.find(x=>x.room_id===rid).is_active?"활성화되었습니다.":"비활성화되었습니다.","info");};
 
   return(
     <div className="anm">
@@ -236,8 +292,58 @@ export function AdminRooms({rooms,setRooms,showToast,isMobile}){
             </div>
             <div style={{marginBottom:14}}><label style={{fontSize:11,fontWeight:700,color:"#94A3B8",display:"block",marginBottom:4}}>설명/메모</label>
               <textarea value={form.notes||""} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} rows={2} style={{width:"100%",padding:"10px 14px",borderRadius:10,border:"1px solid #E2E8F0",fontSize:13,background:"#F8FAFC",outline:"none",resize:"none"}}/></div>
-            <div style={{marginBottom:14}}><label style={{fontSize:11,fontWeight:700,color:"#94A3B8",display:"block",marginBottom:4}}>대표 이미지 URL</label>
-              <input value={form.thumbnail||""} onChange={e=>setForm(p=>({...p,thumbnail:e.target.value}))} placeholder="https://..." style={{width:"100%",padding:"10px 14px",borderRadius:10,border:"1px solid #E2E8F0",fontSize:13,background:"#F8FAFC",outline:"none"}}/></div>
+            {/* ── 대표 이미지 ── */}
+            {editRoom?.room_id && (
+              <div style={{marginBottom:14}}>
+                <label style={{fontSize:11,fontWeight:700,color:"#94A3B8",display:"block",marginBottom:8}}>대표 이미지</label>
+                <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+                  {/* 미리보기 */}
+                  <div style={{width:80,height:80,borderRadius:10,overflow:"hidden",background:"#F8FAFC",flexShrink:0,border:"1px solid #E2E8F0"}}>
+                    {thumbnail
+                      ? <img src={thumbnail} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                      : <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}><Building2 size={24} color="#CBD5E1"/></div>
+                    }
+                  </div>
+                  <div style={{flex:1}}>
+                    <input ref={thumbRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleThumbnailUpload}/>
+                    <button className="btn" onClick={()=>thumbRef.current?.click()} disabled={uploading}
+                      style={{width:"100%",padding:"10px",borderRadius:10,border:"1.5px dashed #CBD5E1",background:"#F8FAFC",color:"#64748B",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6,cursor:"pointer"}}>
+                      <Upload size={14}/>{uploading ? '업로드 중...' : thumbnail ? '이미지 교체' : '이미지 업로드'}
+                    </button>
+                    {thumbnail && (
+                      <button className="btn" onClick={async()=>{await deleteRoomImage(thumbnail);setThumbnail('');showToast('삭제되었습니다.','info');}}
+                        style={{width:"100%",marginTop:6,padding:"8px",borderRadius:10,background:"#FEF2F2",color:"#DC2626",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+                        <Trash2 size={11}/> 삭제
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* ── 갤러리 이미지 ── */}
+            {editRoom?.room_id && (
+              <div style={{marginBottom:14}}>
+                <label style={{fontSize:11,fontWeight:700,color:"#94A3B8",display:"block",marginBottom:8}}>갤러리 ({gallery.length}장)</label>
+                {gallery.length > 0 && (
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:8}}>
+                    {gallery.map((url,i) => (
+                      <div key={i} style={{position:"relative",paddingBottom:"100%",borderRadius:8,overflow:"hidden",background:"#F8FAFC"}}>
+                        <img src={url} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>
+                        <button onClick={()=>removeGalleryImage(url)}
+                          style={{position:"absolute",top:4,right:4,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,0.6)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          <XIcon size={10} color="#fff" strokeWidth={2.5}/>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <input ref={galleryRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={handleGalleryUpload}/>
+                <button className="btn" onClick={()=>galleryRef.current?.click()} disabled={uploading}
+                  style={{width:"100%",padding:"10px",borderRadius:10,border:"1.5px dashed #CBD5E1",background:"#F8FAFC",color:"#64748B",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6,cursor:"pointer"}}>
+                  <ImagePlus size={14}/>{uploading ? '업로드 중...' : '갤러리 이미지 추가 (여러 장 가능)'}
+                </button>
+              </div>
+            )}
             <div style={{display:"flex",gap:8,marginTop:20}}>
               <button className="btn" onClick={()=>setEditRoom(null)} style={{flex:1,background:"#F1F5F9",color:"#64748B",padding:"12px",fontSize:13,borderRadius:12}}>취소</button>
               <button className="btn" onClick={saveEdit} style={{flex:1,background:"#111",color:"#fff",padding:"12px",fontSize:13,fontWeight:700,borderRadius:12}}>저장</button>
@@ -256,14 +362,14 @@ export function AdminUsers({users,setUsers,showToast,isMobile}){
   const [form,setForm]=useState<Record<string,any>>({});
   const filtered=users.filter(u=>{if(!searchQ)return true;const q=searchQ.toLowerCase();return u.name.toLowerCase().includes(q)||u.dept.toLowerCase().includes(q)||u.email.toLowerCase().includes(q);});
   const adminCount=users.filter(u=>u.role==="ADMIN").length;
-  const toggleRole=(uid)=>{const updated=users.map(u=>u.user_id===uid?{...u,role:u.role==="ADMIN"?"USER":"ADMIN"}:u);setUsers(updated);saveUsers(updated);showToast(`권한이 ${updated.find(x=>x.user_id===uid).role}로 변경되었습니다.`,"info");};
+  const toggleRole=(uid)=>{const updated=users.map(u=>u.user_id===uid?{...u,role:u.role==="ADMIN"?"USER":"ADMIN"}:u);setUsers(updated);showToast(`권한이 ${updated.find(x=>x.user_id===uid).role}로 변경되었습니다.`,"info");};
   const openEdit=(u)=>{setForm(u?{name:u.name,dept:u.dept,email:u.email,role:u.role}:{name:"",dept:"",email:"",role:"USER"});setEditUser(u||{user_id:null});};
   const saveEdit=()=>{
     if(!form.name.trim()||!form.email.trim()){showToast("이름과 이메일은 필수입니다.","error");return;}
     let updated;
     if(editUser.user_id){updated=users.map(u=>u.user_id===editUser.user_id?{...u,...form}:u);}
     else{updated=[...users,{user_id:`u${String(users.length+1).padStart(3,"0")}`,...form}];}
-    setUsers(updated);saveUsers(updated);showToast(editUser.user_id?"수정되었습니다.":"추가되었습니다.");setEditUser(null);
+    setUsers(updated);showToast(editUser.user_id?"수정되었습니다.":"추가되었습니다.");setEditUser(null);
   };
   return(
     <div className="anm">

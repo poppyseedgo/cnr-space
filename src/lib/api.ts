@@ -200,3 +200,62 @@ function localLoadBookings(seed: Booking[]): Booking[] {
 }
 
 export { loadRooms, saveRooms, loadUsers, saveUsers } from '../utils/seed'
+
+// ── 회의실 이미지 (Supabase Storage) ─────────────────────────────────────────
+
+/** 이미지 파일 → Supabase Storage 업로드 → 공개 URL 반환 */
+export async function uploadRoomImage(
+  roomId: number,
+  file: File,
+  type: 'thumbnail' | 'gallery'
+): Promise<string> {
+  const ext  = file.name.split('.').pop()
+  const path = `room-${roomId}/${type}-${Date.now()}.${ext}`
+
+  const { error } = await supabase.storage
+    .from('room-images')
+    .upload(path, file, { upsert: true })
+
+  if (error) throw new Error(`이미지 업로드 실패: ${error.message}`)
+
+  const { data } = supabase.storage.from('room-images').getPublicUrl(path)
+  return data.publicUrl
+}
+
+/** Storage에서 이미지 삭제 */
+export async function deleteRoomImage(publicUrl: string): Promise<void> {
+  // URL에서 path 추출: .../room-images/room-1/thumbnail-xxx.jpg → room-1/thumbnail-xxx.jpg
+  const path = publicUrl.split('/room-images/')[1]
+  if (!path) return
+  const { error } = await supabase.storage.from('room-images').remove([path])
+  if (error) console.warn('[api] 이미지 삭제 실패:', error.message)
+}
+
+/** rooms 테이블에 thumbnail_url, gallery_urls 저장 */
+export async function saveRoomImages(
+  roomId: number,
+  thumbnailUrl: string,
+  galleryUrls: string[]
+): Promise<void> {
+  const { error } = await supabase
+    .from('rooms')
+    .upsert({ room_id: roomId, thumbnail_url: thumbnailUrl, gallery_urls: galleryUrls })
+  if (error) throw new Error(`이미지 정보 저장 실패: ${error.message}`)
+}
+
+/** rooms 테이블에서 이미지 정보 로드 */
+export async function loadRoomImages(roomId: number): Promise<{
+  thumbnail_url: string
+  gallery_urls: string[]
+}> {
+  const { data, error } = await supabase
+    .from('rooms')
+    .select('thumbnail_url, gallery_urls')
+    .eq('room_id', roomId)
+    .single()
+  if (error || !data) return { thumbnail_url: '', gallery_urls: [] }
+  return {
+    thumbnail_url: data.thumbnail_url ?? '',
+    gallery_urls:  data.gallery_urls  ?? [],
+  }
+}
