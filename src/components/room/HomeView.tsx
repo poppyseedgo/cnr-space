@@ -119,28 +119,32 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
             </div>
           ) : myBookings.map(b => {
             const r = ROOMS_DB.find(r=>r.room_id===b.room_id);
-            const isActive  = tsDate(b.start_at)===today && tsMin(b.start_at)<=now && now<tsMin(b.end_at) && !b.autoCancelled;
-            const isPast    = tsMin(b.end_at) < now;
-            const cardState = b.cancelledBy === 'system' ? "noshow"    // 노쇼 자동취소 — 흐릿하게 유지
-              : b.autoCancelled              ? "cancelled"  // 기타 취소
+            const isActive   = tsDate(b.start_at)===today && tsMin(b.start_at)<=now && now<tsMin(b.end_at) && !b.autoCancelled;
+            const isPast     = tsMin(b.end_at) < now;
+            const minsUntil  = tsMin(b.start_at) - now;   // 시작까지 남은 분
+            const isSoon     = minsUntil > 0 && minsUntil <= 10;  // 10분 이내
+            const cardState = b.cancelledBy === 'system' ? "noshow"
+              : b.autoCancelled              ? "cancelled"
               : b.earlyEnded                ? "earlyEnded"
               : b.checkedIn && isActive     ? "using"
               : b.checkedIn                 ? "done"
               : isActive                    ? "checkin"
               : isPast                      ? "cancelled"
+              : isSoon                      ? "soon"       // 시작 10분 전
               : "waiting";
 
             const S = {
               noshow:     {label:"노쇼",         btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                badge:"자동취소"},
+              soon:       {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                badge:`${minsUntil}분 뒤 시작`},
               waiting:    {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                badge:null},
               checkin:    {label:"체크인",        btnBg:"#16A34A", btnColor:"#fff",    disabled:false, action:()=>onCheckIn(b.id), badge:null},
-              using:      {label:"사용 완료",     btnBg:"#111111", btnColor:"#fff",    disabled:false, action:()=>onEarlyEnd(b.id),badge:"사용 중"},
+              using:      {label:"사용 완료",     btnBg:"#111111", btnColor:"#fff",    disabled:false, action:()=>onEarlyEnd(b.id),badge:"사용중"},
               done:       {label:"완료",          btnBg:"#DBEAFE", btnColor:"#2563EB", disabled:true,  action:null,                badge:null},
               earlyEnded: {label:"반납 완료",     btnBg:"#DBEAFE", btnColor:"#2563EB", disabled:true,  action:null,                badge:"반납됨"},
               cancelled:  {label:"자동취소",      btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                badge:null},
             }[cardState];
 
-            const isCancellable = cardState==="waiting";
+            const isCancellable = cardState==="waiting" || cardState==="soon";
 
             return (
               <div key={b.id} className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 rounded-2xl p-3"
@@ -150,7 +154,13 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
                   <div className="flex items-start justify-between gap-1 mb-1.5">
                     <div className="text-xs font-bold text-slate-900 dark:text-white leading-snug line-clamp-2" style={{flex:1}}>{b.title}</div>
                     {S.badge && (
-                      <span className="flex-shrink-0 text-[9px] font-bold dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-full px-2 py-0.5 ml-1" style={{background:"#F3F4F8"}}>{S.badge}</span>
+                      <span className="flex-shrink-0 text-[9px] font-bold rounded-full px-2 py-0.5 ml-1"
+                        style={{
+                          background: cardState==="soon" ? "#FFF3E0" : "#F3F4F8",
+                          color:      cardState==="soon" ? "#EA580C" : undefined,
+                          fontWeight: cardState==="soon" ? 700 : undefined,
+                        }}
+                        >{S.badge}</span>
                     )}
                   </div>
                   <div className="text-[10px] text-slate-400">{r?.room_name}</div>
