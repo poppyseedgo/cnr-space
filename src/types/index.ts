@@ -120,6 +120,8 @@ export interface RoomStatus {
   minsUntil?: number
   nextBooking?: Booking
   booking?: Booking
+  checkedIn?: boolean       // BUSY: 체크인 완료 여부
+  checkinWaiting?: boolean  // BUSY: 체크인 대기 중 (유예기간 10분 이내)
 }
 
 // ─── 충돌 검사 결과 ──────────────────────────────────────────────────────────────
