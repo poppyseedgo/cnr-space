@@ -36,14 +36,35 @@ function useGuestStats() {
 
         if (!data) return
 
-        // 사용중: checked_in = true + 현재 시각 범위 내
+        // 홈카드와 동일한 정책: 시간 범위 내 예약 = 사용중 (체크인 여부 무관)
+        // DB에서 오는 start_at이 UTC일 수 있으므로 KST 변환 후 비교
+        const toKSTMin = (ts: string): number => {
+          if (!ts) return 0
+          // +09:00 포함된 경우 그대로, UTC인 경우 +9시간 보정
+          if (ts.includes('+09:00') || ts.includes('+09')) {
+            return tsMin(ts)
+          }
+          const d = new Date(ts)
+          const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000)
+          return kst.getUTCHours() * 60 + kst.getUTCMinutes()
+        }
+        const toKSTDate = (ts: string): string => {
+          if (!ts) return ''
+          if (ts.includes('+09:00') || ts.includes('+09')) return tsDate(ts)
+          const d = new Date(ts)
+          const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000)
+          const pad = (n: number) => String(n).padStart(2, '0')
+          return `${kst.getUTCFullYear()}-${pad(kst.getUTCMonth()+1)}-${pad(kst.getUTCDate())}`
+        }
+
         const busyRoomIds = new Set(
           data
             .filter(b =>
-              b.checked_in &&
-              tsDate(b.start_at) === today &&
-              tsMin(b.start_at) <= now &&
-              now < tsMin(b.end_at)
+              !b.auto_cancelled &&
+              !b.early_ended &&
+              toKSTDate(b.start_at) === today &&
+              toKSTMin(b.start_at) <= now &&
+              now < toKSTMin(b.end_at)
             )
             .map(b => b.room_id)
         )
