@@ -1,7 +1,67 @@
-import React, { useState } from 'react'
-import { CalendarDays, Mail, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { CalendarDays, Mail, Lock, AlertCircle, Eye, EyeOff, Circle } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
-import { isSupabaseEnabled } from '../lib/supabase'
+import { isSupabaseEnabled, supabase } from '../lib/supabase'
+import { ROOMS_DB } from '../data/master'
+import { todayStr, tsDate, tsMin, nowMinutes } from '../utils/time'
+
+/**
+ * 사용중 측정 정책:
+ *   checked_in = true + 현재 시각이 start_at ~ end_at 사이 + 취소/반납 없음
+ * 예약됨 (사용중 아님):
+ *   체크인 안 했거나 아직 시작 전
+ * 예약가능:
+ *   위 두 경우 모두 해당 없는 회의실
+ */
+function useGuestStats() {
+  const [stats, setStats] = useState<{ busy: number; available: number } | null>(null)
+
+  useEffect(() => {
+    if (!isSupabaseEnabled) return
+
+    async function fetchStats() {
+      try {
+        const today = todayStr()
+        const now   = nowMinutes()
+        const activeRooms = ROOMS_DB.filter(r => r.is_active)
+        const total = activeRooms.length
+
+        const { data } = await supabase
+          .from('bookings')
+          .select('room_id, start_at, end_at, checked_in, auto_cancelled, early_ended')
+          .eq('auto_cancelled', false)
+          .eq('early_ended',    false)
+          .gte('start_at', `${today}T00:00:00+09:00`)
+          .lte('start_at', `${today}T23:59:59+09:00`)
+
+        if (!data) return
+
+        // 사용중: checked_in = true + 현재 시각 범위 내
+        const busyRoomIds = new Set(
+          data
+            .filter(b =>
+              b.checked_in &&
+              tsDate(b.start_at) === today &&
+              tsMin(b.start_at) <= now &&
+              now < tsMin(b.end_at)
+            )
+            .map(b => b.room_id)
+        )
+
+        setStats({
+          busy:      busyRoomIds.size,
+          available: total - busyRoomIds.size,
+        })
+      } catch {}
+    }
+
+    fetchStats()
+    const iv = setInterval(fetchStats, 30000)
+    return () => clearInterval(iv)
+  }, [])
+
+  return stats
+}
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -10,6 +70,7 @@ export default function LoginPage() {
   const [showPw,   setShowPw]   = useState(false)
   const [error,    setError]    = useState('')
   const [loading,  setLoading]  = useState(false)
+  const stats = useGuestStats()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -25,68 +86,118 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-slate-50 to-indigo-100 flex items-center justify-center px-4 py-8">
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10"
+      style={{ background: 'linear-gradient(145deg, #0F0F1A 0%, #1A1A2E 50%, #0F0F1A 100%)' }}>
+
       <div className="w-full max-w-sm">
 
         {/* 로고 */}
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-indigo-600 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-200">
-            <CalendarDays size={28} color="#fff" strokeWidth={1.8} />
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5"
+            style={{ background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)', boxShadow: '0 8px 32px rgba(99,102,241,0.4)' }}>
+            <CalendarDays size={30} color="#fff" strokeWidth={1.6} />
           </div>
-          <h1 className="text-xl font-bold text-gray-900">
-            C&R Booking Room
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <h1 className="text-2xl font-bold text-white tracking-tight">C&R Space</h1>
+          <p className="text-sm mt-1.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
             CNR Research 회의실 예약 시스템
           </p>
         </div>
 
-        {/* 카드 */}
-        <div className="bg-white rounded-2xl shadow-md shadow-slate-100 border border-slate-100 px-6 py-7">
+        {/* 실시간 현황 */}
+        {isSupabaseEnabled && (
+          <div className="flex gap-3 mb-6">
+            {stats ? (
+              <>
+                <div className="flex-1 rounded-2xl px-4 py-3"
+                  style={{ background: 'rgba(244,63,94,0.12)', border: '1px solid rgba(244,63,94,0.2)' }}>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Circle size={6} fill="#F43F5E" strokeWidth={0} />
+                    <span className="text-xs font-medium" style={{ color: 'rgba(244,63,94,0.8)' }}>사용중</span>
+                  </div>
+                  <p className="text-2xl font-bold text-white">
+                    {stats.busy}
+                    <span className="text-sm font-normal ml-1" style={{ color: 'rgba(255,255,255,0.4)' }}>개</span>
+                  </p>
+                </div>
+                <div className="flex-1 rounded-2xl px-4 py-3"
+                  style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.2)' }}>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Circle size={6} fill="#10B981" strokeWidth={0} />
+                    <span className="text-xs font-medium" style={{ color: 'rgba(16,185,129,0.8)' }}>예약가능</span>
+                  </div>
+                  <p className="text-2xl font-bold text-white">
+                    {stats.available}
+                    <span className="text-sm font-normal ml-1" style={{ color: 'rgba(255,255,255,0.4)' }}>개</span>
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                {[0,1].map(i => (
+                  <div key={i} className="flex-1 h-20 rounded-2xl animate-pulse"
+                    style={{ background: 'rgba(255,255,255,0.06)' }} />
+                ))}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* 로그인 카드 */}
+        <div className="rounded-2xl px-6 py-6"
+          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', backdropFilter: 'blur(20px)' }}>
+
           <form onSubmit={handleSubmit} className="space-y-4">
 
             {/* 이메일 */}
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgba(255,255,255,0.5)' }}>
                 이메일
               </label>
               <div className="relative">
-                <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                  style={{ color: 'rgba(255,255,255,0.3)' }} />
                 <input
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   placeholder="name@cnrres.com"
                   required
-                  className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-xl text-sm
-                             focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent
-                             placeholder:text-slate-300 transition-all"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm text-white transition-all outline-none"
+                  style={{
+                    background: 'rgba(255,255,255,0.08)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                  }}
+                  onFocus={e => e.target.style.borderColor = 'rgba(99,102,241,0.8)'}
+                  onBlur={e  => e.target.style.borderColor = 'rgba(255,255,255,0.12)'}
                 />
               </div>
             </div>
 
             {/* 비밀번호 */}
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgba(255,255,255,0.5)' }}>
                 비밀번호
               </label>
               <div className="relative">
-                <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                  style={{ color: 'rgba(255,255,255,0.3)' }} />
                 <input
                   type={showPw ? 'text' : 'password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="비밀번호 입력"
                   required
-                  className="w-full pl-9 pr-10 py-2.5 border border-slate-200 rounded-xl text-sm
-                             focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent
-                             placeholder:text-slate-300 transition-all"
+                  className="w-full pl-9 pr-10 py-2.5 rounded-xl text-sm text-white transition-all outline-none"
+                  style={{
+                    background: 'rgba(255,255,255,0.08)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                  }}
+                  onFocus={e => e.target.style.borderColor = 'rgba(99,102,241,0.8)'}
+                  onBlur={e  => e.target.style.borderColor = 'rgba(255,255,255,0.12)'}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPw(p => !p)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                >
+                <button type="button" onClick={() => setShowPw(p => !p)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
+                  style={{ color: 'rgba(255,255,255,0.3)' }}>
                   {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>
@@ -94,7 +205,8 @@ export default function LoginPage() {
 
             {/* 오류 메시지 */}
             {error && (
-              <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-sm text-red-600">
+              <div className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm"
+                style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#FCA5A5' }}>
                 <AlertCircle size={14} className="flex-shrink-0" />
                 <span>{error}</span>
               </div>
@@ -104,26 +216,28 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 rounded-xl text-sm font-bold text-white
-                         bg-indigo-600 hover:bg-indigo-700 active:scale-95
-                         disabled:bg-indigo-300 disabled:cursor-not-allowed
-                         transition-all shadow-sm shadow-indigo-100"
+              className="w-full py-2.5 rounded-xl text-sm font-bold text-white transition-all active:scale-95"
+              style={{
+                background: loading ? 'rgba(99,102,241,0.5)' : 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+                boxShadow: loading ? 'none' : '0 4px 20px rgba(99,102,241,0.4)',
+                cursor: loading ? 'not-allowed' : 'pointer',
+              }}
             >
               {loading ? '로그인 중…' : '로그인'}
             </button>
 
           </form>
-
-          {/* 데모 안내 */}
-          {!isSupabaseEnabled && (
-            <div className="mt-5 p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-500 space-y-1">
-              <p className="font-bold text-slate-700">🧪 데모 모드</p>
-              <p>이메일: <code className="text-indigo-600 font-semibold">gohyunjung@me.com</code></p>
-              <p>비밀번호: <code className="text-indigo-600 font-semibold">cnr1234</code></p>
-              <p className="text-slate-400">(ADMIN) 또는 다른 직원 이메일 + cnr1234</p>
-            </div>
-          )}
         </div>
+
+        {/* 데모 안내 */}
+        {!isSupabaseEnabled && (
+          <div className="mt-4 p-3 rounded-xl text-xs space-y-1"
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)' }}>
+            <p className="font-bold" style={{ color: 'rgba(255,255,255,0.7)' }}>🧪 데모 모드</p>
+            <p>이메일: <code className="text-indigo-400 font-semibold">gohyunjung@me.com</code></p>
+            <p>비밀번호: <code className="text-indigo-400 font-semibold">cnr1234</code></p>
+          </div>
+        )}
 
       </div>
     </div>
