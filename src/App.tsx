@@ -60,15 +60,36 @@ function AppContent() {
       .finally(() => { setLoading(false); });
   }, [authLoading, authUser?.user_id]);
 
-  // 틱 타이머 + Realtime + 이벤트 리스너 (마운트 1회)
+  // 틱 타이머 + Realtime + 이벤트 리스너 + 탭 복귀 새로고침 (마운트 1회)
   useEffect(() => {
-    const iv = setInterval(() => setTick(t => t+1), 30000);
+    // ① 10초마다 tick → 시간 기반 UI 상태 즉시 반영 (체크인 대기/사용중 등)
+    const iv = setInterval(() => setTick(t => t+1), 10000);
+
+    // ② Realtime 구독 → 다른 사람 예약/취소/체크인 시 즉시 반영
     const unsubscribe = subscribeBookings(() => {
       loadBookings().then(b => setBookings(b))
     });
+
+    // ③ Page Visibility API → 탭 복귀 시 데이터 강제 새로고침
+    // (자리 비운 사이 바뀐 예약 상태를 즉시 반영)
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadBookings().then(b => setBookings(b));
+        setTick(t => t+1);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    // ④ 예약하기 이벤트
     const handler = () => setModal({type:"new", prefill:{}});
     document.addEventListener("openNewBooking", handler);
-    return () => { clearInterval(iv); document.removeEventListener("openNewBooking", handler); unsubscribe(); };
+
+    return () => {
+      clearInterval(iv);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      document.removeEventListener("openNewBooking", handler);
+      unsubscribe();
+    };
   }, []);
 
   // 드롭다운 외부 클릭 닫기
