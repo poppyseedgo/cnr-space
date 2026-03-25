@@ -34,6 +34,14 @@ function useGuestStats() {
           .gte('start_at', `${today}T00:00:00+09:00`)
           .lte('start_at', `${today}T23:59:59+09:00`)
 
+        console.log('[LoginStats] 조회된 예약 수:', data?.length, '| 오늘:', today, '| 현재분:', now)
+        console.log('[LoginStats] 예약 목록:', data?.map(b => ({
+          room_id: b.room_id,
+          start_at: b.start_at,
+          end_at: b.end_at,
+          auto_cancelled: b.auto_cancelled,
+          early_ended: b.early_ended,
+        })))
         if (!data) return
 
         // 홈카드와 동일한 정책: 시간 범위 내 예약 = 사용중 (체크인 여부 무관)
@@ -69,6 +77,7 @@ function useGuestStats() {
             .map(b => b.room_id)
         )
 
+        console.log('[LoginStats] busyRoomIds:', [...busyRoomIds], '| total:', total)
         setStats({
           busy:      busyRoomIds.size,
           available: total - busyRoomIds.size,
