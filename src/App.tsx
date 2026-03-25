@@ -47,7 +47,29 @@ function AppContent() {
   const [modal, setModal]         = useState(null);
   const [toast, setToast]         = useState(null);
   const [searchQ, setSearchQ]     = useState("");
-  const [homeFilterFloor, setHomeFilterFloor] = useState("ALL");  // 홈화면 전용
+  const [homeFilterFloor, setHomeFilterFloor] = useState("ALL");
+
+  // 회의실 이미지 일괄 로딩 (초기 렌더 블로킹 방지)
+  const loadAllRoomImages = useCallback(async (roomList: any[]) => {
+    try {
+      const { data } = await supabase
+        .from('rooms')
+        .select('room_id, thumbnail_url, gallery_urls')
+      if (!data) return
+      const imgMap = new Map(data.map(d => [d.room_id, d]))
+      setRooms(prev => prev.map(room => {
+        const imgs = imgMap.get(room.room_id)
+        if (!imgs) return room
+        return {
+          ...room,
+          thumbnail: imgs.thumbnail_url || room.thumbnail || '',
+          gallery:   imgs.gallery_urls  || room.gallery  || [],
+        }
+      }))
+    } catch (e) {
+      console.warn('[App] 이미지 로딩 실패:', e)
+    }
+  }, [])  // 홈화면 전용
   const [calFilterFloor,  setCalFilterFloor]  = useState("ALL");  // 캘린더 전용
   const [tick, setTick]           = useState(0);
   const [loading, setLoading]     = useState(true);
@@ -68,13 +90,10 @@ function AppContent() {
     }
     setLoading(true);
     Promise.all([loadBookings(), loadRooms(), loadUsers()])
-      .then(async ([b, r, u]) => {
-        // rooms 테이블에서 이미지 URL 병합
-        const roomsWithImages = await Promise.all(r.map(async room => {
-          const imgs = await loadRoomImages(room.room_id)
-          return { ...room, thumbnail: imgs.thumbnail_url, gallery: imgs.gallery_urls }
-        }))
-        setBookings(b); setRooms(roomsWithImages); setUsers(u);
+      .then(([b, r, u]) => {
+        setBookings(b); setRooms(r); setUsers(u);
+        // 이미지는 별도로 비동기 로딩 (초기 로딩 블로킹 방지)
+        loadAllRoomImages(r);
       })
       .catch(err => { console.error('[App] 초기 데이터 로딩 실패:', err); })
       .finally(() => { setLoading(false); });
