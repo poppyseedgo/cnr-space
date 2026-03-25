@@ -113,10 +113,33 @@ export function getRoomStatus(roomId, bookings, date) {
   const isToday = date === today;
   const dayBks = bookings.filter(b => b.room_id === roomId && tsDate(b.start_at) === date && !b.autoCancelled && !b.earlyEnded);
 
-  const current = dayBks.find(b => tsMin(b.start_at) <= now && now < tsMin(b.end_at));
+  // ── BUSY 정책 ────────────────────────────────────────────────────────────
+  // 케이스 A: 체크인 완료 + 시간 범위 내 → 진짜 사용중
+  // 케이스 B: 미체크인 + 시작 후 10분 이내 → 유예기간 (사용중 + 체크인 대기)
+  // 케이스 C: 미체크인 + 시작 후 10분 초과 → BUSY 아님 (자동취소 예정/완료)
+  const currentCheckedIn = dayBks.find(b =>
+    b.checkedIn &&
+    tsMin(b.start_at) <= now && now < tsMin(b.end_at)
+  );
+  const currentWaiting = dayBks.find(b =>
+    !b.checkedIn &&
+    tsMin(b.start_at) <= now && now < tsMin(b.end_at) &&
+    (now - tsMin(b.start_at)) <= CHECKIN_WINDOW_MIN  // 유예기간 10분 이내
+  );
+  const current = currentCheckedIn || currentWaiting;
+
   if (current && isToday) {
-    const minsLeft = tsMin(current.end_at) - now;
-    return { type: "BUSY", label: "사용중", endTime: tsTime(current.end_at), minsLeft, booking: current };
+    const minsLeft       = tsMin(current.end_at) - now;
+    const checkinWaiting = !!currentWaiting;   // 유예기간 중
+    return {
+      type: "BUSY",
+      label: "사용중",
+      endTime: tsTime(current.end_at),
+      minsLeft,
+      booking: current,
+      checkedIn:      !!currentCheckedIn,
+      checkinWaiting,
+    };
   }
   const next = dayBks.filter(b => tsMin(b.start_at) > now).sort((a,b) => a.start_at.localeCompare(b.start_at))[0];
   if (next && isToday) {
