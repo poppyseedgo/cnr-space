@@ -37,14 +37,18 @@ function AppContent() {
   const [view, setViewState] = useState<string>(getViewFromHash);
   const setView = (v: string) => {
     setViewState(v)
-    window.location.hash = v  // URL 해시 동기화
+    window.location.hash = v
+    // 탭 전환 시 해당 화면 필터 초기화
+    if (v === 'home')     setHomeFilterFloor('ALL')
+    if (v === 'calendar') setCalFilterFloor('ALL')
   }
   const [calView, setCalView]     = useState("timeline");
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [modal, setModal]         = useState(null);
   const [toast, setToast]         = useState(null);
   const [searchQ, setSearchQ]     = useState("");
-  const [filterFloor, setFilterFloor] = useState("ALL");
+  const [homeFilterFloor, setHomeFilterFloor] = useState("ALL");  // 홈화면 전용
+  const [calFilterFloor,  setCalFilterFloor]  = useState("ALL");  // 캘린더 전용
   const [tick, setTick]           = useState(0);
   const [loading, setLoading]     = useState(true);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -301,10 +305,15 @@ function AppContent() {
 
   const earlyEnd = useCallback(async (id) => {
     const now = nowMinutes();
-    const endTimeStr = `${fmt2(Math.floor(now/60))}:${fmt2(now%60)}`;
     const target = bookings.find(b => b.id === id);
     if (!target) return;
-    const newEndAt = makeTZ(tsDate(target.start_at), endTimeStr);
+    // 현재 시각이 start_at보다 최소 1분 이후여야 constraint 통과
+    const startMin  = tsMin(target.start_at);
+    const safeNow   = Math.max(now, startMin + 1);
+    const endTimeStr = `${fmt2(Math.floor(safeNow/60))}:${fmt2(safeNow%60)}`;
+    // start_at의 날짜가 UTC로 저장됐을 수 있으므로 KST 날짜 기준으로 계산
+    const todayKST  = todayStr();
+    const newEndAt  = makeTZ(todayKST, endTimeStr);
 
     // 낙관적 UI 업데이트
     setBookings(prev => prev.map(b => b.id===id
@@ -561,7 +570,7 @@ function AppContent() {
       {/* ── Views ── */}
       {(view==="home"||view==="calendar") && (
         <div style={{maxWidth:1280, margin:"0 auto", padding: isMobile?"16px 12px":"28px 28px"}}>
-          {view==="home"     && <HomeView     bookings={bookings} rooms={rooms} tick={tick} searchQ={searchQ} setSearchQ={setSearchQ} filterFloor={filterFloor} setFilterFloor={setFilterFloor} onBook={(r, status)=>{
+          {view==="home"     && <HomeView     bookings={bookings} rooms={rooms} tick={tick} searchQ={searchQ} setSearchQ={setSearchQ} filterFloor={homeFilterFloor} setFilterFloor={setHomeFilterFloor} onBook={(r, status)=>{
               // 바로예약: 지금 시각부터 다음 예약 직전까지 자동 설정
               const now = nowMinutes();
               const snapStart = Math.ceil((now+1)/15)*15;
@@ -579,7 +588,7 @@ function AppContent() {
               const e = `${fmt2(Math.floor(clampedEnd/60))}:${fmt2(clampedEnd%60)}`;
               setModal({type:"new", prefill:{room_id:r.room_id, start:s, end:e}});
             }} onDetail={(r)=>setModal({type:"roomDetail",data:r})} onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={cancelBooking} currentUser={currentUser} dark={dark} />}
-          {view==="calendar" && <CalendarShell bookings={bookings} selectedDate={selectedDate} setSelectedDate={setSelectedDate} calView={calView} setCalView={setCalView} onBookingClick={b=>setModal({type:"detail",data:b})} onNewBooking={(d,h,rid)=>setModal({type:"new",prefill:{room_id:rid,start:h!=null?`${fmt2(h)}:00`:undefined,end:h!=null?`${fmt2(h+1)}:00`:undefined},date:d}) } onCheckIn={checkIn} filterFloor={filterFloor} setFilterFloor={setFilterFloor} />}
+          {view==="calendar" && <CalendarShell bookings={bookings} selectedDate={selectedDate} setSelectedDate={setSelectedDate} calView={calView} setCalView={setCalView} onBookingClick={b=>setModal({type:"detail",data:b})} onNewBooking={(d,h,rid)=>setModal({type:"new",prefill:{room_id:rid,start:h!=null?`${fmt2(h)}:00`:undefined,end:h!=null?`${fmt2(h+1)}:00`:undefined},date:d}) } onCheckIn={checkIn} filterFloor={calFilterFloor} setFilterFloor={setCalFilterFloor} />}
         </div>
       )}
       {view==="mypage" && <MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} />}
