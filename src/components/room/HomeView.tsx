@@ -131,7 +131,7 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
               : "waiting";
 
             const S = {
-              noshow:     {label:"미체크인",     btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                badge:"자동취소"},
+              noshow:     {label:"노쇼",         btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                badge:"자동취소"},
               waiting:    {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                badge:null},
               checkin:    {label:"체크인",        btnBg:"#16A34A", btnColor:"#fff",    disabled:false, action:()=>onCheckIn(b.id), badge:null},
               using:      {label:"사용 완료",     btnBg:"#111111", btnColor:"#fff",    disabled:false, action:()=>onEarlyEnd(b.id),badge:"사용 중"},
