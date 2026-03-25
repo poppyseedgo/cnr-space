@@ -230,9 +230,17 @@ export function AdminRooms({rooms,setRooms,showToast,isMobile}){
         await saveRoomImages(editRoom.room_id, thumbnail, gallery);
       }
       let updated;
-      if(editRoom.room_id){updated=rooms.map(r=>r.room_id===editRoom.room_id?{...r,...form,capacity:Number(form.capacity),floor_id:Number(form.floor_id),thumbnail}:r);}
-      else{const nid=Math.max(...rooms.map(r=>r.room_id),0)+1;updated=[...rooms,{room_id:nid,room_code:`ROOM_${nid}`,color:"#111111",...form,capacity:Number(form.capacity),floor_id:Number(form.floor_id),thumbnail}];}
-      setRooms(updated);
+      if(editRoom.room_id){
+        updated=rooms.map(r=>r.room_id===editRoom.room_id
+          ? {...r,...form,capacity:Number(form.capacity),floor_id:Number(form.floor_id),
+             thumbnail, gallery}  // DB 이미지 즉시 반영
+          : r);
+      } else {
+        const nid=Math.max(...rooms.map(r=>r.room_id),0)+1;
+        updated=[...rooms,{room_id:nid,room_code:`ROOM_${nid}`,color:"#111111",...form,
+          capacity:Number(form.capacity),floor_id:Number(form.floor_id),thumbnail,gallery}];
+      }
+      setRooms(updated);  // 홈화면 즉시 반영
       showToast(editRoom.room_id?"회의실 정보가 수정되었습니다.":"회의실이 추가되었습니다.");
       setEditRoom(null);
     } catch (err: any) { showToast(err.message, 'error'); }

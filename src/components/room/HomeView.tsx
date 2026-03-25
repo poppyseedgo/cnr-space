@@ -300,7 +300,7 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
   const nextBk   = todayBks.find(b => tsMin(b.start_at) > now);
 
   const features  = getRoomFeatures(r.room_id);
-  const thumbnail = getRoomThumbnail(r.room_id);
+  const thumbnail = (r.thumbnail && r.thumbnail.length > 0) ? r.thumbnail : getRoomThumbnail(r.room_id);
 
   return (
     <div className="anm room-card bg-white dark:bg-slate-800 rounded-2xl flex flex-col"
@@ -484,7 +484,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook}) {
   const today    = todayStr();
   const todayBks = bookings.filter(b=>b.room_id===r.room_id&&tsDate(b.start_at)===today&&!b.autoCancelled&&!b.earlyEnded).sort((a,b)=>a.start_at.localeCompare(b.start_at));
   const status   = getRoomStatus(r.room_id, bookings, today);
-  const thumbnail = getRoomThumbnail(r.room_id);
+  const thumbnail = (r.thumbnail && r.thumbnail.length > 0) ? r.thumbnail : getRoomThumbnail(r.room_id);
 
   const [lightbox, setLightbox] = useState(false);
 
