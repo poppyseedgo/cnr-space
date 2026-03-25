@@ -339,6 +339,7 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
             </span>
           )}
           {isBusy && (<>
+            {/* 사용중 기본 뱃지 */}
             <span style={{background:"#FCE7F3", color:"#BE185D", fontSize:12, fontWeight:700,
               padding:"5px 14px", borderRadius:999,
               display:"inline-flex", alignItems:"center", gap:6}}>
@@ -346,10 +347,33 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
                 display:"inline-block",flexShrink:0}}/>
               사용중
             </span>
-            <span style={{background:"#F8FAFC", color:"#64748B", fontSize:12, fontWeight:600,
-              padding:"5px 14px", borderRadius:999, border:"none"}}>
-              {status.minsLeft}분 뒤 종료
-            </span>
+            {/* 체크인 대기 뱃지 — 시작 후 10분 이내 미체크인 */}
+            {status.checkinWaiting && (
+              <span style={{background:"#FFF7ED", color:"#C2410C", fontSize:12, fontWeight:700,
+                padding:"5px 14px", borderRadius:999,
+                display:"inline-flex", alignItems:"center", gap:5}}>
+                <span style={{width:6,height:6,borderRadius:"50%",background:"#F97316",
+                  display:"inline-block",flexShrink:0}}/>
+                체크인 대기
+              </span>
+            )}
+            {/* 체크인 완료 뱃지 */}
+            {status.checkedIn && (
+              <span style={{background:"#ECFDF5", color:"#065F46", fontSize:12, fontWeight:700,
+                padding:"5px 14px", borderRadius:999,
+                display:"inline-flex", alignItems:"center", gap:5}}>
+                <span style={{width:6,height:6,borderRadius:"50%",background:"#10B981",
+                  display:"inline-block",flexShrink:0}}/>
+                체크인 완료
+              </span>
+            )}
+            {/* nn분 뒤 종료 — 체크인 완료된 경우에만 */}
+            {status.checkedIn && (
+              <span style={{background:"#F8FAFC", color:"#64748B", fontSize:12, fontWeight:600,
+                padding:"5px 14px", borderRadius:999}}>
+                {status.minsLeft}분 뒤 종료
+              </span>
+            )}
           </>)}
           {isSoon && (<>
             <span style={{background:"#FCE7F3", color:"#BE185D", fontSize:12, fontWeight:700,
