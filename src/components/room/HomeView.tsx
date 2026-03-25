@@ -40,24 +40,15 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
   const soon       = withStatus.filter(x => x.status.type==="SOON");
   const busy       = withStatus.filter(x => x.status.type==="BUSY");
 
-  // 오늘 내 예약 — 현재 시각 기준 가장 가까운 순 정렬
-  // 우선순위: ① 진행중 → ② 예정(시작 빠른 순) → ③ 지난 예약(방금 끝난 것이 앞)
+  // 오늘 내 예약 — 예약 시작 시간 순 정렬 (빠른 시간이 앞)
+  // 직접 취소(cancelledBy==='user')는 제외, 노쇼 자동취소(cancelledBy==='system')는 포함
   const myBookings = bookings
-    .filter(b => tsDate(b.start_at)===today && b.user===currentUser && !b.autoCancelled)
-    .sort((a, b) => {
-      const aStart = tsMin(a.start_at), aEnd = tsMin(a.end_at)
-      const bStart = tsMin(b.start_at), bEnd = tsMin(b.end_at)
-      const aActive   = aStart <= now && now < aEnd
-      const bActive   = bStart <= now && now < bEnd
-      const aUpcoming = aStart > now
-      const bUpcoming = bStart > now
-      if (aActive   && !bActive)   return -1   // 진행중 최우선
-      if (!aActive  && bActive)    return  1
-      if (aUpcoming && bUpcoming)  return aStart - bStart  // 예정: 시작 빠른 순
-      if (!aUpcoming && !bUpcoming) return bEnd - aEnd     // 지난: 방금 끝난 것 앞으로
-      if (aUpcoming && !bUpcoming) return -1   // 예정 > 지난
-      return 1
-    })
+    .filter(b =>
+      tsDate(b.start_at) === today &&
+      b.user === currentUser &&
+      b.cancelledBy !== 'user'   // 직접 취소만 제외
+    )
+    .sort((a, b) => a.start_at.localeCompare(b.start_at))
 
   return (
     <div>
@@ -86,15 +77,17 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
             const r = ROOMS_DB.find(r=>r.room_id===b.room_id);
             const isActive  = tsDate(b.start_at)===today && tsMin(b.start_at)<=now && now<tsMin(b.end_at) && !b.autoCancelled;
             const isPast    = tsMin(b.end_at) < now;
-            const cardState = b.autoCancelled ? "cancelled"
-              : b.earlyEnded                  ? "earlyEnded"
-              : b.checkedIn && isActive       ? "using"
-              : b.checkedIn                   ? "done"
-              : isActive                      ? "checkin"
-              : isPast                        ? "cancelled"
+            const cardState = b.cancelledBy === 'system' ? "noshow"    // 노쇼 자동취소 — 흐릿하게 유지
+              : b.autoCancelled              ? "cancelled"  // 기타 취소
+              : b.earlyEnded                ? "earlyEnded"
+              : b.checkedIn && isActive     ? "using"
+              : b.checkedIn                 ? "done"
+              : isActive                    ? "checkin"
+              : isPast                      ? "cancelled"
               : "waiting";
 
             const S = {
+              noshow:     {label:"미체크인",     btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                badge:"자동취소"},
               waiting:    {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                badge:null},
               checkin:    {label:"체크인",        btnBg:"#16A34A", btnColor:"#fff",    disabled:false, action:()=>onCheckIn(b.id), badge:null},
               using:      {label:"사용 완료",     btnBg:"#111111", btnColor:"#fff",    disabled:false, action:()=>onEarlyEnd(b.id),badge:"사용 중"},
@@ -107,7 +100,7 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
 
             return (
               <div key={b.id} className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 rounded-2xl p-3"
-                style={{width:160, minHeight:140, flexShrink:0, opacity: cardState==="cancelled" ? 0.45 : 1}}>
+                style={{width:160, minHeight:140, flexShrink:0, opacity: (cardState==="cancelled" || cardState==="noshow") ? 0.45 : 1}}>
                 {/* 상단 */}
                 <div>
                   <div className="flex items-start justify-between gap-1 mb-1.5">

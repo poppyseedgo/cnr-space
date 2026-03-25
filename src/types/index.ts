@@ -65,7 +65,8 @@ export interface Booking {
   user_employee_id?: string   // 사번 (동명이인 구분용)
   dept:              string
   checkedIn:         boolean
-  autoCancelled: boolean
+  autoCancelled:  boolean
+  cancelledBy?:   'user' | 'system' | null  // 직접취소 vs 노쇼자동취소
   earlyEnded?: boolean
   createdAt: number
   recurGroupId?: string | null

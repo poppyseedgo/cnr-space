@@ -35,6 +35,7 @@ function rowToBooking(row: Record<string, any>): Booking {
     dept:          row.user_dept,
     checkedIn:     row.checked_in,
     autoCancelled: row.auto_cancelled,
+    cancelledBy:   row.cancelled_by ?? null,
     earlyEnded:    row.early_ended ?? false,
     recurGroupId:  row.recur_group_id ?? null,
     createdAt:     new Date(row.created_at).getTime(),
@@ -57,6 +58,7 @@ function bookingToRow(b: Booking, userId: string) {
     user_dept:      b.dept,
     checked_in:     b.checkedIn,
     auto_cancelled: b.autoCancelled,
+    cancelled_by:   b.cancelledBy ?? null,
     early_ended:    b.earlyEnded ?? false,
     recur_group_id: b.recurGroupId ?? null,
   }
@@ -139,6 +141,7 @@ export async function updateBooking(
   const dbChanges: Record<string, any> = {}
   if (changes.checkedIn     !== undefined) dbChanges.checked_in     = changes.checkedIn
   if (changes.autoCancelled !== undefined) dbChanges.auto_cancelled = changes.autoCancelled
+  if (changes.cancelledBy    !== undefined) dbChanges.cancelled_by   = changes.cancelledBy
   if (changes.earlyEnded    !== undefined) dbChanges.early_ended    = changes.earlyEnded
   if (changes.end_at        !== undefined) dbChanges.end_at         = changes.end_at
   if (changes.title         !== undefined) dbChanges.title          = changes.title
@@ -169,7 +172,7 @@ export async function updateBooking(
 
 // ── 취소 ─────────────────────────────────────────────────────────────────────
 export async function cancelBooking(id: string): Promise<void> {
-  await updateBooking(id, { autoCancelled: true })
+  await updateBooking(id, { autoCancelled: true, cancelledBy: 'user' })
 }
 
 // ── Realtime 구독 ────────────────────────────────────────────────────────────
