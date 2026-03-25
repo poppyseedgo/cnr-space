@@ -83,11 +83,13 @@ function AppContent() {
   // - authUser가 null→유저로 바뀔 때(로그인) 재실행
   // - authUser가 유저→null로 바뀔 때(로그아웃) 스킵
   useEffect(() => {
-    if (authLoading) return;  // Auth 초기화 중이면 대기
-    if (!authUser) {          // 미로그인이면 데이터 로딩 불필요
+    if (authLoading) return;
+    if (!authUser) {
       setLoading(false);
       return;
     }
+    // 로그인 시 항상 홈으로 이동
+    setView('home');
     setLoading(true);
     Promise.all([loadBookings(), loadRooms(), loadUsers()])
       .then(([b, r, u]) => {
@@ -571,10 +573,10 @@ function AppContent() {
                     </div>
                     {/* 하단 구분 */}
                     <div style={{borderTop:"1px solid #F1F5F9",padding:"4px 0"}}>
-                      <button className="btn" disabled
+                      <button className="btn" onClick={()=>{logout();setShowDropdown(false);}}
                         style={{width:"100%",textAlign:"left",padding:"10px 16px",fontSize:13,
-                          color:"#CBD5E1",display:"flex",alignItems:"center",gap:8,cursor:"not-allowed"}}>
-                        <LogOut size={15} strokeWidth={1.8}/> 로그아웃 <span style={{fontSize:10,color:"#CBD5E1"}}>(SSO 연동 후)</span>
+                          color:"#EF4444",display:"flex",alignItems:"center",gap:8}}>
+                        <LogOut size={15} strokeWidth={1.8}/> 로그아웃
                       </button>
                     </div>
                   </div>
