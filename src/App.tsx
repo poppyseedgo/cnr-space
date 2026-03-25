@@ -29,7 +29,16 @@ function AppContent() {
   const [bookings, setBookings]   = useState([]);
   const [rooms, setRooms]         = useState(ROOMS_DB);
   const [users, setUsers]         = useState(APP_USERS);
-  const [view, setView]           = useState("home");  // home | calendar | mypage | admin
+  // URL 해시에서 초기 view 복원 (#home, #calendar, #mypage, #admin)
+  const getViewFromHash = (): string => {
+    const hash = window.location.hash.replace('#', '')
+    return ['home','calendar','mypage','admin'].includes(hash) ? hash : 'home'
+  }
+  const [view, setViewState] = useState<string>(getViewFromHash);
+  const setView = (v: string) => {
+    setViewState(v)
+    window.location.hash = v  // URL 해시 동기화
+  }
   const [calView, setCalView]     = useState("timeline");
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [modal, setModal]         = useState(null);
