@@ -14,7 +14,8 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
   const today = todayStr();
   const now   = nowMinutes();
   const nowDisplay = nowStr();
-  const [filterStatus, setFilterStatus] = useState("ALL"); // ALL | AVAILABLE | BUSY
+  const [filterStatus,  setFilterStatus]  = useState("ALL");   // ALL | AVAILABLE | BUSY
+  const [bookingSort,   setBookingSort]   = useState<'recent' | 'time'>('recent');  // 최근 생성순 | 시간 가까운 순
 
   const activeRooms = roomsData.filter(r => r.is_active);
 
@@ -40,23 +41,66 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
   const soon       = withStatus.filter(x => x.status.type==="SOON");
   const busy       = withStatus.filter(x => x.status.type==="BUSY");
 
-  // 오늘 내 예약 — 예약 시작 시간 순 정렬 (빠른 시간이 앞)
-  // 직접 취소(cancelledBy==='user')는 제외, 노쇼 자동취소(cancelledBy==='system')는 포함
-  const myBookings = bookings
-    .filter(b =>
-      tsDate(b.start_at) === today &&
-      b.user === currentUser &&
-      b.cancelledBy !== 'user'   // 직접 취소만 제외
-    )
-    .sort((a, b) => a.start_at.localeCompare(b.start_at))
+  // 오늘 내 예약 — 직접 취소만 제외, 노쇼 자동취소는 유지
+  const myBookingsBase = bookings.filter(b =>
+    tsDate(b.start_at) === today &&
+    b.user === currentUser &&
+    b.cancelledBy !== 'user'
+  )
+
+  const myBookings = [...myBookingsBase].sort((a, b) => {
+    if (bookingSort === 'recent') {
+      // 최근 생성순 (createdAt 내림차순 — 가장 최근에 만든 게 앞)
+      return b.createdAt - a.createdAt
+    } else {
+      // 현재 시각과 가까운 순
+      const aStart = tsMin(a.start_at), aEnd = tsMin(a.end_at)
+      const bStart = tsMin(b.start_at), bEnd = tsMin(b.end_at)
+      const aActive   = aStart <= now && now < aEnd
+      const bActive   = bStart <= now && now < bEnd
+      const aUpcoming = aStart > now
+      const bUpcoming = bStart > now
+      if (aActive   && !bActive)    return -1
+      if (!aActive  && bActive)     return  1
+      if (aUpcoming && bUpcoming)   return aStart - bStart
+      if (!aUpcoming && !bUpcoming) return bEnd - aEnd
+      if (aUpcoming && !bUpcoming)  return -1
+      return 1
+    }
+  })
 
   return (
     <div>
       {/* ── 오늘 내 예약 (가로 스크롤 스트립) ── */}
       <div className="mb-6">
-        <div className="flex items-baseline gap-2 mb-3">
-          <span className="text-sm font-bold text-slate-700 dark:text-slate-200">오늘 내 예약</span>
-          <span className="text-xs text-slate-400 font-medium">{myBookings.length}건</span>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm font-bold text-slate-700 dark:text-slate-200">오늘 내 예약</span>
+            <span className="text-xs text-slate-400 font-medium">{myBookings.length}건</span>
+          </div>
+          {/* 정렬 토글 */}
+          {myBookings.length > 1 && (
+            <div className="flex items-center rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700" style={{fontSize:11}}>
+              <button
+                onClick={()=>setBookingSort('recent')}
+                className="px-2.5 py-1 font-semibold transition-colors"
+                style={{
+                  background: bookingSort==='recent' ? '#111' : 'transparent',
+                  color: bookingSort==='recent' ? '#fff' : '#94A3B8',
+                }}>
+                최근 생성순
+              </button>
+              <button
+                onClick={()=>setBookingSort('time')}
+                className="px-2.5 py-1 font-semibold transition-colors"
+                style={{
+                  background: bookingSort==='time' ? '#111' : 'transparent',
+                  color: bookingSort==='time' ? '#fff' : '#94A3B8',
+                }}>
+                시간순
+              </button>
+            </div>
+          )}
         </div>
         <div className="flex gap-3 overflow-x-auto pb-2" style={{scrollbarWidth:"none"}}>
 
