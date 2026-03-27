@@ -492,7 +492,7 @@ function AppContent() {
               <div className="min-w-0">
                 <div className="font-extrabold text-slate-900 dark:text-white tracking-tight truncate"
                   style={{fontSize: isMobile?13:15}}>
-                  {isMobile ? "C&R" : "C&R Booking Room"}
+                  {isMobile ? "C&R" : "C&R SPACE"}
                 </div>
               </div>
             </div>
