@@ -346,7 +346,7 @@ function AppContent() {
             title: notifTitle,
             body: `${room?.room_name_ko ?? room?.room_name ?? ''} · ${bk.start_at.slice(5,10)} ${bk.start_at.slice(11,16)}`,
             bookingId: bk.id,
-          }).catch(() => {})
+          }).then(() => loadNotifications().then(setNotifications)).catch(() => {})
         }
       }
       return true;
@@ -419,7 +419,7 @@ function AppContent() {
         title: '예약이 취소되었습니다',
         body: targetBooking ? `${targetBooking.title}` : undefined,
         bookingId: id,
-      }).catch(() => {})
+      }).then(() => loadNotifications().then(setNotifications)).catch(() => {})
     }
       showToast("예약이 취소되었습니다.", "info");
       // 이메일 알림 발송
@@ -466,7 +466,7 @@ function AppContent() {
             title: '예약이 승인되었습니다',
             body: `에메랄드 룸 · ${target.start_at.slice(5,10)} ${target.start_at.slice(11,16)}`,
             bookingId: id,
-          }).catch(() => {})
+          }).then(() => loadNotifications().then(setNotifications)).catch(() => {})
         }
       }
       showToast('예약이 승인되었습니다.')
@@ -502,7 +502,7 @@ function AppContent() {
             title: '예약 요청이 거절되었습니다',
             body: reason ? `거절 사유: ${reason}` : '에메랄드 룸 예약 요청',
             bookingId: id,
-          }).catch(() => {})
+          }).then(() => loadNotifications().then(setNotifications)).catch(() => {})
         }
       }
       showToast('예약이 거절되었습니다.', 'info')
