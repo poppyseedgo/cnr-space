@@ -100,9 +100,8 @@ export function getAvailableRooms(allRooms, bookings, date, startTime, endTime, 
   if (!startTime || !endTime || startTime >= endTime) return { available: [], unavailable: allRooms.filter(r=>r.is_active) };
   const active = allRooms.filter(r => r.is_active);
   const available = active.filter(r => {
-    // is_admin_only 우선, fallback으로 하드코딩된 ADMIN_ONLY_ROOMS
-    const adminOnly = r.is_admin_only ?? ADMIN_ONLY_ROOMS.has(r.room_id);
-    if (adminOnly && !isAdmin) return false;
+    // is_admin_only 회의실도 선택 가능 (예약 시 pending으로 처리됨)
+    // 차단은 하지 않고 시간 충돌 여부만 확인
     return isRoomAvailable(bookings, r.room_id, date, startTime, endTime);
   });
   const unavailable = active.filter(r => !available.find(a => a.room_id === r.room_id));

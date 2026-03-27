@@ -185,11 +185,7 @@ function AppContent() {
         showToast("예약 정보를 확인해주세요.", "error");
         return false;
       }
-      // ── ADMIN_ONLY 권한 체크 ──
-      if (rooms.find(r => r.room_id === form.room_id)?.is_admin_only && !isAdmin) {
-        showToast("해당 회의실은 관리자만 예약할 수 있습니다.", "error");
-        return false;
-      }
+      // is_admin_only 회의실은 pending 상태로 생성 (아래 isAdminOnlyRoom 변수로 처리)
 
       // ── 반복 날짜 목록 생성 ──
       const maxD = new Date(); maxD.setMonth(maxD.getMonth() + 1);

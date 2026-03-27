@@ -537,7 +537,10 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 ? <span style={{background:"#B9F8CF",color:"#111",fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:999,display:"inline-flex",alignItems:"center",gap:3}}><Check size={10} strokeWidth={2.5}/>선택됨</span>
                 : <span style={{background:"#CBECFF",color:"#000",fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:999}}>예약가능</span>}
               {isAdminRoom && !isSel && (
-                <span style={{background:"#F1F5F9",color:"#64748B",fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:999}}>관리자 승인</span>
+                <span style={{background:"#FEF3C7",color:"#92400E",fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:999}}>⏳ 승인 필요</span>
+              )}
+              {isAdminRoom && isSel && (
+                <span style={{background:"#FEF3C7",color:"#92400E",fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:999}}>⏳ 승인 후 확정</span>
               )}
             </div>
             <div style={{fontSize:15,fontWeight:700,color:isSel?"#fff":"#111",marginBottom:4}}>{r.room_name}</div>
