@@ -9,7 +9,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
-const FROM_EMAIL     = 'C&R Booking <onboarding@resend.dev>'
+const FROM_EMAIL     = 'C&R SPACE <onboarding@resend.dev>'
 const APP_URL        = Deno.env.get('APP_URL') ?? 'https://cnr-booking.vercel.app'
 
 function utcToKST(ts: string): string {
@@ -65,7 +65,7 @@ Deno.serve(async (_req: Request) => {
       const userEmail = b.profiles?.email
       if (!userEmail) continue
 
-      const subject = `[C&R Booking] 📅 오늘 예약 리마인더 — ${b.title}`
+      const subject = `[C&R SPACE] 📅 오늘 예약 리마인더 — ${b.title}`
       const startStr = utcToKST(b.start_at)
       const endStr   = utcToKST(b.end_at)
 
@@ -77,7 +77,7 @@ Deno.serve(async (_req: Request) => {
       <table width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
         <tr><td style="background:#4F46E5;padding:24px 32px;">
           <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.8);">오늘의 예약 리마인더</p>
-          <p style="margin:8px 0 0;font-size:18px;font-weight:700;color:#fff;">C&amp;R Booking Room</p>
+          <p style="margin:8px 0 0;font-size:18px;font-weight:700;color:#fff;">C&amp;R SPACE</p>
         </td></tr>
         <tr><td style="padding:24px 32px;">
           <p style="margin:0 0 4px;font-size:14px;color:#6B7280;">안녕하세요, ${b.profiles?.name ?? b.user_name}님 👋</p>
@@ -107,7 +107,7 @@ Deno.serve(async (_req: Request) => {
           </div>
         </td></tr>
         <tr><td style="padding:14px 32px 20px;border-top:1px solid #F1F5F9;">
-          <p style="margin:0;font-size:11px;color:#9CA3AF;text-align:center;">CNR Research 회의실 예약 시스템 자동 발송</p>
+          <p style="margin:0;font-size:11px;color:#9CA3AF;text-align:center;">C&R SPACE 자동 발송</p>
         </td></tr>
       </table>
     </td></tr>

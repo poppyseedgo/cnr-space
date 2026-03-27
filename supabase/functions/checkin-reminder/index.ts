@@ -13,7 +13,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
-const FROM_EMAIL     = 'C&R Booking <onboarding@resend.dev>'
+const FROM_EMAIL     = 'C&R SPACE <onboarding@resend.dev>'
 const APP_URL        = Deno.env.get('APP_URL') ?? 'https://cnr-space.vercel.app'
 
 async function sendEmail(to: string[], subject: string, html: string) {
@@ -45,7 +45,7 @@ function makeBefore10Html(b: any, recipientName: string, isAttendee: boolean): s
     <table width="100%" style="max-width:500px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
       <tr><td style="background:#0891B2;padding:22px 28px;">
         <p style="margin:0;font-size:19px;font-weight:700;color:#fff;">⏰ 10분 후 시작합니다</p>
-        <p style="margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.85);">C&amp;R Booking Room</p>
+        <p style="margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.85);">C&amp;R SPACE</p>
       </td></tr>
       <tr><td style="padding:22px 28px;">
         <p style="margin:0 0 4px;font-size:13px;color:#6B7280;">안녕하세요, ${recipientName}님${isAttendee ? ' (참석자)' : ''} 👋</p>
@@ -70,7 +70,7 @@ function makeBefore10Html(b: any, recipientName: string, isAttendee: boolean): s
         </div>
       </td></tr>
       <tr><td style="padding:14px 28px 18px;border-top:1px solid #F1F5F9;">
-        <p style="margin:0;font-size:11px;color:#9CA3AF;text-align:center;">CNR Research 회의실 예약 시스템 자동 발송</p>
+        <p style="margin:0;font-size:11px;color:#9CA3AF;text-align:center;">C&R SPACE 자동 발송</p>
       </td></tr>
     </table>
   </td></tr>
@@ -88,7 +88,7 @@ function makeStartHtml(b: any, recipientName: string, isAttendee: boolean): stri
     <table width="100%" style="max-width:500px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
       <tr><td style="background:#16A34A;padding:22px 28px;">
         <p style="margin:0;font-size:19px;font-weight:700;color:#fff;">🟢 회의 시작! 체크인해 주세요</p>
-        <p style="margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.85);">C&amp;R Booking Room</p>
+        <p style="margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.85);">C&amp;R SPACE</p>
       </td></tr>
       <tr><td style="padding:22px 28px;">
         <p style="margin:0 0 4px;font-size:13px;color:#6B7280;">안녕하세요, ${recipientName}님${isAttendee ? ' (참석자)' : ''} 👋</p>
@@ -118,7 +118,7 @@ function makeStartHtml(b: any, recipientName: string, isAttendee: boolean): stri
         </div>
       </td></tr>
       <tr><td style="padding:14px 28px 18px;border-top:1px solid #F1F5F9;">
-        <p style="margin:0;font-size:11px;color:#9CA3AF;text-align:center;">CNR Research 회의실 예약 시스템 자동 발송</p>
+        <p style="margin:0;font-size:11px;color:#9CA3AF;text-align:center;">C&R SPACE 자동 발송</p>
       </td></tr>
     </table>
   </td></tr>
@@ -136,7 +136,7 @@ function makeAfter5Html(b: any, recipientName: string, isAttendee: boolean): str
     <table width="100%" style="max-width:500px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
       <tr><td style="background:#DC2626;padding:22px 28px;">
         <p style="margin:0;font-size:19px;font-weight:700;color:#fff;">⚠️ 5분 후 자동 취소됩니다</p>
-        <p style="margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.85);">C&amp;R Booking Room</p>
+        <p style="margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.85);">C&amp;R SPACE</p>
       </td></tr>
       <tr><td style="padding:22px 28px;">
         <p style="margin:0 0 4px;font-size:13px;color:#6B7280;">안녕하세요, ${recipientName}님${isAttendee ? ' (참석자)' : ''}</p>
@@ -162,7 +162,7 @@ function makeAfter5Html(b: any, recipientName: string, isAttendee: boolean): str
         </div>
       </td></tr>
       <tr><td style="padding:14px 28px 18px;border-top:1px solid #F1F5F9;">
-        <p style="margin:0;font-size:11px;color:#9CA3AF;text-align:center;">CNR Research 회의실 예약 시스템 자동 발송</p>
+        <p style="margin:0;font-size:11px;color:#9CA3AF;text-align:center;">C&R SPACE 자동 발송</p>
       </td></tr>
     </table>
   </td></tr>
@@ -202,12 +202,12 @@ Deno.serve(async (req: Request) => {
       const userEmail = b.profiles?.email
       const userName  = b.profiles?.name ?? b.user_name
       if (!userEmail) continue
-      await sendEmail([userEmail], `[C&R Booking] ⏰ 10분 후 시작 — ${b.title}`, makeBefore10Html(b, userName, false))
+      await sendEmail([userEmail], `[C&R SPACE] ⏰ 10분 후 시작 — ${b.title}`, makeBefore10Html(b, userName, false))
       totalSent++
       if (b.attendees?.length > 0) {
         const attendeeEmails = b.attendees.filter((e: string) => e !== userEmail)
         if (attendeeEmails.length > 0) {
-          await sendEmail(attendeeEmails, `[C&R Booking] ⏰ 10분 후 시작 — ${b.title}`, makeBefore10Html(b, '참석자', true))
+          await sendEmail(attendeeEmails, `[C&R SPACE] ⏰ 10분 후 시작 — ${b.title}`, makeBefore10Html(b, '참석자', true))
           totalSent++
         }
       }
@@ -227,12 +227,12 @@ Deno.serve(async (req: Request) => {
       const userEmail = b.profiles?.email
       const userName  = b.profiles?.name ?? b.user_name
       if (!userEmail) continue
-      await sendEmail([userEmail], `[C&R Booking] 🟢 회의 시작! 체크인해 주세요 — ${b.title}`, makeStartHtml(b, userName, false))
+      await sendEmail([userEmail], `[C&R SPACE] 🟢 회의 시작! 체크인해 주세요 — ${b.title}`, makeStartHtml(b, userName, false))
       totalSent++
       if (b.attendees?.length > 0) {
         const attendeeEmails = b.attendees.filter((e: string) => e !== userEmail)
         if (attendeeEmails.length > 0) {
-          await sendEmail(attendeeEmails, `[C&R Booking] 🟢 회의 시작! 체크인해 주세요 — ${b.title}`, makeStartHtml(b, '참석자', true))
+          await sendEmail(attendeeEmails, `[C&R SPACE] 🟢 회의 시작! 체크인해 주세요 — ${b.title}`, makeStartHtml(b, '참석자', true))
           totalSent++
         }
       }
@@ -254,12 +254,12 @@ Deno.serve(async (req: Request) => {
       const userEmail = b.profiles?.email
       const userName  = b.profiles?.name ?? b.user_name
       if (!userEmail) continue
-      await sendEmail([userEmail], `[C&R Booking] ⚠️ 5분 후 자동취소 — ${b.title}`, makeAfter5Html(b, userName, false))
+      await sendEmail([userEmail], `[C&R SPACE] ⚠️ 5분 후 자동취소 — ${b.title}`, makeAfter5Html(b, userName, false))
       totalSent++
       if (b.attendees?.length > 0) {
         const attendeeEmails = b.attendees.filter((e: string) => e !== userEmail)
         if (attendeeEmails.length > 0) {
-          await sendEmail(attendeeEmails, `[C&R Booking] ⚠️ 5분 후 자동취소 — ${b.title}`, makeAfter5Html(b, '참석자', true))
+          await sendEmail(attendeeEmails, `[C&R SPACE] ⚠️ 5분 후 자동취소 — ${b.title}`, makeAfter5Html(b, '참석자', true))
           totalSent++
         }
       }

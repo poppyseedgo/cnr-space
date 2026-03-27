@@ -10,7 +10,7 @@
  */
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
-const FROM_EMAIL     = 'C&R Booking <onboarding@resend.dev>'
+const FROM_EMAIL     = 'C&R SPACE <onboarding@resend.dev>'
 const APP_URL        = Deno.env.get('APP_URL') ?? 'https://cnr-booking.vercel.app'
 
 // ── KST 시간 포맷 유틸 ─────────────────────────────────────────────────────
@@ -48,15 +48,15 @@ function fmtTime(ts: string | undefined | null): string {
 function getSubject(type: string, booking: any): string {
   const title = booking.title
   const subjects: Record<string, string> = {
-    created:   `[C&R Booking] ✅ 예약 확정 — ${title}`,
-    updated:   `[C&R Booking] 📝 예약 변경 — ${title}`,
-    cancelled: `[C&R Booking] ❌ 예약 취소 — ${title}`,
-    noshow:    `[C&R Booking] ⚠️ 미체크인 자동취소 — ${title}`,
-    pending:   `[C&R Booking] 📋 에메랄드 승인 요청 — ${title}`,
-    approved:  `[C&R Booking] ✅ 예약 승인 — ${title}`,
-    rejected:  `[C&R Booking] ❌ 예약 반려 — ${title}`,
+    created:   `[C&R SPACE] ✅ 예약 확정 — ${title}`,
+    updated:   `[C&R SPACE] 📝 예약 변경 — ${title}`,
+    cancelled: `[C&R SPACE] ❌ 예약 취소 — ${title}`,
+    noshow:    `[C&R SPACE] ⚠️ 미체크인 자동취소 — ${title}`,
+    pending:   `[C&R SPACE] 📋 에메랄드 승인 요청 — ${title}`,
+    approved:  `[C&R SPACE] ✅ 예약 승인 — ${title}`,
+    rejected:  `[C&R SPACE] ❌ 예약 반려 — ${title}`,
   }
-  return subjects[type] ?? `[C&R Booking] 예약 알림 — ${title}`
+  return subjects[type] ?? `[C&R SPACE] 예약 알림 — ${title}`
 }
 
 function getEmailHtml(type: string, booking: any, isAttendee = false): string {
@@ -104,7 +104,7 @@ function getEmailHtml(type: string, booking: any, isAttendee = false): string {
         <tr>
           <td style="background:${headerColor};padding:28px 32px;">
             <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.8);font-weight:500;">CNR Research</p>
-            <p style="margin:8px 0 0;font-size:20px;font-weight:700;color:#fff;">C&amp;R Booking Room</p>
+            <p style="margin:8px 0 0;font-size:20px;font-weight:700;color:#fff;">C&amp;R SPACE</p>
             <p style="margin:12px 0 0;font-size:14px;color:rgba(255,255,255,0.9);">${headerLabel}</p>
           </td>
         </tr>
@@ -184,7 +184,7 @@ function getEmailHtml(type: string, booking: any, isAttendee = false): string {
         <tr>
           <td style="padding:16px 32px 24px;border-top:1px solid #F1F5F9;">
             <p style="margin:0;font-size:11px;color:#9CA3AF;text-align:center;">
-              이 메일은 CNR Research 회의실 예약 시스템에서 자동 발송됩니다.<br>
+              이 메일은 C&R SPACE에서 자동 발송됩니다.<br>
               문의: 총무팀 (HR)
             </p>
           </td>
