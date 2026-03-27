@@ -344,7 +344,7 @@ function AppContent() {
             userId: authUser.user_id,
             type: isAdminOnlyRoom ? 'booking_pending' : 'booking_created',
             title: notifTitle,
-            body: `${room?.room_name_ko ?? room?.room_name ?? ''} · ${bk.start_at.slice(5,10)} ${bk.start_at.slice(11,16)}`,
+            body: `${bk.title} · ${room?.room_name_ko ?? room?.room_name ?? ''} · ${bk.start_at.slice(5,10)} ${bk.start_at.slice(11,16)}`,
             bookingId: bk.id,
           }).then(() => loadNotifications().then(setNotifications)).catch(() => {})
         }
@@ -464,7 +464,7 @@ function AppContent() {
           insertNotification({
             userId: userProfile.user_id, type: 'booking_approved',
             title: '예약이 승인되었습니다',
-            body: `에메랄드 룸 · ${target.start_at.slice(5,10)} ${target.start_at.slice(11,16)}`,
+            body: `${target.title} · 에메랄드 룸 · ${target.start_at.slice(5,10)} ${target.start_at.slice(11,16)}`,
             bookingId: id,
           }).then(() => loadNotifications().then(setNotifications)).catch(() => {})
         }
@@ -500,7 +500,7 @@ function AppContent() {
           insertNotification({
             userId: userProfile.user_id, type: 'booking_rejected',
             title: '예약 요청이 거절되었습니다',
-            body: reason ? `거절 사유: ${reason}` : '에메랄드 룸 예약 요청',
+            body: reason ? `${target?.title} · 거절 사유: ${reason}` : `${target?.title} · 에메랄드 룸 예약 요청`,
             bookingId: id,
           }).then(() => loadNotifications().then(setNotifications)).catch(() => {})
         }
