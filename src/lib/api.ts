@@ -375,3 +375,57 @@ export async function loadRoomImages(roomId: number): Promise<{
     gallery_urls:  data.gallery_urls  ?? [],
   }
 }
+
+// ── rooms 테이블 저장 (AdminPage용) ──────────────────────────────────────────
+
+/** 회의실 정보 upsert (수정/추가) */
+export async function upsertRoom(room: Room): Promise<void> {
+  const { error } = await supabase.from('rooms').upsert({
+    room_id:      room.room_id,
+    room_code:    room.room_code   ?? '',
+    room_name:    room.room_name   ?? '',
+    room_name_ko: room.room_name_ko ?? '',
+    floor_id:     room.floor_id    ?? 1,
+    capacity:     room.capacity    ?? 4,
+    notes:        room.notes       ?? '',
+    is_active:    room.is_active   ?? true,
+    is_admin_only: room.is_admin_only ?? false,
+    color:        room.color       ?? '#111111',
+  }, { onConflict: 'room_id' })
+  if (error) throw new Error(`회의실 저장 실패: ${error.message}`)
+}
+
+/** 회의실 활성/비활성 토글 */
+export async function toggleRoomActive(roomId: number, isActive: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('rooms').update({ is_active: isActive }).eq('room_id', roomId)
+  if (error) throw new Error(`회의실 상태 변경 실패: ${error.message}`)
+}
+
+/** room_features 저장 (회의실 기능 목록 교체) */
+export async function saveRoomFeatures(roomId: number, featureIds: number[]): Promise<void> {
+  // 기존 삭제 후 재삽입
+  await supabase.from('room_features').delete().eq('room_id', roomId)
+  if (featureIds.length === 0) return
+  const rows = featureIds.map(fid => ({ room_id: roomId, feature_id: fid, value_text: null }))
+  const { error } = await supabase.from('room_features').insert(rows)
+  if (error) throw new Error(`기능 저장 실패: ${error.message}`)
+}
+
+/** features 전체 목록 로드 */
+export async function loadFeatures(): Promise<{ feature_id: number; feature_key: string; feature_name: string }[]> {
+  const { data, error } = await supabase.from('features').select('*').order('feature_id')
+  if (error) return []
+  return data ?? []
+}
+
+// ── profiles 테이블 수정 (AdminPage 사용자 관리) ──────────────────────────────
+
+/** 사용자 role/dept/name 수정 */
+export async function updateProfile(userId: string, fields: {
+  name?: string; dept?: string; role?: string; employee_id?: string
+}): Promise<void> {
+  const { error } = await supabase
+    .from('profiles').update(fields).eq('id', userId)
+  if (error) throw new Error(`사용자 정보 수정 실패: ${error.message}`)
+}

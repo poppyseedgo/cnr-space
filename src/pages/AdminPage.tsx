@@ -5,7 +5,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, FLOORS, getFloor, getRoomFeatures, getRoomById, getRoomThumbnail, getRoomGallery } from '../data/master'
-import { uploadRoomImage, deleteRoomImage, saveRoomImages, loadRoomImages, cancelBooking as apiCancelBooking, insertAuditLog } from '../lib/api'
+import { uploadRoomImage, deleteRoomImage, saveRoomImages, loadRoomImages, cancelBooking as apiCancelBooking, insertAuditLog, upsertRoom, toggleRoomActive, saveRoomFeatures, loadFeatures, updateProfile } from '../lib/api'
 import { Upload, ImagePlus, Trash2, X as XIcon } from 'lucide-react'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../types'
 
@@ -182,17 +182,26 @@ export function AdminRooms({rooms,setRooms,showToast,isMobile}){
   const [uploading, setUploading]       = useState(false);
   const thumbRef  = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
+  // features 상태
+  const [allFeatures,   setAllFeatures]   = useState<any[]>([]);
+  const [selectedFeats, setSelectedFeats] = useState<number[]>([]);
+
+  // 최초 마운트 시 features 목록 로드
+  useState(() => { loadFeatures().then(setAllFeatures); });
 
   const openEdit = async (r) => {
-    setForm({room_name:r?.room_name||"",room_name_ko:r?.room_name_ko||"",floor_id:r?.floor_id||1,capacity:r?.capacity||4,notes:r?.notes||"",is_active:r?.is_active??true});
+    setForm({room_name:r?.room_name||"",room_name_ko:r?.room_name_ko||"",floor_id:r?.floor_id||1,capacity:r?.capacity||4,notes:r?.notes||"",is_active:r?.is_active??true,is_admin_only:r?.is_admin_only??false});
     setEditRoom(r||{room_id:null});
     // 기존 이미지 로드
     if (r?.room_id) {
       const imgs = await loadRoomImages(r.room_id);
       setThumbnail(imgs.thumbnail_url);
       setGallery(imgs.gallery_urls);
+      // 기존 features 로드
+      const feats = r.features ?? [];
+      setSelectedFeats(feats.map((f:any) => f.feature_id));
     } else {
-      setThumbnail(''); setGallery([]);
+      setThumbnail(''); setGallery([]); setSelectedFeats([]);
     }
   };
 
@@ -231,27 +240,68 @@ export function AdminRooms({rooms,setRooms,showToast,isMobile}){
   const saveEdit = async () => {
     if(!form.room_name.trim()){showToast("회의실명을 입력해주세요.","error");return;}
     try {
-      // rooms 테이블에 이미지 저장
-      if (editRoom.room_id) {
-        await saveRoomImages(editRoom.room_id, thumbnail, gallery);
-      }
-      let updated;
-      if(editRoom.room_id){
-        updated=rooms.map(r=>r.room_id===editRoom.room_id
-          ? {...r,...form,capacity:Number(form.capacity),floor_id:Number(form.floor_id),
-             thumbnail, gallery}  // DB 이미지 즉시 반영
+      const capacity  = Number(form.capacity);
+      const floor_id  = Number(form.floor_id);
+      let roomId = editRoom.room_id;
+
+      if (roomId) {
+        // 기존 회의실 수정 — Supabase upsert
+        await upsertRoom({
+          room_id:      roomId,
+          room_code:    form.room_code    ?? '',
+          room_name:    form.room_name    ?? '',
+          room_name_ko: form.room_name_ko ?? '',
+          floor_id,
+          capacity,
+          notes:        form.notes        ?? '',
+          is_active:    form.is_active    ?? true,
+          is_admin_only: form.is_admin_only ?? false,
+          color:        '#111111',
+          thumbnail,
+          gallery,
+        });
+        await saveRoomImages(roomId, thumbnail, gallery);
+        await saveRoomFeatures(roomId, selectedFeats);
+        const updated = rooms.map(r => r.room_id === roomId
+          ? { ...r, ...form, capacity, floor_id, thumbnail, gallery,
+              features: allFeatures.filter(f => selectedFeats.includes(f.feature_id)) }
           : r);
+        setRooms(updated);
       } else {
-        const nid=Math.max(...rooms.map(r=>r.room_id),0)+1;
-        updated=[...rooms,{room_id:nid,room_code:`ROOM_${nid}`,color:"#111111",...form,
-          capacity:Number(form.capacity),floor_id:Number(form.floor_id),thumbnail,gallery}];
+        // 새 회의실 추가 — Supabase insert
+        const nid = Math.max(...rooms.map(r => r.room_id), 0) + 1;
+        const newRoom = {
+          room_id:      nid,
+          room_code:    form.room_code    ?? `ROOM_${nid}`,
+          room_name:    form.room_name    ?? '',
+          room_name_ko: form.room_name_ko ?? '',
+          floor_id,
+          capacity,
+          notes:        form.notes        ?? '',
+          is_active:    form.is_active    ?? true,
+          is_admin_only: form.is_admin_only ?? false,
+          color:        '#111111',
+          thumbnail,
+          gallery,
+        };
+        await upsertRoom(newRoom);
+        await saveRoomImages(nid, thumbnail, gallery);
+        await saveRoomFeatures(nid, selectedFeats);
+        setRooms([...rooms, { ...newRoom,
+          features: allFeatures.filter(f => selectedFeats.includes(f.feature_id)) }]);
       }
-      setRooms(updated);  // 홈화면 즉시 반영
-      showToast(editRoom.room_id?"회의실 정보가 수정되었습니다.":"회의실이 추가되었습니다.");
+      showToast(editRoom.room_id ? "회의실 정보가 수정되었습니다." : "회의실이 추가되었습니다.");
       setEditRoom(null);
     } catch (err: any) { showToast(err.message, 'error'); }
   };
-  const toggleActive=(rid)=>{const updated=rooms.map(r=>r.room_id===rid?{...r,is_active:!r.is_active}:r);setRooms(updated);showToast(updated.find(x=>x.room_id===rid).is_active?"활성화되었습니다.":"비활성화되었습니다.","info");};
+  const toggleActive = async (rid) => {
+    const next = !rooms.find(r=>r.room_id===rid)?.is_active;
+    try {
+      await toggleRoomActive(rid, next);
+      setRooms(rooms.map(r => r.room_id===rid ? {...r, is_active: next} : r));
+      showToast(next ? "활성화되었습니다." : "비활성화되었습니다.", "info");
+    } catch (err: any) { showToast(err.message, 'error'); }
+  };
 
   return(
     <div className="anm">
@@ -306,6 +356,37 @@ export function AdminRooms({rooms,setRooms,showToast,isMobile}){
             </div>
             <div style={{marginBottom:14}}><label style={{fontSize:11,fontWeight:700,color:"#94A3B8",display:"block",marginBottom:4}}>설명/메모</label>
               <textarea value={form.notes||""} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} rows={2} style={{width:"100%",padding:"10px 14px",borderRadius:10,border:"1px solid #E2E8F0",fontSize:13,background:"#F8FAFC",outline:"none",resize:"none"}}/></div>
+            {/* 관리자 전용 */}
+            <div style={{marginBottom:14,display:"flex",alignItems:"center",gap:10}}>
+              <input type="checkbox" id="is_admin_only" checked={!!form.is_admin_only}
+                onChange={e=>setForm(p=>({...p,is_admin_only:e.target.checked}))}
+                style={{width:16,height:16,cursor:"pointer"}}/>
+              <label htmlFor="is_admin_only" style={{fontSize:13,color:"#374151",cursor:"pointer",fontWeight:500}}>
+                관리자 전용 회의실 (일반 유저 예약 불가)
+              </label>
+            </div>
+            {/* features 체크박스 */}
+            {allFeatures.length > 0 && (
+              <div style={{marginBottom:14}}>
+                <label style={{fontSize:11,fontWeight:700,color:"#94A3B8",display:"block",marginBottom:8}}>회의실 기능</label>
+                <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                  {allFeatures.map(f => (
+                    <label key={f.feature_id} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
+                      padding:"6px 12px",borderRadius:8,border:"1px solid #E2E8F0",fontSize:12,fontWeight:500,
+                      background:selectedFeats.includes(f.feature_id)?"#111":"#F8FAFC",
+                      color:selectedFeats.includes(f.feature_id)?"#fff":"#64748B"}}>
+                      <input type="checkbox"
+                        checked={selectedFeats.includes(f.feature_id)}
+                        onChange={e => setSelectedFeats(prev =>
+                          e.target.checked ? [...prev, f.feature_id] : prev.filter(id => id !== f.feature_id)
+                        )}
+                        style={{display:"none"}}/>
+                      {f.feature_name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
             {/* ── 대표 이미지 ── */}
             {editRoom?.room_id && (
               <div style={{marginBottom:14}}>
@@ -376,14 +457,34 @@ export function AdminUsers({users,setUsers,showToast,isMobile}){
   const [form,setForm]=useState<Record<string,any>>({});
   const filtered=users.filter(u=>{if(!searchQ)return true;const q=searchQ.toLowerCase();return u.name.toLowerCase().includes(q)||u.dept.toLowerCase().includes(q)||u.email.toLowerCase().includes(q);});
   const adminCount=users.filter(u=>u.role==="ADMIN").length;
-  const toggleRole=(uid)=>{const updated=users.map(u=>u.user_id===uid?{...u,role:u.role==="ADMIN"?"USER":"ADMIN"}:u);setUsers(updated);showToast(`권한이 ${updated.find(x=>x.user_id===uid).role}로 변경되었습니다.`,"info");};
+  const toggleRole = async (uid) => {
+    const next = users.find(u=>u.user_id===uid)?.role === 'ADMIN' ? 'USER' : 'ADMIN';
+    try {
+      await updateProfile(uid, { role: next });
+      setUsers(users.map(u => u.user_id===uid ? {...u, role: next} : u));
+      showToast(`권한이 ${next}로 변경되었습니다.`, "info");
+    } catch (err: any) { showToast(err.message, 'error'); }
+  };
   const openEdit=(u)=>{setForm(u?{name:u.name,dept:u.dept,email:u.email,role:u.role}:{name:"",dept:"",email:"",role:"USER"});setEditUser(u||{user_id:null});};
-  const saveEdit=()=>{
+  const saveEdit = async () => {
     if(!form.name.trim()||!form.email.trim()){showToast("이름과 이메일은 필수입니다.","error");return;}
-    let updated;
-    if(editUser.user_id){updated=users.map(u=>u.user_id===editUser.user_id?{...u,...form}:u);}
-    else{updated=[...users,{user_id:`u${String(users.length+1).padStart(3,"0")}`,...form}];}
-    setUsers(updated);showToast(editUser.user_id?"수정되었습니다.":"추가되었습니다.");setEditUser(null);
+    try {
+      if (editUser.user_id) {
+        // 기존 사용자 수정 — profiles 테이블 update
+        await updateProfile(editUser.user_id, {
+          name: form.name, dept: form.dept,
+          role: form.role, employee_id: form.employee_id ?? ''
+        });
+        setUsers(users.map(u => u.user_id===editUser.user_id ? {...u,...form} : u));
+        showToast("수정되었습니다.");
+      } else {
+        // 신규 사용자 추가 — Auth 없이는 불가, 안내 메시지
+        showToast("신규 사용자는 Supabase 대시보드 → Authentication에서 추가해주세요.", "info");
+        setEditUser(null);
+        return;
+      }
+      setEditUser(null);
+    } catch (err: any) { showToast(err.message, 'error'); }
   };
   return(
     <div className="anm">

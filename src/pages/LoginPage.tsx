@@ -23,8 +23,10 @@ function useGuestStats() {
       try {
         const today = todayStr()
         const now   = nowMinutes()
-        const activeRooms = ROOMS_DB.filter(r => r.is_active)
-        const total = activeRooms.length
+        // rooms 테이블에서 활성 회의실 수 직접 조회 (ROOMS_DB 하드코딩 제거)
+        const { count } = await supabase
+          .from('rooms').select('*', { count: 'exact', head: true }).eq('is_active', true)
+        const total = count ?? 9  // fallback
 
         const { data } = await supabase
           .from('bookings')
