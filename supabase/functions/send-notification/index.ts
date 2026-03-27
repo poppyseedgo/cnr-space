@@ -9,9 +9,10 @@
  *   })
  */
 
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
-const FROM_EMAIL     = 'C&R SPACE <onboarding@resend.dev>'
-const APP_URL        = Deno.env.get('APP_URL') ?? 'https://cnr-booking.vercel.app'
+const RESEND_API_KEY   = Deno.env.get('RESEND_API_KEY') ?? ''
+const FROM_EMAIL       = 'C&R SPACE <onboarding@resend.dev>'
+const APP_URL          = Deno.env.get('APP_URL') ?? 'https://cnr-space.vercel.app'
+const TEAMS_WEBHOOK_URL = Deno.env.get('TEAMS_WEBHOOK_URL') ?? ''
 
 // ── KST 시간 포맷 유틸 ─────────────────────────────────────────────────────
 function utcToKST(ts: string): string {
@@ -197,6 +198,106 @@ function getEmailHtml(type: string, booking: any, isAttendee = false): string {
 </html>`
 }
 
+// ── Teams Adaptive Card 발송 ─────────────────────────────────────────────
+async function sendTeamsCard(type: string, booking: any): Promise<void> {
+  if (!TEAMS_WEBHOOK_URL) return
+
+  // 타입별 색상 + 제목
+  const colorMap: Record<string, string> = {
+    created:   'Good',    // 초록
+    pending:   'Warning', // 주황
+    approved:  'Good',
+    rejected:  'Attention', // 빨강
+    cancelled: 'Default',
+    noshow:    'Warning',
+    updated:   'Default',
+  }
+  const color = colorMap[type] ?? 'Default'
+
+  const titleMap: Record<string, string> = {
+    created:   '✅ 새 예약이 생성되었습니다',
+    pending:   '📋 에메랄드 룸 승인 요청',
+    approved:  '✅ 예약이 승인되었습니다',
+    rejected:  '❌ 예약이 거절되었습니다',
+    cancelled: '❌ 예약이 취소되었습니다',
+    noshow:    '⚠️ 노쇼 자동취소',
+    updated:   '📝 예약이 변경되었습니다',
+  }
+  const cardTitle = titleMap[type] ?? '예약 알림'
+
+  // Adaptive Card (Teams 표준 형식)
+  const card = {
+    type: 'message',
+    attachments: [{
+      contentType: 'application/vnd.microsoft.card.adaptive',
+      contentUrl: null,
+      content: {
+        '$schema': 'http://adaptivecards.io/schemas/adaptive-card.json',
+        type: 'AdaptiveCard',
+        version: '1.4',
+        body: [
+          {
+            type: 'Container',
+            style: color,
+            items: [{
+              type: 'TextBlock',
+              text: cardTitle,
+              weight: 'Bolder',
+              size: 'Medium',
+              wrap: true,
+            }]
+          },
+          {
+            type: 'FactSet',
+            facts: [
+              { title: '회의명', value: booking.title ?? '-' },
+              { title: '회의실', value: booking.room_name ?? '-' },
+              { title: '날짜',   value: booking.start_at ? booking.start_at.slice(0, 10) : '-' },
+              { title: '시간',   value: booking.start_at && booking.end_at
+                  ? `${booking.start_at.slice(11,16)} ~ ${booking.end_at.slice(11,16)}`
+                  : '-' },
+              { title: '예약자', value: `${booking.user_name ?? '-'} (${booking.user_dept ?? '-'})` },
+              ...(booking.reject_reason ? [{ title: '거절 사유', value: booking.reject_reason }] : []),
+            ]
+          },
+          ...(type === 'pending' ? [{
+            type: 'ActionSet',
+            actions: [{
+              type: 'Action.OpenUrl',
+              title: '승인 관리 페이지로 이동',
+              url: `${APP_URL}#admin`,
+            }]
+          }] : []),
+          ...((type === 'created' || type === 'approved') ? [{
+            type: 'ActionSet',
+            actions: [{
+              type: 'Action.OpenUrl',
+              title: '예약 확인하기',
+              url: APP_URL,
+            }]
+          }] : []),
+        ],
+        '$version': '1.0',
+      }
+    }]
+  }
+
+  try {
+    const res = await fetch(TEAMS_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(card),
+    })
+    if (!res.ok) {
+      console.warn('[notify] Teams 발송 실패:', res.status, await res.text())
+    } else {
+      console.log('[notify] Teams 카드 발송 완료, type:', type)
+    }
+  } catch (e) {
+    console.warn('[notify] Teams 발송 오류 (이메일은 정상):', e)
+  }
+}
+
 // ── Resend 발송 ────────────────────────────────────────────────────────────
 async function sendEmail(to: string[], subject: string, html: string) {
   if (!RESEND_API_KEY) {
@@ -252,10 +353,17 @@ Deno.serve(async (req: Request) => {
         await sendEmail(adminEmails, subject, html)
         results.push({ to: adminEmails, role: 'admins' })
       }
+      // Teams에도 pending 알림 발송 (Admin 채널)
+      await sendTeamsCard('pending', booking)
       return new Response(
         JSON.stringify({ success: true, sent: results.length, results }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
+    }
+
+    // Teams 알림 발송 (created/approved/rejected/cancelled/noshow)
+    if (['created', 'approved', 'rejected', 'cancelled', 'noshow'].includes(type)) {
+      sendTeamsCard(type, booking).catch(() => {})  // 비동기, 실패해도 이메일에 영향 없음
     }
 
     // 1. 예약 생성자에게 발송
