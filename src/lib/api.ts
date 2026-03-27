@@ -51,7 +51,7 @@ function bookingToRow(b: Booking, userId: string) {
     room_id:        b.room_id,
     title:          b.title,
     memo:           b.memo ?? '',
-    attendees:      b.attendees ?? [],
+    // attendees는 booking_attendees 테이블로 분리 (별도 upsert)
     start_at:       b.start_at,  // +09:00 포함 → Supabase가 UTC로 저장
     end_at:         b.end_at,
     user_id:        userId,
@@ -76,15 +76,19 @@ export async function loadBookings(): Promise<Booking[]> {
     const to = new Date()
     to.setDate(to.getDate() + 60)
 
+    // bookings + booking_attendees 한 번에 join
     const { data, error } = await supabase
       .from('bookings')
-      .select('*')
+      .select('*, booking_attendees(email)')
       .gte('start_at', from.toISOString())
       .lte('start_at', to.toISOString())
       .order('start_at', { ascending: true })
 
     if (error) throw error
-    return (data ?? []).map(rowToBooking)
+    return (data ?? []).map(row => rowToBooking({
+      ...row,
+      attendees: (row.booking_attendees ?? []).map((a: any) => a.email)
+    }))
   } catch (e) {
     console.error('[api] loadBookings 실패:', e)
     return []
@@ -126,7 +130,23 @@ export async function insertBooking(booking: Booking): Promise<Booking> {
     // 기타 DB 오류
     throw new Error('예약 저장 중 오류가 발생했습니다. 다시 시도해 주세요.')
   }
-  return rowToBooking(data)
+  const saved = rowToBooking(data)
+  // attendees → booking_attendees 테이블에 저장
+  if (booking.attendees && booking.attendees.length > 0) {
+    await upsertBookingAttendees(saved.id, booking.attendees)
+  }
+  return saved
+}
+
+// ── booking_attendees 저장 (예약 생성/수정 시 호출) ────────────────────────
+export async function upsertBookingAttendees(bookingId: string, emails: string[]): Promise<void> {
+  // 기존 삭제 후 재삽입
+  await supabase.from('booking_attendees').delete().eq('booking_id', bookingId)
+  if (!emails || emails.length === 0) return
+  const rows = emails.filter(e => !!e).map(email => ({ booking_id: bookingId, email }))
+  if (rows.length === 0) return
+  const { error } = await supabase.from('booking_attendees').insert(rows)
+  if (error) console.warn('[api] booking_attendees 저장 실패:', error.message)
 }
 
 // ── 단건 수정 ────────────────────────────────────────────────────────────────
@@ -149,7 +169,7 @@ export async function updateBooking(
   if (changes.end_at        !== undefined) dbChanges.end_at         = changes.end_at
   if (changes.title         !== undefined) dbChanges.title          = changes.title
   if (changes.memo          !== undefined) dbChanges.memo           = changes.memo
-  if (changes.attendees     !== undefined) dbChanges.attendees      = changes.attendees
+  // attendees는 booking_attendees 테이블로 분리 — upsertBookingAttendees 별도 호출
   if (changes.start_at      !== undefined) dbChanges.start_at       = changes.start_at
   if (changes.room_id       !== undefined) dbChanges.room_id        = changes.room_id
   // ↑ DB 컬럼과 매핑되는 필드만 명시적으로 포함

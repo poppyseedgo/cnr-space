@@ -5,7 +5,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from './utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById, getAdminOnlyRooms } from './data/master'
-import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking } from './lib/api'
+import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking, upsertBookingAttendees } from './lib/api'
 import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView, RoomDetailModal } from './components/room/HomeView'
@@ -473,6 +473,10 @@ function AppContent() {
     try {
       const prevBooking = bookings.find(b => b.id === originalId)
       await apiUpdateBooking(originalId, changes);
+      // attendees 변경 시 booking_attendees 테이블도 업데이트
+      if (changes.attendees !== undefined) {
+        upsertBookingAttendees(originalId, changes.attendees).catch(() => {})
+      }
       // Audit log
       insertAuditLog({
         action: 'BOOKING_UPDATED', entityType: 'booking', entityId: originalId,
@@ -693,7 +697,7 @@ function AppContent() {
           {view==="calendar" && <CalendarShell bookings={bookings} rooms={rooms} selectedDate={selectedDate} setSelectedDate={setSelectedDate} calView={calView} setCalView={setCalView} onBookingClick={b=>setModal({type:"detail",data:b})} onNewBooking={(d,h,rid)=>setModal({type:"new",prefill:{room_id:rid,start:h!=null?`${fmt2(h)}:00`:undefined,end:h!=null?`${fmt2(h+1)}:00`:undefined},date:d}) } onCheckIn={checkIn} filterFloor={calFilterFloor} setFilterFloor={setCalFilterFloor} />}
         </div>
       )}
-      {view==="mypage" && <MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} rooms={rooms} users={users} />}
+      {view==="mypage" && <MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} />}
       {view==="admin" && <AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} />}
 
       {/* ── Modals ── */}

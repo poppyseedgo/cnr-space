@@ -5,10 +5,11 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById } from '../data/master'
-import { cancelBooking as apiCancelBooking } from '../lib/api'
+import { cancelBooking as apiCancelBooking, upsertBookingAttendees } from '../lib/api'
+import { supabase } from '../lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../types'
 
-export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail, rooms:rp=[], users:up=[]}) {
+export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail, rooms:rp=[], users:up=[], authUserId=''}) {
   const [tab, setTab] = useState("upcoming");
   const [statYear, setStatYear] = useState(()=>new Date().getFullYear());
   const [statMonth, setStatMonth] = useState(()=>new Date().getMonth());
@@ -22,6 +23,43 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   const [listFrom, setListFrom] = useState(()=>{const d=new Date();d.setDate(1);return objToStr(d);});
   const [listTo, setListTo] = useState(()=>{const d=new Date();d.setMonth(d.getMonth()+1,0);return objToStr(d);});
   const [listStatus, setListStatus] = useState("ALL"); // ALL | upcoming | completed | cancelled
+  // 전체 내 예약 기록 (마이페이지 전용 — 기간 제한 없이)
+  const [allMyBookings, setAllMyBookings] = useState<Booking[]>([]);
+  const [allLoading, setAllLoading] = useState(false);
+
+  useEffect(() => {
+    if (!authUserId) return;
+    setAllLoading(true);
+    supabase
+      .from('bookings')
+      .select('*, booking_attendees(email)')
+      .eq('user_id', authUserId)
+      .order('start_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (!error && data) {
+          setAllMyBookings(data.map((row: any) => ({
+            id:            row.id,
+            room_id:       row.room_id,
+            title:         row.title,
+            memo:          row.memo ?? '',
+            attendees:     (row.booking_attendees ?? []).map((a: any) => a.email),
+            start_at:      row.start_at,
+            end_at:        row.end_at,
+            user:          row.user_name,
+            dept:          row.user_dept,
+            checkedIn:     row.checked_in,
+            autoCancelled: row.auto_cancelled,
+            cancelledBy:   row.cancelled_by ?? null,
+            status:        row.status ?? 'confirmed',
+            earlyEnded:    row.early_ended ?? false,
+            recurGroupId:  row.recur_group_id ?? null,
+            createdAt:     new Date(row.created_at).getTime(),
+            _seed:         false,
+          })));
+        }
+        setAllLoading(false);
+      });
+  }, [authUserId]);
 
   const cancelBooking = async (id) => {
     // 낙관적 UI 업데이트 (즉시 반영)
@@ -37,7 +75,10 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
     }
   };
 
-  const myBookings = useMemo(()=>bookings.filter(b=>b.user===currentUser),[bookings,currentUser]);
+  // user_id 기반 필터 (정확) → fallback: name 기반 (SSO 연동 전)
+  const myBookings = useMemo(()=>
+    bookings.filter(b => b.user === currentUser),
+  [bookings, currentUser]);
   const upcoming = useMemo(()=>myBookings.filter(b=>!b.autoCancelled&&(tsDate(b.start_at)>today||(tsDate(b.start_at)===today&&tsMin(b.end_at)>now))).sort((a,b)=>a.start_at.localeCompare(b.start_at)),[myBookings,today,now]);
   const completed = useMemo(()=>myBookings.filter(b=>!b.autoCancelled&&b.checkedIn&&(tsDate(b.start_at)<today||(tsDate(b.start_at)===today&&tsMin(b.end_at)<=now))).sort((a,b)=>b.start_at.localeCompare(a.start_at)),[myBookings,today,now]);
   const cancelled = useMemo(()=>myBookings.filter(b=>b.autoCancelled).sort((a,b)=>b.start_at.localeCompare(a.start_at)),[myBookings]);
@@ -62,8 +103,10 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   const thisRate=thisBks.length>0?Math.round((thisCI/thisBks.length)*100):0;
 
   // 기간별 조회 리스트
+  // 기간별 기록은 allMyBookings(전체) 기반, 없으면 myBookings fallback
+  const baseBookings = allMyBookings.length > 0 ? allMyBookings : myBookings;
   const filteredList = useMemo(()=>{
-    return myBookings.filter(b=>{
+    return baseBookings.filter(b=>{
       const d=tsDate(b.start_at);
       if(d<listFrom||d>listTo) return false;
       if(listStatus==="upcoming"&&(b.autoCancelled||d<today)) return false;
