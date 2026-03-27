@@ -7,7 +7,7 @@
  */
 
 import { supabase, isSupabaseEnabled } from './supabase'
-import type { Booking } from '../types'
+import type { Booking, Room, AppUser, Feature } from '../types'
 
 // ── UTC → KST 변환 ───────────────────────────────────────────────────────────
 // Supabase가 UTC ISO 문자열로 반환하므로 앱 기준인 KST로 보정
@@ -199,7 +199,123 @@ function localLoadBookings(seed: Booking[]): Booking[] {
   return [...seed.filter(b => !ids.has(b.id)), ...user]
 }
 
-export { loadRooms, saveRooms, loadUsers, saveUsers } from '../utils/seed'
+// ── rooms 테이블 전체 로드 (Supabase) ────────────────────────────────────────
+export async function loadRooms(): Promise<Room[]> {
+  if (!isSupabaseEnabled) {
+    const { ROOMS_DB } = await import('../data/master')
+    return ROOMS_DB
+  }
+  try {
+    // rooms + room_features + features 한 번에 조회
+    const [roomsRes, featuresRes, roomFeaturesRes] = await Promise.all([
+      supabase.from('rooms').select('*').eq('is_active', true).order('room_id'),
+      supabase.from('features').select('*'),
+      supabase.from('room_features').select('*, features(*)'),
+    ])
+    if (roomsRes.error) throw roomsRes.error
+
+    const features   = featuresRes.data  ?? []
+    const rfMap      = new Map<number, Feature[]>()
+    for (const rf of roomFeaturesRes.data ?? []) {
+      const f = rf.features as any
+      if (!f) continue
+      if (!rfMap.has(rf.room_id)) rfMap.set(rf.room_id, [])
+      rfMap.get(rf.room_id)!.push({ feature_id: f.feature_id, feature_key: f.feature_key, feature_name: f.feature_name })
+    }
+
+    return (roomsRes.data ?? []).map(row => ({
+      room_id:      row.room_id,
+      floor_id:     row.floor_id      ?? 1,
+      room_code:    row.room_code     ?? '',
+      room_name:    row.room_name     ?? '',
+      room_name_ko: row.room_name_ko  ?? '',
+      capacity:     row.capacity      ?? 4,
+      notes:        row.notes         ?? '',
+      is_active:    row.is_active     ?? true,
+      is_admin_only: row.is_admin_only ?? false,
+      color:        row.color         ?? '#111111',
+      thumbnail:    row.thumbnail_url ?? '',
+      gallery:      row.gallery_urls  ?? [],
+      features:     rfMap.get(row.room_id) ?? [],
+    }))
+  } catch (e) {
+    console.error('[api] loadRooms 실패:', e)
+    const { ROOMS_DB } = await import('../data/master')
+    return ROOMS_DB
+  }
+}
+
+export async function saveRooms(_rooms: Room[]): Promise<void> {
+  // rooms는 이제 Supabase가 source of truth — AdminPage에서 직접 upsert
+  console.warn('[api] saveRooms: Supabase 전환됨, AdminPage에서 직접 저장 필요')
+}
+
+// ── profiles 테이블 전체 로드 (Supabase) ──────────────────────────────────────
+export async function loadUsers(): Promise<AppUser[]> {
+  if (!isSupabaseEnabled) {
+    const { APP_USERS } = await import('../data/master')
+    return APP_USERS
+  }
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, employee_id, name, dept, role, email')
+      .order('name')
+    if (error) throw error
+
+    return (data ?? []).map(row => ({
+      user_id:     row.id,
+      employee_id: row.employee_id ?? '',
+      name:        row.name        ?? '',
+      dept:        row.dept        ?? '',
+      role:        (row.role === 'ADMIN' ? 'ADMIN' : 'USER') as 'USER' | 'ADMIN',
+      email:       row.email       ?? '',
+    }))
+  } catch (e) {
+    console.error('[api] loadUsers 실패:', e)
+    const { APP_USERS } = await import('../data/master')
+    return APP_USERS
+  }
+}
+
+export async function saveUsers(_users: AppUser[]): Promise<void> {
+  console.warn('[api] saveUsers: profiles는 Supabase Auth 관리')
+}
+
+// ── Audit Log ────────────────────────────────────────────────────────────────
+export type AuditAction =
+  | 'BOOKING_CREATED'
+  | 'BOOKING_UPDATED'
+  | 'BOOKING_CANCELLED'
+  | 'BOOKING_NOSHOW'
+  | 'BOOKING_CHECKIN'
+  | 'BOOKING_EARLY_END'
+  | 'ADMIN_FORCE_CANCEL'
+
+export async function insertAuditLog(params: {
+  action:      AuditAction
+  entityType:  string
+  entityId:    string
+  actorName?:  string
+  beforeData?: Record<string, any>
+  afterData?:  Record<string, any>
+}): Promise<void> {
+  if (!isSupabaseEnabled) return
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    await supabase.from('audit_log').insert({
+      actor_id:    user?.id   ?? null,
+      actor_name:  params.actorName ?? user?.email ?? 'unknown',
+      action:      params.action,
+      entity_type: params.entityType,
+      entity_id:   params.entityId,
+      before_data: params.beforeData ?? null,
+      after_data:  params.afterData  ?? null,
+    })
+  } catch (e) {
+    console.warn('[api] insertAuditLog 실패 (무시):', e)
+  }
+}
 
 // ── 회의실 이미지 (Supabase Storage) ─────────────────────────────────────────
 

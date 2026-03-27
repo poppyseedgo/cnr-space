@@ -1,5 +1,14 @@
 import type { Floor, Feature, Room, RoomFeature, RoomRule, AppUser } from '../types'
 
+/**
+ * master.ts — 마이그레이션 진행 중
+ *
+ * ✅ rooms 데이터  → Supabase rooms 테이블 (api.ts loadRooms)
+ * ✅ users 데이터  → Supabase profiles 테이블 (api.ts loadUsers)
+ * ⚠️ 아래 하드코딩 데이터는 Supabase 미연결 시 fallback 용도로만 사용
+ * ✅ 헬퍼 함수들은 계속 사용 (rooms props 기반으로 동작)
+ */
+
 // ─── floor 테이블 ────────────────────────────────────────────────────────────
 export const FLOORS: Floor[] = [
   { floor_id: 1, floor_no: 1, floor_name: "1층" },
@@ -64,9 +73,16 @@ export const ROOM_RULES: RoomRule[] = [
 ];
 
 // Admin 전용 회의실 id 집합
+// ⚠️ Supabase 전환 후엔 rooms.is_admin_only 컬럼이 source of truth
+// 아래는 fallback 용도 (Supabase 미연결 시)
 export const ADMIN_ONLY_ROOMS = new Set(
   ROOM_RULES.filter(r => r.rule_type === "ADMIN_ONLY").map(r => r.room_id)
 );
+
+/** Supabase에서 로드된 rooms 배열 기준으로 Admin 전용 Set 생성 */
+export function getAdminOnlyRooms(rooms: Room[]): Set<number> {
+  return new Set(rooms.filter(r => r.is_admin_only).map(r => r.room_id))
+}
 
 // ─── app_user 테이블 ─────────────────────────────────────────────────────────
 export const APP_USERS: AppUser[] = [

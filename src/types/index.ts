@@ -13,17 +13,19 @@ export interface Feature {
 }
 
 export interface Room {
-  room_id: number
-  floor_id: number
-  room_code: string
-  room_name: string
+  room_id:      number
+  floor_id:     number
+  room_code:    string
+  room_name:    string
   room_name_ko: string
-  capacity: number
-  notes: string
-  is_active: boolean
-  color: string
-  thumbnail: string
-  gallery?: string[]
+  capacity:     number
+  notes:        string
+  is_active:    boolean
+  is_admin_only?: boolean
+  color:        string
+  thumbnail:    string
+  gallery?:     string[]
+  features?:    Feature[]   // Supabase join으로 로드된 기능 목록
 }
 
 export interface RoomFeature {

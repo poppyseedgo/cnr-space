@@ -4,8 +4,8 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from './utils/time'
-import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById } from './data/master'
-import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages } from './lib/api'
+import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById, getAdminOnlyRooms } from './data/master'
+import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog } from './lib/api'
 import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView, RoomDetailModal } from './components/room/HomeView'
@@ -186,7 +186,7 @@ function AppContent() {
         return false;
       }
       // ── ADMIN_ONLY 권한 체크 ──
-      if (ADMIN_ONLY_ROOMS.has(form.room_id) && !isAdmin) {
+      if (rooms.find(r => r.room_id === form.room_id)?.is_admin_only && !isAdmin) {
         showToast("해당 회의실은 관리자만 예약할 수 있습니다.", "error");
         return false;
       }
@@ -315,7 +315,8 @@ function AppContent() {
     setBookings(prev => prev.map(b => b.id===id ? {...b, checkedIn:true} : b));
     setTick(t => t+1);
     try {
-      await apiUpdateBooking(id, { checkedIn: true });
+      await apiUpdateBooking(id, { checkedIn: true })
+    insertAuditLog({ action: 'BOOKING_CHECKIN', entityType: 'booking', entityId: id, actorName: currentUser }).catch(()=>{});
       showToast("체크인 완료!");
     } catch (err: any) {
       // 실패 시 롤백
@@ -343,6 +344,7 @@ function AppContent() {
     setTick(t => t+1);
     try {
       await apiUpdateBooking(id, { earlyEnded: true, end_at: newEndAt });
+      insertAuditLog({ action: 'BOOKING_EARLY_END', entityType: 'booking', entityId: id, actorName: currentUser }).catch(()=>{})
       showToast("사용 완료! 회의실이 반환되었습니다.");
     } catch (err: any) {
       setBookings(prev => prev.map(b => b.id===id
@@ -359,7 +361,8 @@ function AppContent() {
     setBookings(prev => prev.map(b => b.id===id ? {...b, autoCancelled:true} : b));
     setModal(null);
     try {
-      await apiCancelBooking(id);
+      await apiCancelBooking(id)
+    insertAuditLog({ action: 'BOOKING_CANCELLED', entityType: 'booking', entityId: id, actorName: currentUser }).catch(()=>{});
       showToast("예약이 취소되었습니다.", "info");
       // 이메일 알림 발송
       if (targetBooking) {
