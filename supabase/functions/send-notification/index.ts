@@ -52,6 +52,7 @@ function getSubject(type: string, booking: any): string {
     updated:   `[C&R Booking] 📝 예약 변경 — ${title}`,
     cancelled: `[C&R Booking] ❌ 예약 취소 — ${title}`,
     noshow:    `[C&R Booking] ⚠️ 미체크인 자동취소 — ${title}`,
+    pending:   `[C&R Booking] 📋 에메랄드 승인 요청 — ${title}`,
     approved:  `[C&R Booking] ✅ 예약 승인 — ${title}`,
     rejected:  `[C&R Booking] ❌ 예약 반려 — ${title}`,
   }
@@ -71,6 +72,7 @@ function getEmailHtml(type: string, booking: any, isAttendee = false): string {
     updated:   '#0891B2',
     cancelled: '#DC2626',
     noshow:    '#D97706',
+    pending:   '#D97706',
     approved:  '#16A34A',
     rejected:  '#DC2626',
   }
@@ -81,6 +83,7 @@ function getEmailHtml(type: string, booking: any, isAttendee = false): string {
     updated:   '예약이 변경되었습니다',
     cancelled: '예약이 취소되었습니다',
     noshow:    '미체크인으로 자동 취소되었습니다',
+    pending:   '에메랄드 룸 승인 요청이 접수되었습니다',
     approved:  '예약 요청이 승인되었습니다',
     rejected:  '예약 요청이 반려되었습니다',
   }
@@ -157,8 +160,18 @@ function getEmailHtml(type: string, booking: any, isAttendee = false): string {
               <p style="margin:0;font-size:13px;color:#92400E;font-weight:600;">⚠️ 체크인 미완료로 예약이 자동 취소되었습니다.</p>
               <p style="margin:6px 0 0;font-size:12px;color:#B45309;">예약 시작 후 10분 이내에 체크인이 없으면 자동 취소됩니다.</p>
             </div>` : ''}
+            ${type === 'pending' ? `
+            <div style="margin:20px 0 0;padding:14px 16px;background:#FEF3C7;border-radius:10px;border-left:4px solid #D97706;">
+              <p style="margin:0;font-size:13px;color:#92400E;font-weight:600;">📋 AdminPage → 승인 관리 탭에서 승인 또는 거절해 주세요.</p>
+              <p style="margin:6px 0 0;font-size:12px;color:#B45309;">승인/거절 시 신청자에게 자동으로 결과가 통보됩니다.</p>
+            </div>` : ''}
+            ${type === 'rejected' && booking.reject_reason ? `
+            <div style="margin:20px 0 0;padding:14px 16px;background:#FEF2F2;border-radius:10px;border-left:4px solid #DC2626;">
+              <p style="margin:0;font-size:13px;color:#991B1B;font-weight:600;">거절 사유</p>
+              <p style="margin:6px 0 0;font-size:13px;color:#DC2626;">${booking.reject_reason}</p>
+            </div>` : ''}
 
-            ${(type === 'created' || type === 'updated' || type === 'approved') ? `
+            ${(type === 'created' || type === 'updated' || type === 'approved' || type === 'pending') ? `
             <div style="margin:20px 0 0;text-align:center;">
               <a href="${APP_URL}" style="display:inline-block;background:#4F46E5;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;">
                 예약 확인하기 →
@@ -229,6 +242,21 @@ Deno.serve(async (req: Request) => {
 
     const subject = getSubject(type, booking)
     const results = []
+
+    // pending(승인 요청)은 Admin에게 발송, 나머지는 예약자에게 발송
+    if (type === 'pending') {
+      // Admin 이메일 목록으로 발송 (attendeeEmails에 admin_emails 담겨 옴)
+      const adminEmails = attendeeEmails.filter((e: string) => !!e)
+      if (adminEmails.length > 0) {
+        const html = getEmailHtml(type, booking, false)
+        await sendEmail(adminEmails, subject, html)
+        results.push({ to: adminEmails, role: 'admins' })
+      }
+      return new Response(
+        JSON.stringify({ success: true, sent: results.length, results }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     // 1. 예약 생성자에게 발송
     if (booking.user_email) {

@@ -146,7 +146,7 @@ function AppContent() {
 
   // ── 이메일 알림 발송 (Fire & Forget — 실패해도 예약 로직에 영향 없음) ──
   const sendNotification = useCallback(async (
-    type: 'created' | 'updated' | 'cancelled' | 'noshow',
+    type: 'created' | 'updated' | 'cancelled' | 'noshow' | 'pending' | 'approved' | 'rejected',
     booking: any,
     attendeeEmails: string[] = []
   ) => {
@@ -233,6 +233,8 @@ function AppContent() {
       // ── 날짜별 충돌 검사 → 충돌 날짜 스킵, 나머지 생성 ──
       const room  = rooms.find(r => r.room_id === form.room_id);
       const floor = getFloor(room?.floor_id);
+      // is_admin_only 회의실(에메랄드)이면 pending 상태로 생성
+      const isAdminOnlyRoom = room?.is_admin_only ?? false
       const createdAt    = Date.now();
       const recurGroupId = recur !== "NEVER" ? `rg_${createdAt}` : null;
       const newBookings  = [];
@@ -243,8 +245,6 @@ function AppContent() {
         const check = hasTimeConflict(freshBookings, form.room_id, td, fStart, fEnd);
         if (check.conflict) { skipped++; continue; }
 
-        // is_admin_only 회의실(에메랄드)이면 pending, 아니면 confirmed
-        const isAdminOnlyRoom = rooms.find(r => r.room_id === form.room_id)?.is_admin_only ?? false
         const nb = {
           id:           `b${createdAt}_${i}`,
           room_id:      form.room_id,
@@ -293,11 +293,21 @@ function AppContent() {
         setModal({ type: "bookingDone", data: newBookings[0] });
         // 이메일 알림 발송
         const createdRoom = rooms.find(r => r.room_id === newBookings[0].room_id)
-        sendNotification('created', {
+        const notifType = isAdminOnlyRoom ? 'pending' : 'created'
+        const notifPayload = {
           ...newBookings[0],
           user_email:   authUser?.email,
+          user_name:    currentUser,
+          user_dept:    currentDept,
           room_name:    createdRoom?.room_name_ko ?? createdRoom?.room_name ?? String(newBookings[0].room_id) + 'F',
-        });
+        }
+        if (isAdminOnlyRoom) {
+          // 승인 요청 — Admin 전원에게 알림
+          const adminEmails = users.filter(u => u.role === 'ADMIN').map(u => u.email).filter(Boolean)
+          sendNotification('pending', { ...notifPayload, admin_emails: adminEmails }, adminEmails)
+        } else {
+          sendNotification('created', notifPayload)
+        }
       } else {
         setModal({ type: "recurDone", data: {
           bookings: newBookings,
@@ -399,18 +409,49 @@ function AppContent() {
   const approvePendingBooking = useCallback(async (id: string) => {
     try {
       await approveBooking(id)
+      const target = bookings.find(b => b.id === id)
       setBookings(prev => prev.map(b => b.id===id ? {...b, status:'confirmed'} : b))
+      // 신청자에게 승인 이메일
+      if (target) {
+        const approvedRoom = rooms.find(r => r.room_id === target.room_id)
+        const userProfile  = users.find(u => u.name === target.user)
+        if (userProfile?.email) {
+          sendNotification('approved', {
+            ...target,
+            user_email: userProfile.email,
+            user_name:  target.user,
+            user_dept:  target.dept,
+            room_name:  approvedRoom?.room_name_ko ?? approvedRoom?.room_name ?? '',
+          })
+        }
+      }
       showToast('예약이 승인되었습니다.')
     } catch (err: any) { showToast(err.message, 'error') }
-  }, [showToast])
+  }, [showToast, bookings, rooms, users, sendNotification])
 
   const rejectPendingBooking = useCallback(async (id: string, reason: string) => {
     try {
       await rejectBooking(id, reason)
+      const target = bookings.find(b => b.id === id)
       setBookings(prev => prev.map(b => b.id===id ? {...b, status:'rejected', autoCancelled:true, cancelledBy:'system'} : b))
+      // 신청자에게 거절 이메일
+      if (target) {
+        const rejectedRoom = rooms.find(r => r.room_id === target.room_id)
+        const userProfile  = users.find(u => u.name === target.user)
+        if (userProfile?.email) {
+          sendNotification('rejected', {
+            ...target,
+            user_email:    userProfile.email,
+            user_name:     target.user,
+            user_dept:     target.dept,
+            room_name:     rejectedRoom?.room_name_ko ?? rejectedRoom?.room_name ?? '',
+            reject_reason: reason || '관리자 거절',
+          })
+        }
+      }
       showToast('예약이 거절되었습니다.', 'info')
     } catch (err: any) { showToast(err.message, 'error') }
-  }, [showToast])
+  }, [showToast, bookings, rooms, users, sendNotification])
 
   // ── 예약 변경 ──────────────────────────────────────────────────────────────
   const updateBooking = useCallback(async (form, date, originalId) => {
