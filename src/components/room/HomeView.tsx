@@ -6,7 +6,6 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../../utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, FLOORS, getFloor, getRoomFeatures, getRoomById, getRoomThumbnail, getRoomGallery } from '../../data/master'
-import { loadBookings, saveBookings, loadRooms, saveRooms, loadUsers, saveUsers } from '../../utils/seed'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
 export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, setSearchQ, filterFloor, setFilterFloor, onBook, onDetail, onCheckIn, onEarlyEnd, onCancel, currentUser, dark}) {
