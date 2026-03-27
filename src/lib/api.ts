@@ -36,6 +36,7 @@ function rowToBooking(row: Record<string, any>): Booking {
     checkedIn:     row.checked_in,
     autoCancelled: row.auto_cancelled,
     cancelledBy:   row.cancelled_by ?? null,
+    status:        row.status ?? 'confirmed',
     earlyEnded:    row.early_ended ?? false,
     recurGroupId:  row.recur_group_id ?? null,
     createdAt:     new Date(row.created_at).getTime(),
@@ -61,6 +62,7 @@ function bookingToRow(b: Booking, userId: string) {
     cancelled_by:   b.cancelledBy ?? null,
     early_ended:    b.earlyEnded ?? false,
     recur_group_id: b.recurGroupId ?? null,
+    status:         b.status ?? 'confirmed',
   }
 }
 
@@ -142,6 +144,7 @@ export async function updateBooking(
   if (changes.checkedIn     !== undefined) dbChanges.checked_in     = changes.checkedIn
   if (changes.autoCancelled !== undefined) dbChanges.auto_cancelled = changes.autoCancelled
   if (changes.cancelledBy    !== undefined) dbChanges.cancelled_by   = changes.cancelledBy
+  if (changes.status         !== undefined) dbChanges.status          = changes.status
   if (changes.earlyEnded    !== undefined) dbChanges.early_ended    = changes.earlyEnded
   if (changes.end_at        !== undefined) dbChanges.end_at         = changes.end_at
   if (changes.title         !== undefined) dbChanges.title          = changes.title
@@ -428,4 +431,32 @@ export async function updateProfile(userId: string, fields: {
   const { error } = await supabase
     .from('profiles').update(fields).eq('id', userId)
   if (error) throw new Error(`사용자 정보 수정 실패: ${error.message}`)
+}
+
+// ── 에메랄드 승인/거절 ────────────────────────────────────────────────────────
+
+/** 관리자 승인 → status: confirmed */
+export async function approveBooking(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('bookings').update({ status: 'confirmed' }).eq('id', id)
+  if (error) throw new Error(`승인 실패: ${error.message}`)
+  await insertAuditLog({
+    action: 'BOOKING_CREATED' as any,
+    entityType: 'booking', entityId: id,
+    afterData: { status: 'confirmed', note: '관리자 승인' }
+  })
+}
+
+/** 관리자 거절 → status: rejected + auto_cancelled: true */
+export async function rejectBooking(id: string, reason: string): Promise<void> {
+  const { error } = await supabase
+    .from('bookings')
+    .update({ status: 'rejected', auto_cancelled: true, cancelled_by: 'system' })
+    .eq('id', id)
+  if (error) throw new Error(`거절 실패: ${error.message}`)
+  await insertAuditLog({
+    action: 'BOOKING_CANCELLED' as any,
+    entityType: 'booking', entityId: id,
+    afterData: { status: 'rejected', reason }
+  })
 }

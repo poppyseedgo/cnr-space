@@ -5,7 +5,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from './utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById, getAdminOnlyRooms } from './data/master'
-import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog } from './lib/api'
+import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking } from './lib/api'
 import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView, RoomDetailModal } from './components/room/HomeView'
@@ -243,6 +243,8 @@ function AppContent() {
         const check = hasTimeConflict(freshBookings, form.room_id, td, fStart, fEnd);
         if (check.conflict) { skipped++; continue; }
 
+        // is_admin_only 회의실(에메랄드)이면 pending, 아니면 confirmed
+        const isAdminOnlyRoom = rooms.find(r => r.room_id === form.room_id)?.is_admin_only ?? false
         const nb = {
           id:           `b${createdAt}_${i}`,
           room_id:      form.room_id,
@@ -255,6 +257,7 @@ function AppContent() {
           dept:         currentDept,
           checkedIn:    false,
           autoCancelled:false,
+          status:       isAdminOnlyRoom ? 'pending' : 'confirmed',
           createdAt,
           recurGroupId,  // null이면 단건, 값이 있으면 반복 그룹
           _seed:         false,
@@ -319,6 +322,11 @@ function AppContent() {
   }, [bookings, selectedDate, currentUser, currentDept, showToast, isSubmitting, isAdmin]);
 
   const checkIn = useCallback(async (id) => {
+    // pending 상태면 체크인 불가
+    const target = bookings.find(b => b.id === id)
+    if (target?.status === 'pending') {
+      showToast('관리자 승인 후 체크인 가능합니다.', 'info'); return;
+    }
     // 낙관적 UI 업데이트
     setBookings(prev => prev.map(b => b.id===id ? {...b, checkedIn:true} : b));
     setTick(t => t+1);
@@ -386,6 +394,23 @@ function AppContent() {
       showToast(err.message ?? "취소에 실패했습니다.", "error");
     }
   }, [bookings, showToast, authUser?.email, sendNotification]);
+
+  // ── 에메랄드 승인/거절 ─────────────────────────────────────────────────────
+  const approvePendingBooking = useCallback(async (id: string) => {
+    try {
+      await approveBooking(id)
+      setBookings(prev => prev.map(b => b.id===id ? {...b, status:'confirmed'} : b))
+      showToast('예약이 승인되었습니다.')
+    } catch (err: any) { showToast(err.message, 'error') }
+  }, [showToast])
+
+  const rejectPendingBooking = useCallback(async (id: string, reason: string) => {
+    try {
+      await rejectBooking(id, reason)
+      setBookings(prev => prev.map(b => b.id===id ? {...b, status:'rejected', autoCancelled:true, cancelledBy:'system'} : b))
+      showToast('예약이 거절되었습니다.', 'info')
+    } catch (err: any) { showToast(err.message, 'error') }
+  }, [showToast])
 
   // ── 예약 변경 ──────────────────────────────────────────────────────────────
   const updateBooking = useCallback(async (form, date, originalId) => {
@@ -492,7 +517,7 @@ function AppContent() {
               <div className="min-w-0">
                 <div className="font-extrabold text-slate-900 dark:text-white tracking-tight truncate"
                   style={{fontSize: isMobile?13:15}}>
-                  {isMobile ? "C&R" : "C&R SPACE"}
+                  {isMobile ? "C&R" : "C&R Booking Room"}
                 </div>
               </div>
             </div>
@@ -632,7 +657,7 @@ function AppContent() {
         </div>
       )}
       {view==="mypage" && <MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} rooms={rooms} users={users} />}
-      {view==="admin" && <AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} />}
+      {view==="admin" && <AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} />}
 
       {/* ── Modals ── */}
       {modal && (

@@ -113,7 +113,14 @@ export function getRoomStatus(roomId, bookings, date) {
   const now = nowMinutes();
   const today = todayStr();
   const isToday = date === today;
-  const dayBks = bookings.filter(b => b.room_id === roomId && tsDate(b.start_at) === date && !b.autoCancelled && !b.earlyEnded);
+  // pending 예약은 사실상 점유(SOON) — rejected/cancelled 제외
+  const dayBks = bookings.filter(b =>
+    b.room_id === roomId &&
+    tsDate(b.start_at) === date &&
+    !b.autoCancelled &&
+    !b.earlyEnded &&
+    b.status !== 'rejected'  // 거절된 예약은 제외
+  );
 
   // ── BUSY 정책 ────────────────────────────────────────────────────────────
   // 케이스 A: 체크인 완료 + 시간 범위 내 → 진짜 사용중

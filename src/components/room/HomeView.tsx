@@ -122,7 +122,7 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
             const isPast     = tsMin(b.end_at) < now;
             const minsUntil  = tsMin(b.start_at) - now;   // 시작까지 남은 분
             const isSoon     = minsUntil > 0 && minsUntil <= 10;  // 10분 이내
-            const cardState = b.cancelledBy === 'system' ? "noshow"
+            const cardState: string = b.cancelledBy === 'system' ? "noshow"
               : b.autoCancelled              ? "cancelled"
               : b.earlyEnded                ? "earlyEnded"
               : b.checkedIn && isActive     ? "using"
@@ -133,6 +133,7 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
               : "waiting";
 
             const S = {
+              pending:    {label:"승인 대기",   btnBg:"#FEF3C7", btnColor:"#92400E", disabled:true,  action:null,                badge:"승인 대기"},
               noshow:     {label:"노쇼",         btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                badge:"자동취소"},
               soon:       {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                badge:`${minsUntil}분 뒤 시작`},
               waiting:    {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                badge:null},
@@ -143,11 +144,12 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
               cancelled:  {label:"자동취소",      btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                badge:null},
             }[cardState];
 
-            const isCancellable = cardState==="waiting" || cardState==="soon";
+            const isCancellable = cardState==="waiting" || cardState==="soon" || cardState==="pending";
 
             return (
               <div key={b.id} className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 rounded-2xl p-3"
-                style={{width:160, minHeight:140, flexShrink:0, opacity: (cardState==="cancelled" || cardState==="noshow") ? 0.45 : 1}}>
+                style={{width:160, minHeight:140, flexShrink:0, opacity: (cardState==="cancelled" || cardState==="noshow") ? 0.45 : 1,
+                  border: cardState==="pending" ? "1.5px solid #FCD34D" : "none"}}>
                 {/* 상단 */}
                 <div>
                   <div className="flex items-start justify-between gap-1 mb-1.5">

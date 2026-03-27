@@ -69,6 +69,7 @@ export interface Booking {
   checkedIn:         boolean
   autoCancelled:  boolean
   cancelledBy?:   'user' | 'system' | null  // 직접취소 vs 노쇼자동취소
+  status?:        'confirmed' | 'pending' | 'rejected'  // 에메랄드 승인 상태
   earlyEnded?: boolean
   createdAt: number
   recurGroupId?: string | null

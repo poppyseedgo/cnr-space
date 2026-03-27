@@ -9,7 +9,7 @@ import { uploadRoomImage, deleteRoomImage, saveRoomImages, loadRoomImages, cance
 import { Upload, ImagePlus, Trash2, X as XIcon } from 'lucide-react'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../types'
 
-export function AdminView({bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet}) {
+export function AdminView({bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject}) {
   const [activeTab, setActiveTab] = useState("bookings");
   const PER_PAGE = 15;
 
@@ -17,15 +17,17 @@ export function AdminView({bookings, setBookings, rooms, setRooms, users, setUse
     <div style={{maxWidth:1200,margin:"0 auto",padding:isMobile?"16px 12px":"28px 24px"}}>
       {/* Admin 탭 헤더 */}
       <div className="anm" style={{display:"flex",gap:6,marginBottom:20,background:"#fff",borderRadius:12,padding:6}}>
-        {[{id:"bookings",icon:<BarChart2 size={14} strokeWidth={1.8}/>,label:"예약 관리"},{id:"rooms",icon:<Building2 size={14} strokeWidth={1.8}/>,label:"회의실 관리"},{id:"users",icon:<Users size={14} strokeWidth={1.8}/>,label:"사용자 관리"}].map(t=>(
+        {[{id:"bookings",icon:<BarChart2 size={14} strokeWidth={1.8}/>,label:"예약 관리"},{id:"approvals",icon:<Inbox size={14} strokeWidth={1.8}/>,label:"승인 관리",badge:bookings.filter(b=>b.status==='pending').length},{id:"rooms",icon:<Building2 size={14} strokeWidth={1.8}/>,label:"회의실 관리"},{id:"users",icon:<Users size={14} strokeWidth={1.8}/>,label:"사용자 관리"}].map(t=>(
           <button key={t.id} className="btn" onClick={()=>setActiveTab(t.id)}
             style={{flex:1,padding:"10px",fontSize:isMobile?12:13,borderRadius:10,fontWeight:activeTab===t.id?700:500,
               background:activeTab===t.id?"#111":"transparent",color:activeTab===t.id?"#fff":"#64748B",
-              display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+              display:"flex",alignItems:"center",justifyContent:"center",gap:6,position:"relative"}}>
             <span>{t.icon}</span>{isMobile?null:t.label}
+            {t.badge>0&&<span style={{position:"absolute",top:4,right:4,background:"#EF4444",color:"#fff",fontSize:9,fontWeight:700,borderRadius:999,padding:"1px 5px",lineHeight:1.4}}>{t.badge}</span>}
           </button>
         ))}
       </div>
+      {activeTab==="approvals" && <AdminApprovals bookings={bookings} rooms={rooms} onApprove={onApprove} onReject={onReject} showToast={showToast} isMobile={isMobile}/>}
       {activeTab==="bookings" && <AdminBookings bookings={bookings} setBookings={setBookings} rooms={rooms} showToast={showToast} isMobile={isMobile} PER_PAGE={PER_PAGE}/>}
       {activeTab==="rooms" && <AdminRooms rooms={rooms} setRooms={setRooms} showToast={showToast} isMobile={isMobile}/>}
       {activeTab==="users" && <AdminUsers users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile}/>}
@@ -542,6 +544,117 @@ export function AdminUsers({users,setUsers,showToast,isMobile}){
             <div style={{display:"flex",gap:8,marginTop:20}}>
               <button className="btn" onClick={()=>setEditUser(null)} style={{flex:1,background:"#F1F5F9",color:"#64748B",padding:"12px",fontSize:13,borderRadius:12}}>취소</button>
               <button className="btn" onClick={saveEdit} style={{flex:1,background:"#111",color:"#fff",padding:"12px",fontSize:13,fontWeight:700,borderRadius:12}}>저장</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Admin: 승인 관리 ──────────────────────────────────────────────────────────
+export function AdminApprovals({bookings, rooms, onApprove, onReject, showToast, isMobile}) {
+  const [rejectModal, setRejectModal] = useState<{id:string;title:string;user:string}|null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+
+  const pending = bookings.filter(b => b.status === 'pending');
+  const emeraldRoom = rooms.find(r => r.is_admin_only);
+
+  const doApprove = async (id: string) => {
+    await onApprove(id);
+    showToast('예약이 승인되었습니다.');
+  };
+
+  const doReject = async () => {
+    if (!rejectModal) return;
+    await onReject(rejectModal.id, rejectReason || '관리자 거절');
+    setRejectModal(null);
+    setRejectReason('');
+    showToast('예약이 거절되었습니다.', 'info');
+  };
+
+  return (
+    <div className="anm">
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16}}>
+        <div style={{fontSize:15,fontWeight:800,color:'#111'}}>승인 대기</div>
+        <span style={{background:'#EF4444',color:'#fff',fontSize:11,fontWeight:700,
+          borderRadius:999,padding:'2px 8px'}}>{pending.length}건</span>
+      </div>
+
+      {pending.length === 0 ? (
+        <div style={{textAlign:'center',padding:'60px 0',color:'#94A3B8'}}>
+          <div style={{fontSize:36,marginBottom:8}}>✅</div>
+          <div style={{fontSize:14,fontWeight:600}}>대기 중인 승인 요청이 없습니다</div>
+        </div>
+      ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {pending.map(b => {
+            const fl = rooms.find(r=>r.room_id===b.room_id);
+            return (
+              <div key={b.id} style={{background:'#fff',borderRadius:14,padding:'16px 20px',
+                border:'1.5px solid #FCD34D'}}>
+                <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+                      <span style={{background:'#FEF3C7',color:'#92400E',fontSize:11,fontWeight:700,
+                        padding:'2px 8px',borderRadius:999}}>⏳ 승인 대기</span>
+                      <span style={{fontSize:12,color:'#94A3B8'}}>{fl?.room_name_ko ?? fl?.room_name}</span>
+                    </div>
+                    <div style={{fontSize:15,fontWeight:700,color:'#111',marginBottom:4}}>{b.title}</div>
+                    <div style={{fontSize:12,color:'#64748B'}}>
+                      신청자: {b.user} ({b.dept})
+                    </div>
+                    <div style={{fontSize:12,color:'#64748B',marginTop:2}}>
+                      {b.start_at.slice(0,10)} · {b.start_at.slice(11,16)} ~ {b.end_at.slice(11,16)}
+                    </div>
+                    {b.memo && <div style={{fontSize:11,color:'#94A3B8',marginTop:4}}>메모: {b.memo}</div>}
+                  </div>
+                  <div style={{display:'flex',gap:8,flexShrink:0}}>
+                    <button className="btn" onClick={()=>doApprove(b.id)}
+                      style={{padding:'8px 16px',fontSize:12,fontWeight:700,borderRadius:10,
+                        background:'#16A34A',color:'#fff'}}>
+                      승인
+                    </button>
+                    <button className="btn" onClick={()=>setRejectModal({id:b.id,title:b.title,user:b.user})}
+                      style={{padding:'8px 16px',fontSize:12,fontWeight:700,borderRadius:10,
+                        background:'#FEF2F2',color:'#DC2626',border:'1px solid #FCA5A5'}}>
+                      거절
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 거절 사유 모달 */}
+      {rejectModal && (
+        <div onClick={e=>e.target===e.currentTarget&&setRejectModal(null)}
+          style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.55)',backdropFilter:'blur(6px)',
+            display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
+          <div style={{background:'#fff',borderRadius:16,width:'100%',maxWidth:420,padding:'24px',
+            boxShadow:'0 20px 60px rgba(0,0,0,0.15)'}}>
+            <div style={{fontSize:16,fontWeight:800,color:'#111',marginBottom:4}}>예약 거절</div>
+            <div style={{fontSize:13,color:'#64748B',marginBottom:16}}>
+              "{rejectModal.title}" — {rejectModal.user}
+            </div>
+            <label style={{fontSize:11,fontWeight:700,color:'#94A3B8',display:'block',marginBottom:6}}>
+              거절 사유 (신청자에게 전달됩니다)
+            </label>
+            <textarea value={rejectReason} onChange={e=>setRejectReason(e.target.value)}
+              rows={3} placeholder="거절 사유를 입력하세요 (선택)"
+              style={{width:'100%',padding:'10px 14px',borderRadius:10,border:'1px solid #E2E8F0',
+                fontSize:13,outline:'none',resize:'none',background:'#F8FAFC',boxSizing:'border-box'}}/>
+            <div style={{display:'flex',gap:8,marginTop:16}}>
+              <button className="btn" onClick={()=>setRejectModal(null)}
+                style={{flex:1,background:'#F1F5F9',color:'#64748B',padding:'12px',fontSize:13,borderRadius:12}}>
+                취소
+              </button>
+              <button className="btn" onClick={doReject}
+                style={{flex:1,background:'#DC2626',color:'#fff',padding:'12px',fontSize:13,fontWeight:700,borderRadius:12}}>
+                거절 확정
+              </button>
             </div>
           </div>
         </div>

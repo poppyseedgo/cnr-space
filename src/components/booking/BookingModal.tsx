@@ -103,6 +103,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   const durMin      = timeToMin(form.end) - timeToMin(form.start);
   const allRooms = roomsProp.length > 0 ? roomsProp : ROOMS_DB;
   const selectedRoom     = form.room_id ? allRooms.find(r=>r.room_id===form.room_id) : null;
+  const isApprovalRoom   = !editBooking && (selectedRoom?.is_admin_only ?? false);  // 에메랄드 신규 예약 시
   const selectedFloor    = selectedRoom  ? getFloor(selectedRoom.floor_id) : null;
   const selectedFeatures = selectedRoom  ? getRoomFeatures(selectedRoom.room_id) : [];
 
@@ -834,6 +835,14 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               다음 → 회의실 선택
             </button>
           </>) : (<>
+            {isApprovalRoom && (
+              <div style={{width:"100%",marginBottom:8,padding:"10px 14px",borderRadius:10,
+                background:"#FEF3C7",border:"1px solid #FCD34D",fontSize:12,color:"#92400E",
+                display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:16}}>⏳</span>
+                관리자 승인 후 예약이 확정됩니다. 에메랄드 룸은 사전 승인이 필요합니다.
+              </div>
+            )}
             <button className="btn" onClick={()=>setStep(1)}
               style={{flex:1,background:"#F1F5F9",color:"#64748B",padding:"13px",fontSize:14,borderRadius:12}}>
               ← 이전
@@ -841,10 +850,10 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             <button className="btn" disabled={!canSubmit}
               onClick={()=>{ if(!canSubmit)return; editBooking ? onUpdate({...form},bookingDate) : onSubmit({...form,recur},bookingDate); }}
               style={{flex:2,padding:"13px",fontSize:14,fontWeight:700,borderRadius:12,
-                background:canSubmit?"#111111":"#E2E8F0",
+                background:canSubmit?(isApprovalRoom?"#D97706":"#111111"):"#E2E8F0",
                 color:canSubmit?"#fff":"#94A3B8",
                 cursor:canSubmit?"pointer":"not-allowed"}}>
-              {editBooking ? "변경 저장" : "예약 확정"}
+              {editBooking ? "변경 저장" : isApprovalRoom ? "승인 요청" : "예약 확정"}
             </button>
           </>)}
         </div>
@@ -1119,10 +1128,10 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
           <button className="btn" disabled={!canSubmit}
             onClick={()=>{ if(!canSubmit)return; editBooking ? onUpdate({...form},bookingDate) : onSubmit({...form,recur},bookingDate); }}
             style={{flex:1,padding:"14px",fontSize:14,fontWeight:700,borderRadius:12,
-              background:canSubmit?"#111":"#E2E8F0",
+              background:canSubmit?(isApprovalRoom?"#D97706":"#111"):"#E2E8F0",
               color:canSubmit?"#fff":"#94A3B8",
               cursor:canSubmit?"pointer":"not-allowed"}}>
-            {editBooking ? "변경 저장" : "예약 확정"}
+            {editBooking ? "변경 저장" : isApprovalRoom ? "승인 요청" : "예약 확정"}
           </button>
         </div>
       </div>
