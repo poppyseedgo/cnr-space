@@ -597,7 +597,7 @@ export function AdminApprovals({bookings, rooms, onApprove, onReject, showToast,
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
                       <span style={{background:'#FEF3C7',color:'#92400E',fontSize:11,fontWeight:700,
-                        padding:'2px 8px',borderRadius:999}}>⏳ 승인 대기</span>
+                        padding:'2px 8px',borderRadius:999}}>승인 대기</span>
                       <span style={{fontSize:12,color:'#94A3B8'}}>{fl?.room_name_ko ?? fl?.room_name}</span>
                     </div>
                     <div style={{fontSize:15,fontWeight:700,color:'#111',marginBottom:4}}>{b.title}</div>
