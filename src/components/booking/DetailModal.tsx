@@ -9,9 +9,9 @@ import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRo
 import { loadBookings, saveBookings } from '../../utils/seed'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
-export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser}) {
+export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser, rooms:rp=[]}) {
   const { isMobile } = useBreakpoint();
-  const r=ROOMS_DB.find(r=>r.room_id===b.room_id);
+  const r=(rp.length>0?rp:ROOMS_DB).find(r=>r.room_id===b.room_id);
   const floor=getFloor(r.floor_id);
   const features=getRoomFeatures(r.room_id);
   const isToday=tsDate(b.start_at)===todayStr(),now=nowMinutes();

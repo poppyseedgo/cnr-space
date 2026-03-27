@@ -6,10 +6,9 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../../utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById } from '../../data/master'
-import { loadBookings, saveBookings } from '../../utils/seed'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
-export function BookingModal({prefill, date:initDate, editBooking=null, onClose, onSubmit, onUpdate, bookings, isAdmin=false, currentUser="홍길동"}) {
+export function BookingModal({prefill, date:initDate, editBooking=null, onClose, onSubmit, onUpdate, bookings, isAdmin=false, currentUser="홍길동", rooms:roomsProp=[], users:usersProp=[]}) {
   // ── 모든 hooks를 최상단에 선언 ──────────────────────────────────────────────
   const { isMobile, isTablet } = useBreakpoint();
   const { vh: vvHeight, off: vvOff } = useVisualViewport();
@@ -102,7 +101,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
 
   const validTime   = form.start < form.end;
   const durMin      = timeToMin(form.end) - timeToMin(form.start);
-  const selectedRoom     = form.room_id ? ROOMS_DB.find(r=>r.room_id===form.room_id) : null;
+  const allRooms = roomsProp.length > 0 ? roomsProp : ROOMS_DB;
+  const selectedRoom     = form.room_id ? allRooms.find(r=>r.room_id===form.room_id) : null;
   const selectedFloor    = selectedRoom  ? getFloor(selectedRoom.floor_id) : null;
   const selectedFeatures = selectedRoom  ? getRoomFeatures(selectedRoom.room_id) : [];
 
@@ -113,7 +113,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
 
   // ── 중앙화된 가용 회의실 검증 ──
   const { available: availableRooms, unavailable: unavailableRooms } = useMemo(
-    () => getAvailableRooms(ROOMS_DB, bookingsForCheck, bookingDate, form.start, form.end, isAdmin),
+    () => getAvailableRooms(allRooms, bookingsForCheck, bookingDate, form.start, form.end, isAdmin),
     [bookingsForCheck, bookingDate, form.start, form.end, isAdmin]
   );
 
@@ -234,8 +234,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
 
   // 검색 결과: 현재 사용자 + 이미 추가된 사람 제외
   const attendeeSuggestions = attendeeQ.trim().length > 0
-    ? APP_USERS.filter(u =>
-        u.user_id !== (APP_USERS.find(x => x.name === currentUser)?.user_id) &&
+    ? (usersProp.length > 0 ? usersProp : APP_USERS).filter(u =>
+        u.user_id !== ((usersProp.length > 0 ? usersProp : APP_USERS).find(x => x.name === currentUser)?.user_id) &&
         !form.attendees.find(a => a.user_id === u.user_id) &&
         (u.name.includes(attendeeQ) || u.dept.toLowerCase().includes(attendeeQ.toLowerCase()) ||
          u.email.toLowerCase().includes(attendeeQ.toLowerCase()))
@@ -523,7 +523,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       {availableRooms.map(r => {
         const fl=getFloor(r.floor_id);
         const isSel=form.room_id===r.room_id;
-        const isAdminRoom = ADMIN_ONLY_ROOMS.has(r.room_id);
+        const isAdminRoom = allRooms.find(rm=>rm.room_id===r.room_id)?.is_admin_only ?? false;
         return (
           <div key={r.room_id} onClick={()=>set("room_id", isSel?null:r.room_id)}
             style={{background:isSel?"#111":"#fff",

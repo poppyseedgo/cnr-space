@@ -5,7 +5,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, FLOORS, getFloor, getRoomFeatures, getRoomById, getRoomThumbnail, getRoomGallery } from '../data/master'
-import { uploadRoomImage, deleteRoomImage, saveRoomImages, loadRoomImages, cancelBooking as apiCancelBooking } from '../lib/api'
+import { uploadRoomImage, deleteRoomImage, saveRoomImages, loadRoomImages, cancelBooking as apiCancelBooking, insertAuditLog } from '../lib/api'
 import { Upload, ImagePlus, Trash2, X as XIcon } from 'lucide-react'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../types'
 
@@ -63,7 +63,13 @@ export function AdminBookings({bookings,setBookings,rooms,showToast,isMobile,PER
 
   const doCancel=(id)=>{
     const reason = cancelReason||"관리자 강제 취소";
+    const targetB = bookings.find(b => b.id === id);
     setBookings(prev => prev.map(b=>b.id===id?{...b,autoCancelled:true,cancelledBy:'user'}:b));
+    // Audit log — 관리자 강제 취소
+    insertAuditLog({
+      action: 'ADMIN_FORCE_CANCEL', entityType: 'booking', entityId: id,
+      afterData: { reason, title: targetB?.title, user: targetB?.user }
+    }).catch(() => {})
     showToast("예약이 강제 취소되었습니다.","info");setCancelModal(null);setCancelReason("");
   };
 

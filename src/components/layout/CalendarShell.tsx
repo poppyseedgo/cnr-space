@@ -6,10 +6,9 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../../utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, FLOORS, getFloor, getRoomFeatures, getRoomById, getRoomThumbnail, getRoomGallery } from '../../data/master'
-import { loadBookings, saveBookings, loadRooms, saveRooms, loadUsers, saveUsers } from '../../utils/seed'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
-export function CalendarShell({bookings, selectedDate, setSelectedDate, calView, setCalView, onBookingClick, onNewBooking, onCheckIn, filterFloor, setFilterFloor}) {
+export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setSelectedDate, calView, setCalView, onBookingClick, onNewBooking, onCheckIn, filterFloor, setFilterFloor}) {
   const { isMobile, isTablet } = useBreakpoint();
   const VIEWS=[{id:"timeline",label:"타임라인"},{id:"monthly",label:"월"},{id:"weekly",label:"주"},{id:"daily",label:"일"}];
   const navLabel=()=>{
@@ -24,7 +23,8 @@ export function CalendarShell({bookings, selectedDate, setSelectedDate, calView,
     else setSelectedDate(addDays(selectedDate,dir));
   };
 
-  const filteredRooms = filterFloor==="ALL" ? ROOMS_DB.filter(r=>r.is_active) : ROOMS_DB.filter(r=>r.is_active&&r.floor_id===parseInt(filterFloor));
+  const allRooms = roomsProp.length > 0 ? roomsProp : ROOMS_DB;  // fallback
+  const filteredRooms = filterFloor==="ALL" ? allRooms.filter(r=>r.is_active) : allRooms.filter(r=>r.is_active&&r.floor_id===parseInt(filterFloor));
   const filteredBks = filterFloor==="ALL" ? bookings : bookings.filter(b=>filteredRooms.some(r=>r.room_id===b.room_id));
 
   // ── 커스텀 날짜 피커 state ──
@@ -182,16 +182,16 @@ export function CalendarShell({bookings, selectedDate, setSelectedDate, calView,
         </div>
       </div>
 
-      {calView==="monthly"  && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d=>{setSelectedDate(d);setCalView("daily");}} onBookingClick={onBookingClick} />}
+      {calView==="monthly"  && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d=>{setSelectedDate(d);setCalView("daily");}} onBookingClick={onBookingClick} rooms={allRooms} />}
       {calView==="weekly"   && <WeeklyView  bookings={filteredBks} selectedDate={selectedDate} onDateClick={setSelectedDate} onBlockClick={onBookingClick} onEmptyClick={(d,h)=>onNewBooking(d,h,null)} onCheckIn={onCheckIn} />}
-      {calView==="daily"    && <DailyView   bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate)} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} />}
+      {calView==="daily"    && <DailyView   bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate)} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} rooms={allRooms} />}
       {calView==="timeline" && <TimelineView bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate)} rooms={filteredRooms} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} />}
     </div>
   );
 }
 
 // ─── Calendar Sub-Views ───────────────────────────────────────────────────────
-export function MonthlyView({bookings,selectedDate,onDayClick,onBookingClick}) {
+export function MonthlyView({bookings,selectedDate,onDayClick,onBookingClick,rooms:mvRooms=[]}) {
   const d=dateToObj(selectedDate),year=d.getFullYear(),month=d.getMonth();
   const firstDay=new Date(year,month,1).getDay();
   const dim=new Date(year,month+1,0).getDate();
@@ -221,7 +221,7 @@ export function MonthlyView({bookings,selectedDate,onDayClick,onBookingClick}) {
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:2}}>
                 {dbs.slice(0,3).map(b=>{
-                  const r=ROOMS_DB.find(r=>r.room_id===b.room_id);
+                  const r=(mvRooms.length>0?mvRooms:ROOMS_DB).find(r=>r.room_id===b.room_id);
                   return <div key={b.id} onClick={e=>{e.stopPropagation();onBookingClick(b);}} style={{background:r.color+"18",borderLeft:`2px solid ${r.color}`,borderRadius:3,padding:"2px 5px",fontSize:10,color:r.color,fontWeight:600,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",cursor:"pointer"}}>{fmtTS(b.start_at)} {b.title}</div>;
                 })}
                 {dbs.length>3&&<div style={{fontSize:9,color:"#94A3B8",paddingLeft:3}}>+{dbs.length-3}개</div>}
@@ -553,14 +553,14 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
 }
 
 
-export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onCheckIn}) {
+export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onCheckIn,rooms:dvRooms=[]}) {
   const isToday = selectedDate===todayStr(), now=nowMinutes();
   // X=시간(가로), Y=회의실(세로)
   const CW=120, // 시간 1칸 너비(px)
         RH=72,  // 회의실 1행 높이(px)
         LW=148; // 왼쪽 회의실명 영역 너비
 
-  const rooms = ROOMS_DB.filter(r=>r.is_active);
+  const rooms = (dvRooms.length>0?dvRooms:ROOMS_DB).filter(r=>r.is_active);
   const totalW = CW * HOURS.length;
 
   return(
@@ -863,7 +863,7 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
 }
 
 // ─── List View ────────────────────────────────────────────────────────────────
-export function ListView({bookings,selectedDate,setSelectedDate,onItemClick,onCheckIn}) {
+export function ListView({bookings,selectedDate,setSelectedDate,onItemClick,onCheckIn,rooms:lvRooms=[]}) {
   const { isMobile } = useBreakpoint();
   const isToday=selectedDate===todayStr(),now=nowMinutes();
   const sorted=[...bookings].filter(b=>!b.autoCancelled).sort((a,b)=>a.start_at.localeCompare(b.start_at));
@@ -878,7 +878,7 @@ export function ListView({bookings,selectedDate,setSelectedDate,onItemClick,onCh
         ? <div style={{textAlign:"center",padding:"80px 0",color:"#CBD5E1"}}><div style={{display:"flex",justifyContent:"center",marginBottom:16}}><Inbox size={48} strokeWidth={1.2} color="#CBD5E1"/></div><div style={{fontSize:17,fontWeight:600,color:"#94A3B8"}}>이 날 예약이 없습니다</div></div>
         : <div style={{display:"flex",flexDirection:"column",gap:10,maxWidth:800}}>
             {sorted.map(b=>{
-              const r=ROOMS_DB.find(r=>r.room_id===b.room_id);
+              const r=(lvRooms.length>0?lvRooms:ROOMS_DB).find(r=>r.room_id===b.room_id);
               const fl=getFloor(r.floor_id);
               const isAct=isToday&&tsMin(b.start_at)<=now&&now<tsMin(b.end_at)&&!b.earlyEnded;
               const nci=isAct&&!b.checkedIn;

@@ -8,13 +8,15 @@ import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRo
 import { cancelBooking as apiCancelBooking } from '../lib/api'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../types'
 
-export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail}) {
+export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail, rooms:rp=[], users:up=[]}) {
   const [tab, setTab] = useState("upcoming");
   const [statYear, setStatYear] = useState(()=>new Date().getFullYear());
   const [statMonth, setStatMonth] = useState(()=>new Date().getMonth());
   const today = todayStr();
   const now = nowMinutes();
-  const userInfo = APP_USERS.find(u=>u.name===currentUser);
+  const allUsers = up.length>0 ? up : APP_USERS;
+  const allRooms = rp.length>0 ? rp : ROOMS_DB;  // 컴포넌트 스코프 — 모든 곳에서 접근 가능
+  const userInfo = allUsers.find(u=>u.name===currentUser);
 
   // 기간별 조회
   const [listFrom, setListFrom] = useState(()=>{const d=new Date();d.setDate(1);return objToStr(d);});
@@ -49,7 +51,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
     const rate=total>0?Math.round((ci/total)*100):0;
     const rc={};mb.filter(b=>!b.autoCancelled).forEach(b=>{rc[b.room_id]=(rc[b.room_id]||0)+1;});
     const top=Object.entries(rc).sort((a,b)=>(b[1] as number)-(a[1] as number))[0];
-    const topRoom=top?(ROOMS_DB.find(r=>r.room_id===Number(top[0])) ?? null):null;
+  const topRoom=top?(allRooms.find(r=>r.room_id===Number(top[0])) ?? null):null;
     return{total,checkedIn:ci,cancelled:can,rate,topRoom,topCount:top?top[1]:0};
   },[myBookings,statYear,statMonth]);
 
@@ -126,7 +128,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
           ):(
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {tabData.map((b,i)=>{
-                const r=ROOMS_DB.find(rm=>rm.room_id===b.room_id);
+                const r=allRooms.find(rm=>rm.room_id===b.room_id);
                 const fl=getFloor(r?.floor_id);
                 const dateObj=new Date(b.start_at);
                 return(
@@ -253,7 +255,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
               </thead>
               <tbody>
                 {filteredList.map(b=>{
-                  const r=ROOMS_DB.find(rm=>rm.room_id===b.room_id);
+                  const r=allRooms.find(rm=>rm.room_id===b.room_id);
                   const isCan=b.autoCancelled;
                   const isDone=b.checkedIn&&!isCan;
                   const isUp=!isCan&&tsDate(b.start_at)>=today;

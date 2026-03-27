@@ -100,7 +100,9 @@ export function getAvailableRooms(allRooms, bookings, date, startTime, endTime, 
   if (!startTime || !endTime || startTime >= endTime) return { available: [], unavailable: allRooms.filter(r=>r.is_active) };
   const active = allRooms.filter(r => r.is_active);
   const available = active.filter(r => {
-    if (ADMIN_ONLY_ROOMS.has(r.room_id) && !isAdmin) return false;
+    // is_admin_only 우선, fallback으로 하드코딩된 ADMIN_ONLY_ROOMS
+    const adminOnly = r.is_admin_only ?? ADMIN_ONLY_ROOMS.has(r.room_id);
+    if (adminOnly && !isAdmin) return false;
     return isRoomAvailable(bookings, r.room_id, date, startTime, endTime);
   });
   const unavailable = active.filter(r => !available.find(a => a.room_id === r.room_id));
@@ -113,23 +115,32 @@ export function getRoomStatus(roomId, bookings, date) {
   const isToday = date === today;
   const dayBks = bookings.filter(b => b.room_id === roomId && tsDate(b.start_at) === date && !b.autoCancelled && !b.earlyEnded);
 
-  // BUSY 정책: 예약 시간 범위 내 (체크인 여부 무관 — 시작되면 사용중으로 표시)
-  // checkedIn 여부는 뱃지 표시에만 사용 (체크인 대기 / 체크인 완료)
-  const current = dayBks.find(b =>
+  // ── BUSY 정책 ────────────────────────────────────────────────────────────
+  // 케이스 A: 체크인 완료 + 시간 범위 내 → 진짜 사용중
+  // 케이스 B: 미체크인 + 시작 후 10분 이내 → 유예기간 (사용중 + 체크인 대기)
+  // 케이스 C: 미체크인 + 시작 후 10분 초과 → BUSY 아님 (자동취소 예정/완료)
+  const currentCheckedIn = dayBks.find(b =>
+    b.checkedIn &&
     tsMin(b.start_at) <= now && now < tsMin(b.end_at)
   );
+  const currentWaiting = dayBks.find(b =>
+    !b.checkedIn &&
+    tsMin(b.start_at) <= now && now < tsMin(b.end_at) &&
+    (now - tsMin(b.start_at)) <= CHECKIN_WINDOW_MIN  // 유예기간 10분 이내
+  );
+  const current = currentCheckedIn || currentWaiting;
+
   if (current && isToday) {
-    const minsLeft    = tsMin(current.end_at) - now;
-    const minsElapsed = now - tsMin(current.start_at);  // 시작 후 경과 분
-    const checkinWaiting = !current.checkedIn && minsElapsed <= 10;  // 체크인 대기 (10분 이내)
+    const minsLeft       = tsMin(current.end_at) - now;
+    const checkinWaiting = !!currentWaiting;   // 유예기간 중
     return {
       type: "BUSY",
       label: "사용중",
       endTime: tsTime(current.end_at),
       minsLeft,
       booking: current,
-      checkedIn:      current.checkedIn,       // 체크인 완료 여부
-      checkinWaiting,                           // 체크인 대기 중 (10분 이내 미체크인)
+      checkedIn:      !!currentCheckedIn,
+      checkinWaiting,
     };
   }
   const next = dayBks.filter(b => tsMin(b.start_at) > now).sort((a,b) => a.start_at.localeCompare(b.start_at))[0];

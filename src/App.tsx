@@ -231,7 +231,7 @@ function AppContent() {
       }
 
       // ── 날짜별 충돌 검사 → 충돌 날짜 스킵, 나머지 생성 ──
-      const room  = ROOMS_DB.find(r => r.room_id === form.room_id);
+      const room  = rooms.find(r => r.room_id === form.room_id);
       const floor = getFloor(room?.floor_id);
       const createdAt    = Date.now();
       const recurGroupId = recur !== "NEVER" ? `rg_${createdAt}` : null;
@@ -289,7 +289,7 @@ function AppContent() {
       if (recur === "NEVER") {
         setModal({ type: "bookingDone", data: newBookings[0] });
         // 이메일 알림 발송
-        const createdRoom = ROOMS_DB.find(r => r.room_id === newBookings[0].room_id)
+        const createdRoom = rooms.find(r => r.room_id === newBookings[0].room_id)
         sendNotification('created', {
           ...newBookings[0],
           user_email:   authUser?.email,
@@ -300,9 +300,17 @@ function AppContent() {
           bookings: newBookings,
           skipped,
           recur,
-          room: ROOMS_DB.find(r => r.room_id === form.room_id),
-          floor: getFloor(ROOMS_DB.find(r => r.room_id === form.room_id)?.floor_id),
+          room: rooms.find(r => r.room_id === form.room_id),
+          floor: getFloor(rooms.find(r => r.room_id === form.room_id)?.floor_id),
         }});
+      }
+      // Audit log — 생성된 예약 전체 기록
+      for (const bk of newBookings) {
+        insertAuditLog({
+          action: 'BOOKING_CREATED', entityType: 'booking', entityId: bk.id,
+          actorName: currentUser,
+          afterData: { title: bk.title, room_id: bk.room_id, start_at: bk.start_at, end_at: bk.end_at }
+        }).catch(() => {})
       }
       return true;
     } finally {
@@ -366,7 +374,7 @@ function AppContent() {
       showToast("예약이 취소되었습니다.", "info");
       // 이메일 알림 발송
       if (targetBooking) {
-        const cancelledRoom = ROOMS_DB.find(r => r.room_id === targetBooking.room_id)
+        const cancelledRoom = rooms.find(r => r.room_id === targetBooking.room_id)
         sendNotification('cancelled', {
           ...targetBooking,
           user_email: authUser?.email,
@@ -401,12 +409,20 @@ function AppContent() {
     setBookings(prev => prev.map(b => b.id === originalId ? { ...b, ...changes } : b));
     setModal(null);
     try {
+      const prevBooking = bookings.find(b => b.id === originalId)
       await apiUpdateBooking(originalId, changes);
+      // Audit log
+      insertAuditLog({
+        action: 'BOOKING_UPDATED', entityType: 'booking', entityId: originalId,
+        actorName: currentUser,
+        beforeData: prevBooking ? { title: prevBooking.title, start_at: prevBooking.start_at, end_at: prevBooking.end_at, room_id: prevBooking.room_id } : undefined,
+        afterData:  { title: changes.title, start_at: changes.start_at, end_at: changes.end_at, room_id: changes.room_id }
+      }).catch(() => {})
       showToast("예약이 변경되었습니다.");
       // 이메일 알림 발송
       const updatedB = bookings.find(b => b.id === originalId);
       if (updatedB) {
-        const updatedRoom = ROOMS_DB.find(r => r.room_id === (changes.room_id ?? updatedB.room_id))
+        const updatedRoom = rooms.find(r => r.room_id === (changes.room_id ?? updatedB.room_id))
         sendNotification('updated', {
           ...updatedB, ...changes,
           user_email: authUser?.email,
@@ -612,10 +628,10 @@ function AppContent() {
               const e = `${fmt2(Math.floor(clampedEnd/60))}:${fmt2(clampedEnd%60)}`;
               setModal({type:"new", prefill:{room_id:r.room_id, start:s, end:e}});
             }} onDetail={(r)=>setModal({type:"roomDetail",data:r})} onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={cancelBooking} currentUser={currentUser} dark={dark} />}
-          {view==="calendar" && <CalendarShell bookings={bookings} selectedDate={selectedDate} setSelectedDate={setSelectedDate} calView={calView} setCalView={setCalView} onBookingClick={b=>setModal({type:"detail",data:b})} onNewBooking={(d,h,rid)=>setModal({type:"new",prefill:{room_id:rid,start:h!=null?`${fmt2(h)}:00`:undefined,end:h!=null?`${fmt2(h+1)}:00`:undefined},date:d}) } onCheckIn={checkIn} filterFloor={calFilterFloor} setFilterFloor={setCalFilterFloor} />}
+          {view==="calendar" && <CalendarShell bookings={bookings} rooms={rooms} selectedDate={selectedDate} setSelectedDate={setSelectedDate} calView={calView} setCalView={setCalView} onBookingClick={b=>setModal({type:"detail",data:b})} onNewBooking={(d,h,rid)=>setModal({type:"new",prefill:{room_id:rid,start:h!=null?`${fmt2(h)}:00`:undefined,end:h!=null?`${fmt2(h+1)}:00`:undefined},date:d}) } onCheckIn={checkIn} filterFloor={calFilterFloor} setFilterFloor={setCalFilterFloor} />}
         </div>
       )}
-      {view==="mypage" && <MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} />}
+      {view==="mypage" && <MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} rooms={rooms} users={users} />}
       {view==="admin" && <AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} />}
 
       {/* ── Modals ── */}
@@ -637,10 +653,10 @@ function AppContent() {
             zIndex:1000,
             padding: isMobile ? 0 : 16,
           }}>
-          {modal.type==="new"         && <BookingModal prefill={modal.prefill} date={modal.date||selectedDate} onClose={()=>setModal(null)} onSubmit={addBooking} onUpdate={()=>false} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} />}
-          {modal.type==="edit"         && <BookingModal prefill={{}} editBooking={modal.data} date={tsDate(modal.data.start_at)} onClose={()=>setModal(null)} onSubmit={async ()=>false} onUpdate={(form,date)=>updateBooking(form,date,modal.data.id)} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} />}
-          {modal.type==="detail"      && <DetailModal booking={modal.data} onClose={()=>setModal(null)} onCheckIn={checkIn} onCancel={cancelBooking} onEdit={(b)=>setModal({type:"edit",data:b})} currentUser={currentUser} />}
-          {modal.type==="bookingDone" && <BookingDoneModal booking={modal.data} onClose={()=>setModal(null)}  />}
+          {modal.type==="new"         && <BookingModal prefill={modal.prefill} date={modal.date||selectedDate} onClose={()=>setModal(null)} onSubmit={addBooking} onUpdate={()=>false} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} rooms={rooms} users={users} />}
+          {modal.type==="edit"         && <BookingModal prefill={{}} editBooking={modal.data} date={tsDate(modal.data.start_at)} onClose={()=>setModal(null)} onSubmit={async ()=>false} onUpdate={(form,date)=>updateBooking(form,date,modal.data.id)} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} rooms={rooms} users={users} />}
+          {modal.type==="detail"      && <DetailModal booking={modal.data} onClose={()=>setModal(null)} onCheckIn={checkIn} onCancel={cancelBooking} onEdit={(b)=>setModal({type:"edit",data:b})} currentUser={currentUser} rooms={rooms} />}
+          {modal.type==="bookingDone" && <BookingDoneModal booking={modal.data} onClose={()=>setModal(null)} rooms={rooms} />}
           {modal.type==="recurDone"    && <RecurDoneModal data={modal.data} onClose={()=>setModal(null)} />}
           {modal.type==="roomDetail"  && <RoomDetailModal room={modal.data} bookings={bookings} onClose={()=>setModal(null)} onBook={(status)=>{
               const now = nowMinutes();

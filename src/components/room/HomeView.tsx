@@ -118,7 +118,7 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
               오늘 예약 없음
             </div>
           ) : myBookings.map(b => {
-            const r = ROOMS_DB.find(r=>r.room_id===b.room_id);
+            const r = roomsData.find(r=>r.room_id===b.room_id) ?? ROOMS_DB.find(r=>r.room_id===b.room_id);
             const isActive   = tsDate(b.start_at)===today && tsMin(b.start_at)<=now && now<tsMin(b.end_at) && !b.autoCancelled;
             const isPast     = tsMin(b.end_at) < now;
             const minsUntil  = tsMin(b.start_at) - now;   // 시작까지 남은 분
@@ -625,7 +625,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook}) {
               )}
 
               {/* Admin 전용 안내 */}
-              {ADMIN_ONLY_ROOMS.has(r.room_id) && (
+              {(r.is_admin_only) && (
                 <div style={{background:"#EEF2FF",borderRadius:10,padding:"10px 14px",
                   display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#4338CA",fontWeight:600}}>
                   관리자(Admin) 전용 예약 회의실
