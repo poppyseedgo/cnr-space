@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { Layers, Users, UsersRound, Building2, Clock, User, Monitor, FileText, XCircle, AlertTriangle, CheckCircle2, Circle, X, Calendar, Home, LayoutGrid, LogOut, Settings, Search, BarChart2, ClipboardList, Inbox, ChevronDown, ChevronUp, AlertCircle, CheckCheck, Ban, Check } from 'lucide-react'
+import { Layers, Users, UsersRound, Building2, Clock, User, Monitor, FileText, XCircle, AlertTriangle, CheckCircle2, Circle, X, Calendar, Home, LayoutGrid, LogOut, Settings, Search, BarChart2, ClipboardList, Inbox, ChevronDown, ChevronUp, AlertCircle, CheckCheck, Ban, Check, Bell } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from './utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById, getAdminOnlyRooms } from './data/master'
-import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking, upsertBookingAttendees } from './lib/api'
+import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking, upsertBookingAttendees, insertNotification, loadNotifications, markNotificationRead, markAllNotificationsRead, subscribeNotifications, type AppNotification } from './lib/api'
 import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView, RoomDetailModal } from './components/room/HomeView'
@@ -29,6 +29,10 @@ function AppContent() {
   const [bookings, setBookings]   = useState([]);
   const [rooms, setRooms]         = useState(ROOMS_DB);
   const [users, setUsers]         = useState(APP_USERS);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+  const unreadCount = notifications.filter((n: AppNotification) => !n.is_read).length;
   // URL 해시에서 초기 view 복원 (#home, #calendar, #mypage, #admin)
   const getViewFromHash = (): string => {
     const hash = window.location.hash.replace('#', '')
@@ -101,6 +105,16 @@ function AppContent() {
       .finally(() => { setLoading(false); });
   }, [authLoading, authUser?.user_id]);
 
+  // 알림 로드 + Realtime 구독
+  useEffect(() => {
+    if (!authUser) { setNotifications([]); return; }
+    loadNotifications().then(setNotifications);
+    const unsub = subscribeNotifications(() => {
+      loadNotifications().then(setNotifications);
+    });
+    return unsub;
+  }, [authUser?.user_id]);
+
   // 틱 타이머 + Realtime + 이벤트 리스너 + 탭 복귀 새로고침 (마운트 1회)
   useEffect(() => {
     // ① 10초마다 tick → 시간 기반 UI 상태 즉시 반영 (체크인 대기/사용중 등)
@@ -135,7 +149,10 @@ function AppContent() {
 
   // 드롭다운 외부 클릭 닫기
   useEffect(() => {
-    const h = (e) => { if(dropdownRef.current && !dropdownRef.current.contains(e.target)) setShowDropdown(false); };
+    const h = (e) => {
+      if(dropdownRef.current && !dropdownRef.current.contains(e.target)) setShowDropdown(false);
+      if(notifRef.current && !notifRef.current.contains(e.target)) setShowNotifPanel(false);
+    };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
@@ -313,13 +330,24 @@ function AppContent() {
           floor: getFloor(rooms.find(r => r.room_id === form.room_id)?.floor_id),
         }});
       }
-      // Audit log — 생성된 예약 전체 기록
+      // Audit log + 인앱 알림
       for (const bk of newBookings) {
         insertAuditLog({
           action: 'BOOKING_CREATED', entityType: 'booking', entityId: bk.id,
           actorName: currentUser,
           afterData: { title: bk.title, room_id: bk.room_id, start_at: bk.start_at, end_at: bk.end_at }
         }).catch(() => {})
+        if (authUser?.user_id) {
+          const notifTitle = isAdminOnlyRoom ? '승인 요청이 접수되었습니다' : '예약이 확정되었습니다'
+          const room = rooms.find(r => r.room_id === bk.room_id)
+          insertNotification({
+            userId: authUser.user_id,
+            type: isAdminOnlyRoom ? 'booking_pending' : 'booking_created',
+            title: notifTitle,
+            body: `${room?.room_name_ko ?? room?.room_name ?? ''} · ${bk.start_at.slice(5,10)} ${bk.start_at.slice(11,16)}`,
+            bookingId: bk.id,
+          }).catch(() => {})
+        }
       }
       return true;
     } finally {
@@ -385,6 +413,14 @@ function AppContent() {
     try {
       await apiCancelBooking(id)
     insertAuditLog({ action: 'BOOKING_CANCELLED', entityType: 'booking', entityId: id, actorName: currentUser }).catch(()=>{});
+    if (authUser?.user_id) {
+      insertNotification({
+        userId: authUser.user_id, type: 'booking_cancelled',
+        title: '예약이 취소되었습니다',
+        body: targetBooking ? `${targetBooking.title}` : undefined,
+        bookingId: id,
+      }).catch(() => {})
+    }
       showToast("예약이 취소되었습니다.", "info");
       // 이메일 알림 발송
       if (targetBooking) {
@@ -421,6 +457,18 @@ function AppContent() {
           })
         }
       }
+      // 신청자 인앱 알림
+      if (target) {
+        const userProfile = users.find(u => u.name === target.user)
+        if (userProfile?.user_id) {
+          insertNotification({
+            userId: userProfile.user_id, type: 'booking_approved',
+            title: '예약이 승인되었습니다',
+            body: `에메랄드 룸 · ${target.start_at.slice(5,10)} ${target.start_at.slice(11,16)}`,
+            bookingId: id,
+          }).catch(() => {})
+        }
+      }
       showToast('예약이 승인되었습니다.')
     } catch (err: any) { showToast(err.message, 'error') }
   }, [showToast, bookings, rooms, users, sendNotification])
@@ -443,6 +491,18 @@ function AppContent() {
             room_name:     rejectedRoom?.room_name_ko ?? rejectedRoom?.room_name ?? '',
             reject_reason: reason || '관리자 거절',
           })
+        }
+      }
+      // 신청자 인앱 알림
+      if (target) {
+        const userProfile = users.find(u => u.name === target.user)
+        if (userProfile?.user_id) {
+          insertNotification({
+            userId: userProfile.user_id, type: 'booking_rejected',
+            title: '예약 요청이 거절되었습니다',
+            body: reason ? `거절 사유: ${reason}` : '에메랄드 룸 예약 요청',
+            bookingId: id,
+          }).catch(() => {})
         }
       }
       showToast('예약이 거절되었습니다.', 'info')
@@ -592,8 +652,103 @@ function AppContent() {
               </div>
             )}
 
-            {/* ③ 우측: 유저 드롭다운 */}
+            {/* ③ 우측: 알림 벨 + 유저 드롭다운 */}
             <div className="flex items-center gap-2 justify-end">
+
+              {/* 알림 벨 */}
+              <div ref={notifRef} style={{position:"relative"}}>
+                <button className="btn" onClick={()=>setShowNotifPanel(v=>!v)}
+                  style={{position:"relative",width:36,height:36,borderRadius:"50%",
+                    display:"flex",alignItems:"center",justifyContent:"center",
+                    background:showNotifPanel?(dark?"rgba(255,255,255,0.1)":"#F1F5F9"):"transparent",
+                    color:dark?"#94A3B8":"#64748B"}}>
+                  <Bell size={18} strokeWidth={1.8}/>
+                  {unreadCount > 0 && (
+                    <span style={{position:"absolute",top:4,right:4,
+                      background:"#EF4444",color:"#fff",
+                      fontSize:9,fontWeight:700,borderRadius:999,
+                      padding:"1px 4px",lineHeight:1.4,minWidth:14,textAlign:"center"}}>
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* 알림 패널 */}
+                {showNotifPanel && (
+                  <div className="anm" style={{
+                    position:"absolute",top:"calc(100% + 8px)",right:0,zIndex:300,
+                    background:"#fff",border:"1px solid #E2E8F0",borderRadius:16,
+                    boxShadow:"0 8px 32px rgba(0,0,0,0.12)",width:340,overflow:"hidden"}}>
+
+                    {/* 패널 헤더 */}
+                    <div style={{padding:"14px 16px",borderBottom:"1px solid #F1F5F9",
+                      display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                      <span style={{fontSize:14,fontWeight:700,color:"#111"}}>
+                        알림 {unreadCount > 0 && <span style={{color:"#EF4444",fontSize:12}}>({unreadCount})</span>}
+                      </span>
+                      {unreadCount > 0 && (
+                        <button className="btn" onClick={()=>{
+                          markAllNotificationsRead()
+                          setNotifications(prev => prev.map(n => ({...n, is_read:true})))
+                        }} style={{fontSize:11,color:"#64748B",padding:"2px 8px",borderRadius:6,
+                          border:"1px solid #E2E8F0",background:"#F8FAFC"}}>
+                          모두 읽음
+                        </button>
+                      )}
+                    </div>
+
+                    {/* 알림 목록 */}
+                    <div style={{maxHeight:400,overflowY:"auto"}}>
+                      {notifications.length === 0 ? (
+                        <div style={{padding:"40px 0",textAlign:"center",color:"#94A3B8",fontSize:13}}>
+                          알림이 없습니다
+                        </div>
+                      ) : notifications.map(n => {
+                        const typeColors: Record<string,string> = {
+                          booking_created:  "#16A34A",
+                          booking_pending:  "#D97706",
+                          booking_approved: "#16A34A",
+                          booking_rejected: "#DC2626",
+                          booking_cancelled:"#64748B",
+                        }
+                        const color = typeColors[n.type] ?? "#64748B"
+                        return (
+                          <div key={n.id}
+                            onClick={()=>{
+                              if (!n.is_read) {
+                                markNotificationRead(n.id)
+                                setNotifications(prev => prev.map(x => x.id===n.id ? {...x,is_read:true} : x))
+                              }
+                              if (n.booking_id) setModal({type:"detail", data: bookings.find(b=>b.id===n.booking_id) ?? null})
+                              setShowNotifPanel(false)
+                            }}
+                            style={{padding:"12px 16px",borderBottom:"1px solid #F8FAFC",cursor:"pointer",
+                              background:n.is_read?"transparent":"#F0F9FF",transition:"background 0.15s"}}
+                            onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
+                            onMouseLeave={e=>e.currentTarget.style.background=n.is_read?"transparent":"#F0F9FF"}>
+                            <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+                              <div style={{width:6,height:6,borderRadius:"50%",
+                                background:n.is_read?"transparent":color,
+                                marginTop:6,flexShrink:0}}/>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontSize:13,fontWeight:n.is_read?400:600,color:"#111",
+                                  marginBottom:2}}>{n.title}</div>
+                                {n.body && <div style={{fontSize:12,color:"#64748B"}}>{n.body}</div>}
+                                <div style={{fontSize:11,color:"#94A3B8",marginTop:4}}>
+                                  {new Date(n.created_at).toLocaleString("ko-KR",{
+                                    month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div ref={dropdownRef} style={{position:"relative"}}>
                 <button className="btn flex items-center gap-2 rounded-full border flex-shrink-0"
                   onClick={()=>setShowDropdown(v=>!v)}

@@ -480,3 +480,69 @@ export async function rejectBooking(id: string, reason: string): Promise<void> {
     afterData: { status: 'rejected', reason }
   })
 }
+
+// ── 인앱 알림 (notifications 테이블) ─────────────────────────────────────────
+
+export interface AppNotification {
+  id:         string
+  user_id:    string
+  type:       string
+  title:      string
+  body?:      string
+  booking_id?: string
+  is_read:    boolean
+  created_at: string
+}
+
+/** 알림 생성 (본인 또는 타겟 user_id 지정) */
+export async function insertNotification(params: {
+  userId:    string
+  type:      string
+  title:     string
+  body?:     string
+  bookingId?: string
+}): Promise<void> {
+  const { error } = await supabase.from('notifications').insert({
+    user_id:    params.userId,
+    type:       params.type,
+    title:      params.title,
+    body:       params.body ?? null,
+    booking_id: params.bookingId ?? null,
+    is_read:    false,
+  })
+  if (error) console.warn('[api] insertNotification 실패:', error.message)
+}
+
+/** 내 알림 목록 (최근 30건) */
+export async function loadNotifications(): Promise<AppNotification[]> {
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(30)
+  if (error) return []
+  return data ?? []
+}
+
+/** 알림 읽음 처리 (단건) */
+export async function markNotificationRead(id: string): Promise<void> {
+  await supabase.from('notifications').update({ is_read: true }).eq('id', id)
+}
+
+/** 전체 읽음 처리 */
+export async function markAllNotificationsRead(): Promise<void> {
+  await supabase.from('notifications')
+    .update({ is_read: true })
+    .eq('is_read', false)
+}
+
+/** notifications Realtime 구독 */
+export function subscribeNotifications(onNew: () => void) {
+  const channel = supabase
+    .channel('notifications-realtime')
+    .on('postgres_changes', {
+      event: 'INSERT', schema: 'public', table: 'notifications'
+    }, () => onNew())
+    .subscribe()
+  return () => { supabase.removeChannel(channel) }
+}
