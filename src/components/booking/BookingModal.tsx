@@ -103,7 +103,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   const durMin      = timeToMin(form.end) - timeToMin(form.start);
   const allRooms = roomsProp.length > 0 ? roomsProp : ROOMS_DB;
   const selectedRoom     = form.room_id ? allRooms.find(r=>r.room_id===form.room_id) : null;
-  const isApprovalRoom   = !editBooking && (selectedRoom?.is_admin_only ?? false);  // 에메랄드 신규 예약 시
+  const isApprovalRoom   = !editBooking && !isAdmin && (selectedRoom?.is_admin_only ?? false);  // 일반 유저만 승인 요청, Admin은 바로 예약
   const selectedFloor    = selectedRoom  ? getFloor(selectedRoom.floor_id) : null;
   const selectedFeatures = selectedRoom  ? getRoomFeatures(selectedRoom.room_id) : [];
 
