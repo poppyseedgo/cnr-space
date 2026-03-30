@@ -220,35 +220,44 @@ export function MonthlyView({bookings,selectedDate,onDayClick,onBookingClick,roo
   for(let i=0;i<firstDay;i++) cells.push(null);
   for(let i=1;i<=dim;i++) cells.push(i);
   while(cells.length%7!==0) cells.push(null);
+  // 모바일: 7컬럼이 화면폭에 눌려 사라지지 않도록 최소 너비 보장
+  const MIN_COL = 44; // 1컬럼 최소 px
+  const GRID_MIN_W = MIN_COL * 7;
+
   return(
     <div style={{background:"#fff",borderRadius:16,border:"1px solid #E2E8F0",overflow:"hidden"}}>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",background:"#F8FAFC",borderBottom:"1px solid #E2E8F0"}}>
-        {DAY_NAMES.map((n,i)=><div key={n} style={{padding:"10px 0",textAlign:"center",fontSize:12,fontWeight:700,color:i===0?"#EF4444":i===6?"#3B82F6":"#64748B"}}>{n}</div>)}
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>
-        {cells.map((day,idx)=>{
-          if(!day) return <div key={`e${idx}`} style={{minHeight:110,borderRight:"1px solid #F1F5F9",borderBottom:"1px solid #F1F5F9",background:"#FAFAFA"}}/>;
-          const ds=`${year}-${fmt2(month+1)}-${fmt2(day)}`;
-          const dbs=bookings.filter(b=>tsDate(b.start_at)===ds&&!b.autoCancelled);
-          const isToday=ds===today,isSel=ds===selectedDate;
-          const dow=(firstDay+day-1)%7;
-          return(
-            <div key={day} onClick={()=>onDayClick(ds)}
-              style={{minHeight:110,borderRight:"1px solid #F1F5F9",borderBottom:"1px solid #F1F5F9",padding:"7px 6px",cursor:"pointer",background:isSel?"#EEF2FF":isToday?"#F0FDF4":"#fff",transition:"background 0.12s"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-                <span style={{width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%",fontSize:12,fontWeight:isToday?800:500,background:isToday?"#111111":"transparent",color:isToday?"#fff":dow===0?"#EF4444":dow===6?"#3B82F6":"#374151"}}>{day}</span>
-                {dbs.length>0&&<span style={{fontSize:9,color:"#94A3B8",fontWeight:600}}>{dbs.length}건</span>}
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:2}}>
-                {dbs.slice(0,3).map(b=>{
-                  const r=(mvRooms.length>0?mvRooms:ROOMS_DB).find(r=>r.room_id===b.room_id);
-                  return <div key={b.id} onClick={e=>{e.stopPropagation();onBookingClick(b);}} style={{background:r.color+"18",borderLeft:`2px solid ${r.color}`,borderRadius:3,padding:"2px 5px",fontSize:10,color:r.color,fontWeight:600,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",cursor:"pointer"}}>{fmtTS(b.start_at)} {b.title}</div>;
-                })}
-                {dbs.length>3&&<div style={{fontSize:9,color:"#94A3B8",paddingLeft:3}}>+{dbs.length-3}개</div>}
-              </div>
-            </div>
-          );
-        })}
+      {/* ✅ 가로 스크롤 래퍼 — 7컬럼이 항상 최소 너비 유지 */}
+      <div style={{overflowX:"auto", WebkitOverflowScrolling:"touch" as any}}>
+        <div style={{minWidth: GRID_MIN_W}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",background:"#F8FAFC",borderBottom:"1px solid #E2E8F0"}}>
+            {DAY_NAMES.map((n,i)=><div key={n} style={{padding:"8px 0",textAlign:"center",fontSize:11,fontWeight:700,color:i===0?"#EF4444":i===6?"#3B82F6":"#64748B"}}>{n}</div>)}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>
+            {cells.map((day,idx)=>{
+              if(!day) return <div key={`e${idx}`} style={{minHeight:80,borderRight:"1px solid #F1F5F9",borderBottom:"1px solid #F1F5F9",background:"#FAFAFA"}}/>;
+              const ds=`${year}-${fmt2(month+1)}-${fmt2(day)}`;
+              const dbs=bookings.filter(b=>tsDate(b.start_at)===ds&&!b.autoCancelled);
+              const isToday=ds===today,isSel=ds===selectedDate;
+              const dow=(firstDay+day-1)%7;
+              return(
+                <div key={day} onClick={()=>onDayClick(ds)}
+                  style={{minHeight:80,borderRight:"1px solid #F1F5F9",borderBottom:"1px solid #F1F5F9",padding:"5px 4px",cursor:"pointer",background:isSel?"#EEF2FF":isToday?"#F0FDF4":"#fff",transition:"background 0.12s"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+                    <span style={{width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%",fontSize:11,fontWeight:isToday?800:500,background:isToday?"#111111":"transparent",color:isToday?"#fff":dow===0?"#EF4444":dow===6?"#3B82F6":"#374151"}}>{day}</span>
+                    {dbs.length>0&&<span style={{fontSize:8,color:"#94A3B8",fontWeight:600}}>{dbs.length}</span>}
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:1}}>
+                    {dbs.slice(0,2).map(b=>{
+                      const r=(mvRooms.length>0?mvRooms:ROOMS_DB).find(r=>r.room_id===b.room_id);
+                      return <div key={b.id} onClick={e=>{e.stopPropagation();onBookingClick(b);}} style={{background:r.color+"18",borderLeft:`2px solid ${r.color}`,borderRadius:2,padding:"1px 3px",fontSize:9,color:r.color,fontWeight:600,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",cursor:"pointer"}}>{b.title}</div>;
+                    })}
+                    {dbs.length>2&&<div style={{fontSize:8,color:"#94A3B8",paddingLeft:2}}>+{dbs.length-2}</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -355,7 +364,8 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
   return (
     <div style={{background:"#fff",borderRadius:16,border:"1px solid #E2E8F0",overflow:"hidden"}}>
       {/* 가로 스크롤 래퍼 */}
-      <div style={{overflowX:"auto"}}>
+      {/* ✅ overscrollBehaviorY: 세로 바운스가 가로 흔들림으로 번지는 것 방지 */}
+      <div style={{overflowX:"auto", overscrollBehaviorY:"none"}}>
       {/* 요일 헤더 */}
       <div style={{display:"flex",borderBottom:"1px solid #E2E8F0",background:"#F8FAFC",
         position:"sticky",top:0,zIndex:9,minWidth: LW + days.reduce((s,d)=>s+colWidths[d],0)}}>
@@ -583,10 +593,29 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
   const rooms = (dvRooms.length>0?dvRooms:ROOMS_DB).filter(r=>r.is_active);
   const totalW = CW * HOURS.length;
 
+  // ✅ iOS 터치 방향 잠금 — 세로 스크롤 중 좌우 흔들림 방지
+  const dvScrollRef = useRef<HTMLDivElement>(null);
+  const dvTouchStart = useRef<{x:number,y:number,scrollLeft:number}|null>(null);
+  const dvLockDir = useRef<'x'|'y'|null>(null);
+  const dvOnTouchStart = (e: React.TouchEvent) => {
+    if (!dvScrollRef.current) return;
+    dvTouchStart.current = { x:e.touches[0].clientX, y:e.touches[0].clientY, scrollLeft:dvScrollRef.current.scrollLeft };
+    dvLockDir.current = null;
+  };
+  const dvOnTouchMove = (e: React.TouchEvent) => {
+    if (!dvTouchStart.current || !dvScrollRef.current) return;
+    const dx = Math.abs(e.touches[0].clientX - dvTouchStart.current.x);
+    const dy = Math.abs(e.touches[0].clientY - dvTouchStart.current.y);
+    if (dvLockDir.current === null && (dx > 5 || dy > 5)) dvLockDir.current = dx > dy ? 'x' : 'y';
+    if (dvLockDir.current === 'y') dvScrollRef.current.scrollLeft = dvTouchStart.current.scrollLeft;
+  };
+
   return(
     <div style={{background:"#fff",borderRadius:16,border:"1px solid #E2E8F0",overflow:"hidden"}}>
       {/* 스크롤 컨테이너 */}
-      <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 240px)"}}>
+      {/* ✅ ref + touch 핸들러 추가 */}
+      <div ref={dvScrollRef} onTouchStart={dvOnTouchStart} onTouchMove={dvOnTouchMove}
+        style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 240px)"}}>
         <div style={{minWidth: LW + totalW}}>
 
           {/* ── 헤더: 시간축 ── */}
@@ -711,13 +740,32 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
   const minToPx = (min) => ((min - 7*60) / 60) * HH;
   const nowPx = isToday ? minToPx(now) : -1;
 
+  // ✅ iOS 터치 방향 잠금 — 세로 스크롤 중 좌우 흔들림 방지
+  const tlScrollRef = useRef<HTMLDivElement>(null);
+  const tlTouchStart = useRef<{x:number,y:number,scrollLeft:number}|null>(null);
+  const tlLockDir = useRef<'x'|'y'|null>(null);
+  const tlOnTouchStart = (e: React.TouchEvent) => {
+    if (!tlScrollRef.current) return;
+    tlTouchStart.current = { x:e.touches[0].clientX, y:e.touches[0].clientY, scrollLeft:tlScrollRef.current.scrollLeft };
+    tlLockDir.current = null;
+  };
+  const tlOnTouchMove = (e: React.TouchEvent) => {
+    if (!tlTouchStart.current || !tlScrollRef.current) return;
+    const dx = Math.abs(e.touches[0].clientX - tlTouchStart.current.x);
+    const dy = Math.abs(e.touches[0].clientY - tlTouchStart.current.y);
+    if (tlLockDir.current === null && (dx > 5 || dy > 5)) tlLockDir.current = dx > dy ? 'x' : 'y';
+    if (tlLockDir.current === 'y') tlScrollRef.current.scrollLeft = tlTouchStart.current.scrollLeft;
+  };
+
   return (
     <div style={{
       background:"#fff", borderRadius:16, border:"1px solid #E2E8F0",
       userSelect:"none", overflow:"hidden"
     }}>
       {/* ── 단일 스크롤 컨테이너: 가로+세로 동시 스크롤 ── */}
-      <div style={{overflowX:"auto", overflowY:"auto", maxHeight:"calc(100vh - 180px)"}}>
+      {/* ✅ ref + touch 핸들러 추가 */}
+      <div ref={tlScrollRef} onTouchStart={tlOnTouchStart} onTouchMove={tlOnTouchMove}
+        style={{overflowX:"auto", overflowY:"auto", maxHeight:"calc(100vh - 180px)"}}>
         {/* 전체 너비 고정 래퍼 */}
         <div style={{minWidth: TW + rooms.length * COL, position:"relative"}}>
 
