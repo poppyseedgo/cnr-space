@@ -207,9 +207,12 @@ export function MobileAgendaView({bookings, rooms, selectedDate, onBookingClick,
     return () => clearTimeout(t);
   }, [selectedDate]);
 
-  // 정렬
+  // 정렬: start_at → 같은 시간 안에서 취소/반려 맨 뒤 → floor_id → room_id
   const sorted = [...bookings].sort((a, b) => {
     if (a.start_at !== b.start_at) return a.start_at.localeCompare(b.start_at);
+    const aCan = a.autoCancelled || a.status === 'rejected';
+    const bCan = b.autoCancelled || b.status === 'rejected';
+    if (aCan !== bCan) return aCan ? 1 : -1;
     const ra = allRooms.find(r => r.room_id === a.room_id);
     const rb = allRooms.find(r => r.room_id === b.room_id);
     const fd = (ra?.floor_id ?? 99) - (rb?.floor_id ?? 99);
@@ -270,12 +273,20 @@ export function MobileAgendaView({bookings, rooms, selectedDate, onBookingClick,
         const floor = r ? getFloor(r.floor_id) : null;
         const color = r?.color || "#3B82F6";
         const sm = tsMin(b.start_at), em = tsMin(b.end_at);
-        const isAct = isToday && sm <= now && now < em;
-        const nci = isAct && !b.checkedIn;
-        const isCan = b.autoCancelled;
+        const isAct     = isToday && sm <= now && now < em;
+        const nci       = isAct && !b.checkedIn;
+        const isCan     = b.autoCancelled || b.status === 'rejected';
+        const isPending  = b.status === 'pending';
+        const isEnded   = b.earlyEnded;
         const prevB = si > 0 ? sorted[si-1] : null;
         const showTime = !prevB || prevB.start_at !== b.start_at;
         const isLast = si === sorted.length - 1;
+
+        // 컬러바 색상: 상태별 분기
+        const barColor = isCan ? "#E2E8F0"
+          : isPending ? "#F59E0B"
+          : isEnded   ? "#94A3B8"
+          : color;
 
         return (
           <div key={b.id}
@@ -283,7 +294,7 @@ export function MobileAgendaView({bookings, rooms, selectedDate, onBookingClick,
             style={{
               display:"flex", alignItems:"stretch",
               borderBottom: isLast ? "none" : "1px solid #F1F5F9",
-              background: isAct ? "#FAFFFE" : "#fff",
+              background: isPending ? "#FFFBEB" : isAct ? "#FAFFFE" : "#fff",
               opacity: isCan ? 0.5 : 1,
               cursor: isCan ? "default" : "pointer",
               minHeight: 68,
@@ -299,32 +310,50 @@ export function MobileAgendaView({bookings, rooms, selectedDate, onBookingClick,
             </div>
             {/* 컬러 바 */}
             <div style={{width:3,flexShrink:0,
-              background:isCan?"#E2E8F0":isAct?color:color,
+              background:barColor,
               margin:"12px 0",borderRadius:2}}/>
             {/* 콘텐츠 */}
             <div style={{flex:1,minWidth:0,padding:"12px 14px 12px 10px"}}>
               {/* 상태 배지 */}
               <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4,flexWrap:"wrap"}}>
-                {isAct&&!isCan&&(
+                {isAct&&!isCan&&!isEnded&&(
                   <span style={{fontSize:11,fontWeight:600,color:"#16A34A",background:"#DCFCE7",
                     padding:"1px 6px",borderRadius:8,display:"inline-flex",alignItems:"center",gap:3}}>
                     <Circle size={5} fill="#16A34A" strokeWidth={0}/>진행중
                   </span>
                 )}
-                {b.checkedIn&&!isCan&&(
+                {b.checkedIn&&!isCan&&!isEnded&&(
                   <span style={{fontSize:11,fontWeight:600,color:"#16A34A",background:"#DCFCE7",
                     padding:"1px 6px",borderRadius:8,display:"inline-flex",alignItems:"center",gap:3}}>
                     <CheckCircle2 size={10} strokeWidth={2}/>체크인
                   </span>
                 )}
-                {isCan&&(
+                {isPending&&(
+                  <span style={{fontSize:11,fontWeight:600,color:"#D97706",background:"#FEF3C7",
+                    padding:"1px 6px",borderRadius:8,display:"inline-flex",alignItems:"center",gap:3}}>
+                    <AlertCircle size={10} strokeWidth={2}/>승인 대기
+                  </span>
+                )}
+                {isEnded&&!isCan&&(
+                  <span style={{fontSize:11,fontWeight:600,color:"#64748B",background:"#F1F5F9",
+                    padding:"1px 6px",borderRadius:8,display:"inline-flex",alignItems:"center",gap:3}}>
+                    <CheckCheck size={10} strokeWidth={2}/>완료
+                  </span>
+                )}
+                {b.status==="rejected"&&(
+                  <span style={{fontSize:11,fontWeight:600,color:"#DC2626",background:"#FEE2E2",
+                    padding:"1px 6px",borderRadius:8,display:"inline-flex",alignItems:"center",gap:3}}>
+                    <Ban size={10} strokeWidth={2}/>반려됨
+                  </span>
+                )}
+                {isCan&&b.status!=="rejected"&&(
                   <span style={{fontSize:11,color:"#94A3B8",background:"#F1F5F9",
                     padding:"1px 6px",borderRadius:8}}>취소됨</span>
                 )}
               </div>
               {/* 제목 */}
               <div style={{fontSize:15,fontWeight:700,
-                color:isCan?"#94A3B8":"#111111",
+                color:isCan?"#94A3B8":isEnded?"#64748B":"#111111",
                 textDecoration:isCan?"line-through":"none",
                 whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
                 marginBottom:3}}>
@@ -332,12 +361,12 @@ export function MobileAgendaView({bookings, rooms, selectedDate, onBookingClick,
               </div>
               {/* 부가 정보 */}
               <div style={{fontSize:13,color:"#64748B"}}>
-                <span style={{color:isCan?"#94A3B8":color,fontWeight:600}}>{r?.room_name}</span>
+                <span style={{color:isCan?"#94A3B8":isEnded?"#94A3B8":color,fontWeight:600}}>{r?.room_name}</span>
                 {floor&&` · ${floor.floor_name}`}
                 {b.user&&` · ${b.user}`}
               </div>
-              {/* 체크인 버튼 */}
-              {isToday&&!isCan&&!b.checkedIn&&(
+              {/* 체크인 버튼 — confirmed 상태만, pending/ended/cancelled 제외 */}
+              {isToday&&!isCan&&!b.checkedIn&&!isEnded&&!isPending&&(
                 <button className="btn"
                   onClick={e=>{e.stopPropagation();if(nci)onCheckIn(b.id);}}
                   disabled={!nci}
@@ -348,6 +377,12 @@ export function MobileAgendaView({bookings, rooms, selectedDate, onBookingClick,
                   <CheckCircle2 size={14} strokeWidth={2}/>
                   {nci?"체크인":"체크인 대기"}
                 </button>
+              )}
+              {/* 승인 대기 안내 */}
+              {isPending&&(
+                <div style={{marginTop:6,fontSize:12,color:"#D97706"}}>
+                  관리자 승인 후 확정됩니다
+                </div>
               )}
             </div>
           </div>
