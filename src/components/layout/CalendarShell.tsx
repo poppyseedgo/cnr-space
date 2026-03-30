@@ -188,6 +188,175 @@ export function MobileCalendarHeader({selectedDate, setSelectedDate, bookings, f
   );
 }
 
+// ─── Mobile Agenda View ───────────────────────────────────────────────────────
+// 모바일 전용 단일 통합 뷰
+// 정렬: start_at ASC → 동일 시간이면 floor_id ASC → room_id ASC
+// 현재 시간 마커 자동 삽입 + 마운트 시 스크롤
+export function MobileAgendaView({bookings, rooms, selectedDate, onBookingClick, onNewBooking, onCheckIn}) {
+  const isToday = selectedDate === todayStr();
+  const now = nowMinutes();
+  const nowMarkerRef = useRef<HTMLDivElement>(null);
+  const allRooms = rooms.length > 0 ? rooms : ROOMS_DB;
+
+  // 현재 시간 위치로 자동 스크롤 (오늘만, 날짜 바뀔 때마다)
+  useEffect(() => {
+    if (!isToday) return;
+    const t = setTimeout(() => {
+      nowMarkerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+    return () => clearTimeout(t);
+  }, [selectedDate]);
+
+  // 정렬
+  const sorted = [...bookings].sort((a, b) => {
+    if (a.start_at !== b.start_at) return a.start_at.localeCompare(b.start_at);
+    const ra = allRooms.find(r => r.room_id === a.room_id);
+    const rb = allRooms.find(r => r.room_id === b.room_id);
+    const fd = (ra?.floor_id ?? 99) - (rb?.floor_id ?? 99);
+    if (fd !== 0) return fd;
+    return a.room_id - b.room_id;
+  });
+
+  // 현재 시간 마커 삽입 위치
+  let nowIdx = -1;
+  if (isToday) {
+    const i = sorted.findIndex(b => tsMin(b.start_at) > now);
+    nowIdx = i === -1 ? sorted.length : i;
+  }
+
+  // booking + now-marker 통합 목록
+  type RItem = {type:'booking'; b:any; si:number} | {type:'now'};
+  const items: RItem[] = [];
+  sorted.forEach((b, i) => {
+    if (isToday && nowIdx === i) items.push({type:'now'});
+    items.push({type:'booking', b, si:i});
+  });
+  if (isToday && nowIdx === sorted.length) items.push({type:'now'});
+
+  if (sorted.length === 0) {
+    return (
+      <div style={{background:"#fff",borderRadius:16,border:"1px solid #E2E8F0"}}>
+        <div onClick={()=>onNewBooking(selectedDate,9,null)}
+          style={{textAlign:"center",padding:"52px 0",cursor:"pointer"}}>
+          <div style={{fontSize:15,fontWeight:600,color:"#94A3B8",marginBottom:6}}>예약 없음</div>
+          <div style={{fontSize:13,color:"#CBD5E1"}}>탭하여 예약 추가</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{background:"#fff",borderRadius:16,border:"1px solid #E2E8F0",overflow:"hidden"}}>
+      {items.map((item, renderIdx) => {
+        // ── 현재 시간 마커 ──
+        if (item.type === 'now') {
+          return (
+            <div key="__now__" ref={nowMarkerRef}
+              style={{display:"flex",alignItems:"center",gap:8,padding:"7px 16px",
+                background:"#FFF5F5",borderTop:"1px solid #FEE2E2",borderBottom:"1px solid #FEE2E2"}}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:"#EF4444",flexShrink:0,
+                boxShadow:"0 0 0 3px #FEE2E2"}}/>
+              <span style={{fontSize:12,fontWeight:700,color:"#EF4444"}}>
+                {fmt2(Math.floor(now/60))}:{fmt2(now%60)} 현재
+              </span>
+              <div style={{flex:1,height:1,background:"#FECACA"}}/>
+            </div>
+          );
+        }
+
+        // ── 예약 카드 ──
+        const {b, si} = item;
+        const r = allRooms.find(r => r.room_id === b.room_id);
+        const floor = r ? getFloor(r.floor_id) : null;
+        const color = r?.color || "#3B82F6";
+        const sm = tsMin(b.start_at), em = tsMin(b.end_at);
+        const isAct = isToday && sm <= now && now < em;
+        const nci = isAct && !b.checkedIn;
+        const isCan = b.autoCancelled;
+        const prevB = si > 0 ? sorted[si-1] : null;
+        const showTime = !prevB || prevB.start_at !== b.start_at;
+        const isLast = si === sorted.length - 1;
+
+        return (
+          <div key={b.id}
+            onClick={()=>{ if(!isCan) onBookingClick(b); }}
+            style={{
+              display:"flex", alignItems:"stretch",
+              borderBottom: isLast ? "none" : "1px solid #F1F5F9",
+              background: isAct ? "#FAFFFE" : "#fff",
+              opacity: isCan ? 0.5 : 1,
+              cursor: isCan ? "default" : "pointer",
+              minHeight: 68,
+            }}>
+            {/* 시간 컬럼 — 같은 시간 연속이면 숨김 */}
+            <div style={{
+              width:66, flexShrink:0, padding:"14px 0 14px 14px",
+              display:"flex", flexDirection:"column", justifyContent:"flex-start",
+              visibility: showTime ? "visible" : "hidden",
+            }}>
+              <div style={{fontSize:14,fontWeight:700,color:"#1E293B"}}>{fmtTS(b.start_at)}</div>
+              <div style={{fontSize:12,color:"#94A3B8",marginTop:2}}>{fmtTS(b.end_at)}</div>
+            </div>
+            {/* 컬러 바 */}
+            <div style={{width:3,flexShrink:0,
+              background:isCan?"#E2E8F0":isAct?color:color,
+              margin:"12px 0",borderRadius:2}}/>
+            {/* 콘텐츠 */}
+            <div style={{flex:1,minWidth:0,padding:"12px 14px 12px 10px"}}>
+              {/* 상태 배지 */}
+              <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4,flexWrap:"wrap"}}>
+                {isAct&&!isCan&&(
+                  <span style={{fontSize:11,fontWeight:600,color:"#16A34A",background:"#DCFCE7",
+                    padding:"1px 6px",borderRadius:8,display:"inline-flex",alignItems:"center",gap:3}}>
+                    <Circle size={5} fill="#16A34A" strokeWidth={0}/>진행중
+                  </span>
+                )}
+                {b.checkedIn&&!isCan&&(
+                  <span style={{fontSize:11,fontWeight:600,color:"#16A34A",background:"#DCFCE7",
+                    padding:"1px 6px",borderRadius:8,display:"inline-flex",alignItems:"center",gap:3}}>
+                    <CheckCircle2 size={10} strokeWidth={2}/>체크인
+                  </span>
+                )}
+                {isCan&&(
+                  <span style={{fontSize:11,color:"#94A3B8",background:"#F1F5F9",
+                    padding:"1px 6px",borderRadius:8}}>취소됨</span>
+                )}
+              </div>
+              {/* 제목 */}
+              <div style={{fontSize:15,fontWeight:700,
+                color:isCan?"#94A3B8":"#111111",
+                textDecoration:isCan?"line-through":"none",
+                whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
+                marginBottom:3}}>
+                {b.title}
+              </div>
+              {/* 부가 정보 */}
+              <div style={{fontSize:13,color:"#64748B"}}>
+                <span style={{color:isCan?"#94A3B8":color,fontWeight:600}}>{r?.room_name}</span>
+                {floor&&` · ${floor.floor_name}`}
+                {b.user&&` · ${b.user}`}
+              </div>
+              {/* 체크인 버튼 */}
+              {isToday&&!isCan&&!b.checkedIn&&(
+                <button className="btn"
+                  onClick={e=>{e.stopPropagation();if(nci)onCheckIn(b.id);}}
+                  disabled={!nci}
+                  style={{marginTop:9,background:nci?"#16A34A":"#E2E8F0",
+                    color:nci?"#fff":"#94A3B8",padding:"7px 16px",fontSize:13,
+                    borderRadius:9,cursor:nci?"pointer":"not-allowed",
+                    display:"inline-flex",alignItems:"center",gap:5}}>
+                  <CheckCircle2 size={14} strokeWidth={2}/>
+                  {nci?"체크인":"체크인 대기"}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── CalendarShell ────────────────────────────────────────────────────────────
 export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setSelectedDate, calView, setCalView, onBookingClick, onNewBooking, onCheckIn, filterFloor, setFilterFloor}) {
   const { isMobile, isTablet } = useBreakpoint();
@@ -247,25 +416,17 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
 
   return (
     <div>
-      {/* ── 모바일 툴바: 뷰탭 + 오늘 버튼만 ── */}
       {isMobile ? (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 mb-2"
-          style={{padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
-          <div className="flex dark:bg-slate-700 rounded-xl p-0.5 gap-0.5" style={{background:"#F3F4F8",flexShrink:0}}>
-            {VIEWS.map(v=>(
-              <button key={v.id} className="btn rounded-lg font-semibold"
-                onClick={()=>setCalView(v.id)}
-                style={{background:calView===v.id?"#111111":"transparent",
-                  color:calView===v.id?"#fff":"#64748B",
-                  padding:"7px 14px",fontSize:13,whiteSpace:"nowrap",flexShrink:0}}>
-                {v.label}
-              </button>
-            ))}
-          </div>
-          <div style={{flex:1}}/>
+        /* ── 모바일: 날짜 헤더만 (뷰탭 없음) ── */
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+          padding:"2px 4px 10px",marginBottom:0}}>
+          <span style={{fontSize:16,fontWeight:700,color:"#111111"}}>
+            {selectedDate} ({DAY_NAMES[dateToObj(selectedDate).getDay()]})
+          </span>
           {selectedDate!==todayStr()&&(
             <button className="btn" onClick={()=>setSelectedDate(todayStr())}
-              style={{background:"#111111",color:"#fff",padding:"6px 12px",fontSize:12,borderRadius:10}}>
+              style={{background:"#111111",color:"#fff",padding:"6px 13px",
+                fontSize:13,borderRadius:10}}>
               오늘
             </button>
           )}
@@ -385,17 +546,31 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
         <MobileCalendarHeader
           selectedDate={selectedDate}
           setSelectedDate={setSelectedDate}
-          bookings={filteredBks}
+          bookings={bookings}
           filterFloor={filterFloor}
           setFilterFloor={setFilterFloor}
         />
       )}
 
       {/* ── 뷰 렌더링 ── */}
-      {calView==="monthly"  && !isMobile && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d=>{setSelectedDate(d);setCalView("daily");}} onBookingClick={onBookingClick} rooms={allRooms} />}
-      {calView==="weekly"   && <WeeklyView  bookings={filteredBks} selectedDate={selectedDate} onDateClick={setSelectedDate} onBlockClick={onBookingClick} onEmptyClick={(d,h)=>onNewBooking(d,h,null)} onCheckIn={onCheckIn} rooms={allRooms} />}
-      {calView==="daily"    && <DailyView   bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate)} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} rooms={allRooms} />}
-      {calView==="timeline" && <TimelineView bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate)} rooms={filteredRooms} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} />}
+      {isMobile ? (
+        /* 모바일: 뷰탭 없이 MobileAgendaView 단일 렌더링 */
+        <MobileAgendaView
+          bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate)}
+          rooms={allRooms}
+          selectedDate={selectedDate}
+          onBookingClick={onBookingClick}
+          onNewBooking={onNewBooking}
+          onCheckIn={onCheckIn}
+        />
+      ) : (
+        <>
+          {calView==="monthly"  && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d=>{setSelectedDate(d);setCalView("daily");}} onBookingClick={onBookingClick} rooms={allRooms} />}
+          {calView==="weekly"   && <WeeklyView  bookings={filteredBks} selectedDate={selectedDate} onDateClick={setSelectedDate} onBlockClick={onBookingClick} onEmptyClick={(d,h)=>onNewBooking(d,h,null)} onCheckIn={onCheckIn} rooms={allRooms} />}
+          {calView==="daily"    && <DailyView   bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate)} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} rooms={allRooms} />}
+          {calView==="timeline" && <TimelineView bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate)} rooms={filteredRooms} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} />}
+        </>
+      )}
     </div>
   );
 }
