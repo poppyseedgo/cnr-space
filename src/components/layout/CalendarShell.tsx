@@ -8,9 +8,196 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, FLOORS, getFloor, getRoomFeatures, getRoomById, getRoomThumbnail, getRoomGallery } from '../../data/master'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
+// ─── Mobile Calendar Header ───────────────────────────────────────────────────
+// 모바일 전용 공통 헤더: Week Strip + 드래그로 Month Grid 확장 + 층 필터
+export function MobileCalendarHeader({selectedDate, setSelectedDate, bookings, filterFloor, setFilterFloor}) {
+  const today = todayStr();
+  const weekStart = getWeekStart(selectedDate);
+  const days = Array.from({length:7}, (_,i) => addDays(weekStart,i));
+
+  // 월 그리드용 state (selectedDate 기준)
+  const selD = dateToObj(selectedDate);
+  const [dpYear, setDpYear]   = useState(selD.getFullYear());
+  const [dpMonth, setDpMonth] = useState(selD.getMonth());
+  useEffect(()=>{ const d=dateToObj(selectedDate); setDpYear(d.getFullYear()); setDpMonth(d.getMonth()); }, [selectedDate]);
+
+  // 드래그 확장
+  const COLLAPSED_H = 178;
+  const EXPANDED_H  = 390;
+  const [expanded, setExpanded] = useState(false);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const isDragging = useRef(false);
+  const dragStartY = useRef(0);
+  const dragStartH = useRef(0);
+
+  const setH = (h: number) => { if(headerRef.current) headerRef.current.style.height = h + 'px'; };
+  const onHandleTouchStart = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    isDragging.current = true;
+    dragStartY.current = e.touches[0].clientY;
+    dragStartH.current = expanded ? EXPANDED_H : COLLAPSED_H;
+    if(headerRef.current) headerRef.current.style.transition = 'none';
+  };
+  const onHandleTouchMove = (e: React.TouchEvent) => {
+    if(!isDragging.current) return;
+    const delta = e.touches[0].clientY - dragStartY.current;
+    setH(Math.max(COLLAPSED_H, Math.min(EXPANDED_H, dragStartH.current + delta)));
+  };
+  const onHandleTouchEnd = () => {
+    if(!isDragging.current) return;
+    isDragging.current = false;
+    if(headerRef.current) headerRef.current.style.transition = 'height 0.28s cubic-bezier(0.4,0,0.2,1)';
+    const cur = headerRef.current ? parseInt(headerRef.current.style.height) : (expanded ? EXPANDED_H : COLLAPSED_H);
+    const snap = cur > (COLLAPSED_H + EXPANDED_H) / 2;
+    setExpanded(snap);
+    setH(snap ? EXPANDED_H : COLLAPSED_H);
+  };
+
+  // 월 그리드 데이터
+  const firstDay    = new Date(dpYear, dpMonth, 1).getDay();
+  const daysInMonth = new Date(dpYear, dpMonth+1, 0).getDate();
+  const cells: (number|null)[] = [];
+  for(let i=0;i<firstDay;i++) cells.push(null);
+  for(let i=1;i<=daysInMonth;i++) cells.push(i);
+  while(cells.length%7!==0) cells.push(null);
+
+  const dpPrev = () => { if(dpMonth===0){setDpYear(y=>y-1);setDpMonth(11);}else setDpMonth(m=>m-1); };
+  const dpNext = () => { if(dpMonth===11){setDpYear(y=>y+1);setDpMonth(0);}else setDpMonth(m=>m+1); };
+
+  return (
+    <div ref={headerRef}
+      style={{height:COLLAPSED_H, overflow:"hidden", background:"#fff",
+        borderRadius:16, border:"1px solid #E2E8F0", marginBottom:8,
+        transition:"height 0.28s cubic-bezier(0.4,0,0.2,1)", position:"relative", userSelect:"none"}}>
+
+      {/* ── Week Strip ── */}
+      <div style={{padding:"10px 14px 0"}}>
+        {/* 월 레이블 + 주 네비 */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+          <button className="btn" onClick={()=>setSelectedDate(addDays(weekStart,-7))}
+            style={{background:"none",padding:"2px 8px",fontSize:18,color:"#64748B",lineHeight:1}}>‹</button>
+          <span style={{fontSize:14,fontWeight:700,color:"#111111"}}>
+            {expanded
+              ? `${dpYear}년 ${MONTH_NAMES[dpMonth]}`
+              : `${selD.getFullYear()}년 ${MONTH_NAMES[selD.getMonth()]}`}
+          </span>
+          <button className="btn" onClick={()=>setSelectedDate(addDays(weekStart,7))}
+            style={{background:"none",padding:"2px 8px",fontSize:18,color:"#64748B",lineHeight:1}}>›</button>
+        </div>
+
+        {/* 요일 헤더 */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",marginBottom:4}}>
+          {DAY_NAMES.map((n,i)=>(
+            <div key={n} style={{textAlign:"center",fontSize:11,fontWeight:600,
+              color:i===0?"#EF4444":i===6?"#3B82F6":"#94A3B8"}}>{n}</div>
+          ))}
+        </div>
+
+        {/* 주 날짜 */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>
+          {days.map(ds=>{
+            const d=dateToObj(ds), dow=d.getDay();
+            const isToday=ds===today, isSel=ds===selectedDate;
+            const dayBks=bookings.filter(b=>tsDate(b.start_at)===ds&&!b.autoCancelled);
+            return (
+              <div key={ds} onClick={()=>setSelectedDate(ds)}
+                style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,cursor:"pointer",padding:"2px 0"}}>
+                <div style={{
+                  width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",
+                  borderRadius:"50%",fontSize:14,fontWeight:isSel||isToday?700:400,
+                  background:isSel?"#111111":isToday?"#F1F5F9":"transparent",
+                  color:isSel?"#fff":isToday?"#111111":dow===0?"#EF4444":dow===6?"#3B82F6":"#374151",
+                }}>
+                  {d.getDate()}
+                </div>
+                <div style={{display:"flex",gap:2}}>
+                  {dayBks.slice(0,3).map((_,i)=>(
+                    <div key={i} style={{width:4,height:4,borderRadius:"50%",background:"#3B82F6"}}/>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── 드래그 핸들 ── */}
+      <div
+        onTouchStart={onHandleTouchStart}
+        onTouchMove={onHandleTouchMove}
+        onTouchEnd={onHandleTouchEnd}
+        onClick={()=>{ setExpanded(e=>!e); setH(!expanded ? EXPANDED_H : COLLAPSED_H); if(headerRef.current) headerRef.current.style.transition='height 0.28s cubic-bezier(0.4,0,0.2,1)'; }}
+        style={{display:"flex",alignItems:"center",justifyContent:"center",
+          padding:"8px 0",cursor:"pointer",touchAction:"none"}}>
+        <div style={{width:36,height:3,borderRadius:2,background:"#E2E8F0"}}/>
+      </div>
+
+      {/* ── Month Grid (expanded) ── */}
+      <div style={{padding:"0 14px",opacity:expanded?1:0,transition:"opacity 0.2s",pointerEvents:expanded?"auto":"none"}}>
+        {/* 월 네비 */}
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+          <button className="btn" onClick={dpPrev} style={{background:"none",padding:"2px 8px",fontSize:16,color:"#64748B"}}>‹</button>
+          <button className="btn" onClick={dpNext} style={{background:"none",padding:"2px 8px",fontSize:16,color:"#64748B"}}>›</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1}}>
+          {cells.map((day,idx)=>{
+            if(!day) return <div key={`e${idx}`} style={{height:32}}/>;
+            const ds=`${dpYear}-${fmt2(dpMonth+1)}-${fmt2(day)}`;
+            const isToday=ds===today, isSel=ds===selectedDate;
+            const dow=(firstDay+day-1)%7;
+            const dayBks=bookings.filter(b=>tsDate(b.start_at)===ds&&!b.autoCancelled);
+            return (
+              <div key={day} onClick={()=>{setSelectedDate(ds);setExpanded(false);setH(COLLAPSED_H);if(headerRef.current)headerRef.current.style.transition='height 0.28s cubic-bezier(0.4,0,0.2,1)';}}
+                style={{display:"flex",flexDirection:"column",alignItems:"center",cursor:"pointer",padding:"1px 0"}}>
+                <div style={{
+                  width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",
+                  borderRadius:"50%",fontSize:12,fontWeight:isSel||isToday?700:400,
+                  background:isSel?"#111111":isToday?"#F1F5F9":"transparent",
+                  color:isSel?"#fff":isToday?"#111111":dow===0?"#EF4444":dow===6?"#3B82F6":"#374151",
+                }}>
+                  {day}
+                </div>
+                {dayBks.length>0&&<div style={{width:4,height:4,borderRadius:"50%",background:"#3B82F6",marginTop:1}}/>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── 층 필터 (항상 하단 고정) ── */}
+      <div style={{
+        position:"absolute",bottom:0,left:0,right:0,
+        borderTop:"1px solid #F1F5F9",padding:"7px 14px",
+        display:"flex",gap:6,overflowX:"auto",background:"#fff",
+        scrollbarWidth:"none",
+      }}>
+        {[{id:"ALL",label:"전체"},...FLOORS.map(f=>({id:f.floor_id,label:f.floor_name}))].map(f=>(
+          <button key={f.id} onClick={()=>setFilterFloor(f.id==="ALL"?"ALL":f.id)}
+            style={{
+              flexShrink:0,whiteSpace:"nowrap",
+              padding:"5px 13px",fontSize:12,borderRadius:20,cursor:"pointer",
+              border:`1px solid ${filterFloor===(f.id==="ALL"?"ALL":f.id)?"#111111":"#E2E8F0"}`,
+              background:filterFloor===(f.id==="ALL"?"ALL":f.id)?"#111111":"transparent",
+              color:filterFloor===(f.id==="ALL"?"ALL":f.id)?"#fff":"#64748B",
+            }}>
+            {f.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── CalendarShell ────────────────────────────────────────────────────────────
 export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setSelectedDate, calView, setCalView, onBookingClick, onNewBooking, onCheckIn, filterFloor, setFilterFloor}) {
   const { isMobile, isTablet } = useBreakpoint();
-  const VIEWS=[{id:"timeline",label:"타임라인"},{id:"monthly",label:"월"},{id:"weekly",label:"주"},{id:"daily",label:"일"}];
+  // 모바일에서는 타임라인/주/일만, 월 숨김
+  const VIEWS_DESKTOP=[{id:"timeline",label:"타임라인"},{id:"monthly",label:"월"},{id:"weekly",label:"주"},{id:"daily",label:"일"}];
+  const VIEWS_MOBILE =[{id:"timeline",label:"타임"},{id:"weekly",label:"주"},{id:"daily",label:"일"}];
+  const VIEWS = isMobile ? VIEWS_MOBILE : VIEWS_DESKTOP;
+
+  // 모바일에서 월 뷰 진입 시 타임라인으로 리다이렉트
+  useEffect(()=>{ if(isMobile && calView==="monthly") setCalView("timeline"); }, [isMobile]);
   const navLabel=()=>{
     const d=dateToObj(selectedDate);
     if(calView==="monthly") return `${d.getFullYear()}년 ${MONTH_NAMES[d.getMonth()]}`;
@@ -60,150 +247,153 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
 
   return (
     <div>
-      {/* 툴바 — 모바일: 2행, 데스크탑: 1행 */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 mb-4"
-        style={{padding: isMobile ? "10px 12px" : "12px 18px", position:"relative", zIndex:50}}>
-
-        {/* 모바일: 1행 — 뷰탭 + 날짜 네비 */}
-        {/* 데스크탑: 단일 flex 행 */}
-        <div style={{display:"flex", alignItems:"center", gap: isMobile ? 8 : 10,
-          flexWrap: isMobile ? "wrap" : "nowrap", position:"relative"}}>
-
-        {/* 뷰 탭 */}
-        <div className="flex dark:bg-slate-700 rounded-xl p-0.5 gap-0.5"
-          style={{background:"#F3F4F8", flexShrink:0, order: isMobile ? 1 : 0}}>
-          {VIEWS.map(v=>(
-            <button key={v.id} className="btn rounded-lg font-semibold"
-              onClick={()=>setCalView(v.id)}
-              style={{
-                background: calView===v.id ? "#111111" : "transparent",
-                color:      calView===v.id ? "#fff"    : "#64748B",
-                padding:    isMobile ? "6px 10px" : "8px 16px",
-                fontSize:   isMobile ? 12 : 13,
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}>
-              {isMobile ? v.label.slice(0,2) : v.label}
-            </button>
-          ))}
-        </div>
-
-        {/* 날짜 네비 */}
-        <div className="flex items-center gap-1.5"
-          style={{
-            flex: isMobile ? "1 1 100%" : 1,
-            justifyContent: "center",
-            order: isMobile ? 3 : 1,
-            position: isMobile ? "static" : "absolute",
-            left: isMobile ? "auto" : "50%",
-            transform: isMobile ? "none" : "translateX(-50%)",
-            zIndex: 51,
-          }}>
-          <button className="btn dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex-shrink-0"
-            style={{padding:"7px 14px", fontSize:20, background:"#FFFFFF", lineHeight:1}} onClick={()=>navigate(-1)}>‹</button>
-
-          {(calView==="timeline"||calView==="daily") ? (
-            <div ref={dpRef} style={{position:"relative",flex:1,minWidth:0}}>
-              <button className="btn dark:bg-slate-700 rounded-lg"
-                onClick={()=>setShowDatePicker(v=>!v)}
-                style={{width:"100%",padding:"5px 14px",background:"#FFFFFF",whiteSpace:"nowrap",
-                  border:showDatePicker?"1px solid #111111":"1px solid transparent",
-                  display:"flex",alignItems:"center",justifyContent:"center",gap:6,cursor:"pointer"}}>
-                <span style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:isMobile?14:16,fontWeight:700,color:"#111111"}}>
-                  <Calendar size={14} strokeWidth={1.8}/> {selectedDate} ({DAY_NAMES[dateToObj(selectedDate).getDay()]})
-                </span>
-                {showDatePicker ? null : null}
+      {/* ── 모바일 툴바: 뷰탭 + 오늘 버튼만 ── */}
+      {isMobile ? (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 mb-2"
+          style={{padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
+          <div className="flex dark:bg-slate-700 rounded-xl p-0.5 gap-0.5" style={{background:"#F3F4F8",flexShrink:0}}>
+            {VIEWS.map(v=>(
+              <button key={v.id} className="btn rounded-lg font-semibold"
+                onClick={()=>setCalView(v.id)}
+                style={{background:calView===v.id?"#111111":"transparent",
+                  color:calView===v.id?"#fff":"#64748B",
+                  padding:"7px 14px",fontSize:13,whiteSpace:"nowrap",flexShrink:0}}>
+                {v.label}
               </button>
-              {showDatePicker && (
-                <div style={{position:"absolute",top:"calc(100% + 4px)",left:"50%",transform:"translateX(-50%)",zIndex:9999,
-                  background:"#fff",border:"1px solid #E2E8F0",borderRadius:12,
-                  boxShadow:"0 8px 32px rgba(0,0,0,0.12)",padding:"14px",minWidth:260}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                    <button className="btn" onClick={e=>{e.stopPropagation();dpPrevMonth();}}
-                      style={{background:"none",color:"#111111",padding:"4px 10px",fontSize:16}}>‹</button>
-                    <span style={{fontSize:14,fontWeight:700,color:"#111111"}}>{dpYear}년 {MONTH_NAMES[dpMonth]}</span>
-                    <button className="btn" onClick={e=>{e.stopPropagation();dpNextMonth();}}
-                      style={{background:"none",color:"#111111",padding:"4px 10px",fontSize:16}}>›</button>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",marginBottom:4}}>
-                    {DAY_NAMES.map((n,i)=>(
-                      <div key={n} style={{textAlign:"center",fontSize:10,fontWeight:700,
-                        color:i===0?"#EF4444":i===6?"#3B82F6":"#94A3B8",padding:"2px 0"}}>{n}</div>
-                    ))}
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
-                    {dpCells.map((day,idx)=>{
-                      if(!day) return <div key={`e${idx}`}/>;
-                      const ds=`${dpYear}-${fmt2(dpMonth+1)}-${fmt2(day)}`;
-                      const isSel=ds===selectedDate, isToday2=ds===today;
-                      const dow=(dpFirstDay+day-1)%7;
-                      return (
-                        <div key={day} onClick={()=>dpSelectDate(ds)}
-                          style={{textAlign:"center",padding:"5px 2px",borderRadius:6,fontSize:12,
-                            fontWeight:isSel||isToday2?700:400,
-                            background:isSel?"#111111":isToday2?"#EFF6FF":"transparent",
-                            color:isSel?"#fff":isToday2?"#3B82F6":dow===0?"#EF4444":dow===6?"#3B82F6":"#374151",
-                            cursor:"pointer"}}
-                          onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background="#F1F5F9";}}
-                          onMouseLeave={e=>{if(!isSel)e.currentTarget.style.background=isToday2?"#EFF6FF":"transparent";}}>
-                          {day}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div style={{marginTop:10,paddingTop:8,borderTop:"1px solid #F1F5F9",textAlign:"center"}}>
-                    <button className="btn" onClick={()=>dpSelectDate(today)}
-                      style={{background:"#111111",color:"#fff",padding:"5px 16px",fontSize:11,borderRadius:8}}>
-                      오늘로 이동
-                    </button>
-                  </div>
+            ))}
+          </div>
+          <div style={{flex:1}}/>
+          {selectedDate!==todayStr()&&(
+            <button className="btn" onClick={()=>setSelectedDate(todayStr())}
+              style={{background:"#111111",color:"#fff",padding:"6px 12px",fontSize:12,borderRadius:10}}>
+              오늘
+            </button>
+          )}
+        </div>
+      ) : (
+        /* ── 데스크탑 툴바 ── */
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 mb-4"
+          style={{padding:"12px 18px", position:"relative", zIndex:50}}>
+          <div style={{display:"flex", alignItems:"center", gap:10, flexWrap:"nowrap", position:"relative"}}>
+            <div className="flex dark:bg-slate-700 rounded-xl p-0.5 gap-0.5"
+              style={{background:"#F3F4F8", flexShrink:0}}>
+              {VIEWS.map(v=>(
+                <button key={v.id} className="btn rounded-lg font-semibold"
+                  onClick={()=>setCalView(v.id)}
+                  style={{background:calView===v.id?"#111111":"transparent",
+                    color:calView===v.id?"#fff":"#64748B",
+                    padding:"8px 16px",fontSize:13,whiteSpace:"nowrap",flexShrink:0}}>
+                  {v.label}
+                </button>
+              ))}
+            </div>
+            {/* 날짜 네비 */}
+            <div className="flex items-center gap-1.5"
+              style={{position:"absolute",left:"50%",transform:"translateX(-50%)",flexShrink:0,zIndex:51}}>
+              <button className="btn dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex-shrink-0"
+                style={{padding:"7px 14px",fontSize:20,background:"#FFFFFF",lineHeight:1}} onClick={()=>navigate(-1)}>‹</button>
+              {(calView==="timeline"||calView==="daily") ? (
+                <div ref={dpRef} style={{position:"relative",flex:1,minWidth:0}}>
+                  <button className="btn dark:bg-slate-700 rounded-lg"
+                    onClick={()=>setShowDatePicker(v=>!v)}
+                    style={{width:"100%",padding:"5px 14px",background:"#FFFFFF",whiteSpace:"nowrap",
+                      border:showDatePicker?"1px solid #111111":"1px solid transparent",
+                      display:"flex",alignItems:"center",justifyContent:"center",gap:6,cursor:"pointer"}}>
+                    <span style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:16,fontWeight:700,color:"#111111"}}>
+                      <Calendar size={14} strokeWidth={1.8}/> {selectedDate} ({DAY_NAMES[dateToObj(selectedDate).getDay()]})
+                    </span>
+                  </button>
+                  {showDatePicker && (
+                    <div style={{position:"absolute",top:"calc(100% + 4px)",left:"50%",transform:"translateX(-50%)",zIndex:9999,
+                      background:"#fff",border:"1px solid #E2E8F0",borderRadius:12,
+                      boxShadow:"0 8px 32px rgba(0,0,0,0.12)",padding:"14px",minWidth:260}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                        <button className="btn" onClick={e=>{e.stopPropagation();dpPrevMonth();}}
+                          style={{background:"none",color:"#111111",padding:"4px 10px",fontSize:16}}>‹</button>
+                        <span style={{fontSize:14,fontWeight:700,color:"#111111"}}>{dpYear}년 {MONTH_NAMES[dpMonth]}</span>
+                        <button className="btn" onClick={e=>{e.stopPropagation();dpNextMonth();}}
+                          style={{background:"none",color:"#111111",padding:"4px 10px",fontSize:16}}>›</button>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",marginBottom:4}}>
+                        {DAY_NAMES.map((n,i)=>(
+                          <div key={n} style={{textAlign:"center",fontSize:10,fontWeight:700,
+                            color:i===0?"#EF4444":i===6?"#3B82F6":"#94A3B8",padding:"2px 0"}}>{n}</div>
+                        ))}
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+                        {dpCells.map((day,idx)=>{
+                          if(!day) return <div key={`e${idx}`}/>;
+                          const ds=`${dpYear}-${fmt2(dpMonth+1)}-${fmt2(day)}`;
+                          const isSel=ds===selectedDate, isToday2=ds===today;
+                          const dow=(dpFirstDay+day-1)%7;
+                          return (
+                            <div key={day} onClick={()=>dpSelectDate(ds)}
+                              style={{textAlign:"center",padding:"5px 2px",borderRadius:6,fontSize:12,
+                                fontWeight:isSel||isToday2?700:400,
+                                background:isSel?"#111111":isToday2?"#EFF6FF":"transparent",
+                                color:isSel?"#fff":isToday2?"#3B82F6":dow===0?"#EF4444":dow===6?"#3B82F6":"#374151",
+                                cursor:"pointer"}}
+                              onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background="#F1F5F9";}}
+                              onMouseLeave={e=>{if(!isSel)e.currentTarget.style.background=isToday2?"#EFF6FF":"transparent";}}>
+                              {day}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div style={{marginTop:10,paddingTop:8,borderTop:"1px solid #F1F5F9",textAlign:"center"}}>
+                        <button className="btn" onClick={()=>dpSelectDate(today)}
+                          style={{background:"#111111",color:"#fff",padding:"5px 16px",fontSize:11,borderRadius:8}}>
+                          오늘로 이동
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
+              ) : (
+                <span className="font-bold text-slate-900 dark:text-white whitespace-nowrap"
+                  style={{fontSize:16,flex:1,textAlign:"center"}}>
+                  {navLabel()}
+                </span>
+              )}
+              <button className="btn dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex-shrink-0"
+                style={{padding:"7px 14px",fontSize:20,background:"#FFFFFF",lineHeight:1}} onClick={()=>navigate(1)}>›</button>
+              {selectedDate!==todayStr() && (
+                <button className="btn bg-slate-900 dark:bg-slate-700 text-white dark:text-slate-900 rounded-lg flex-shrink-0"
+                  style={{padding:"5px 10px",fontSize:11}} onClick={()=>setSelectedDate(todayStr())}>오늘</button>
               )}
             </div>
-          ) : (
-            <span className="font-bold text-slate-900 dark:text-white whitespace-nowrap"
-              style={{fontSize: isMobile ? 14 : 16, flex:1, textAlign:"center"}}>
-              {navLabel()}
-            </span>
-          )}
-
-          <button className="btn dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex-shrink-0"
-            style={{padding:"7px 14px", fontSize:20, background:"#FFFFFF", lineHeight:1}} onClick={()=>navigate(1)}>›</button>
-          {selectedDate!==todayStr() && (
-            <button className="btn bg-slate-900 dark:bg-slate-700 text-white dark:text-slate-900 rounded-lg flex-shrink-0"
-              style={{padding:"5px 10px", fontSize:11}} onClick={()=>setSelectedDate(todayStr())}>오늘</button>
-          )}
+            {/* 층 필터 */}
+            <div style={{display:"flex",gap:6,flexShrink:0,marginLeft:"auto",
+              overflowX:"visible",scrollbarWidth:"none"}}>
+              {[{id:"ALL",label:"전체"},...FLOORS.map(f=>({id:f.floor_id,label:f.floor_name}))].map(f=>(
+                <button key={f.id} className="btn rounded-full flex-shrink-0 border"
+                  onClick={()=>setFilterFloor(f.id==="ALL"?"ALL":f.id)}
+                  style={{padding:"4px 12px",fontSize:11,whiteSpace:"nowrap",
+                    background:filterFloor===(f.id==="ALL"?"ALL":f.id)?"#111111":"transparent",
+                    color:filterFloor===(f.id==="ALL"?"ALL":f.id)?"#fff":"#64748B",
+                    borderColor:filterFloor===(f.id==="ALL"?"ALL":f.id)?"#111111":"#E2E8F0"}}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
+      )}
 
-        {/* 층 필터 */}
-        <div style={{
-          display:"flex", gap:6, flexShrink:0,
-          order: isMobile ? 2 : 2,
-          marginLeft: isMobile ? 0 : "auto",
-          overflowX: isMobile ? "auto" : "visible",
-          scrollbarWidth: "none",
-          WebkitOverflowScrolling: "touch",
-        }}>
-          {[{id:"ALL",label:"전체"},...FLOORS.map(f=>({id:f.floor_id,label:f.floor_name}))].map(f=>(
-            <button key={f.id} className="btn rounded-full flex-shrink-0 border"
-              onClick={()=>setFilterFloor(f.id==="ALL"?"ALL":f.id)}
-              style={{
-                padding: isMobile ? "5px 10px" : "4px 12px",
-                fontSize: 11,
-                whiteSpace: "nowrap",
-                background: filterFloor===(f.id==="ALL"?"ALL":f.id) ? "#111111" : "transparent",
-                color:      filterFloor===(f.id==="ALL"?"ALL":f.id) ? "#fff"    : "#64748B",
-                borderColor: filterFloor===(f.id==="ALL"?"ALL":f.id) ? "#111111" : "#E2E8F0",
-              }}>
-              {f.label}
-            </button>
-          ))}
-        </div>
-        </div>  {/* flex 행 닫기 */}
-      </div>
+      {/* ── 모바일 공통 헤더: Week Strip + Month 확장 + 층 필터 ── */}
+      {isMobile && (
+        <MobileCalendarHeader
+          selectedDate={selectedDate}
+          setSelectedDate={setSelectedDate}
+          bookings={filteredBks}
+          filterFloor={filterFloor}
+          setFilterFloor={setFilterFloor}
+        />
+      )}
 
-      {calView==="monthly"  && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d=>{setSelectedDate(d);setCalView("daily");}} onBookingClick={onBookingClick} rooms={allRooms} />}
-      {calView==="weekly"   && <WeeklyView  bookings={filteredBks} selectedDate={selectedDate} onDateClick={setSelectedDate} onBlockClick={onBookingClick} onEmptyClick={(d,h)=>onNewBooking(d,h,null)} onCheckIn={onCheckIn} />}
+      {/* ── 뷰 렌더링 ── */}
+      {calView==="monthly"  && !isMobile && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d=>{setSelectedDate(d);setCalView("daily");}} onBookingClick={onBookingClick} rooms={allRooms} />}
+      {calView==="weekly"   && <WeeklyView  bookings={filteredBks} selectedDate={selectedDate} onDateClick={setSelectedDate} onBlockClick={onBookingClick} onEmptyClick={(d,h)=>onNewBooking(d,h,null)} onCheckIn={onCheckIn} rooms={allRooms} />}
       {calView==="daily"    && <DailyView   bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate)} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} rooms={allRooms} />}
       {calView==="timeline" && <TimelineView bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate)} rooms={filteredRooms} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} />}
     </div>
@@ -263,31 +453,25 @@ export function MonthlyView({bookings,selectedDate,onDayClick,onBookingClick,roo
   );
 }
 
-export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmptyClick,onCheckIn}) {
+export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmptyClick,onCheckIn,rooms:wvRooms=[]}) {
   const { isMobile } = useBreakpoint();
   const weekStart = getWeekStart(selectedDate);
   const days = Array.from({length:7}, (_,i) => addDays(weekStart,i));
   const today = todayStr(), now = nowMinutes();
+
+  // ── 훅은 조건문 위에 모두 선언 (Rules of Hooks) ──────────────────────────
   const HH=120, LW=52;
   const DEFAULT_COL_W = isMobile ? 80 : 120;
-
-  // ── 컬럼 너비 상태 (요일별 px) ──────────────────────────────────────────
   const [colWidths, setColWidths] = useState(() =>
     Object.fromEntries(days.map(d => [d, DEFAULT_COL_W]))
   );
-  // 주가 바뀌면 너비 초기화
   useEffect(() => {
     setColWidths(Object.fromEntries(days.map(d => [d, DEFAULT_COL_W])));
   }, [weekStart]);
-
-  // ── 드래그 리사이즈 핸들러 ───────────────────────────────────────────────
-  const dragRef = useRef(null); // { ds, startX, startW }
+  const dragRef = useRef(null);
   const handleResizeStart = useCallback((e, ds) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // 클로저 변수로 직접 캡처 — dragRef.current 참조 제거
-    const startX = e.clientX;
-    const startW = colWidths[ds];
+    e.preventDefault(); e.stopPropagation();
+    const startX = e.clientX, startW = colWidths[ds];
     dragRef.current = { ds, startX, startW };
     const onMove = (ev) => {
       if (!dragRef.current) return;
@@ -295,18 +479,71 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
       const newW  = Math.max(60, Math.min(400, startW + delta));
       setColWidths(prev => ({ ...prev, [ds]: newW }));
     };
-    const onUp = () => {
-      dragRef.current = null;
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
+    const onUp = () => { dragRef.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }, [colWidths]);
-
   const handleResetWidth = useCallback((ds) => {
     setColWidths(prev => ({ ...prev, [ds]: DEFAULT_COL_W }));
   }, [DEFAULT_COL_W]);
+
+  // ── 모바일: 선택 날짜 Agenda 리스트 ──────────────────────────────────────
+  if (isMobile) {
+    const allRooms = wvRooms.length>0 ? wvRooms : ROOMS_DB;
+    const dayBks = bookings
+      .filter(b=>tsDate(b.start_at)===selectedDate&&!b.autoCancelled)
+      .sort((a,b)=>a.start_at.localeCompare(b.start_at));
+    const isToday = selectedDate===today;
+    return (
+      <div style={{background:"#fff",borderRadius:16,border:"1px solid #E2E8F0",overflow:"hidden"}}>
+        {dayBks.length===0 ? (
+          <div onClick={()=>onEmptyClick(selectedDate,9)}
+            style={{textAlign:"center",padding:"52px 0",cursor:"pointer"}}>
+            <div style={{fontSize:15,fontWeight:600,color:"#94A3B8",marginBottom:6}}>예약 없음</div>
+            <div style={{fontSize:13,color:"#CBD5E1"}}>탭하여 예약 추가</div>
+          </div>
+        ) : dayBks.map((b,i)=>{
+          const r=allRooms.find(r=>r.room_id===b.room_id);
+          const color=r?.color||"#3B82F6";
+          const sm=tsMin(b.start_at),em=tsMin(b.end_at);
+          const isAct=isToday&&sm<=now&&now<em;
+          const nci=isAct&&!b.checkedIn;
+          return (
+            <div key={b.id} onClick={()=>onBlockClick(b)}
+              style={{display:"flex",gap:12,padding:"14px 16px",cursor:"pointer",
+                borderBottom:i<dayBks.length-1?"1px solid #F1F5F9":"none",
+                background:isAct?"#FAFFFE":"#fff"}}>
+              <div style={{minWidth:52,flexShrink:0,textAlign:"right"}}>
+                <div style={{fontSize:14,fontWeight:700,color:"#374151"}}>{fmtTS(b.start_at)}</div>
+                <div style={{width:1,height:5,background:"#E2E8F0",margin:"3px auto"}}/>
+                <div style={{fontSize:12,color:"#94A3B8"}}>{fmtTS(b.end_at)}</div>
+              </div>
+              <div style={{width:3,borderRadius:2,background:color,flexShrink:0}}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:15,fontWeight:700,color:"#111111",
+                  whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginBottom:3}}>
+                  {b.title}
+                </div>
+                <div style={{fontSize:13,color:"#64748B"}}>
+                  <span style={{color,fontWeight:600}}>{r?.room_name}</span> · {b.user}
+                </div>
+                {isAct&&!b.checkedIn&&(
+                  <button className="btn" onClick={e=>{e.stopPropagation();if(nci)onCheckIn(b.id);}} disabled={!nci}
+                    style={{marginTop:7,background:nci?"#16A34A":"#E2E8F0",color:nci?"#fff":"#94A3B8",
+                      padding:"6px 14px",fontSize:13,borderRadius:8,cursor:nci?"pointer":"not-allowed",
+                      display:"inline-flex",alignItems:"center",gap:4}}>
+                    <CheckCircle2 size={13} strokeWidth={2}/>{nci?"체크인":"체크인 대기"}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // ── 데스크탑: 기존 그리드 뷰 ─────────────────────────────────────────────
 
   // ── 서브 컬럼 레이아웃 계산 ──────────────────────────────────────────────
   // 같은 날, 시간이 겹치는 예약들을 가로로 나란히 배치
@@ -584,16 +821,11 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
 
 
 export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onCheckIn,rooms:dvRooms=[]}) {
+  const { isMobile } = useBreakpoint();
   const isToday = selectedDate===todayStr(), now=nowMinutes();
-  // X=시간(가로), Y=회의실(세로)
-  const CW=120, // 시간 1칸 너비(px)
-        RH=72,  // 회의실 1행 높이(px)
-        LW=148; // 왼쪽 회의실명 영역 너비
+  const allRooms = dvRooms.length>0 ? dvRooms : ROOMS_DB;
 
-  const rooms = (dvRooms.length>0?dvRooms:ROOMS_DB).filter(r=>r.is_active);
-  const totalW = CW * HOURS.length;
-
-  // ✅ iOS 터치 방향 잠금 — 세로 스크롤 중 좌우 흔들림 방지
+  // ── 훅은 조건문 위에 모두 선언 (Rules of Hooks) ──────────────────────────
   const dvScrollRef = useRef<HTMLDivElement>(null);
   const dvTouchStart = useRef<{x:number,y:number,scrollLeft:number}|null>(null);
   const dvLockDir = useRef<'x'|'y'|null>(null);
@@ -609,6 +841,76 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
     if (dvLockDir.current === null && (dx > 5 || dy > 5)) dvLockDir.current = dx > dy ? 'x' : 'y';
     if (dvLockDir.current === 'y') dvScrollRef.current.scrollLeft = dvTouchStart.current.scrollLeft;
   };
+
+  // ── 모바일: Agenda 리스트 ────────────────────────────────────────────────
+  if (isMobile) {
+    const sorted = bookings.filter(b=>!b.autoCancelled).sort((a,b)=>a.start_at.localeCompare(b.start_at));
+    return (
+      <div style={{background:"#fff",borderRadius:16,border:"1px solid #E2E8F0",overflow:"hidden"}}>
+        {sorted.length===0 ? (
+          <div onClick={()=>onEmptyClick(null,9)}
+            style={{textAlign:"center",padding:"52px 0",cursor:"pointer"}}>
+            <div style={{fontSize:15,fontWeight:600,color:"#94A3B8",marginBottom:6}}>예약 없음</div>
+            <div style={{fontSize:13,color:"#CBD5E1"}}>탭하여 예약 추가</div>
+          </div>
+        ) : sorted.map((b,i)=>{
+          const r=allRooms.find(r=>r.room_id===b.room_id);
+          const color=r?.color||"#3B82F6";
+          const sm=tsMin(b.start_at),em=tsMin(b.end_at);
+          const isAct=isToday&&sm<=now&&now<em&&!b.autoCancelled;
+          const nci=isAct&&!b.checkedIn;
+          const isCan=b.autoCancelled;
+          return (
+            <div key={b.id} onClick={()=>onBlockClick(b)}
+              style={{display:"flex",gap:12,padding:"14px 16px",cursor:"pointer",
+                borderBottom:i<sorted.length-1?"1px solid #F1F5F9":"none",
+                background:isAct?"#FAFFFE":"#fff",opacity:isCan?0.5:1}}>
+              <div style={{minWidth:52,flexShrink:0,textAlign:"right"}}>
+                <div style={{fontSize:14,fontWeight:700,color:"#374151"}}>{fmtTS(b.start_at)}</div>
+                <div style={{width:1,height:5,background:"#E2E8F0",margin:"3px auto"}}/>
+                <div style={{fontSize:12,color:"#94A3B8"}}>{fmtTS(b.end_at)}</div>
+              </div>
+              <div style={{width:3,borderRadius:2,background:isCan?"#E2E8F0":color,flexShrink:0}}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
+                  {isAct&&<span style={{fontSize:11,fontWeight:600,color:"#16A34A",
+                    background:"#DCFCE7",padding:"2px 7px",borderRadius:10,display:"inline-flex",alignItems:"center",gap:3}}>
+                    <Circle size={6} fill="#16A34A" strokeWidth={0}/>진행중</span>}
+                  {b.checkedIn&&<span style={{fontSize:11,fontWeight:600,color:"#16A34A",
+                    background:"#DCFCE7",padding:"2px 7px",borderRadius:10,display:"inline-flex",alignItems:"center",gap:3}}>
+                    <CheckCircle2 size={11} strokeWidth={2}/>체크인</span>}
+                  {isCan&&<span style={{fontSize:11,color:"#94A3B8",background:"#F1F5F9",
+                    padding:"2px 7px",borderRadius:10}}>취소됨</span>}
+                </div>
+                <div style={{fontSize:15,fontWeight:700,color:isCan?"#94A3B8":"#111111",
+                  whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginBottom:3,
+                  textDecoration:isCan?"line-through":"none"}}>
+                  {b.title}
+                </div>
+                <div style={{fontSize:13,color:"#64748B"}}>
+                  <span style={{color:isCan?"#94A3B8":color,fontWeight:600}}>{r?.room_name}</span> · {b.user}
+                </div>
+                {isToday&&!isCan&&!b.checkedIn&&(
+                  <button className="btn" onClick={e=>{e.stopPropagation();if(nci)onCheckIn(b.id);}} disabled={!nci}
+                    style={{marginTop:7,background:nci?"#16A34A":"#E2E8F0",color:nci?"#fff":"#94A3B8",
+                      padding:"6px 14px",fontSize:13,borderRadius:8,cursor:nci?"pointer":"not-allowed",
+                      display:"inline-flex",alignItems:"center",gap:4}}>
+                    <CheckCircle2 size={13} strokeWidth={2}/>{nci?"체크인":"체크인 대기"}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // ── 데스크탑: 기존 2D 그리드 ────────────────────────────────────────────
+  // X=시간(가로), Y=회의실(세로)
+  const CW=120, RH=72, LW=148;
+  const rooms = allRooms.filter(r=>r.is_active);
+  const totalW = CW * HOURS.length;
 
   return(
     <div style={{background:"#fff",borderRadius:16,border:"1px solid #E2E8F0",overflow:"hidden"}}>
@@ -731,16 +1033,10 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
 }
 
 export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyClick,onCheckIn}) {
+  const { isMobile } = useBreakpoint();
   const isToday = selectedDate===todayStr(), now=nowMinutes();
 
-  const HH   = 120;  // 1시간 높이(px)
-  const TW   = 64;   // 시간 레이블 열 너비
-  const COL  = 200;  // 회의실 열 최소 너비
-  const totalH = HOURS.length * HH;
-  const minToPx = (min) => ((min - 7*60) / 60) * HH;
-  const nowPx = isToday ? minToPx(now) : -1;
-
-  // ✅ iOS 터치 방향 잠금 — 세로 스크롤 중 좌우 흔들림 방지
+  // ── 훅은 조건문 위에 모두 선언 (Rules of Hooks) ──────────────────────────
   const tlScrollRef = useRef<HTMLDivElement>(null);
   const tlTouchStart = useRef<{x:number,y:number,scrollLeft:number}|null>(null);
   const tlLockDir = useRef<'x'|'y'|null>(null);
@@ -756,6 +1052,116 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
     if (tlLockDir.current === null && (dx > 5 || dy > 5)) tlLockDir.current = dx > dy ? 'x' : 'y';
     if (tlLockDir.current === 'y') tlScrollRef.current.scrollLeft = tlTouchStart.current.scrollLeft;
   };
+
+  // ── 모바일: 회의실 카드 리스트 (층별 그룹) ──────────────────────────────
+  if (isMobile) {
+    // 층별로 그룹핑
+    const floorGroups = FLOORS
+      .map(floor => ({ floor, rooms: rooms.filter(r=>r.floor_id===floor.floor_id) }))
+      .filter(g=>g.rooms.length>0);
+
+    return (
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {floorGroups.map(({floor, rooms:floorRooms})=>(
+          <div key={floor.floor_id} style={{background:"#fff",borderRadius:16,border:"1px solid #E2E8F0",overflow:"hidden"}}>
+            {/* 층 섹션 헤더 */}
+            <div style={{padding:"10px 16px",background:"#F8FAFC",borderBottom:"1px solid #E2E8F0",
+              display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <span style={{fontSize:14,fontWeight:700,color:"#111111"}}>{floor.floor_name}</span>
+              <span style={{fontSize:12,color:"#94A3B8"}}>
+                {floorRooms.filter(r=>{
+                  const st=getRoomStatus(r.room_id,bookings,selectedDate);
+                  return st.type==="AVAILABLE"||st.type==="SOON";
+                }).length} / {floorRooms.length} 사용가능
+              </span>
+            </div>
+            {/* 회의실 카드들 */}
+            {floorRooms.map((room,ri)=>{
+              const rBks=bookings.filter(b=>b.room_id===room.room_id&&!b.autoCancelled)
+                .sort((a,b)=>a.start_at.localeCompare(b.start_at));
+              const status=getRoomStatus(room.room_id,bookings,selectedDate);
+              const isAvail=status.type==="AVAILABLE"||status.type==="SOON";
+              const dotColor=isAvail?"#22C55E":"#EF4444";
+              const features=getRoomFeatures(room.room_id);
+              return (
+                <div key={room.room_id} style={{
+                  padding:"12px 16px",
+                  borderBottom:ri<floorRooms.length-1?"1px solid #F1F5F9":"none"}}>
+                  {/* 회의실 헤더 */}
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:rBks.length?10:0}}>
+                    <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,
+                      background:dotColor,boxShadow:`0 0 5px ${dotColor}88`}}/>
+                    <span style={{fontSize:14,fontWeight:700,color:"#111111",flex:1,
+                      whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                      {room.room_name}
+                    </span>
+                    <span style={{fontSize:12,color:"#94A3B8",flexShrink:0}}>
+                      {room.capacity}인{features.length>0&&` · ${features[0].feature_name}`}
+                    </span>
+                  </div>
+                  {/* 예약 목록 or 빈 메시지 */}
+                  {rBks.length===0 ? (
+                    <div onClick={()=>onEmptyClick(room.room_id,9)}
+                      style={{fontSize:13,color:"#22C55E",cursor:"pointer",paddingLeft:16,
+                        fontWeight:500,display:"flex",alignItems:"center",gap:4}}>
+                      예약 없음 — 탭하여 예약
+                    </div>
+                  ) : (
+                    <div style={{display:"flex",flexDirection:"column",gap:5,paddingLeft:16}}>
+                      {rBks.map(b=>{
+                        const sm=tsMin(b.start_at),em=tsMin(b.end_at);
+                        const isAct=isToday&&sm<=now&&now<em;
+                        const nci=isAct&&!b.checkedIn;
+                        return (
+                          <div key={b.id} onClick={()=>onBlockClick(b)}
+                            style={{
+                              display:"flex",alignItems:"center",gap:10,
+                              padding:"9px 12px",borderRadius:10,cursor:"pointer",
+                              background:isAct?"#F0FDF4":"#F8FAFC",
+                              border:`1px solid ${isAct?"#86EFAC":"#E2E8F0"}`,
+                            }}>
+                            <div style={{fontSize:13,color:"#64748B",minWidth:84,flexShrink:0}}>
+                              {fmtTS(b.start_at)}–{fmtTS(b.end_at)}
+                            </div>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:14,fontWeight:600,color:"#111111",
+                                whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                                {b.title}
+                              </div>
+                              <div style={{fontSize:12,color:"#94A3B8",marginTop:1}}>{b.user}</div>
+                            </div>
+                            {isToday&&!b.checkedIn&&(
+                              <button className="btn"
+                                onClick={e=>{e.stopPropagation();if(nci)onCheckIn(b.id);}}
+                                disabled={!nci}
+                                style={{background:nci?"#16A34A":"#E2E8F0",color:nci?"#fff":"#94A3B8",
+                                  padding:"6px 12px",fontSize:12,borderRadius:8,flexShrink:0,
+                                  cursor:nci?"pointer":"not-allowed",
+                                  display:"inline-flex",alignItems:"center",gap:3}}>
+                                <CheckCircle2 size={12} strokeWidth={2}/>{nci?"체크인":"대기"}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // ── 데스크탑: 기존 가로 타임라인 (이하 기존 코드) ──
+  const HH   = 120;  // 1시간 높이(px)
+  const TW   = 64;   // 시간 레이블 열 너비
+  const COL  = 200;  // 회의실 열 최소 너비
+  const totalH = HOURS.length * HH;
+  const minToPx = (min) => ((min - 7*60) / 60) * HH;
+  const nowPx = isToday ? minToPx(now) : -1;
 
   return (
     <div style={{
