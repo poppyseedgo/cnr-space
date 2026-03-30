@@ -14,9 +14,9 @@ export function AdminView({bookings, setBookings, rooms, setRooms, users, setUse
   const PER_PAGE = 15;
 
   return(
-    <div style={{maxWidth:1200,margin:"0 auto",padding:isMobile?"16px 12px":"28px 24px"}}>
+    <div className="max-w-[1200px] mx-auto px-3 py-4 sm:px-6 sm:py-7">
       {/* Admin 탭 헤더 */}
-      <div className="anm" style={{display:"flex",gap:6,marginBottom:20,background:"#fff",borderRadius:12,padding:6}}>
+      <div className="anm flex gap-1.5 mb-5 bg-white dark:bg-slate-800 rounded-xl p-1.5">
         {[{id:"bookings",icon:<BarChart2 size={14} strokeWidth={1.8}/>,label:"예약 관리"},{id:"approvals",icon:<Inbox size={14} strokeWidth={1.8}/>,label:"승인 관리",badge:bookings.filter(b=>b.status==='pending').length},{id:"rooms",icon:<Building2 size={14} strokeWidth={1.8}/>,label:"회의실 관리"},{id:"users",icon:<Users size={14} strokeWidth={1.8}/>,label:"사용자 관리"}].map(t=>(
           <button key={t.id} className="btn" onClick={()=>setActiveTab(t.id)}
             style={{flex:1,padding:"10px",fontSize:isMobile?12:13,borderRadius:10,fontWeight:activeTab===t.id?700:500,

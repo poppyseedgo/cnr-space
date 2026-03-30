@@ -344,9 +344,9 @@ function AppContent() {
             userId: authUser.user_id,
             type: isAdminOnlyRoom ? 'booking_pending' : 'booking_created',
             title: notifTitle,
-            body: `${bk.title} · ${room?.room_name_ko ?? room?.room_name ?? ''} · ${bk.start_at.slice(5,10)} ${bk.start_at.slice(11,16)}`,
+            body: `${room?.room_name_ko ?? room?.room_name ?? ''} · ${bk.start_at.slice(5,10)} ${bk.start_at.slice(11,16)}`,
             bookingId: bk.id,
-          }).then(() => loadNotifications().then(setNotifications)).catch(() => {})
+          }).catch(() => {})
         }
       }
       return true;
@@ -419,7 +419,7 @@ function AppContent() {
         title: '예약이 취소되었습니다',
         body: targetBooking ? `${targetBooking.title}` : undefined,
         bookingId: id,
-      }).then(() => loadNotifications().then(setNotifications)).catch(() => {})
+      }).catch(() => {})
     }
       showToast("예약이 취소되었습니다.", "info");
       // 이메일 알림 발송
@@ -464,9 +464,9 @@ function AppContent() {
           insertNotification({
             userId: userProfile.user_id, type: 'booking_approved',
             title: '예약이 승인되었습니다',
-            body: `${target.title} · 에메랄드 룸 · ${target.start_at.slice(5,10)} ${target.start_at.slice(11,16)}`,
+            body: `에메랄드 룸 · ${target.start_at.slice(5,10)} ${target.start_at.slice(11,16)}`,
             bookingId: id,
-          }).then(() => loadNotifications().then(setNotifications)).catch(() => {})
+          }).catch(() => {})
         }
       }
       showToast('예약이 승인되었습니다.')
@@ -500,9 +500,9 @@ function AppContent() {
           insertNotification({
             userId: userProfile.user_id, type: 'booking_rejected',
             title: '예약 요청이 거절되었습니다',
-            body: reason ? `${target?.title} · 거절 사유: ${reason}` : `${target?.title} · 에메랄드 룸 예약 요청`,
+            body: reason ? `거절 사유: ${reason}` : '에메랄드 룸 예약 요청',
             bookingId: id,
-          }).then(() => loadNotifications().then(setNotifications)).catch(() => {})
+          }).catch(() => {})
         }
       }
       showToast('예약이 거절되었습니다.', 'info')
@@ -610,8 +610,8 @@ function AppContent() {
     <div className="dark:bg-slate-900 min-h-screen text-slate-800 dark:text-slate-200" style={{background:"#F3F4F8"}}>
 {/* ── Header ── */}
       <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-[100]">
-        <div style={{maxWidth:1280, margin:"0 auto", padding: isMobile?"0 12px":"0 28px"}}>
-          <div style={{display:"grid", gridTemplateColumns:"1fr auto 1fr", alignItems:"center", height: isMobile?52:64, gap:12}}>
+        <div className="max-w-[1280px] mx-auto px-3 sm:px-7">
+          <div className="grid items-center gap-3" style={{gridTemplateColumns:"1fr auto 1fr", height:52}} data-desktop-height="64">
 
             {/* ① 브랜드 (left) — 클릭 시 홈 */}
             <div className="flex items-center min-w-0 cursor-pointer" onClick={()=>setView("home")}>

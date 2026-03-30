@@ -578,19 +578,17 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       background:"#fff",
       borderRadius: isMobile ? "20px 20px 0 0" : 16,
       width:"100%", maxWidth: isMobile ? "100%" : 960,
-      // 모바일: 높이 제약 없이 스크롤 영역이 자연스럽게 확장
-      maxHeight: isMobile ? "none" : modalMaxH,
-      // 모바일은 overlay가 flex-end이므로 자동으로 바텀시트처럼 붙음
-      height: isMobile ? "100%" : "auto",
+      maxHeight: isMobile ? `${Math.floor(vvHeight * 0.95)}px` : modalMaxH,
+      height: isMobile ? `${Math.floor(vvHeight * 0.95)}px` : "auto",
       boxShadow:"0 20px 60px rgba(0,0,0,0.15)",
       display:"flex", flexDirection:"column",
-      overflow: isMobile ? "auto" : "hidden",
+      overflow: "hidden",
       alignSelf: isMobile ? "flex-end" : "center",
       position:"relative",
     }}>
       {/* 모바일 핸들 */}
-      {isMobile && <div style={{width:36,height:4,background:"#E2E8F0",borderRadius:2,
-        position:"absolute",top:8,left:"50%",transform:"translateX(-50%)",zIndex:10}}/>}
+      {isMobile && <div style={{width:40,height:4,background:"#D1D5DB",borderRadius:2,
+        position:"absolute",top:10,left:"50%",transform:"translateX(-50%)",zIndex:10}}/>}
 
       {/* ════ 헤더 (고정) ════ */}
       <div style={{padding: isMobile?"20px 20px 12px":"24px 28px 18px",
@@ -602,18 +600,18 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
           <div style={{flex:1}}>
             <div style={{fontSize:15,fontWeight:800,color:"#111111",marginBottom:10}}>{editBooking ? "예약 변경" : "새 회의 예약"}</div>
             {/* Step 인디케이터 */}
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,marginTop:4}}>
               {[{n:1,label:"일정 입력"},{n:2,label:"회의실 선택"}].map(({n,label},i)=>(
                 <React.Fragment key={n}>
-                  <div style={{display:"flex",alignItems:"center",gap:5}}>
-                    <div style={{width:22,height:22,borderRadius:"50%",
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{width:26,height:26,borderRadius:"50%",
                       display:"flex",alignItems:"center",justifyContent:"center",
-                      fontSize:11,fontWeight:700,flexShrink:0,
+                      fontSize:12,fontWeight:700,flexShrink:0,
                       background:step>=n?"#111111":"#F1F5F9",
                       color:step>=n?"#fff":"#94A3B8"}}>
-                      {step>n?<CheckCircle2 size={12} strokeWidth={2}/>:n}
+                      {step>n?<CheckCircle2 size={14} strokeWidth={2.5}/>:n}
                     </div>
-                    <span style={{fontSize:11,fontWeight:step===n?700:400,
+                    <span style={{fontSize:13,fontWeight:step===n?700:400,
                       color:step===n?"#111111":step>n?"#16A34A":"#94A3B8"}}>
                       {label}
                     </span>
@@ -846,15 +844,16 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               </div>
             )}
             <button className="btn" onClick={()=>setStep(1)}
-              style={{flex:1,background:"#F1F5F9",color:"#64748B",padding:"13px",fontSize:14,borderRadius:12}}>
+              style={{flex:1,background:"#F1F5F9",color:"#64748B",padding:"15px",fontSize:14,borderRadius:14,minHeight:52}}>
               ← 이전
             </button>
             <button className="btn" disabled={!canSubmit}
               onClick={()=>{ if(!canSubmit)return; editBooking ? onUpdate({...form},bookingDate) : onSubmit({...form,recur},bookingDate); }}
-              style={{flex:2,padding:"13px",fontSize:14,fontWeight:700,borderRadius:12,
+              style={{flex:2,padding:"15px",fontSize:15,fontWeight:700,borderRadius:14,
                 background:canSubmit?"#111111":"#E2E8F0",
                 color:canSubmit?"#fff":"#94A3B8",
-                cursor:canSubmit?"pointer":"not-allowed"}}>
+                cursor:canSubmit?"pointer":"not-allowed",
+                minHeight:52}}>
               {editBooking ? "변경 저장" : isApprovalRoom ? "승인 요청" : "예약 확정"}
             </button>
           </>)}

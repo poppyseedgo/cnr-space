@@ -60,34 +60,45 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
 
   return (
     <div>
-      {/* 툴바 — 단일 flex 1행 */}
+      {/* 툴바 — 모바일: 2행, 데스크탑: 1행 */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 mb-4"
-        style={{padding: isMobile ? "10px 12px" : "12px 18px",
-          display:"flex", alignItems:"center", gap: isMobile ? 6 : 10, flexWrap:"nowrap",
-          position:"relative", zIndex:50}}>
+        style={{padding: isMobile ? "10px 12px" : "12px 18px", position:"relative", zIndex:50}}>
 
-        {/* 뷰 탭 — left */}
-        <div className="flex dark:bg-slate-700 rounded-xl p-0.5 gap-0.5" style={{background:"#F3F4F8",flexShrink:0,justifyContent:"center"}}>
+        {/* 모바일: 1행 — 뷰탭 + 날짜 네비 */}
+        {/* 데스크탑: 단일 flex 행 */}
+        <div style={{display:"flex", alignItems:"center", gap: isMobile ? 8 : 10,
+          flexWrap: isMobile ? "wrap" : "nowrap", position:"relative"}}>
+
+        {/* 뷰 탭 */}
+        <div className="flex dark:bg-slate-700 rounded-xl p-0.5 gap-0.5"
+          style={{background:"#F3F4F8", flexShrink:0, order: isMobile ? 1 : 0}}>
           {VIEWS.map(v=>(
             <button key={v.id} className="btn rounded-lg font-semibold"
               onClick={()=>setCalView(v.id)}
               style={{
                 background: calView===v.id ? "#111111" : "transparent",
                 color:      calView===v.id ? "#fff"    : "#64748B",
-                padding:    isMobile ? "7px 10px" : "8px 16px",
-                fontSize:   14,
+                padding:    isMobile ? "6px 10px" : "8px 16px",
+                fontSize:   isMobile ? 12 : 13,
                 whiteSpace: "nowrap",
                 flexShrink: 0,
-                textAlign:  "center",
               }}>
-              {v.label}
+              {isMobile ? v.label.slice(0,2) : v.label}
             </button>
           ))}
         </div>
 
-        {/* 날짜 네비 — absolute center */}
+        {/* 날짜 네비 */}
         <div className="flex items-center gap-1.5"
-          style={{position:"absolute", left:"50%", transform:"translateX(-50%)", flexShrink:0, zIndex:51}}>
+          style={{
+            flex: isMobile ? "1 1 100%" : 1,
+            justifyContent: "center",
+            order: isMobile ? 3 : 1,
+            position: isMobile ? "static" : "absolute",
+            left: isMobile ? "auto" : "50%",
+            transform: isMobile ? "none" : "translateX(-50%)",
+            zIndex: 51,
+          }}>
           <button className="btn dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex-shrink-0"
             style={{padding:"7px 14px", fontSize:20, background:"#FFFFFF", lineHeight:1}} onClick={()=>navigate(-1)}>‹</button>
 
@@ -164,14 +175,22 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
           )}
         </div>
 
-        {/* 층 필터 — right */}
-        <div className="flex gap-1.5" style={{marginLeft:"auto",justifyContent:"flex-end",flexWrap:"nowrap",overflow:"hidden"}}>
+        {/* 층 필터 */}
+        <div style={{
+          display:"flex", gap:6, flexShrink:0,
+          order: isMobile ? 2 : 2,
+          marginLeft: isMobile ? 0 : "auto",
+          overflowX: isMobile ? "auto" : "visible",
+          scrollbarWidth: "none",
+          WebkitOverflowScrolling: "touch",
+        }}>
           {[{id:"ALL",label:"전체"},...FLOORS.map(f=>({id:f.floor_id,label:f.floor_name}))].map(f=>(
             <button key={f.id} className="btn rounded-full flex-shrink-0 border"
               onClick={()=>setFilterFloor(f.id==="ALL"?"ALL":f.id)}
               style={{
-                padding: isMobile ? "4px 8px" : "4px 12px",
-                fontSize: isMobile ? 10 : 11,
+                padding: isMobile ? "5px 10px" : "4px 12px",
+                fontSize: 11,
+                whiteSpace: "nowrap",
                 background: filterFloor===(f.id==="ALL"?"ALL":f.id) ? "#111111" : "transparent",
                 color:      filterFloor===(f.id==="ALL"?"ALL":f.id) ? "#fff"    : "#64748B",
                 borderColor: filterFloor===(f.id==="ALL"?"ALL":f.id) ? "#111111" : "#E2E8F0",
@@ -180,6 +199,7 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
             </button>
           ))}
         </div>
+        </div>  {/* flex 행 닫기 */}
       </div>
 
       {calView==="monthly"  && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d=>{setSelectedDate(d);setCalView("daily");}} onBookingClick={onBookingClick} rooms={allRooms} />}

@@ -101,19 +101,22 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
             </div>
           )}
         </div>
-        <div className="flex gap-3 overflow-x-auto pb-2" style={{scrollbarWidth:"none"}}>
+        <div className="flex gap-3 pb-2"
+          style={{overflowX:"auto",scrollbarWidth:"none",WebkitOverflowScrolling:"touch",
+            paddingLeft:0, paddingRight:4}}>
 
           {/* + 예약하기 첫 카드 */}
           <button onClick={()=>{/* onBook 없이 새 예약 모달 */document.dispatchEvent(new CustomEvent("openNewBooking"))}}
             className="btn flex-none flex flex-col items-center justify-center rounded-2xl text-white font-bold"
-            style={{width:160, minHeight:140, background:"#111111", flexShrink:0, gap:8}}>
-            <span style={{fontSize:28, lineHeight:1}}>＋</span>
-            <span style={{fontSize:13}}>예약하기</span>
+            style={{width:isMobile?"42vw":160, minWidth:140, minHeight:isMobile?120:140,
+              background:"#111111", flexShrink:0, gap:8}}>
+            <span style={{fontSize:24, lineHeight:1}}>＋</span>
+            <span style={{fontSize:isMobile?12:13}}>예약하기</span>
           </button>
 
           {myBookings.length === 0 ? (
             <div className="flex-none flex items-center justify-center rounded-2xl text-slate-300 dark:text-slate-600 text-sm"
-              style={{width:160, minHeight:140, background:"#F3F4F8"}}>
+              style={{width:isMobile?"42vw":160, minWidth:140, minHeight:isMobile?120:140, background:"#F3F4F8"}}>
               오늘 예약 없음
             </div>
           ) : myBookings.map(b => {
@@ -148,7 +151,8 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
 
             return (
               <div key={b.id} className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 rounded-2xl p-3"
-                style={{width:160, minHeight:140, flexShrink:0, opacity: (cardState==="cancelled" || cardState==="noshow") ? 0.45 : 1,
+                style={{width:isMobile?"42vw":160, minWidth:140, minHeight:isMobile?120:140,
+                  flexShrink:0, opacity: (cardState==="cancelled" || cardState==="noshow") ? 0.45 : 1,
                   border: cardState==="pending" ? "1.5px solid #FCD34D" : "none"}}>
                 {/* 상단 */}
                 <div>
@@ -172,7 +176,8 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
                   <button className="btn flex-1 text-[11px] font-bold rounded-xl py-2"
                     onClick={e=>{e.stopPropagation(); S.action?.();}}
                     disabled={S.disabled}
-                    style={{background:S.btnBg, color:S.btnColor, cursor:S.disabled?"default":"pointer"}}>
+                    style={{background:S.btnBg, color:S.btnColor, cursor:S.disabled?"default":"pointer",
+                      minHeight:32, display:"flex", alignItems:"center", justifyContent:"center"}}>
                     {S.label}
                   </button>
                   {isCancellable && (
@@ -248,7 +253,7 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
           <div className="text-lg font-semibold">검색 결과가 없습니다</div>
         </div>
       ) : (
-        <div style={{display:"grid", gridTemplateColumns: isMobile ? "1fr" : isTablet ? "repeat(2,1fr)" : "repeat(3,1fr)", gap:16}}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {withStatus.map((item,i) => (
             <RoomCard key={item.room.room_id} room={item.room} status={item.status} animDelay={i*40}
               onBook={onBook} onDetail={onDetail} bookings={bookings} onCheckIn={onCheckIn} dark={dark}/>
@@ -261,10 +266,10 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
 
 export function Section({title, count, accent, children}) {
   return (
-    <div style={{marginBottom:36}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+    <div className="mb-9">
+      <div className="flex items-center gap-2.5 mb-4">
         <div style={{width:4,height:20,background:accent,borderRadius:2}} />
-        <h2 style={{fontSize:18,fontWeight:800,color:"#111111",letterSpacing:"-0.3px"}}>{title}</h2>
+        <h2 className="text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">{title}</h2>
         <span style={{background:accent+"18",color:accent,fontSize:12,fontWeight:700,padding:"2px 9px",borderRadius:20}}>{count}</span>
       </div>
       {children}
@@ -274,7 +279,7 @@ export function Section({title, count, accent, children}) {
 
 export function RoomGrid({items, onBook, onDetail, bookings, onCheckIn}) {
   return (
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:16}}>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {items.map(({room:r, status},i) => (
         <RoomCard key={r.room_id} room={r} status={status} onBook={onBook} onDetail={onDetail} bookings={bookings} onCheckIn={onCheckIn} animDelay={i*40} />
       ))}
@@ -331,9 +336,7 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
         {/* ① 상태 칩 */}
         <div style={{display:"flex", alignItems:"center", gap:6, flexWrap:"wrap"}}>
           {isAvail && (
-            <span style={{background:"#CBECFF", color:"#111111", fontSize:12, fontWeight:700,
-              padding:"5px 14px", borderRadius:999,
-              display:"inline-flex", alignItems:"center", gap:6}}>
+            <span className="chip chip-available">
               <span style={{width:7,height:7,borderRadius:"50%",background:"#111111",
                 display:"inline-block",flexShrink:0}}/>
               예약가능

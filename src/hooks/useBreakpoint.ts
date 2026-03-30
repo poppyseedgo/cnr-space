@@ -15,8 +15,8 @@ function useWindowWidth() {
 export function useBreakpoint() {
   const w = useWindowWidth()
   return {
-    isMobile:  w < 640,
-    isTablet:  w >= 640 && w < 1024,
+    isMobile:  w < 768,   // 태블릿 포함 (768px 미만)
+    isTablet:  w >= 768 && w < 1024,
     isDesktop: w >= 1024,
     width: w,
   }
