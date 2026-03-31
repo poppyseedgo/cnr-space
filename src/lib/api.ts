@@ -565,13 +565,14 @@ export async function markAllNotificationsRead(): Promise<void> {
     .eq('is_read', false)
 }
 
-/** notifications Realtime 구독 */
-export function subscribeNotifications(onNew: () => void) {
+/** notifications Realtime 구독 — userId 필터로 본인 알림만 수신 */
+export function subscribeNotifications(onNew: (payload: any) => void, userId?: string) {
   const channel = supabase
     .channel('notifications-realtime')
     .on('postgres_changes', {
-      event: 'INSERT', schema: 'public', table: 'notifications'
-    }, () => onNew())
+      event: 'INSERT', schema: 'public', table: 'notifications',
+      ...(userId ? { filter: `user_id=eq.${userId}` } : {}),
+    }, (payload) => onNew(payload))
     .subscribe()
   return () => { supabase.removeChannel(channel) }
 }

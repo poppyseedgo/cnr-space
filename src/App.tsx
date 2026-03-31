@@ -112,9 +112,24 @@ function AppContent() {
   useEffect(() => {
     if (!authUser) { setNotifications([]); return; }
     loadNotifications().then(setNotifications);
-    const unsub = subscribeNotifications(() => {
-      loadNotifications().then(setNotifications);
-    });
+    const unsub = subscribeNotifications((payload) => {
+      // payload.new 에서 직접 새 알림 추가 — Edge Function insert 즉시 반영
+      if (payload?.new) {
+        const n = payload.new;
+        setNotifications(prev => [{
+          id:         n.id,
+          user_id:    n.user_id,
+          type:       n.type,
+          title:      n.title,
+          body:       n.body ?? '',
+          booking_id: n.booking_id ?? null,
+          is_read:    false,
+          created_at: n.created_at,
+        } as AppNotification, ...prev]);
+      } else {
+        loadNotifications().then(setNotifications);
+      }
+    }, authUser.user_id);
     return unsub;
   }, [authUser?.user_id]);
 
