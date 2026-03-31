@@ -79,7 +79,7 @@ export async function loadBookings(): Promise<Booking[]> {
     // bookings + booking_attendees 한 번에 join
     const { data, error } = await supabase
       .from('bookings')
-      .select('*, booking_attendees(email)')
+      .select('*, booking_attendees(email, name)')
       .gte('start_at', from.toISOString())
       .lte('start_at', to.toISOString())
       .order('start_at', { ascending: true })
@@ -100,13 +100,38 @@ export async function loadBookings(): Promise<Booking[]> {
         return raw.email ?? raw.name ?? ''
       }
 
+      // booking_attendees: name 우선, 없으면 email에서 추출
+      const parseName = (a: any): string => {
+        if (!a) return ''
+        // name 컬럼이 있으면 우선 사용
+        if (a.name && a.name.trim()) return a.name.trim()
+        // name 없으면 email에서 파싱
+        const email = parseEmail(a.email)
+        if (email.startsWith('{')) {
+          try { const p = JSON.parse(email); return p.name ?? p.email ?? email }
+          catch { return email }
+        }
+        return email.split('@')[0]  // fallback: 이메일 앞부분
+      }
+
       const fromJoin = (row.booking_attendees ?? [])
-        .map((a: any) => parseEmail(a.email))
+        .map(parseName)
         .filter(Boolean)
 
       let attendees: string[] = fromJoin
       if (fromJoin.length === 0 && Array.isArray(row.attendees) && row.attendees.length > 0) {
-        attendees = row.attendees.map(parseEmail).filter(Boolean)
+        // 원본 bookings.attendees 컬럼에서 name 추출
+        attendees = row.attendees.map((a: any) => {
+          if (!a) return ''
+          if (typeof a === 'string') {
+            if (a.startsWith('{')) {
+              try { const p = JSON.parse(a); return p.name ?? p.email ?? a }
+              catch { return a }
+            }
+            return a
+          }
+          return a.name ?? a.email ?? ''
+        }).filter(Boolean)
       }
 
       // attendees를 마지막에 명시적으로 덮어써서 rowToBooking 내부 처리보다 우선
@@ -164,11 +189,22 @@ export async function insertBooking(booking: Booking): Promise<Booking> {
 }
 
 // ── booking_attendees 저장 (예약 생성/수정 시 호출) ────────────────────────
-export async function upsertBookingAttendees(bookingId: string, emails: string[]): Promise<void> {
-  // 기존 삭제 후 재삽입
+export async function upsertBookingAttendees(
+  bookingId: string,
+  attendees: string[] | {email?: string; name?: string; user_id?: string}[]
+): Promise<void> {
   await supabase.from('booking_attendees').delete().eq('booking_id', bookingId)
-  if (!emails || emails.length === 0) return
-  const rows = emails.filter(e => !!e).map(email => ({ booking_id: bookingId, email }))
+  if (!attendees || attendees.length === 0) return
+  const rows = attendees
+    .map(a => {
+      if (typeof a === 'string') return { booking_id: bookingId, email: a, name: '' }
+      return {
+        booking_id: bookingId,
+        email: (a as any).email ?? '',
+        name:  (a as any).name  ?? '',
+      }
+    })
+    .filter(r => r.email || r.name)
   if (rows.length === 0) return
   const { error } = await supabase.from('booking_attendees').insert(rows)
   if (error) console.warn('[api] booking_attendees 저장 실패:', error.message)
