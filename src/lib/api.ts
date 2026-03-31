@@ -86,27 +86,27 @@ export async function loadBookings(): Promise<Booking[]> {
 
     if (error) throw error
     return (data ?? []).map(row => {
-      // booking_attendees 테이블 우선, 없으면 기존 컬럼 fallback
-      const fromJoin = (row.booking_attendees ?? []).map((a: any) => a.email).filter(Boolean)
+      // booking_attendees.email 컬럼이 JSON 문자열일 수 있음
+      // (첫 마이그레이션 시 jsonb_array_elements_text가 객체 전체를 저장)
+      const parseEmail = (raw: any): string => {
+        if (!raw) return ''
+        if (typeof raw === 'string') {
+          if (raw.startsWith('{')) {
+            try { const p = JSON.parse(raw); return p.email ?? p.name ?? raw }
+            catch { return raw }
+          }
+          return raw
+        }
+        return raw.email ?? raw.name ?? ''
+      }
+
+      const fromJoin = (row.booking_attendees ?? [])
+        .map((a: any) => parseEmail(a.email))
+        .filter(Boolean)
 
       let attendees: string[] = fromJoin
       if (fromJoin.length === 0 && Array.isArray(row.attendees) && row.attendees.length > 0) {
-        // 기존 컬럼: text[] 타입이라 JSON 문자열로 저장된 경우 파싱 필요
-        // 예: '{"user_id":"...","name":"...","email":"..."}' → email 추출
-        attendees = row.attendees.map((a: any) => {
-          if (typeof a === 'string') {
-            // JSON 문자열인지 확인 후 파싱
-            if (a.startsWith('{')) {
-              try {
-                const parsed = JSON.parse(a)
-                return parsed.email ?? parsed.name ?? a
-              } catch { return a }
-            }
-            return a  // 일반 이메일 문자열
-          }
-          // 객체인 경우
-          return a.email ?? a.name ?? ''
-        }).filter(Boolean)
+        attendees = row.attendees.map(parseEmail).filter(Boolean)
       }
 
       return rowToBooking({ ...row, attendees })
