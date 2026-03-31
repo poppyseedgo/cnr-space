@@ -28,7 +28,7 @@ function rowToBooking(row: Record<string, any>): Booking {
     room_id:       row.room_id,
     title:         row.title,
     memo:          row.memo ?? '',
-    attendees:     row.attendees ?? [],
+    attendees:     Array.isArray(row.attendees) ? row.attendees : [],
     start_at:      utcToKST(row.start_at),   // ★ 버그2 수정
     end_at:        utcToKST(row.end_at),     // ★ 버그2 수정
     user:          row.user_name,
@@ -109,7 +109,10 @@ export async function loadBookings(): Promise<Booking[]> {
         attendees = row.attendees.map(parseEmail).filter(Boolean)
       }
 
-      return rowToBooking({ ...row, attendees })
+      // attendees를 마지막에 명시적으로 덮어써서 rowToBooking 내부 처리보다 우선
+      const parsed = rowToBooking({ ...row })
+      parsed.attendees = attendees
+      return parsed
     })
   } catch (e) {
     console.error('[api] loadBookings 실패:', e)
