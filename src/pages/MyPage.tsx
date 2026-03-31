@@ -341,11 +341,17 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
 // ═══════════════════════════════════════════════════════════════════════════════
 export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, onCheckIn, onNewBooking, authUser}) {
   const today = todayStr()
+  const now   = nowMinutes()
   const [selectedDate, setSelectedDate] = useState(today)
   const { isMobile } = useBreakpoint()
 
   // 본인 예약만 필터
   const myBookings = bookings.filter(b => b.user === currentUser)
+
+  // 오늘 내 예약 (취소 제외, 사용자가 취소한 것만 제외)
+  const todayBookings = myBookings
+    .filter(b => tsDate(b.start_at) === today && b.cancelledBy !== 'user')
+    .sort((a, b) => a.start_at.localeCompare(b.start_at))
 
   // 주 네비게이션
   const weekStart = getWeekStart(selectedDate)
@@ -358,54 +364,102 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
   return (
     <div style={{maxWidth:1280, margin:"0 auto", padding: isMobile?"16px 12px":"28px 28px"}}>
 
-      {/* 헤더 */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 mb-4"
-        style={{padding: isMobile?"10px 12px":"12px 18px", display:"flex", alignItems:"center", gap:12, position:"relative"}}>
+      {/* ── 오늘 내 예약 ── */}
+      <div style={{marginBottom:28}}>
+        <div className="section-header">
+          <div className="section-title">오늘 내 예약</div>
+          <span style={{fontSize:12, color:"#94A3B8", fontWeight:500}}>{today}</span>
+        </div>
 
-        {/* 주 네비 — 가운데 고정 */}
-        <div className="flex items-center gap-2"
-          style={{position:"absolute", left:"50%", transform:"translateX(-50%)"}}>
-          <button className="btn rounded-lg text-slate-600 dark:text-slate-300"
-            style={{padding:"7px 14px", fontSize:20, background:"#FFFFFF", lineHeight:1}}
+        {todayBookings.length === 0 ? (
+          <div style={{background:"#F8FAFC", borderRadius:12, padding:"20px",
+            textAlign:"center", fontSize:13, color:"#CBD5E1"}}>
+            오늘 예약이 없습니다
+          </div>
+        ) : (
+          <div style={{display:"flex", flexDirection:"column", gap:8}}>
+            {todayBookings.map(b => {
+              const r = (rooms as any[]).find((r:any) => r.room_id === b.room_id)
+              const isActive = tsMin(b.start_at) <= now && now < tsMin(b.end_at) && !b.autoCancelled
+              const isPast   = tsMin(b.end_at) <= now
+              const stateColor = b.autoCancelled ? "#94A3B8"
+                : isActive ? "#16A34A" : isPast ? "#94A3B8" : "#3B82F6"
+              const stateBg = b.autoCancelled ? "#F1F5F9"
+                : isActive ? "#DCFCE7" : isPast ? "#F1F5F9" : "#EFF6FF"
+              const stateLabel = b.autoCancelled ? "취소"
+                : isActive ? "사용중" : isPast ? "완료" : "예정"
+
+              return (
+                <div key={b.id} onClick={()=>onDetail(b)}
+                  style={{
+                    background:"#fff", borderRadius:12,
+                    border: `1px solid ${isActive ? "#BBF7D0" : "#E2E8F0"}`,
+                    borderLeft: `4px solid ${stateColor}`,
+                    padding:"12px 16px", cursor:"pointer",
+                    display:"flex", alignItems:"center", gap:14,
+                    transition:"box-shadow 0.15s",
+                    boxShadow: isActive ? "0 2px 12px rgba(22,163,74,0.12)" : "0 1px 4px rgba(0,0,0,0.04)"
+                  }}
+                  onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.08)"}
+                  onMouseLeave={e=>e.currentTarget.style.boxShadow=isActive?"0 2px 12px rgba(22,163,74,0.12)":"0 1px 4px rgba(0,0,0,0.04)"}>
+                  {/* 시간 */}
+                  <div style={{textAlign:"center", minWidth:72, flexShrink:0}}>
+                    <div style={{fontSize:13, fontWeight:700, color:"#111"}}>{fmtTSFull(b.start_at)}</div>
+                    <div style={{fontSize:11, color:"#94A3B8", marginTop:2}}>~ {fmtTSFull(b.end_at)}</div>
+                  </div>
+                  {/* 구분선 */}
+                  <div style={{width:1, height:32, background:"#E2E8F0", flexShrink:0}}/>
+                  {/* 정보 */}
+                  <div style={{flex:1, minWidth:0}}>
+                    <div style={{fontSize:14, fontWeight:700, color:"#111",
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{b.title}</div>
+                    <div style={{fontSize:12, color:"#64748B", marginTop:2}}>
+                      {r?.room_name ?? "-"}
+                    </div>
+                  </div>
+                  {/* 상태 뱃지 */}
+                  <span style={{background:stateBg, color:stateColor,
+                    fontSize:11, fontWeight:700, padding:"4px 10px",
+                    borderRadius:999, flexShrink:0}}>
+                    {stateLabel}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── 주간 예약 ── */}
+      <div>
+        {/* 주 네비게이션 */}
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 mb-4"
+          style={{padding: isMobile?"10px 12px":"12px 18px", display:"flex", alignItems:"center", justifyContent:"center", gap:8, position:"relative"}}>
+          <button className="btn rounded-lg text-slate-600"
+            style={{padding:"7px 14px", fontSize:20, background:"#F8FAFC", lineHeight:1}}
             onClick={()=>goWeek(-1)}>‹</button>
-          <span style={{fontSize:isMobile?14:16, fontWeight:700, color:"#111111", whiteSpace:"nowrap"}}>
+          <span style={{fontSize:isMobile?14:15, fontWeight:700, color:"#111111", whiteSpace:"nowrap"}}>
             {weekLabel}
           </span>
-          <button className="btn rounded-lg text-slate-600 dark:text-slate-300"
-            style={{padding:"7px 14px", fontSize:20, background:"#FFFFFF", lineHeight:1}}
+          <button className="btn rounded-lg text-slate-600"
+            style={{padding:"7px 14px", fontSize:20, background:"#F8FAFC", lineHeight:1}}
             onClick={()=>goWeek(1)}>›</button>
           {selectedDate !== today && (
-            <button className="btn rounded-lg" style={{padding:"5px 10px", fontSize:11, background:"#111111", color:"#fff"}}
+            <button className="btn rounded-lg" style={{padding:"5px 10px", fontSize:11, background:"#111111", color:"#fff", marginLeft:4}}
               onClick={()=>setSelectedDate(today)}>오늘</button>
           )}
         </div>
 
-        {/* 우측: 예약하기 버튼 */}
-        <div style={{marginLeft:"auto"}}>
-          <button className="btn rounded-xl font-bold" onClick={onNewBooking}
-            style={{background:"#111111", color:"#fff", padding:"8px 18px", fontSize:13}}>
-            + 예약하기
-          </button>
-        </div>
-      </div>
-
-      {/* 내 예약 없을 때 */}
-      {myBookings.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-state-icon"><Inbox size={48} strokeWidth={1.2}/></div>
-          <div className="empty-state-title">이번 주 예약이 없습니다</div>
-          <div className="empty-state-body">새 예약을 추가해 보세요</div>
-        </div>
-      ) : (
+        {/* WeeklyView */}
         <WeeklyView
           bookings={myBookings}
           selectedDate={selectedDate}
           onDateClick={setSelectedDate}
           onBlockClick={onDetail}
-          onEmptyClick={()=>onNewBooking()}
+          onEmptyClick={()=>{}}
           onCheckIn={onCheckIn}
         />
-      )}
+      </div>
     </div>
   )
 }

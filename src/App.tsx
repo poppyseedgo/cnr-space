@@ -632,7 +632,7 @@ function AppContent() {
                 {([
                   ["home",       <Home size={14} strokeWidth={1.8}/>,     "실시간 현황", "현황"]    as const,
                   ["calendar",   <Calendar size={14} strokeWidth={1.8}/>,  "캘린더 뷰",  "캘린더"]  as const,
-                  ["mybookings", <ClipboardList size={14} strokeWidth={1.8}/>, "내 예약", "내 예약"] as const,
+                  ["mybookings", <ClipboardList size={14} strokeWidth={1.8}/>, "나의 예약", "나의 예약"] as const,
                 ] as [string, React.ReactElement, string, string][]).map(([v,icon,label,mLabel])=>(
                   <button key={v} onClick={()=>setView(v)}
                     className="btn flex items-center gap-1.5 rounded-full font-bold transition-all whitespace-nowrap"
