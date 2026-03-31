@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Layers, Users, UsersRound, Building2, Clock, User, Monitor, FileText, XCircle, AlertTriangle, CheckCircle2, Circle, X, Calendar, Home, LayoutGrid, LogOut, Settings, Search, BarChart2, ClipboardList, Inbox, ChevronDown, ChevronUp, AlertCircle, CheckCheck, Ban, Check } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
-  fmtTSRange, fmtRangeFull, fmtTSFull, fmtTimeFull, fmtTSRangeFull, fmtTSDateFull, fmtRoomName, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
+  fmtTSRange, fmtRangeFull, fmtTSFull, fmtTimeFull, fmtTSRangeFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, FLOORS, getFloor, getRoomFeatures, getRoomById, getRoomThumbnail, getRoomGallery } from '../data/master'
@@ -127,7 +127,7 @@ export function AdminBookings({bookings,setBookings,rooms,showToast,isMobile,PER
                   onClick={()=>onDetail&&onDetail(b)}
                   onMouseEnter={e=>e.currentTarget.style.background="#FAFBFD"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                   <td style={{padding:"10px 14px",fontWeight:600,color:"#111",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.title}</td>
-                  <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{r ? fmtRoomName(r, {floor_name: r.floor_id+'층'}) : '?'}</td>
+                  <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{r?.room_name ?? '?'}</td>
                   <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{fmtTSDateFull(b.start_at)}</td>
                   <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{fmtTSRangeFull(b.start_at,b.end_at)}</td>
                   <td style={{padding:"10px 14px",whiteSpace:"nowrap"}}><span style={{fontWeight:600,color:"#111"}}>{b.user}</span> <span style={{color:"#94A3B8",fontSize:11}}>{b.dept}</span></td>
