@@ -16,6 +16,21 @@ const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
 const FROM_EMAIL     = 'C&R SPACE <onboarding@resend.dev>'
 const APP_URL        = Deno.env.get('APP_URL') ?? 'https://cnr-space.vercel.app'
 
+/** notifications 테이블에 인앱 알림 insert */
+async function insertNotification(supabase: any, params: {
+  userId: string, type: string, title: string, body?: string, bookingId?: string
+}) {
+  const { error } = await supabase.from('notifications').insert({
+    user_id:    params.userId,
+    type:       params.type,
+    title:      params.title,
+    body:       params.body ?? null,
+    booking_id: params.bookingId ?? null,
+    is_read:    false,
+  })
+  if (error) console.warn('[checkin-reminder] 인앱 알림 저장 실패:', error.message)
+}
+
 async function sendEmail(to: string[], subject: string, html: string) {
   if (!RESEND_API_KEY || to.length === 0) return
   const res = await fetch('https://api.resend.com/emails', {
@@ -204,6 +219,15 @@ Deno.serve(async (req: Request) => {
       if (!userEmail) continue
       await sendEmail([userEmail], `[C&R SPACE] ⏰ 10분 후 시작 — ${b.title}`, makeBefore10Html(b, userName, false))
       totalSent++
+      // 인앱 알림 — 예약자
+      if (b.user_id) {
+        await insertNotification(supabase, {
+          userId: b.user_id, type: 'checkin_reminder_10',
+          title: '10분 후 회의가 시작됩니다',
+          body: `${b.title} · ${b.room_name ?? ''} · ${fmtTime(b.start_at)}`,
+          bookingId: b.id,
+        })
+      }
       if (b.attendees?.length > 0) {
         const attendeeEmails = b.attendees.filter((e: string) => e !== userEmail)
         if (attendeeEmails.length > 0) {
@@ -229,6 +253,15 @@ Deno.serve(async (req: Request) => {
       if (!userEmail) continue
       await sendEmail([userEmail], `[C&R SPACE] 🟢 회의 시작! 체크인해 주세요 — ${b.title}`, makeStartHtml(b, userName, false))
       totalSent++
+      // 인앱 알림 — 체크인 요청
+      if (b.user_id) {
+        await insertNotification(supabase, {
+          userId: b.user_id, type: 'checkin_required',
+          title: '회의가 시작되었습니다. 체크인해 주세요!',
+          body: `${b.title} · ${b.room_name ?? ''} · ${fmtTime(b.start_at)}`,
+          bookingId: b.id,
+        })
+      }
       if (b.attendees?.length > 0) {
         const attendeeEmails = b.attendees.filter((e: string) => e !== userEmail)
         if (attendeeEmails.length > 0) {
@@ -256,6 +289,15 @@ Deno.serve(async (req: Request) => {
       if (!userEmail) continue
       await sendEmail([userEmail], `[C&R SPACE] ⚠️ 5분 후 자동취소 — ${b.title}`, makeAfter5Html(b, userName, false))
       totalSent++
+      // 인앱 알림 — 자동취소 경고
+      if (b.user_id) {
+        await insertNotification(supabase, {
+          userId: b.user_id, type: 'checkin_warning',
+          title: '⚠️ 5분 후 자동취소 — 지금 바로 체크인해 주세요!',
+          body: `${b.title} · ${b.room_name ?? ''} · ${fmtTime(b.start_at)}`,
+          bookingId: b.id,
+        })
+      }
       if (b.attendees?.length > 0) {
         const attendeeEmails = b.attendees.filter((e: string) => e !== userEmail)
         if (attendeeEmails.length > 0) {

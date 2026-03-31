@@ -761,10 +761,13 @@ function AppContent() {
                           booking_approved: "#16A34A",
                           booking_rejected: "#DC2626",
                           booking_cancelled:"#64748B",
-                          booking_checkin:  "#2563EB",
-                          booking_early_end:"#7C3AED",
-                          booking_noshow:   "#EF4444",
-                          booking_updated:  "#0891B2",
+                          booking_checkin:      "#2563EB",
+                          booking_early_end:    "#7C3AED",
+                          booking_noshow:       "#EF4444",
+                          booking_updated:      "#0891B2",
+                          checkin_reminder_10:  "#0891B2",
+                          checkin_required:     "#16A34A",
+                          checkin_warning:      "#EF4444",
                         }
                         const color = typeColors[n.type] ?? "#64748B"
                         return (
