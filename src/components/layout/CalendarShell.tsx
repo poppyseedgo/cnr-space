@@ -201,8 +201,8 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
       </div>
 
       {calView==="monthly"  && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d=>{setSelectedDate(d);setCalView("daily");}} onBookingClick={onBookingClick} rooms={allRooms} />}
-      {calView==="daily"    && <DailyView   bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate)} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} rooms={allRooms} />}
-      {calView==="timeline" && <TimelineView bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate)} rooms={filteredRooms} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} />}
+      {calView==="daily"    && <DailyView   bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate&&!(b.autoCancelled&&b.cancelledBy==='user'))} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} rooms={allRooms} />}
+      {calView==="timeline" && <TimelineView bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate&&!(b.autoCancelled&&b.cancelledBy==='user'))} rooms={filteredRooms} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} />}
     </div>
   );
 }
@@ -226,7 +226,7 @@ export function MonthlyView({bookings,selectedDate,onDayClick,onBookingClick,roo
         {cells.map((day,idx)=>{
           if(!day) return <div key={`e${idx}`} style={{minHeight:110,borderRight:"1px solid #F1F5F9",borderBottom:"1px solid #F1F5F9",background:"#FAFAFA"}}/>;
           const ds=`${year}-${fmt2(month+1)}-${fmt2(day)}`;
-          const dbs=bookings.filter(b=>tsDate(b.start_at)===ds&&!b.autoCancelled);
+          const dbs=bookings.filter(b=>tsDate(b.start_at)===ds&&!(b.autoCancelled&&b.cancelledBy==='user'));
           const isToday=ds===today,isSel=ds===selectedDate;
           const dow=(firstDay+day-1)%7;
           return(
@@ -371,7 +371,7 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
         {days.map(ds=>{
           const d=dateToObj(ds), dow=d.getDay();
           const isToday=ds===today, isSel=ds===selectedDate;
-          const dayBks = bookings.filter(b=>tsDate(b.start_at)===ds&&!b.autoCancelled);
+          const dayBks = bookings.filter(b=>tsDate(b.start_at)===ds&&!(b.autoCancelled&&b.cancelledBy==='user'));
           const cw = colWidths[ds];
           return(
             <div key={ds}
@@ -442,8 +442,8 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
 
         {/* 요일 컬럼 */}
         {days.map(ds=>{
-          const dbs    = bookings.filter(b=>tsDate(b.start_at)===ds&&!b.autoCancelled);
-          const dbsCan = bookings.filter(b=>tsDate(b.start_at)===ds&&b.autoCancelled);
+          const dbs    = bookings.filter(b=>tsDate(b.start_at)===ds&&!(b.autoCancelled&&b.cancelledBy==='user'));
+          const dbsCan = bookings.filter(b=>tsDate(b.start_at)===ds&&b.autoCancelled&&b.cancelledBy!=='user');
           const isToday = ds===today;
           const layout  = dayLayouts[ds];
           const cw = colWidths[ds];
@@ -469,7 +469,7 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
                 </div>
               ))}
 
-              {/* 취소된 예약 (흐리게) */}
+              {/* 노쇼 슬롯 (흐리게 + 노쇼 칩) — 유저 취소는 이미 필터됨 */}
               {dbsCan.map(b=>{
                 const sm=tsMin(b.start_at),em=tsMin(b.end_at);
                 const top=(sm-7*60)/60*HH;
@@ -480,9 +480,15 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
                       background:"#F1F5F9",border:"1px dashed #D1D5DB",
                       borderRadius:5,padding:"2px 5px",cursor:"pointer",
                       opacity:0.5,overflow:"hidden",zIndex:1}}>
+                    {h>22 && (
+                      <span style={{display:"inline-block",background:"#FEF3C7",color:"#92400E",
+                        fontSize:8,fontWeight:700,padding:"1px 4px",borderRadius:2,marginBottom:1}}>
+                        노쇼
+                      </span>
+                    )}
                     <div style={{fontSize:9,color:"#94A3B8",whiteSpace:"nowrap",
                       textOverflow:"ellipsis",overflow:"hidden"}}>
-                      취소 · {b.title}
+                      {b.title}
                     </div>
                   </div>
                 );
@@ -659,7 +665,8 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
           {rooms.map((room,ri)=>{
             const floor = getFloor(room.floor_id);
             const rBks  = bookings.filter(b=>b.room_id===room.room_id&&!b.autoCancelled);
-            const rBksCancelled = bookings.filter(b=>b.room_id===room.room_id&&b.autoCancelled);
+            // 노쇼(시스템 취소)만 희미하게 표시 — 유저 취소는 숨김
+            const rBksCancelled = bookings.filter(b=>b.room_id===room.room_id&&b.autoCancelled&&b.cancelledBy!=='user');
             return(
               <div key={room.room_id}
                 style={{display:"flex",borderBottom:ri<rooms.length-1?"1px solid #F1F5F9":"none",
@@ -703,38 +710,46 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
                     );
                   })()}
 
-                  {/* 예약 블록 */}
-                  {[...rBks,...rBksCancelled].map(b=>{
+                  {/* 예약 블록 — 노쇼(취소) 먼저 렌더, 정상예약이 위로 */}
+                  {[...rBksCancelled,...rBks].map(b=>{
                     const sm=tsMin(b.start_at),em=tsMin(b.end_at);
                     const left=((sm-7*60)/60)*CW+2;
                     const width=Math.max(((em-sm)/60)*CW-4,20);
-                    const isCan=b.autoCancelled;
+                    const isNoshow = b.autoCancelled && b.cancelledBy!=='user';
                     const isEnded=b.earlyEnded;
-                    const isAct=isToday&&sm<=now&&now<em&&!isCan&&!isEnded;
+                    const isAct=isToday&&sm<=now&&now<em&&!isNoshow&&!isEnded;
                     const nci=isAct&&!b.checkedIn;
                     return(
                       <div key={b.id} onClick={e=>{e.stopPropagation();onBlockClick(b);}}
                         style={{
                           position:"absolute",top:6,bottom:6,left,width,
-                          background:isCan?"#F1F5F9":isEnded?"#E2E8F0":"#111111",
-                          border:`1.5px solid ${isCan?"#E2E8F0":isEnded?"#CBD5E1":isAct?"#000":"#334155"}`,
-                          borderRadius:8,padding:"5px 8px",cursor:"pointer",zIndex:3,
+                          background:isNoshow?"#F1F5F9":isEnded?"#E2E8F0":"#111111",
+                          border:`1.5px solid ${isNoshow?"#E2E8F0":isEnded?"#CBD5E1":isAct?"#000":"#334155"}`,
+                          borderRadius:8,padding:"5px 8px",cursor:"pointer",
+                          zIndex:isNoshow?1:isAct?5:3,  /* 노쇼 맨 아래, 진행중 맨 위 */
                           overflow:"hidden",
-                          boxShadow:isAct?"0 0 0 2px #EF4444, 0 2px 8px rgba(0,0,0,0.2)":isCan||isEnded?"none":"0 1px 4px rgba(0,0,0,0.15)",
-                          opacity:isCan?0.45:isEnded?0.55:1,transition:"all 0.12s"
+                          boxShadow:isAct?"0 0 0 2px #EF4444, 0 2px 8px rgba(0,0,0,0.2)":isNoshow||isEnded?"none":"0 1px 4px rgba(0,0,0,0.15)",
+                          opacity:isNoshow?0.45:isEnded?0.55:1,transition:"all 0.12s"
                         }}
-                        onMouseEnter={e=>{ if(!isCan&&!isEnded) e.currentTarget.style.filter="brightness(1.15)"; }}
+                        onMouseEnter={e=>{ if(!isNoshow&&!isEnded) e.currentTarget.style.filter="brightness(1.15)"; }}
                         onMouseLeave={e=>{ e.currentTarget.style.filter="none"; }}>
-                        <div style={{fontSize:11,fontWeight:700,color:isCan||isEnded?"#94A3B8":"#fff",
+                        {/* 노쇼 칩 */}
+                        {isNoshow && width>40 && (
+                          <span style={{display:"inline-block",background:"#FEF3C7",color:"#92400E",
+                            fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:3,marginBottom:2}}>
+                            노쇼
+                          </span>
+                        )}
+                        <div style={{fontSize:11,fontWeight:700,color:isNoshow||isEnded?"#94A3B8":"#fff",
                           whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                           {isEnded&&<CheckCircle2 size={10} strokeWidth={2} style={{marginRight:3,flexShrink:0}}/>}
                           {isAct&&!isEnded&&<Circle size={7} fill="#86EFAC" strokeWidth={0} style={{marginRight:3,flexShrink:0}}/>}
                           {b.checkedIn&&!isEnded&&!isAct&&<CheckCircle2 size={10} strokeWidth={2} style={{marginRight:3,flexShrink:0}}/>}
                           {b.title}
                         </div>
-                        {width>80&&<div style={{fontSize:10,color:isEnded?"#CBD5E1":"#94A3B8",marginTop:1,whiteSpace:"nowrap"}}>{fmtTSRange(b.start_at, b.end_at)}{isEnded?" (완료)":""}</div>}
-                        {width>120&&<div style={{fontSize:10,color:isEnded?"#CBD5E1":"#64748B",whiteSpace:"nowrap"}}>{b.user}{b.checkedIn&&!isEnded&&<CheckCircle2 size={9} strokeWidth={2} style={{marginLeft:3,verticalAlign:"middle",flexShrink:0}}/>}</div>}
-                        {isToday&&!isCan&&!isEnded&&!b.checkedIn&&width>90&&(
+                        {width>80&&<div style={{fontSize:10,color:isEnded?"#CBD5E1":"#94A3B8",marginTop:1,whiteSpace:"nowrap"}}>{fmtTSRange(b.start_at, b.end_at)}{isEnded?" (완료)":isNoshow?" (노쇼)":""}</div>}
+                        {width>120&&!isNoshow&&<div style={{fontSize:10,color:isEnded?"#CBD5E1":"#64748B",whiteSpace:"nowrap"}}>{b.user}{b.checkedIn&&!isEnded&&<CheckCircle2 size={9} strokeWidth={2} style={{marginLeft:3,verticalAlign:"middle",flexShrink:0}}/>}</div>}
+                        {isToday&&!isNoshow&&!isEnded&&!b.checkedIn&&width>90&&(
                           <button className="btn" onClick={e=>{e.stopPropagation();if(nci)onCheckIn(b.id);}} disabled={!nci}
                             style={{marginTop:3,background:nci?"#16A34A":"#CBD5E1",color:nci?"#fff":"#94A3B8",padding:"2px 7px",fontSize:9,borderRadius:4,display:"block",cursor:nci?"pointer":"not-allowed",alignItems:"center",gap:3}}><CheckCircle2 size={9} strokeWidth={2}/>체크인</button>
                         )}
@@ -897,7 +912,7 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
                     const sm  = tsMin(b.start_at), em = tsMin(b.end_at);
                     const top = minToPx(sm);
                     const h   = Math.max(minToPx(em) - top - 4, 24);
-                    const isCan  = b.autoCancelled;
+                    const isCan  = b.autoCancelled && b.cancelledBy!=='user'; // 유저 취소는 이미 필터됨
                     const isAct  = isToday && sm<=now && now<em && !isCan;
                     const nci    = isAct && !b.checkedIn;
 
