@@ -338,6 +338,15 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
     return result;
   }
 
+  // 현재시간 자동 스크롤
+  const weekScrollRef = useRef<HTMLDivElement>(null);
+  const nowPxWeekly = (nowMinutes() - 7*60) / 60 * HH;
+  useEffect(() => {
+    if (!weekScrollRef.current) return;
+    const target = Math.max(0, nowPxWeekly - 120);
+    weekScrollRef.current.scrollTop = target;
+  }, [weekStart]);
+
   // 요일별 컬럼 레이아웃 미리 계산
   const dayLayouts = {};
   for (const ds of days) {
@@ -410,7 +419,7 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
       </div>
 
       {/* 시간 그리드 */}
-      <div style={{overflowY:"auto", maxHeight:"calc(100vh - 300px)",
+      <div ref={weekScrollRef} style={{overflowY:"auto", maxHeight:"calc(100vh - 300px)",
         touchAction:"pan-y", overscrollBehaviorX:"none",
         minWidth: LW + days.reduce((s,d)=>s+colWidths[d],0)}}>
         {/* 시간 레이블 */}
@@ -597,20 +606,24 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
     <div style={{background:"#fff",borderRadius:16,border:"1px solid #E2E8F0",overflow:"hidden"}}>
       {/* 스크롤 컨테이너 */}
       <div ref={scrollRef} style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 240px)"}} >
-        <div style={{minWidth: LW + totalW}}>
+        {/* position:relative 필수 — 내부 absolute 기준점 */}
+        <div style={{minWidth: LW + totalW, position:"relative"}}>
 
-          {/* 현재시간 세로선 */}
+          {/* 현재시간 세로선 — 헤더 아래 바디 영역에만 표시 */}
           {isToday && nowLeft >= 0 && (
             <div style={{
-              position:"absolute", top:0, bottom:0,
+              position:"absolute",
+              top:48,  /* 헤더 높이만큼 아래서 시작 */
+              bottom:0,
               left: LW + nowLeft,
               width:2, background:"#EF4444", zIndex:8, pointerEvents:"none"
             }}>
               <div style={{
-                position:"sticky", top:0,
+                position:"absolute", top:0, left:"50%",
+                transform:"translateX(-50%)",
                 fontSize:10, fontWeight:700, color:"#EF4444",
                 background:"#fff", padding:"2px 4px", borderRadius:4,
-                whiteSpace:"nowrap", transform:"translateX(-50%)"
+                whiteSpace:"nowrap",
               }}>
                 {fmt2(Math.floor(now/60))}:{fmt2(now%60)}
               </div>
