@@ -591,7 +591,7 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
   const isToday = selectedDate===todayStr(), now=nowMinutes();
   // X=시간(가로), Y=회의실(세로)
   const CW=120, // 시간 1칸 너비(px)
-        RH=72,  // 회의실 1행 높이(px)
+        RH=80,  // 회의실 1행 높이(px) — 9개 × 80 = 720px
         LW=148; // 왼쪽 회의실명 영역 너비
 
   const rooms = (dvRooms.length>0?dvRooms:ROOMS_DB).filter(r=>r.is_active);
@@ -609,7 +609,7 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
   return(
     <div style={{background:"#fff",borderRadius:16,border:"1px solid #E2E8F0",overflow:"hidden"}}>
       {/* 스크롤 컨테이너 */}
-      <div ref={scrollRef} style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 240px)"}} >
+      <div ref={scrollRef} style={{overflowX:"auto",overflowY:"visible"}} >
         {/* position:relative 필수 — 내부 absolute 기준점 */}
         <div style={{minWidth: LW + totalW, position:"relative"}}>
 
@@ -659,7 +659,9 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
             const rBksCancelled = bookings.filter(b=>b.room_id===room.room_id&&b.autoCancelled);
             return(
               <div key={room.room_id}
-                style={{display:"flex",borderBottom:ri<rooms.length-1?"1px solid #F1F5F9":"none",minHeight:RH,position:"relative"}}
+                style={{display:"flex",borderBottom:ri<rooms.length-1?"1px solid #F1F5F9":"none",
+                  height:RH, minHeight:RH, maxHeight:RH,
+                  position:"relative", overflow:"hidden"}}
                 onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"}
                 onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
 
@@ -673,7 +675,7 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
                 </div>
 
                 {/* 시간 셀들 (빈 슬롯 클릭 → 예약) */}
-                <div style={{flex:1,position:"relative",minHeight:RH,display:"flex"}}>
+                <div style={{flex:1,position:"relative",height:RH,display:"flex",overflow:"hidden"}}>
                   {HOURS.map(h=>(
                     <div key={h} onClick={()=>onEmptyClick(room.room_id,h)}
                       style={{width:CW,minWidth:CW,flexShrink:0,borderRight:"1px solid #F1F5F9",
