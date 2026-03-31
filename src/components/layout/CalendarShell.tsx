@@ -601,7 +601,7 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
 export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onCheckIn,rooms:dvRooms=[]}) {
   const isToday = selectedDate===todayStr(), now=nowMinutes();
   // X=시간(가로), Y=회의실(세로)
-  const CW=120, // 시간 1칸 너비(px)
+  const CW=160, // 시간 1칸 너비(px) — 15분=40px
         RH=80,  // 회의실 1행 높이(px) — 9개 × 80 = 720px
         LW=148; // 왼쪽 회의실명 영역 너비
 
