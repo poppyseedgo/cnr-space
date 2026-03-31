@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
 import { Layers, Users, UsersRound, Building2, Clock, User, Monitor, FileText, XCircle, AlertTriangle, CheckCircle2, Circle, X, Calendar, Home, LayoutGrid, LogOut, Settings, Search, BarChart2, ClipboardList, Inbox, ChevronDown, ChevronUp, AlertCircle, CheckCheck, Ban, Check } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
-  fmtTSRange, fmtTSRangeFull, fmtTSFull, fmtRoomName, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
+  fmtTSRange, fmtRangeFull, fmtTimeFull, fmtTSRangeFull, fmtTSFull, fmtRoomName, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../../utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, FLOORS, getFloor, getRoomFeatures, getRoomById, getRoomThumbnail, getRoomGallery } from '../../data/master'
@@ -386,7 +386,7 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
             </span>
             <span style={{background:"#F8FAFC", color:"#64748B", fontSize:12, fontWeight:600,
               padding:"5px 14px", borderRadius:999, border:"none"}}>
-              {fmtTime(status.nextStart)} 까지
+              {fmtTimeFull(status.nextStart)} 까지
             </span>
           </>)}
         </div>
@@ -418,7 +418,7 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
               return (
                 <div style={{padding:"10px 16px", background:"#F8FAFC", borderRadius:8}}>
                   <div style={{fontSize:12, color:"#ff1999", marginBottom:0}}>
-                    현재 사용 중 · <span style={{fontWeight:600, color:"#475569"}}>{activeBk.title}</span> · <span style={{fontWeight:600, color:"#64748B"}}>{fmtTS(activeBk.end_at)}까지</span>
+                    현재 사용 중 · <span style={{fontWeight:600, color:"#475569"}}>{activeBk.title}</span> · <span style={{fontWeight:600, color:"#64748B"}}>{fmtTSFull(activeBk.end_at)}까지</span>
                   </div>
                   {futureBks.length > 0 && (
                     <div style={{fontSize:11, color:"#CBD5E1", marginTop:2}}>
@@ -446,7 +446,7 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
                           {b.title}
                         </span>
                         <span style={{color:"#94A3B8", flexShrink:0, whiteSpace:"nowrap"}}>
-                          {fmtTS(b.start_at)}-{fmtTS(b.end_at)}
+                          {fmtTSFull(b.start_at)}–{fmtTSFull(b.end_at)}
                         </span>
                       </div>
                     ))}
@@ -648,14 +648,14 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
               <div style={{background:"#FEF2F2",borderRadius:10,padding:"12px 14px"}}>
                 <div style={{fontSize:11,color:"#DC2626",fontWeight:700,marginBottom:6}}>현재 사용 중</div>
                 <div style={{fontSize:14,color:"#111111",fontWeight:700}}>{status.booking?.title}</div>
-                <div style={{fontSize:12,color:"#64748B",marginTop:4}}>{fmtTime(status.endTime)}까지 · {status.minsLeft}분 남음</div>
+                <div style={{fontSize:12,color:"#64748B",marginTop:4}}>{fmtTimeFull(status.endTime)}까지 · {status.minsLeft}분 남음</div>
               </div>
             )}
             {status.type==="SOON" && (
               <div style={{background:"#FFFBEB",borderRadius:10,padding:"12px 14px"}}>
                 <div style={{fontSize:11,color:"#D97706",fontWeight:700,marginBottom:6}}>사용 예정</div>
                 <div style={{fontSize:14,color:"#111111",fontWeight:700}}>{status.minsUntil}분 후 사용 시작</div>
-                <div style={{fontSize:12,color:"#64748B",marginTop:4}}>{fmtTime(status.nextStart)} 부터</div>
+                <div style={{fontSize:12,color:"#64748B",marginTop:4}}>{fmtTimeFull(status.nextStart)} 부터</div>
               </div>
             )}
             {status.type==="AVAILABLE" && (

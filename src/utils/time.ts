@@ -50,17 +50,17 @@ export function fmtRange(s, e) { return `${fmtTime(s)} – ${fmtTime(e)}`; }
 export function fmtTSRange(s_at, e_at) { return `${fmtTS(s_at)} – ${fmtTS(e_at)}`; }
 
 // ── 정식 표기 포맷 (예약 정보 표시 전용) ─────────────────────────────────────
-/** 오전/오후 NN시 NN분 (정식 표기) */
+/** 오전/오후 H:MM (정식 표기 — 예: 오후 4:00) */
 export function fmtTimeFull(t: string): string {
   if (!t) return "";
   const [h, m] = t.split(":").map(Number);
   const period = h < 12 ? "오전" : "오후";
   const hour   = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return m === 0 ? `${period} ${hour}시` : `${period} ${hour}시 ${m}분`;
+  return `${period} ${hour}:${fmt2(m)}`;
 }
-/** timestamp → 오전/오후 NN시 NN분 */
+/** timestamp → 오전/오후 H:MM */
 export function fmtTSFull(ts: string): string { return fmtTimeFull(tsTime(ts)); }
-/** 오전 NN시 NN분 – 오후 NN시 NN분 범위 */
+/** 오전/오후 H:MM – 오전/오후 H:MM 범위 */
 export function fmtRangeFull(s: string, e: string): string {
   return `${fmtTimeFull(s)} – ${fmtTimeFull(e)}`;
 }
