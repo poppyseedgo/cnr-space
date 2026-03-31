@@ -776,8 +776,13 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
   const minToPx = (min) => ((min - 7*60) / 60) * HH;
   const nowPx = isToday ? minToPx(now) : -1;
 
-  // 가로 스크롤 ref (sticky 헤더용)
+  // 자동 스크롤 — 현재시간 기준으로 스크롤
   const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    const target = isToday ? Math.max(0, nowPx - 120) : 0;
+    scrollRef.current.scrollTop = target;
+  }, [selectedDate, isToday, nowPx]);
 
   return (
     <div style={{
@@ -788,7 +793,8 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
       {/* ── 단일 스크롤 컨테이너 (가로+세로 동시) — sticky top 정상 동작 ── */}
       <div ref={scrollRef} style={{
         overflowX:"auto",
-        overflowY:"visible",  /* 세로 전체 펼침 — 스크롤 없이 전체 표시 */
+        overflowY:"auto",
+        maxHeight:"calc(100vh - 180px)",
         WebkitOverflowScrolling:"touch",
       }}>
         {/* 전체 너비 고정 래퍼 */}
