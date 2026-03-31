@@ -364,70 +364,96 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
   return (
     <div style={{maxWidth:1280, margin:"0 auto", padding: isMobile?"16px 12px":"28px 28px"}}>
 
-      {/* ── 오늘 내 예약 ── */}
+      {/* ── 오늘 내 예약 — HomeView 동일 카드 UI ── */}
       <div style={{marginBottom:28}}>
-        <div className="section-header">
-          <div className="section-title">오늘 내 예약</div>
-          <span style={{fontSize:12, color:"#94A3B8", fontWeight:500}}>{today}</span>
+        <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12}}>
+          <div style={{display:"flex", alignItems:"center", gap:8}}>
+            <span style={{fontSize:15, fontWeight:800, color:"#111"}}>오늘 내 예약</span>
+            <span style={{fontSize:12, color:"#94A3B8", fontWeight:500}}>{todayBookings.length}건</span>
+          </div>
         </div>
 
-        {todayBookings.length === 0 ? (
-          <div style={{background:"#F8FAFC", borderRadius:12, padding:"20px",
-            textAlign:"center", fontSize:13, color:"#CBD5E1"}}>
-            오늘 예약이 없습니다
-          </div>
-        ) : (
-          <div style={{display:"flex", flexDirection:"column", gap:8}}>
-            {todayBookings.map(b => {
-              const r = (rooms as any[]).find((r:any) => r.room_id === b.room_id)
-              const isActive = tsMin(b.start_at) <= now && now < tsMin(b.end_at) && !b.autoCancelled
-              const isPast   = tsMin(b.end_at) <= now
-              const stateColor = b.autoCancelled ? "#94A3B8"
-                : isActive ? "#16A34A" : isPast ? "#94A3B8" : "#3B82F6"
-              const stateBg = b.autoCancelled ? "#F1F5F9"
-                : isActive ? "#DCFCE7" : isPast ? "#F1F5F9" : "#EFF6FF"
-              const stateLabel = b.autoCancelled ? "취소"
-                : isActive ? "사용중" : isPast ? "완료" : "예정"
+        <div className="flex gap-3 pb-2"
+          style={{overflowX:"auto", scrollbarWidth:"none", WebkitOverflowScrolling:"touch", paddingRight:4}}>
 
-              return (
-                <div key={b.id} onClick={()=>onDetail(b)}
-                  style={{
-                    background:"#fff", borderRadius:12,
-                    border: `1px solid ${isActive ? "#BBF7D0" : "#E2E8F0"}`,
-                    borderLeft: `4px solid ${stateColor}`,
-                    padding:"12px 16px", cursor:"pointer",
-                    display:"flex", alignItems:"center", gap:14,
-                    transition:"box-shadow 0.15s",
-                    boxShadow: isActive ? "0 2px 12px rgba(22,163,74,0.12)" : "0 1px 4px rgba(0,0,0,0.04)"
-                  }}
-                  onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.08)"}
-                  onMouseLeave={e=>e.currentTarget.style.boxShadow=isActive?"0 2px 12px rgba(22,163,74,0.12)":"0 1px 4px rgba(0,0,0,0.04)"}>
-                  {/* 시간 */}
-                  <div style={{textAlign:"center", minWidth:72, flexShrink:0}}>
-                    <div style={{fontSize:13, fontWeight:700, color:"#111"}}>{fmtTSFull(b.start_at)}</div>
-                    <div style={{fontSize:11, color:"#94A3B8", marginTop:2}}>~ {fmtTSFull(b.end_at)}</div>
+          {/* + 예약하기 첫 카드 */}
+          <button onClick={()=>document.dispatchEvent(new CustomEvent("openNewBooking"))}
+            className="btn flex-none flex flex-col items-center justify-center rounded-2xl text-white font-bold"
+            style={{width:isMobile?"42vw":160, minWidth:140, minHeight:isMobile?120:140,
+              background:"#111111", flexShrink:0, gap:8}}>
+            <span style={{fontSize:24, lineHeight:1}}>＋</span>
+            <span style={{fontSize:isMobile?12:13}}>예약하기</span>
+          </button>
+
+          {todayBookings.length === 0 ? (
+            <div className="flex-none flex items-center justify-center rounded-2xl text-slate-300 text-sm"
+              style={{width:isMobile?"42vw":160, minWidth:140, minHeight:isMobile?120:140, background:"#F3F4F8"}}>
+              오늘 예약 없음
+            </div>
+          ) : todayBookings.map(b => {
+            const r = (rooms as any[]).find((r:any) => r.room_id === b.room_id)
+            const isActive  = tsMin(b.start_at) <= now && now < tsMin(b.end_at) && !b.autoCancelled
+            const isPast    = tsMin(b.end_at) < now
+            const minsUntil = tsMin(b.start_at) - now
+            const isSoon    = minsUntil > 0 && minsUntil <= 10
+            const cardState: string = b.cancelledBy === 'system' ? "noshow"
+              : b.autoCancelled ? "cancelled"
+              : b.earlyEnded    ? "earlyEnded"
+              : b.checkedIn && isActive ? "using"
+              : b.checkedIn     ? "done"
+              : isActive        ? "checkin"
+              : isPast          ? "cancelled"
+              : isSoon          ? "soon"
+              : "waiting"
+            const S: any = {
+              pending:    {label:"승인 대기",  btnBg:"#FEF3C7", btnColor:"#92400E", disabled:true,  badge:"승인 대기"},
+              noshow:     {label:"노쇼",        btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  badge:"자동취소"},
+              soon:       {label:"체크인 대기", btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  badge:`${minsUntil}분 뒤`},
+              waiting:    {label:"체크인 대기", btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  badge:null},
+              checkin:    {label:"체크인",       btnBg:"#16A34A", btnColor:"#fff",    disabled:false, badge:null},
+              using:      {label:"사용 완료",    btnBg:"#111111", btnColor:"#fff",    disabled:false, badge:"사용중"},
+              done:       {label:"완료",         btnBg:"#DBEAFE", btnColor:"#2563EB", disabled:true,  badge:null},
+              earlyEnded: {label:"반납 완료",    btnBg:"#DBEAFE", btnColor:"#2563EB", disabled:true,  badge:"반납됨"},
+              cancelled:  {label:"자동취소",     btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  badge:null},
+            }[cardState]
+            const isCancellable = cardState==="waiting" || cardState==="soon" || cardState==="pending"
+            return (
+              <div key={b.id}
+                className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 rounded-2xl p-3"
+                onClick={()=>onDetail(b)}
+                style={{width:isMobile?"42vw":160, minWidth:140, minHeight:isMobile?120:140,
+                  flexShrink:0, cursor:"pointer",
+                  opacity:(cardState==="cancelled"||cardState==="noshow")?0.45:1,
+                  border:cardState==="pending"?"1.5px solid #FCD34D":"none"}}>
+                <div>
+                  <div className="flex items-start justify-between gap-1 mb-1.5">
+                    <div className="text-xs font-bold text-slate-900 dark:text-white leading-snug line-clamp-2" style={{flex:1}}>{b.title}</div>
+                    {S.badge && (
+                      <span className="flex-shrink-0 text-[9px] font-bold rounded-full px-2 py-0.5 ml-1"
+                        style={{background:cardState==="soon"?"#FFF3E0":"#F3F4F8",
+                          color:cardState==="soon"?"#EA580C":undefined}}>{S.badge}</span>
+                    )}
                   </div>
-                  {/* 구분선 */}
-                  <div style={{width:1, height:32, background:"#E2E8F0", flexShrink:0}}/>
-                  {/* 정보 */}
-                  <div style={{flex:1, minWidth:0}}>
-                    <div style={{fontSize:14, fontWeight:700, color:"#111",
-                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{b.title}</div>
-                    <div style={{fontSize:12, color:"#64748B", marginTop:2}}>
-                      {r?.room_name ?? "-"}
-                    </div>
-                  </div>
-                  {/* 상태 뱃지 */}
-                  <span style={{background:stateBg, color:stateColor,
-                    fontSize:11, fontWeight:700, padding:"4px 10px",
-                    borderRadius:999, flexShrink:0}}>
-                    {stateLabel}
-                  </span>
+                  <div className="text-[10px] text-slate-400">{r?.room_name ?? ''}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">{fmtTSRangeFull(b.start_at, b.end_at)}</div>
                 </div>
-              )
-            })}
-          </div>
-        )}
+                <div className="flex gap-1.5 mt-2">
+                  <button className="btn flex-1 text-[11px] font-bold rounded-xl py-2"
+                    onClick={e=>{e.stopPropagation();}}
+                    disabled={S.disabled}
+                    style={{background:S.btnBg, color:S.btnColor, cursor:S.disabled?"default":"pointer",
+                      minHeight:32, display:"flex", alignItems:"center", justifyContent:"center"}}>
+                    {S.label}
+                  </button>
+                  {isCancellable && (
+                    <button className="btn text-[11px] font-bold rounded-xl py-2 px-2.5 text-slate-500" style={{background:"#F3F4F8"}}
+                      onClick={e=>{e.stopPropagation();}}>취소</button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
       </div>
 
       {/* ── 주간 예약 ── */}
@@ -458,6 +484,7 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
           onBlockClick={onDetail}
           onEmptyClick={()=>{}}
           onCheckIn={onCheckIn}
+          fillContainer={true}
         />
       </div>
     </div>

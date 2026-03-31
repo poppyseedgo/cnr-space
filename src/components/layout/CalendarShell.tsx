@@ -251,7 +251,7 @@ export function MonthlyView({bookings,selectedDate,onDayClick,onBookingClick,roo
   );
 }
 
-export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmptyClick,onCheckIn}) {
+export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmptyClick,onCheckIn,fillContainer=false}) {
   const { isMobile } = useBreakpoint();
   const weekStart = getWeekStart(selectedDate);
   const days = Array.from({length:7}, (_,i) => addDays(weekStart,i));
@@ -364,7 +364,8 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
       <div style={{overflowX:"auto", touchAction:"pan-x", WebkitOverflowScrolling:"touch"}}>
       {/* 요일 헤더 */}
       <div style={{display:"flex",borderBottom:"1px solid #E2E8F0",background:"#F8FAFC",
-        position:"sticky",top:0,zIndex:9,minWidth: LW + days.reduce((s,d)=>s+colWidths[d],0)}}>
+        position:"sticky",top:0,zIndex:9,
+        minWidth: fillContainer ? "100%" : LW + days.reduce((s,d)=>s+colWidths[d],0)}}>
         <div style={{width:LW,minWidth:LW,borderRight:"1px solid #E2E8F0",flexShrink:0,
           position:"sticky",left:0,background:"#F8FAFC",zIndex:12}}/>
         {days.map(ds=>{
@@ -374,7 +375,9 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
           const cw = colWidths[ds];
           return(
             <div key={ds}
-              style={{width:cw,minWidth:cw,flexShrink:0,position:"relative",
+              style={{width:fillContainer?undefined:cw, minWidth:fillContainer?0:cw,
+                flex:fillContainer?1:undefined,
+                flexShrink:0,position:"relative",
                 textAlign:"center",cursor:"pointer",
                 borderRight:"1px solid #E2E8F0",transition:"background 0.15s",
                 background:isToday?"#EFF6FF":isSel?"#F8FAFC":"transparent"}}>
@@ -418,7 +421,7 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
       {/* 시간 그리드 */}
       <div ref={weekScrollRef} style={{overflowY:"auto", maxHeight:"calc(100vh - 300px)",
         touchAction:"pan-y", overscrollBehaviorX:"none",
-        minWidth: LW + days.reduce((s,d)=>s+colWidths[d],0),
+        minWidth: fillContainer ? "100%" : LW + days.reduce((s,d)=>s+colWidths[d],0),
         display:"flex"}}>
         {/* 시간 레이블 */}
         <div style={{width:LW,minWidth:LW,borderRight:"1px solid #E2E8F0",flexShrink:0,
@@ -446,7 +449,10 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
           const cw = colWidths[ds];
 
           return(
-            <div key={ds} style={{width:cw,minWidth:cw,flexShrink:0,
+            <div key={ds} style={{
+              width:fillContainer?undefined:cw, minWidth:fillContainer?0:cw,
+              flex:fillContainer?1:undefined,
+              flexShrink:0,
               borderRight:"1px solid #E2E8F0",position:"relative",
               background:isToday?"#FAFFFE":"#fff"}}>
 
