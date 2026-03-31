@@ -126,85 +126,83 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
 
   return(
     <div style={{maxWidth:960,margin:"0 auto",padding:isMobile?"16px 12px":"28px 24px"}}>
-      {/* 프로필 카드 */}
-      <div className="anm" style={{background:"#fff",borderRadius:16,padding:isMobile?"20px":"24px 28px",marginBottom:20,
-        display:"flex",alignItems:isMobile?"flex-start":"center",gap:isMobile?16:20,flexDirection:isMobile?"column":"row"}}>
-        <div style={{width:56,height:56,borderRadius:"50%",background:"#111",color:"#fff",
-          display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:800,flexShrink:0}}>
-          {currentUser.charAt(0)}
-        </div>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:20,fontWeight:800,color:"#111"}}>{currentUser}</div>
-          <div style={{fontSize:13,color:"#64748B",marginTop:2}}>{currentDept} · {userInfo?.email}</div>
-        </div>
-        <div style={{display:"flex",gap:12}}>
-          <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 16px",textAlign:"center"}}>
-            <div style={{fontSize:20,fontWeight:800,color:"#111"}}>{thisBks.length}</div>
-            <div style={{fontSize:11,color:"#94A3B8",fontWeight:600}}>이번 달 예약</div>
-          </div>
-          <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 16px",textAlign:"center"}}>
-            <div style={{fontSize:20,fontWeight:800,color:thisRate>=70?"#16A34A":"#D97706"}}>{thisRate}%</div>
-            <div style={{fontSize:11,color:"#94A3B8",fontWeight:600}}>체크인율</div>
-          </div>
-        </div>
-      </div>
 
-      {/* 예약 탭 */}
-      <div className="anm" style={{background:"#fff",borderRadius:16,overflow:"hidden",marginBottom:20}}>
-        <div style={{display:"flex",borderBottom:"1px solid #F1F5F9"}}>
-          {[{id:"upcoming",label:"예정",count:upcoming.length},{id:"completed",label:"완료",count:completed.length},{id:"cancelled",label:"취소",count:cancelled.length}].map(t=>(
-            <button key={t.id} className="btn" onClick={()=>setTab(t.id)}
-              style={{flex:1,padding:"14px 8px",fontSize:13,fontWeight:tab===t.id?700:500,
-                color:tab===t.id?"#111":"#94A3B8",background:"transparent",
-                borderBottom:tab===t.id?"2px solid #111":"2px solid transparent",
-                display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-              {t.label}
-              <span style={{background:tab===t.id?"#111":"#F1F5F9",color:tab===t.id?"#fff":"#94A3B8",
-                fontSize:11,fontWeight:700,padding:"1px 8px",borderRadius:999}}>{t.count}</span>
-            </button>
-          ))}
+      {/* ── 기간별 예약 조회 ── */}
+      <div className="anm" style={{background:"#fff",borderRadius:16,overflow:"hidden",marginTop:20,animationDelay:"150ms"}}>
+        <div style={{padding:isMobile?"16px 20px":"20px 28px",borderBottom:"1px solid #F1F5F9"}}>
+          <div style={{fontSize:15,fontWeight:800,color:"#111",marginBottom:14}}><span style={{display:"inline-flex",alignItems:"center",gap:6}}><ClipboardList size={15} strokeWidth={1.8}/>기간별 예약 조회</span></div>
+          {/* 날짜 필터 */}
+          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <div style={{flex:"1 1 140px",minWidth:120}}>
+              <label style={{fontSize:11,fontWeight:700,color:"#94A3B8",display:"block",marginBottom:4}}>시작일</label>
+              <input type="date" value={listFrom} onChange={e=>setListFrom(e.target.value)}
+                style={{width:"100%",padding:"8px 12px",borderRadius:10,border:"1px solid #E2E8F0",fontSize:13,background:"#fff",outline:"none"}}/>
+            </div>
+            <span style={{color:"#CBD5E1",marginTop:16}}>~</span>
+            <div style={{flex:"1 1 140px",minWidth:120}}>
+              <label style={{fontSize:11,fontWeight:700,color:"#94A3B8",display:"block",marginBottom:4}}>종료일</label>
+              <input type="date" value={listTo} onChange={e=>setListTo(e.target.value)}
+                style={{width:"100%",padding:"8px 12px",borderRadius:10,border:"1px solid #E2E8F0",fontSize:13,background:"#fff",outline:"none"}}/>
+            </div>
+          </div>
+          {/* 상태 필터 */}
+          <div style={{display:"flex",gap:6,marginTop:12}}>
+            {[{id:"ALL",l:"전체",c:listStats.all},{id:"upcoming",l:"예정",c:listStats.up},{id:"completed",l:"완료",c:listStats.done},{id:"cancelled",l:"취소",c:listStats.can}].map(s=>(
+              <button key={s.id} className="btn" onClick={()=>setListStatus(s.id)}
+                style={{padding:"5px 12px",fontSize:11,borderRadius:999,
+                  background:listStatus===s.id?"#111":"#F8FAFC",color:listStatus===s.id?"#fff":"#64748B",
+                  border:listStatus===s.id?"none":"1px solid #E2E8F0"}}>
+                {s.l} {s.c}
+              </button>
+            ))}
+          </div>
         </div>
-        <div style={{padding:isMobile?"12px":"16px 20px"}}>
-          {tabData.length===0?(
+
+        {/* 리스트 */}
+        <div style={{maxHeight:400,overflowY:"auto"}}>
+          {filteredList.length===0?(
             <div style={{textAlign:"center",padding:"40px 20px",color:"#CBD5E1"}}>
-              <div style={{fontSize:36,marginBottom:8}}>{tab==="upcoming"?<Inbox size={36} strokeWidth={1.2} color="#CBD5E1"/>:tab==="completed"?<CheckCircle2 size={36} strokeWidth={1.2} color="#CBD5E1"/>:<Ban size={36} strokeWidth={1.2} color="#CBD5E1"/>}</div>
-              <div style={{fontSize:13}}>{tab==="upcoming"?"예정된 예약이 없습니다":tab==="completed"?"완료된 예약이 없습니다":"취소된 예약이 없습니다"}</div>
+              <div style={{display:"flex",justifyContent:"center",marginBottom:8}}><Inbox size={32} strokeWidth={1.2} color="#CBD5E1"/></div>
+              <div style={{fontSize:13}}>해당 기간에 예약 내역이 없습니다</div>
             </div>
           ):(
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {tabData.map((b,i)=>{
-                const r=allRooms.find(rm=>rm.room_id===b.room_id);
-                const fl=getFloor(r?.floor_id);
-                const dateObj=new Date(b.start_at);
-                return(
-                  <div key={b.id} className="anm" style={{animationDelay:`${i*30}ms`,
-                    background:"#F8FAFC",borderRadius:12,padding:"14px 16px",
-                    display:"flex",alignItems:isMobile?"flex-start":"center",gap:14,flexDirection:isMobile?"column":"row"}}>
-                    <div style={{width:52,height:52,borderRadius:10,background:"#fff",border:"1px solid #E2E8F0",
-                      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                      <div style={{fontSize:9,fontWeight:700,color:"#94A3B8"}}>{MONTH_NAMES[dateObj.getMonth()]}</div>
-                      <div style={{fontSize:18,fontWeight:800,color:"#111",lineHeight:1}}>{dateObj.getDate()}</div>
-                      <div style={{fontSize:9,color:"#CBD5E1"}}>{DAY_NAMES[dateObj.getDay()]}</div>
-                    </div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:14,fontWeight:700,color:"#111",marginBottom:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.title}</div>
-                      <div style={{fontSize:12,color:"#64748B"}}>{r?.room_name} · {fl?.floor_name} · {r?.capacity}인</div>
-                      <div style={{fontSize:12,color:"#94A3B8",marginTop:2}}>{fmtTSDateFull(b.start_at)} {fmtTSRangeFull(b.start_at,b.end_at)}</div>
-                    </div>
-                    <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
-                      {tab==="completed"&&<span style={{background:"#DCFCE7",color:"#16A34A",fontSize:11,fontWeight:700,display:"inline-flex",alignItems:"center",gap:3,padding:"4px 10px",borderRadius:999}}><CheckCircle2 size={10} strokeWidth={2}/>완료</span>}
-                      {tab==="cancelled"&&<span style={{background:"#F1F5F9",color:"#94A3B8",fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:999}}><Ban size={10} strokeWidth={1.8} style={{marginRight:3}}/>취소</span>}
-                      <button className="btn" onClick={()=>onDetail(b)}
-                        style={{background:"#F1F5F9",color:"#64748B",padding:"8px 14px",fontSize:12,borderRadius:10}}>상세</button>
-                      {tab==="upcoming"&&(
-                        <button className="btn" onClick={()=>cancelBooking(b.id)}
-                          style={{background:"#FEF2F2",border:"1px solid #FCA5A5",color:"#DC2626",padding:"8px 14px",fontSize:12,borderRadius:10}}>취소</button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <thead>
+                <tr style={{background:"#F8FAFC"}}>
+                  {["날짜/시간","회의명","회의실","상태",""].map(h=>(
+                    <th key={h} style={{padding:"8px 14px",textAlign:"left",fontSize:11,fontWeight:700,color:"#94A3B8",whiteSpace:"nowrap",borderBottom:"1px solid #F1F5F9"}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredList.map(b=>{
+                  const r=allRooms.find(rm=>rm.room_id===b.room_id);
+                  const isCan=b.autoCancelled;
+                  const isDone=b.checkedIn&&!isCan;
+                  const isUp=!isCan&&tsDate(b.start_at)>=today;
+                  return(
+                    <tr key={b.id} style={{borderBottom:"1px solid #F8FAFC",cursor:"pointer"}}
+                      onClick={()=>onDetail(b)}
+                      onMouseEnter={e=>e.currentTarget.style.background="#FAFBFD"}
+                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap",fontSize:12}}>{fmtTSDateFull(b.start_at)}<br/>{fmtTSRangeFull(b.start_at,b.end_at)}</td>
+                      <td style={{padding:"10px 14px",fontWeight:600,color:"#111",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.title}</td>
+                      <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{r?.room_name ?? '?'}</td>
+                      <td style={{padding:"10px 14px",whiteSpace:"nowrap"}}>
+                        {isCan&&<span style={{background:"#F1F5F9",color:"#94A3B8",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:999}}>취소</span>}
+                        {isDone&&<span style={{background:"#DCFCE7",color:"#16A34A",fontSize:11,fontWeight:700,display:"inline-flex",alignItems:"center",gap:3,padding:"3px 10px",borderRadius:999}}>완료</span>}
+                        {isUp&&!isDone&&<span style={{background:"#EFF6FF",color:"#3B82F6",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:999}}>예정</span>}
+                        {!isCan&&!isDone&&!isUp&&<span style={{background:"#FEF3C7",color:"#D97706",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:999}}>노쇼</span>}
+                      </td>
+                      <td style={{padding:"10px 14px"}}>
+                        <button className="btn" onClick={()=>onDetail(b)}
+                          style={{background:"#F1F5F9",color:"#64748B",padding:"5px 12px",fontSize:11,borderRadius:10}}>상세</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
         </div>
       </div>
@@ -249,87 +247,6 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
             </div>
           </div>
         )}
-      </div>
-
-      {/* ── 기간별 예약 조회 ── */}
-      <div className="anm" style={{background:"#fff",borderRadius:16,overflow:"hidden",marginTop:20,animationDelay:"150ms"}}>
-        <div style={{padding:isMobile?"16px 20px":"20px 28px",borderBottom:"1px solid #F1F5F9"}}>
-          <div style={{fontSize:15,fontWeight:800,color:"#111",marginBottom:14}}><span style={{display:"inline-flex",alignItems:"center",gap:6}}><ClipboardList size={15} strokeWidth={1.8}/>기간별 예약 조회</span></div>
-          {/* 날짜 필터 */}
-          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-            <div style={{flex:"1 1 140px",minWidth:120}}>
-              <label style={{fontSize:11,fontWeight:700,color:"#94A3B8",display:"block",marginBottom:4}}>시작일</label>
-              <input type="date" value={listFrom} onChange={e=>setListFrom(e.target.value)}
-                style={{width:"100%",padding:"8px 12px",borderRadius:10,border:"1px solid #E2E8F0",fontSize:13,background:"#fff",outline:"none"}}/>
-            </div>
-            <span style={{color:"#CBD5E1",marginTop:16}}>~</span>
-            <div style={{flex:"1 1 140px",minWidth:120}}>
-              <label style={{fontSize:11,fontWeight:700,color:"#94A3B8",display:"block",marginBottom:4}}>종료일</label>
-              <input type="date" value={listTo} onChange={e=>setListTo(e.target.value)}
-                style={{width:"100%",padding:"8px 12px",borderRadius:10,border:"1px solid #E2E8F0",fontSize:13,background:"#fff",outline:"none"}}/>
-            </div>
-          </div>
-          {/* 상태 필터 */}
-          <div style={{display:"flex",gap:6,marginTop:12}}>
-            {[{id:"ALL",l:"전체",c:listStats.all},{id:"upcoming",l:"예정",c:listStats.up},{id:"completed",l:"완료",c:listStats.done},{id:"cancelled",l:"취소",c:listStats.can}].map(s=>(
-              <button key={s.id} className="btn" onClick={()=>setListStatus(s.id)}
-                style={{padding:"5px 12px",fontSize:11,borderRadius:999,
-                  background:listStatus===s.id?"#111":"#F8FAFC",color:listStatus===s.id?"#fff":"#64748B",
-                  border:listStatus===s.id?"none":"1px solid #E2E8F0"}}>
-                {s.l} {s.c}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* 리스트 */}
-        <div style={{maxHeight:400,overflowY:"auto"}}>
-          {filteredList.length===0?(
-            <div style={{textAlign:"center",padding:"40px 20px",color:"#CBD5E1"}}>
-              <div style={{display:"flex",justifyContent:"center",marginBottom:8}}><Inbox size={32} strokeWidth={1.2} color="#CBD5E1"/></div>
-              <div style={{fontSize:13}}>해당 기간에 예약 내역이 없습니다</div>
-            </div>
-          ):(
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-              <thead>
-                <tr style={{background:"#F8FAFC"}}>
-                  {["날짜","시간","회의명","회의실","상태",""].map(h=>(
-                    <th key={h} style={{padding:"8px 14px",textAlign:"left",fontSize:11,fontWeight:700,color:"#94A3B8",whiteSpace:"nowrap",borderBottom:"1px solid #F1F5F9"}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredList.map(b=>{
-                  const r=allRooms.find(rm=>rm.room_id===b.room_id);
-                  const isCan=b.autoCancelled;
-                  const isDone=b.checkedIn&&!isCan;
-                  const isUp=!isCan&&tsDate(b.start_at)>=today;
-                  return(
-                    <tr key={b.id} style={{borderBottom:"1px solid #F8FAFC",cursor:"pointer"}}
-                      onClick={()=>onDetail(b)}
-                      onMouseEnter={e=>e.currentTarget.style.background="#FAFBFD"}
-                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                      <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{tsDate(b.start_at)}</td>
-                      <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap",fontSize:12}}>{fmtTSDateFull(b.start_at)} {fmtTSRangeFull(b.start_at,b.end_at)}</td>
-                      <td style={{padding:"10px 14px",fontWeight:600,color:"#111",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.title}</td>
-                      <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{r?.room_name ?? '?'}</td>
-                      <td style={{padding:"10px 14px",whiteSpace:"nowrap"}}>
-                        {isCan&&<span style={{background:"#F1F5F9",color:"#94A3B8",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:999}}>취소</span>}
-                        {isDone&&<span style={{background:"#DCFCE7",color:"#16A34A",fontSize:11,fontWeight:700,display:"inline-flex",alignItems:"center",gap:3,padding:"3px 10px",borderRadius:999}}>완료</span>}
-                        {isUp&&!isDone&&<span style={{background:"#EFF6FF",color:"#3B82F6",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:999}}>예정</span>}
-                        {!isCan&&!isDone&&!isUp&&<span style={{background:"#FEF3C7",color:"#D97706",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:999}}>노쇼</span>}
-                      </td>
-                      <td style={{padding:"10px 14px"}}>
-                        <button className="btn" onClick={()=>onDetail(b)}
-                          style={{background:"#F1F5F9",color:"#64748B",padding:"5px 12px",fontSize:11,borderRadius:10}}>상세</button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
       </div>
     </div>
   );
