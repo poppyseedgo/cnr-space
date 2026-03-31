@@ -584,11 +584,38 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
   const rooms = (dvRooms.length>0?dvRooms:ROOMS_DB).filter(r=>r.is_active);
   const totalW = CW * HOURS.length;
 
+  // 현재시간 위치 — 가로 스크롤 자동 이동
+  const nowLeft = isToday ? ((now - 7*60) / 60) * CW : 0;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    const target = isToday ? Math.max(0, nowLeft - 120) : 0;
+    scrollRef.current.scrollLeft = target;
+  }, [selectedDate, isToday, nowLeft]);
+
   return(
     <div style={{background:"#fff",borderRadius:16,border:"1px solid #E2E8F0",overflow:"hidden"}}>
       {/* 스크롤 컨테이너 */}
-      <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 240px)"}}>
+      <div ref={scrollRef} style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 240px)"}} >
         <div style={{minWidth: LW + totalW}}>
+
+          {/* 현재시간 세로선 */}
+          {isToday && nowLeft >= 0 && (
+            <div style={{
+              position:"absolute", top:0, bottom:0,
+              left: LW + nowLeft,
+              width:2, background:"#EF4444", zIndex:8, pointerEvents:"none"
+            }}>
+              <div style={{
+                position:"sticky", top:0,
+                fontSize:10, fontWeight:700, color:"#EF4444",
+                background:"#fff", padding:"2px 4px", borderRadius:4,
+                whiteSpace:"nowrap", transform:"translateX(-50%)"
+              }}>
+                {fmt2(Math.floor(now/60))}:{fmt2(now%60)}
+              </div>
+            </div>
+          )}
 
           {/* ── 헤더: 시간축 ── */}
           <div style={{display:"flex",position:"sticky",top:0,zIndex:9,background:"#F8FAFC",borderBottom:"1px solid #E2E8F0"}}>
@@ -712,13 +739,21 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
   const minToPx = (min) => ((min - 7*60) / 60) * HH;
   const nowPx = isToday ? minToPx(now) : -1;
 
+  // 자동 스크롤 — 현재시간 기준으로 스크롤
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    const target = isToday ? Math.max(0, nowPx - 120) : 0; // 현재시간보다 120px 위
+    scrollRef.current.scrollTop = target;
+  }, [selectedDate, isToday, nowPx]);
+
   return (
     <div style={{
       background:"#fff", borderRadius:16, border:"1px solid #E2E8F0",
       userSelect:"none", overflow:"hidden"
     }}>
       {/* ── 세로 스크롤 wrapper (iOS 터치 방향 고정) ── */}
-      <div style={{
+      <div ref={scrollRef} style={{
         overflowY:"auto",
         overflowX:"hidden",
         maxHeight:"calc(100vh - 180px)",

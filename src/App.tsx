@@ -92,8 +92,11 @@ function AppContent() {
       setLoading(false);
       return;
     }
-    // 로그인 시 항상 홈으로 이동
-    setView('home');
+    // 최초 로그인(hash 없을 때)만 홈으로 이동, 새로고침 시 현재 hash 유지
+    const currentHash = window.location.hash.replace('#', '');
+    if (!['home','calendar','mypage','admin'].includes(currentHash)) {
+      setView('home');
+    }
     setLoading(true);
     Promise.all([loadBookings(), loadRooms(), loadUsers()])
       .then(([b, r, u]) => {
