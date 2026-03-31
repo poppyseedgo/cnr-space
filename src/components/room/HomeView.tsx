@@ -151,9 +151,11 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
 
             return (
               <div key={b.id} className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 rounded-2xl p-3"
+                onClick={()=>onDetail&&onDetail(b)}
                 style={{width:isMobile?"42vw":160, minWidth:140, minHeight:isMobile?120:140,
                   flexShrink:0, opacity: (cardState==="cancelled" || cardState==="noshow") ? 0.45 : 1,
-                  border: cardState==="pending" ? "1.5px solid #FCD34D" : "none"}}>
+                  border: cardState==="pending" ? "1.5px solid #FCD34D" : "none",
+                  cursor:"pointer"}}>
                 {/* 상단 */}
                 <div>
                   <div className="flex items-start justify-between gap-1 mb-1.5">
@@ -683,12 +685,11 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
                       const bNow = nowMinutes();
                       const isActive = tsMin(b.start_at) <= bNow && bNow < tsMin(b.end_at);
                       return (
-                        <div key={b.id} onClick={()=>onDetail&&onDetail(b)} style={{
+                        <div key={b.id} style={{
                           background: isActive ? "#FFF1F2" : "#F8FAFC",
                           border: isActive ? "1px solid #FECDD3" : "1px solid transparent",
                           borderRadius:10, padding:"10px 14px",
                           display:"flex", justifyContent:"space-between", alignItems:"center",
-                          cursor:"pointer",
                         }}>
                           <div style={{flex:1,minWidth:0,marginRight:10}}>
                             <div style={{fontSize:13,color:"#111111",fontWeight:600,
