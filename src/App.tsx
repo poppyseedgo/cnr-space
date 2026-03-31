@@ -414,13 +414,17 @@ function AppContent() {
     const todayKST  = todayStr();
     const newEndAt  = makeTZ(todayKST, endTimeStr);
 
-    // 낙관적 UI 업데이트
+    // 낙관적 UI 업데이트 — end_at 유지, originalEndAt에 원본 저장
     setBookings(prev => prev.map(b => b.id===id
-      ? {...b, end_at: newEndAt, earlyEnded: true} : b
+      ? {...b, originalEndAt: target.end_at, end_at: newEndAt, earlyEnded: true} : b
     ));
     setTick(t => t+1);
     try {
-      await apiUpdateBooking(id, { earlyEnded: true, end_at: newEndAt });
+      await apiUpdateBooking(id, {
+        earlyEnded: true,
+        end_at: newEndAt,
+        originalEndAt: target.end_at,  // 원래 예약 종료 시간 보존
+      });
       insertAuditLog({ action: 'BOOKING_EARLY_END', entityType: 'booking', entityId: id, actorName: currentUser }).catch(()=>{})
       showToast("사용 완료! 회의실이 반환되었습니다.");
       if (authUser?.user_id && target) {
@@ -434,7 +438,7 @@ function AppContent() {
       }
     } catch (err: any) {
       setBookings(prev => prev.map(b => b.id===id
-        ? {...b, end_at: target.end_at, earlyEnded: false} : b
+        ? {...b, end_at: target.end_at, earlyEnded: false, originalEndAt: null} : b
       ));
       showToast(err.message ?? "조기 반납에 실패했습니다.", "error");
     }

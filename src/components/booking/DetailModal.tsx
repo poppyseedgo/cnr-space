@@ -39,6 +39,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
             <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
               {b.autoCancelled&&<span className="chip" style={{background:"#F1F5F9",color:"#94A3B8",display:"inline-flex",alignItems:"center",gap:4}}><XCircle size={11} strokeWidth={1.8}/> 자동취소</span>}
               {b.checkedIn&&<span className="chip" style={{background:"#DCFCE7",color:"#16A34A",display:"inline-flex",alignItems:"center",gap:4}}><CheckCircle2 size={11} strokeWidth={1.8}/> 체크인 완료</span>}
+              {b.earlyEnded&&<span className="chip" style={{background:"#EDE9FE",color:"#7C3AED",display:"inline-flex",alignItems:"center",gap:4}}><CheckCircle2 size={11} strokeWidth={1.8}/> 조기 반납</span>}
               {isAct&&!b.autoCancelled&&r&&<span className="chip" style={{background:r.color+"18",color:r.color,display:"inline-flex",alignItems:"center",gap:4}}><Circle size={7} fill={r.color} strokeWidth={0}/> 진행 중</span>}
               {!isAct&&!b.autoCancelled&&isToday&&tl>0&&<span className="chip" style={{background:"#EEF2FF",color:"#6366F1",display:"inline-flex",alignItems:"center",gap:4}}><Clock size={11} strokeWidth={1.8}/> {tl<60?`${tl}분 후`:"예정"}</span>}
             </div>
@@ -52,7 +53,18 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
           {[
             [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Building2 size={11} strokeWidth={1.8}/>회의실</span>, <span style={{color:r?.color,fontWeight:700}}>{r?.room_name ?? '-'}</span>, r ? `${r.capacity}인` : ''],
-            [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Clock size={11} strokeWidth={1.8}/>시간</span>, `${fmtTSFull(b.start_at)} – ${fmtTSFull(b.end_at)}`, fmtTSDateFull(b.start_at)],
+            [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Clock size={11} strokeWidth={1.8}/>시간</span>,
+              b.earlyEnded && b.originalEndAt
+                ? <span>
+                    <span style={{color:"#94A3B8",textDecoration:"line-through",fontSize:12}}>
+                      {fmtTSFull(b.start_at)} – {fmtTSFull(b.originalEndAt!)}
+                    </span>
+                    <br/>
+                    <span style={{fontWeight:700}}>{fmtTSFull(b.start_at)} – {fmtTSFull(b.end_at)}</span>
+                    <span style={{fontSize:11,color:"#7C3AED",marginLeft:6}}>반납</span>
+                  </span>
+                : `${fmtTSFull(b.start_at)} – ${fmtTSFull(b.end_at)}`,
+              fmtTSDateFull(b.start_at)],
             [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><User size={11} strokeWidth={1.8}/>예약자</span>, b.user, b.dept],
             features.length>0&&[<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Monitor size={11} strokeWidth={1.8}/>설비</span>, features.map(f=>f.feature_name).join(", "), null],
             b.memo&&[<span style={{display:"inline-flex",alignItems:"center",gap:4}}><FileText size={11} strokeWidth={1.8}/>메모</span>, b.memo, null],

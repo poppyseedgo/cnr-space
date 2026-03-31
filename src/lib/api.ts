@@ -38,6 +38,7 @@ function rowToBooking(row: Record<string, any>): Booking {
     cancelledBy:   row.cancelled_by ?? null,
     status:        row.status ?? 'confirmed',
     earlyEnded:    row.early_ended ?? false,
+    originalEndAt: row.original_end_at ?? null,
     recurGroupId:  row.recur_group_id ?? null,
     createdAt:     new Date(row.created_at).getTime(),
     _seed:         false,
@@ -61,6 +62,7 @@ function bookingToRow(b: Booking, userId: string) {
     auto_cancelled: b.autoCancelled,
     cancelled_by:   b.cancelledBy ?? null,
     early_ended:    b.earlyEnded ?? false,
+    original_end_at: b.originalEndAt ?? null,
     recur_group_id: b.recurGroupId ?? null,
     status:         b.status ?? 'confirmed',
   }
@@ -195,6 +197,7 @@ export async function updateBooking(
   if (changes.cancelledBy    !== undefined) dbChanges.cancelled_by   = changes.cancelledBy
   if (changes.status         !== undefined) dbChanges.status          = changes.status
   if (changes.earlyEnded    !== undefined) dbChanges.early_ended    = changes.earlyEnded
+  if (changes.originalEndAt !== undefined) dbChanges.original_end_at = changes.originalEndAt
   if (changes.end_at        !== undefined) dbChanges.end_at         = changes.end_at
   if (changes.title         !== undefined) dbChanges.title          = changes.title
   if (changes.memo          !== undefined) dbChanges.memo           = changes.memo

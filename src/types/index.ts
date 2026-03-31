@@ -71,6 +71,7 @@ export interface Booking {
   cancelledBy?:   'user' | 'system' | null  // 직접취소 vs 노쇼자동취소
   status?:        'confirmed' | 'pending' | 'rejected'  // 에메랄드 승인 상태
   earlyEnded?: boolean
+  originalEndAt?: string | null  // 조기 반납 시 원래 예약 종료 시간
   createdAt: number
   recurGroupId?: string | null
   /** true = 시드 데이터, false = 사용자가 직접 생성 */
