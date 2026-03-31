@@ -613,12 +613,12 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
   }, [selectedDate, isToday, nowLeft]);
 
   return(
-    <div style={{background:"#fff",borderRadius:16,border:"1px solid #E2E8F0",
-      /* overflow:hidden 제거 — sticky left가 이 경계에 막히므로 */
-      clipPath:"inset(0 round 16px)",  /* borderRadius 시각 유지 */
-    }}>
-      {/* 스크롤 컨테이너 — sticky left 동작하려면 이 div가 overflow 경계여야 함 */}
-      <div ref={scrollRef} style={{overflowX:"auto",overflowY:"visible"}} >
+    <div
+      ref={scrollRef}
+      style={{
+        background:"#fff", borderRadius:16, border:"1px solid #E2E8F0",
+        overflowX:"auto", overflowY:"visible",
+      }}>
         {/* position:relative 필수 — 내부 absolute 기준점 */}
         <div style={{minWidth: LW + totalW, position:"relative"}}>
 
@@ -671,7 +671,8 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
               <div key={room.room_id}
                 style={{display:"flex",borderBottom:ri<rooms.length-1?"1px solid #F1F5F9":"none",
                   height:RH, minHeight:RH, maxHeight:RH,
-                  position:"relative", overflow:"hidden"}}
+                  position:"relative"
+                  /* overflow:hidden 제거 — 있으면 sticky:left:0 경계를 끊어버림 */}}
                 onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"}
                 onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
 
@@ -762,7 +763,6 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
           })}
         </div>
       </div>
-    </div>
   );
 }
 
@@ -785,17 +785,17 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
   }, [selectedDate, isToday, nowPx]);
 
   return (
-    <div style={{
-      background:"#fff", borderRadius:16, border:"1px solid #E2E8F0",
-      userSelect:"none",
-      clipPath:"inset(0 round 16px)",  /* overflow:hidden 대신 — sticky left 보장 */
-    }}>
-      {/* ── 단일 스크롤 컨테이너 (가로+세로 동시) — sticky top 정상 동작 ── */}
-      <div ref={scrollRef} style={{
+    <div
+      ref={scrollRef}
+      style={{
+        background:"#fff", borderRadius:16, border:"1px solid #E2E8F0",
+        userSelect:"none",
         overflowX:"auto",
         overflowY:"auto",
         maxHeight:"calc(100vh - 180px)",
         WebkitOverflowScrolling:"touch",
+        /* border + overflow:auto → borderRadius가 콘텐츠를 정확히 클리핑
+           sticky top/left는 이 scroll container 기준으로 동작 — 정상 */
       }}>
         {/* 전체 너비 고정 래퍼 */}
         <div style={{minWidth: TW + rooms.length * COL, position:"relative"}}>
@@ -967,8 +967,7 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
             })}
           </div>
         </div>
-      </div>  {/* 단일 스크롤 끝 */}
-    </div>
+      </div>
   );
 }
 
