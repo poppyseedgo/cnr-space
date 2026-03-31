@@ -60,6 +60,58 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[auto-cancel] ${toCancel.length}건 자동취소:`, ids)
 
+    // ── Audit log — 노쇼 자동취소 기록 ──────────────────────────────────────
+    for (const b of toCancel) {
+      try {
+        await supabase.from('audit_log').insert({
+          actor_id:    null,
+          actor_name:  'system',
+          action:      'BOOKING_NOSHOW',
+          entity_type: 'booking',
+          entity_id:   b.id,
+          before_data: null,
+          after_data:  { title: b.title, user_name: b.user_name, start_at: b.start_at, cancelled_by: 'system' },
+        })
+      } catch (e) {
+        console.warn('[auto-cancel] audit_log 기록 실패 (취소는 정상 처리됨):', e)
+      }
+    }
+
+    // ── 노쇼 인앱 알림 insert ──────────────────────────────────────────
+    for (const b of toCancel) {
+      try {
+        // bookings에서 user_id 조회
+        const { data: bk } = await supabase
+          .from('bookings')
+          .select('user_id')
+          .eq('id', b.id)
+          .single()
+
+        if (bk?.user_id) {
+          // KST 시간 포맷
+          const d = new Date(b.start_at)
+          const k = new Date(d.getTime() + 9 * 60 * 60 * 1000)
+          const pad = (n: number) => String(n).padStart(2, '0')
+          const h = k.getUTCHours()
+          const ampm = h < 12 ? '오전' : '오후'
+          const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+          const dateStr = `${k.getUTCFullYear()}년 ${k.getUTCMonth()+1}월 ${k.getUTCDate()}일`
+          const timeStr = `${ampm} ${h12}:${pad(k.getUTCMinutes())}`
+
+          await supabase.from('notifications').insert({
+            user_id:    bk.user_id,
+            type:       'booking_noshow',
+            title:      '노쇼 처리 — 예약이 자동 취소되었습니다',
+            body:       `${b.title} · ${b.room_name ?? ''} · ${dateStr} ${timeStr}`,
+            booking_id: b.id,
+            is_read:    false,
+          })
+        }
+      } catch (e) {
+        console.warn('[auto-cancel] 인앱 알림 실패 (취소는 정상 처리됨):', e)
+      }
+    }
+
     // ── 노쇼 알림 이메일 발송 ──────────────────────────────────────────
     // profiles에서 이메일 조회 후 send-notification 호출
     for (const b of toCancel) {
