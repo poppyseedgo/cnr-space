@@ -76,65 +76,33 @@ export async function loadBookings(): Promise<Booking[]> {
     const to = new Date()
     to.setDate(to.getDate() + 60)
 
-    // bookings + booking_attendees 한 번에 join
+    // bookings 조회 (attendees는 원본 jsonb 컬럼에서 직접 추출)
     const { data, error } = await supabase
       .from('bookings')
-      .select('*, booking_attendees(email, name)')
+      .select('*')
       .gte('start_at', from.toISOString())
       .lte('start_at', to.toISOString())
       .order('start_at', { ascending: true })
 
     if (error) throw error
     return (data ?? []).map(row => {
-      // booking_attendees.email 컬럼이 JSON 문자열일 수 있음
-      // (첫 마이그레이션 시 jsonb_array_elements_text가 객체 전체를 저장)
-      const parseEmail = (raw: any): string => {
-        if (!raw) return ''
-        if (typeof raw === 'string') {
-          if (raw.startsWith('{')) {
-            try { const p = JSON.parse(raw); return p.email ?? p.name ?? raw }
-            catch { return raw }
-          }
-          return raw
-        }
-        return raw.email ?? raw.name ?? ''
-      }
-
-      // booking_attendees: name 우선, 없으면 email에서 추출
-      const parseName = (a: any): string => {
-        if (!a) return ''
-        // name 컬럼이 있으면 우선 사용
-        if (a.name && a.name.trim()) return a.name.trim()
-        // name 없으면 email에서 파싱
-        const email = parseEmail(a.email)
-        if (email.startsWith('{')) {
-          try { const p = JSON.parse(email); return p.name ?? p.email ?? email }
-          catch { return email }
-        }
-        return email.split('@')[0]  // fallback: 이메일 앞부분
-      }
-
-      const fromJoin = (row.booking_attendees ?? [])
-        .map(parseName)
-        .filter(Boolean)
-
-      let attendees: string[] = fromJoin
-      if (fromJoin.length === 0 && Array.isArray(row.attendees) && row.attendees.length > 0) {
-        // 원본 bookings.attendees 컬럼에서 name 추출
+      // bookings.attendees 원본 jsonb 컬럼에서 name 추출 (가장 신뢰할 수 있는 소스)
+      let attendees: string[] = []
+      if (Array.isArray(row.attendees) && row.attendees.length > 0) {
         attendees = row.attendees.map((a: any) => {
           if (!a) return ''
           if (typeof a === 'string') {
             if (a.startsWith('{')) {
-              try { const p = JSON.parse(a); return p.name ?? p.email ?? a }
-              catch { return a }
+              try { const p = JSON.parse(a); return p.name ?? p.email ?? '' }
+              catch { return '' }
             }
-            return a
+            return a  // 그냥 이메일/이름 문자열
           }
+          // 객체: name 우선, 없으면 email
           return a.name ?? a.email ?? ''
         }).filter(Boolean)
       }
 
-      // attendees를 마지막에 명시적으로 덮어써서 rowToBooking 내부 처리보다 우선
       const parsed = rowToBooking({ ...row })
       parsed.attendees = attendees
       return parsed
