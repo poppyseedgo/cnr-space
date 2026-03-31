@@ -127,6 +127,29 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   return(
     <div style={{maxWidth:960,margin:"0 auto",padding:isMobile?"16px 12px":"28px 24px"}}>
 
+      {/* 프로필 카드 */}
+      <div className="anm" style={{background:"#fff",borderRadius:16,padding:isMobile?"20px":"24px 28px",marginBottom:20,
+        display:"flex",alignItems:isMobile?"flex-start":"center",gap:isMobile?16:20,flexDirection:isMobile?"column":"row"}}>
+        <div style={{width:56,height:56,borderRadius:"50%",background:"#111",color:"#fff",
+          display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:800,flexShrink:0}}>
+          {currentUser.charAt(0)}
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:20,fontWeight:800,color:"#111"}}>{currentUser}</div>
+          <div style={{fontSize:13,color:"#64748B",marginTop:2}}>{currentDept} · {userInfo?.email}</div>
+        </div>
+        <div style={{display:"flex",gap:12}}>
+          <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 16px",textAlign:"center"}}>
+            <div style={{fontSize:20,fontWeight:800,color:"#111"}}>{thisBks.length}</div>
+            <div style={{fontSize:11,color:"#94A3B8",fontWeight:600}}>이번 달 예약</div>
+          </div>
+          <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 16px",textAlign:"center"}}>
+            <div style={{fontSize:20,fontWeight:800,color:thisRate>=70?"#16A34A":"#D97706"}}>{thisRate}%</div>
+            <div style={{fontSize:11,color:"#94A3B8",fontWeight:600}}>체크인율</div>
+          </div>
+        </div>
+      </div>
+
       {/* ── 기간별 예약 조회 ── */}
       <div className="anm" style={{background:"#fff",borderRadius:16,overflow:"hidden",marginTop:20,animationDelay:"150ms"}}>
         <div style={{padding:isMobile?"16px 20px":"20px 28px",borderBottom:"1px solid #F1F5F9"}}>
@@ -208,7 +231,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
       </div>
 
       {/* 월별 통계 */}
-      <div className="anm" style={{background:"#fff",borderRadius:16,padding:isMobile?"20px":"24px 28px",animationDelay:"100ms"}}>
+      <div className="anm" style={{background:"#fff",borderRadius:16,padding:isMobile?"20px":"24px 28px",animationDelay:"100ms",marginTop:32}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
           <div style={{fontSize:15,fontWeight:800,color:"#111"}}><span style={{display:"inline-flex",alignItems:"center",gap:6}}><BarChart2 size={15} strokeWidth={1.8}/>월별 이용 통계</span></div>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
