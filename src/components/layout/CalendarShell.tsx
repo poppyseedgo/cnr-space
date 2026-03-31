@@ -222,23 +222,28 @@ export function MonthlyView({bookings,selectedDate,onDayClick,onBookingClick,roo
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",background:"#F8FAFC",borderBottom:"1px solid #E2E8F0"}}>
         {DAY_NAMES.map((n,i)=><div key={n} style={{padding:"10px 0",textAlign:"center",fontSize:12,fontWeight:700,color:i===0?"#EF4444":i===6?"#3B82F6":"#64748B"}}>{n}</div>)}
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>
+      {/* grid 셀 너비 고정 — minmax(0,1fr)로 콘텐츠가 넘쳐도 셀 크기 불변 */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,minmax(0,1fr))"}}>
         {cells.map((day,idx)=>{
-          if(!day) return <div key={`e${idx}`} style={{minHeight:110,borderRight:"1px solid #F1F5F9",borderBottom:"1px solid #F1F5F9",background:"#FAFAFA"}}/>;
+          if(!day) return <div key={`e${idx}`} style={{minHeight:110,borderRight:"1px solid #F1F5F9",borderBottom:"1px solid #F1F5F9",background:"#FAFAFA",overflow:"hidden"}}/>;
           const ds=`${year}-${fmt2(month+1)}-${fmt2(day)}`;
           const dbs=bookings.filter(b=>tsDate(b.start_at)===ds&&!(b.autoCancelled&&b.cancelledBy==='user'));
           const isToday=ds===today,isSel=ds===selectedDate;
           const dow=(firstDay+day-1)%7;
           return(
             <div key={day} onClick={()=>onDayClick(ds)}
-              style={{minHeight:110,borderRight:"1px solid #F1F5F9",borderBottom:"1px solid #F1F5F9",padding:"7px 6px",cursor:"pointer",background:isSel?"#EEF2FF":isToday?"#F0FDF4":"#fff",transition:"background 0.12s"}}>
+              style={{minHeight:110,borderRight:"1px solid #F1F5F9",borderBottom:"1px solid #F1F5F9",
+                padding:"7px 6px",cursor:"pointer",overflow:"hidden",  /* overflow:hidden — 내부 콘텐츠가 셀 크기 밀지 못하게 */
+                background:isSel?"#EEF2FF":isToday?"#F0FDF4":"#fff",transition:"background 0.12s"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
                 <span style={{width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%",fontSize:12,fontWeight:isToday?800:500,background:isToday?"#111111":"transparent",color:isToday?"#fff":dow===0?"#EF4444":dow===6?"#3B82F6":"#374151"}}>{day}</span>
                 {dbs.length>0&&<span style={{fontSize:9,color:"#94A3B8",fontWeight:600}}>{dbs.length}건</span>}
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:2}}>
                 {dbs.slice(0,3).map(b=>{
-                  const r=(mvRooms.length>0?mvRooms:ROOMS_DB).find(r=>r.room_id===b.room_id);
+                  const allRooms = mvRooms.length>0 ? mvRooms : ROOMS_DB;
+                  const r = allRooms.find(r=>r.room_id===b.room_id);
+                  if (!r) return null;  /* 층 필터로 숨겨진 회의실 예약 → 렌더 스킵 */
                   return <div key={b.id} onClick={e=>{e.stopPropagation();onBookingClick(b);}} style={{background:r.color+"18",borderLeft:`2px solid ${r.color}`,borderRadius:3,padding:"2px 5px",fontSize:10,color:r.color,fontWeight:600,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",cursor:"pointer"}}>{fmtTS(b.start_at)} {b.title}</div>;
                 })}
                 {dbs.length>3&&<div style={{fontSize:9,color:"#94A3B8",paddingLeft:3}}>+{dbs.length-3}개</div>}
