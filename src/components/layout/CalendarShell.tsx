@@ -765,20 +765,13 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
       background:"#fff", borderRadius:16, border:"1px solid #E2E8F0",
       userSelect:"none", overflow:"hidden"
     }}>
-      {/* ── 세로 스크롤 wrapper (iOS 터치 방향 고정) ── */}
+      {/* ── 단일 스크롤 컨테이너 (가로+세로 동시) — sticky top 정상 동작 ── */}
       <div ref={scrollRef} style={{
+        overflowX:"auto",
         overflowY:"auto",
-        overflowX:"hidden",
         maxHeight:"calc(100vh - 180px)",
-        touchAction:"pan-y",           /* 세로만 허용 */
-        overscrollBehaviorX:"none",    /* 좌우 흔들림 차단 */
         WebkitOverflowScrolling:"touch",
       }}>
-        {/* ── 가로 스크롤 grid (별도 관리) ── */}
-        <div style={{
-          overflowX:"auto",
-          WebkitOverflowScrolling:"touch",
-        }}>
         {/* 전체 너비 고정 래퍼 */}
         <div style={{minWidth: TW + rooms.length * COL, position:"relative"}}>
 
@@ -938,8 +931,7 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
             })}
           </div>
         </div>
-        </div>  {/* 가로 스크롤 끝 */}
-      </div>  {/* 세로 스크롤 끝 */}
+      </div>  {/* 단일 스크롤 끝 */}
     </div>
   );
 }
