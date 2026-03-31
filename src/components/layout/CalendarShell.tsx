@@ -421,10 +421,11 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
       {/* 시간 그리드 */}
       <div ref={weekScrollRef} style={{overflowY:"auto", maxHeight:"calc(100vh - 300px)",
         touchAction:"pan-y", overscrollBehaviorX:"none",
-        minWidth: LW + days.reduce((s,d)=>s+colWidths[d],0)}}>
+        minWidth: LW + days.reduce((s,d)=>s+colWidths[d],0),
+        display:"flex"}}>
         {/* 시간 레이블 */}
         <div style={{width:LW,minWidth:LW,borderRight:"1px solid #E2E8F0",flexShrink:0,
-          position:"sticky",left:0,background:"#fff",zIndex:5}}>
+          position:"sticky",left:0,background:"#fff",zIndex:5,alignSelf:"flex-start"}}>
           {HOURS.map(h=>(
             <div key={h} style={{height:HH, position:"relative", borderBottom:"1px dashed #F1F5F9"}}>
               <div style={{display:"flex",alignItems:"flex-start",justifyContent:"flex-end",
