@@ -115,8 +115,8 @@ export function getRoomFeatures(roomId: number) {
     })
 }
 
-export function getFloor(floorId: number | undefined): Floor | undefined {
-  return FLOORS.find(f => f.floor_id === floorId)
+export function getFloor(floorId: number | undefined): Floor {
+  return FLOORS.find(f => f.floor_id === floorId) ?? { floor_id: 0, floor_name: '', floor_no: 0 } as Floor
 }
 
 export function getRoomById(roomId: number): Room | undefined {

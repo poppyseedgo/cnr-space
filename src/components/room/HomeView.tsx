@@ -21,7 +21,7 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
   // 검색 + 층 필터
   const filtered = activeRooms.filter(r => {
     const floor = getFloor(r.floor_id);
-    const matchSearch = !searchQ || r.room_name.includes(searchQ) || r.room_name_ko?.includes(searchQ) || floor.floor_name.includes(searchQ);
+    const matchSearch = !searchQ || r.room_name.includes(searchQ) || r.room_name_ko?.includes(searchQ) || floor?.floor_name?.includes(searchQ);
     const matchFloor  = filterFloor==="ALL" || r.floor_id === parseInt(filterFloor);
     return matchSearch && matchFloor;
   });
@@ -223,7 +223,7 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
         <div style={{width:1,height:20,background:dark?"#475569":"#E2E8F0",flexShrink:0}}/>
 
         {/* 층 필터 */}
-        {[{id:"ALL",label:"전체층"}, ...FLOORS.map(f=>({id:f.floor_id,label:f.floor_name}))].map(f=>(
+        {[{id:"ALL",label:"전체층"}, ...FLOORS.map(f=>({id:f.floor_id,label:f?.floor_name}))].map(f=>(
           <button key={f.id} className="btn flex-shrink-0 font-bold rounded-full"
             onClick={()=>setFilterFloor(f.id==="ALL"?"ALL":f.id)}
             style={{
@@ -404,7 +404,7 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
           color: (isBusy||isSoon) ? "#CBD5E1" : "#64748B"}}>
           <span style={{display:"flex",alignItems:"center",gap:4}}>
             <Layers size={13} strokeWidth={1.8} style={{flexShrink:0}}/>
-            <span style={{fontWeight:500}}>{floor.floor_no}층</span>
+            <span style={{fontWeight:500}}>{floor?.floor_no}층</span>
           </span>
           <span style={{display:"flex",alignItems:"center",gap:4}}>
             <UsersRound size={13} strokeWidth={1.8} style={{flexShrink:0}}/>
@@ -560,7 +560,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
             {status.type==="BUSY"&&<span className="chip" style={{background:"#FEE2E2",color:"#DC2626"}}>사용중</span>}
             {status.type==="SOON"&&<span className="chip" style={{background:"#FEF3C7",color:"#D97706"}}>곧 사용</span>}
           </div>
-          <div style={{fontSize:12,color:"#64748B"}}>{r.room_name_ko} · {floor.floor_name} · {r.capacity}인 수용</div>
+          <div style={{fontSize:12,color:"#64748B"}}>{r.room_name_ko} · {floor?.floor_name} · {r.capacity}인 수용</div>
         </div>
         <button className="btn" onClick={onClose}
           style={{width:32,height:32,borderRadius:"50%",background:"#F1F5F9",
@@ -605,7 +605,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {[
                 ["수용인원", `${r.capacity}명`],
-                ["위치",     floor.floor_name],
+                ["위치", floor?.floor_name ?? ""],
               ].map(([label,val],i)=>(
                 <div key={i} style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
                   <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0}}>{label}</div>

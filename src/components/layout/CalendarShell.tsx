@@ -184,7 +184,7 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
           scrollbarWidth: "none",
           WebkitOverflowScrolling: "touch",
         }}>
-          {[{id:"ALL",label:"전체"},...FLOORS.map(f=>({id:f.floor_id,label:f.floor_name}))].map(f=>(
+          {[{id:"ALL",label:"전체"},...FLOORS.map(f=>({id:f.floor_id,label:f?.floor_name}))].map(f=>(
             <button key={f.id} className="btn rounded-full flex-shrink-0 border"
               onClick={()=>setFilterFloor(f.id==="ALL"?"ALL":f.id)}
               style={{
@@ -625,7 +625,7 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
                   position:"sticky",left:0,background:"#fff",zIndex:5,
                   boxShadow:"2px 0 6px rgba(0,0,0,0.04)"}}>
                   <div style={{fontSize:13,fontWeight:700,color:"#111111",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{room.room_name}</div>
-                  <div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>{floor.floor_name} · {room.capacity}인</div>
+                  <div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>{floor?.floor_name} · {room?.capacity}인</div>
                 </div>
 
                 {/* 시간 셀들 (빈 슬롯 클릭 → 예약) */}
@@ -768,7 +768,7 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
                     <span style={{fontSize:13, fontWeight:700, color:"#111111", whiteSpace:"nowrap"}}>{room.room_name}</span>
                   </div>
                   <div style={{fontSize:11, color:"#94A3B8"}}>
-                    {floor.floor_name} · {room.capacity}인
+                    {floor?.floor_name} · {room?.capacity}인
                     {features.length>0 && ` · ${features.map(f=>f.feature_name).join(", ")}`}
                   </div>
                 </div>
@@ -932,7 +932,7 @@ export function ListView({bookings,selectedDate,setSelectedDate,onItemClick,onCh
                       {b.checkedIn&&<span className="chip" style={{background:"#DCFCE7",color:"#16A34A",display:"inline-flex",alignItems:"center",gap:3}}><CheckCircle2 size={10} strokeWidth={2}/>체크인</span>}
                       <span style={{fontSize:15,fontWeight:700,color:"#111111"}}>{b.title}</span>
                     </div>
-                    <div style={{fontSize:12,color:"#94A3B8"}}><span style={{color:r.color,fontWeight:600}}>{r.room_name}</span> · {fl.floor_name} · {b.user} · {b.dept}</div>
+                    <div style={{fontSize:12,color:"#94A3B8"}}><span style={{color:r.color,fontWeight:600}}>{r.room_name}</span> · {fl?.floor_name} · {b.user} · {b.dept}</div>
                   </div>
                   {isToday&&!b.autoCancelled&&!b.checkedIn&&<button className="btn" onClick={e=>{e.stopPropagation();if(nci)onCheckIn(b.id);}} disabled={!nci} style={{background:nci?"#16A34A":"#E2E8F0",color:nci?"#fff":"#94A3B8",padding:"7px 14px",fontSize:12,borderRadius:10,cursor:nci?"pointer":"not-allowed",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4}}>{nci?<><CheckCircle2 size={11} strokeWidth={2}/>체크인</>:"체크인 대기"}</button>}
                 </div>
