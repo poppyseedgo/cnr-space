@@ -68,7 +68,7 @@ export function BookingDoneModal({booking:b, onClose, rooms:rp=[]}) {
                     <div style={{width:18,height:18,borderRadius:"50%",background:"#3D88FF",
                       color:"#fff",fontSize:9,fontWeight:800,
                       display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      {a.name.charAt(0)}
+                      {(typeof a === "string" ? a : (a as any).name ?? "?").charAt(0).toUpperCase()}
                     </div>
                     {a.name} <span style={{color:"rgba(0,0,0,0.4)",fontWeight:400}}>{a.dept}</span>
                   </div>

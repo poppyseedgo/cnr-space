@@ -70,16 +70,16 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
             <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
               <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0,paddingTop:2,display:"flex",alignItems:"center",gap:4}}><Users size={11} strokeWidth={1.8}/>참석자</div>
               <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {b.attendees.map(a=>(
-                  <div key={a.user_id} style={{display:"inline-flex",alignItems:"center",gap:5,
+                {b.attendees.map((a, idx)=>(
+                  <div key={typeof a === "string" ? a : (a as any).user_id ?? idx} style={{display:"inline-flex",alignItems:"center",gap:5,
                     background:"#EEF2FF",color:"#000",fontSize:11,fontWeight:600,
                     padding:"3px 10px 3px 6px",borderRadius:999}}>
                     <div style={{width:18,height:18,borderRadius:"50%",background:"#3D88FF",
                       color:"#fff",fontSize:9,fontWeight:800,
                       display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      {a.name.charAt(0)}
+                      {(typeof a === "string" ? a : (a as any).name ?? "?").charAt(0)}
                     </div>
-                    {a.name} <span style={{color:"rgba(0,0,0,0.4)",fontWeight:400}}>{a.dept}</span>
+                    {typeof a === "string" ? a : (a as any).name ?? a}
                   </div>
                 ))}
               </div>

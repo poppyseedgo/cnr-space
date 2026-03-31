@@ -263,11 +263,11 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               <div style={{width:18,height:18,borderRadius:"50%",background:"#3D88FF",
                 color:"#fff",fontSize:9,fontWeight:800,
                 display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                {a.name.charAt(0)}
+                {(typeof a === 'string' ? a : (a as any).name ?? '?').charAt(0).toUpperCase()}
               </div>
-              <span>{a.name}</span>
-              <span style={{color:"rgba(0,0,0,0.4)",fontSize:10}}>{a.dept}</span>
-              <button onClick={()=>removeAttendee(a.user_id)}
+              <span>{typeof a === 'string' ? a : (a as any).name}</span>
+              {typeof a !== 'string' && <span style={{color:"rgba(0,0,0,0.4)",fontSize:10}}>{(a as any).dept}</span>}
+              <button onClick={()=>removeAttendee(typeof a === 'string' ? a : (a as any).user_id)}
                 style={{background:"none",border:"none",cursor:"pointer",
                   color:"#d4d4d4",lineHeight:1,padding:0,marginLeft:2,display:"flex",alignItems:"center"}}><X size={10} strokeWidth={2}/></button>
             </div>
@@ -1010,7 +1010,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                     <div key={a.user_id} style={{display:"inline-flex",alignItems:"center",gap:5,
                       background:"#EEF2FF",color:"#000",fontSize:11,fontWeight:600,padding:"4px 10px 4px 8px",borderRadius:999}}>
                       <div style={{width:18,height:18,borderRadius:"50%",background:"#3D88FF",color:"#fff",fontSize:9,fontWeight:800,
-                        display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{a.name.charAt(0)}</div>
+                        display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{(typeof a === 'string' ? a : (a as any).name ?? '?').charAt(0).toUpperCase()}</div>
                       {a.name}
                       <button onClick={()=>removeAttendee(a.user_id)} style={{background:"none",border:"none",cursor:"pointer",color:"#6366F1",padding:0,marginLeft:2,display:"inline-flex",alignItems:"center"}}><X size={11} strokeWidth={2}/></button>
                     </div>
