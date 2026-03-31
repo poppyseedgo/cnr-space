@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Layers, Users, UsersRound, Building2, Clock, User, Monitor, FileText, XCircle, AlertTriangle, CheckCircle2, Circle, X, Calendar, Home, LayoutGrid, LogOut, Settings, Search, BarChart2, ClipboardList, Inbox, ChevronDown, ChevronUp, AlertCircle, CheckCheck, Ban, Check } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
-  fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
+  fmtTSRange, fmtTSRangeFull, fmtTSDateFull, fmtRoomName, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById } from '../data/master'
@@ -187,7 +187,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:14,fontWeight:700,color:"#111",marginBottom:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.title}</div>
                       <div style={{fontSize:12,color:"#64748B"}}>{r?.room_name} · {fl?.floor_name} · {r?.capacity}인</div>
-                      <div style={{fontSize:12,color:"#94A3B8",marginTop:2}}>{fmtTSRange(b.start_at,b.end_at)}</div>
+                      <div style={{fontSize:12,color:"#94A3B8",marginTop:2}}>{fmtTSDateFull(b.start_at)} {fmtTSRangeFull(b.start_at,b.end_at)}</div>
                     </div>
                     <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
                       {tab==="completed"&&<span style={{background:"#DCFCE7",color:"#16A34A",fontSize:11,fontWeight:700,display:"inline-flex",alignItems:"center",gap:3,padding:"4px 10px",borderRadius:999}}><CheckCircle2 size={10} strokeWidth={2}/>완료</span>}
@@ -303,13 +303,14 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
                   const isDone=b.checkedIn&&!isCan;
                   const isUp=!isCan&&tsDate(b.start_at)>=today;
                   return(
-                    <tr key={b.id} style={{borderBottom:"1px solid #F8FAFC"}}
+                    <tr key={b.id} style={{borderBottom:"1px solid #F8FAFC",cursor:"pointer"}}
+                      onClick={()=>onDetail(b)}
                       onMouseEnter={e=>e.currentTarget.style.background="#FAFBFD"}
                       onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                       <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{tsDate(b.start_at)}</td>
-                      <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap",fontSize:12}}>{fmtTSRange(b.start_at,b.end_at)}</td>
+                      <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap",fontSize:12}}>{fmtTSDateFull(b.start_at)} {fmtTSRangeFull(b.start_at,b.end_at)}</td>
                       <td style={{padding:"10px 14px",fontWeight:600,color:"#111",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.title}</td>
-                      <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{r?.room_name||"?"}</td>
+                      <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{r ? fmtRoomName(r, {floor_name: r.floor_id+'층'}) : '?'}</td>
                       <td style={{padding:"10px 14px",whiteSpace:"nowrap"}}>
                         {isCan&&<span style={{background:"#F1F5F9",color:"#94A3B8",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:999}}>취소</span>}
                         {isDone&&<span style={{background:"#DCFCE7",color:"#16A34A",fontSize:11,fontWeight:700,display:"inline-flex",alignItems:"center",gap:3,padding:"3px 10px",borderRadius:999}}>완료</span>}

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
 import { Layers, Users, UsersRound, Building2, Clock, User, Monitor, FileText, XCircle, AlertTriangle, CheckCircle2, Circle, X, Calendar, Home, LayoutGrid, LogOut, Settings, Search, BarChart2, ClipboardList, Inbox, ChevronDown, ChevronUp, AlertCircle, CheckCheck, Ban, Check } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
-  fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
+  fmtTSRange, fmtTSRangeFull, fmtTSFull, fmtRoomName, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../../utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, FLOORS, getFloor, getRoomFeatures, getRoomById, getRoomThumbnail, getRoomGallery } from '../../data/master'
@@ -168,8 +168,8 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
                         >{S.badge}</span>
                     )}
                   </div>
-                  <div className="text-[10px] text-slate-400">{r?.room_name}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">{fmtTSRange(b.start_at, b.end_at)}</div>
+                  <div className="text-[10px] text-slate-400">{r ? fmtRoomName(r, getFloor(r.floor_id)) : ''}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">{fmtTSRangeFull(b.start_at, b.end_at)}</div>
                 </div>
                 {/* 버튼 영역 */}
                 <div className="flex gap-1.5 mt-2">
@@ -288,7 +288,7 @@ export function RoomGrid({items, onBook, onDetail, bookings, onCheckIn}) {
 }
 
 // ─── Room Card ─────────────────────────────────────────────────────────────────
-export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn, animDelay, dark=false}) {
+export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn, animDelay, dark=false}: {room:any,status:any,onBook?:any,onDetail?:any,bookings:any[],onCheckIn?:any,animDelay?:number,dark?:boolean}) {
   const floor    = getFloor(r.floor_id);
   const isBusy   = status.type === "BUSY";
   const isSoon   = status.type === "SOON";
@@ -505,7 +505,7 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
 }
 
 // ─── Room Detail Modal ────────────────────────────────────────────────────────
-export function RoomDetailModal({room:r, bookings, onClose, onBook}) {
+export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {room:any,bookings:any[],onClose:any,onBook:any,onDetail?:any}) {
   const { isMobile } = useBreakpoint();
   const floor    = getFloor(r.floor_id);
   const features = getRoomFeatures(r.room_id);
@@ -683,11 +683,12 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook}) {
                       const bNow = nowMinutes();
                       const isActive = tsMin(b.start_at) <= bNow && bNow < tsMin(b.end_at);
                       return (
-                        <div key={b.id} style={{
+                        <div key={b.id} onClick={()=>onDetail&&onDetail(b)} style={{
                           background: isActive ? "#FFF1F2" : "#F8FAFC",
                           border: isActive ? "1px solid #FECDD3" : "1px solid transparent",
                           borderRadius:10, padding:"10px 14px",
                           display:"flex", justifyContent:"space-between", alignItems:"center",
+                          cursor:"pointer",
                         }}>
                           <div style={{flex:1,minWidth:0,marginRight:10}}>
                             <div style={{fontSize:13,color:"#111111",fontWeight:600,
@@ -698,8 +699,8 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook}) {
                             <div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>{b.user} · {b.dept}</div>
                           </div>
                           <div style={{fontSize:12,color:"#64748B",fontWeight:600,flexShrink:0,textAlign:"right"}}>
-                            {fmtTS(b.start_at)}<br/>
-                            <span style={{color:"#94A3B8",fontWeight:400}}>~ {fmtTS(b.end_at)}</span>
+                            {fmtTSFull(b.start_at)}<br/>
+                            <span style={{color:"#94A3B8",fontWeight:400}}>~ {fmtTSFull(b.end_at)}</span>
                           </div>
                         </div>
                       );

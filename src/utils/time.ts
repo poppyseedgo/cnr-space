@@ -48,6 +48,41 @@ export function fmtTS(ts) { return fmtTime(tsTime(ts)); }
 export function fmtRange(s, e) { return `${fmtTime(s)} – ${fmtTime(e)}`; }
 // timestamptz 범위 표기
 export function fmtTSRange(s_at, e_at) { return `${fmtTS(s_at)} – ${fmtTS(e_at)}`; }
+
+// ── 정식 표기 포맷 (예약 정보 표시 전용) ─────────────────────────────────────
+/** 오전/오후 NN시 NN분 (정식 표기) */
+export function fmtTimeFull(t: string): string {
+  if (!t) return "";
+  const [h, m] = t.split(":").map(Number);
+  const period = h < 12 ? "오전" : "오후";
+  const hour   = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return m === 0 ? `${period} ${hour}시` : `${period} ${hour}시 ${m}분`;
+}
+/** timestamp → 오전/오후 NN시 NN분 */
+export function fmtTSFull(ts: string): string { return fmtTimeFull(tsTime(ts)); }
+/** 오전 NN시 NN분 – 오후 NN시 NN분 범위 */
+export function fmtRangeFull(s: string, e: string): string {
+  return `${fmtTimeFull(s)} – ${fmtTimeFull(e)}`;
+}
+/** timestamp 범위 정식 표기 */
+export function fmtTSRangeFull(s_at: string, e_at: string): string {
+  return `${fmtTSFull(s_at)} – ${fmtTSFull(e_at)}`;
+}
+/** YYYY년 MM월 DD일 (정식 날짜 표기) */
+export function fmtDateFull(dateStr: string): string {
+  if (!dateStr) return "";
+  const d = dateToObj(dateStr);
+  return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`;
+}
+/** timestamp → YYYY년 MM월 DD일 */
+export function fmtTSDateFull(ts: string): string { return fmtDateFull(tsDate(ts)); }
+/** N층 회의실명 합성 (예: 2층 에메랄드) */
+export function fmtRoomName(room: {room_name_ko?: string; room_name?: string}, floor: {floor_name?: string; floor_no?: number} | null): string {
+  const name = room?.room_name_ko || room?.room_name || "";
+  const floorStr = floor?.floor_name || (floor?.floor_no ? `${floor.floor_no}층` : "");
+  if (floorStr && name) return `${floorStr} ${name}`;
+  return name || floorStr;
+}
 // ── KST(+09:00) 기준 현재 시각 유틸 ──────────────────────────────────────
 // Claude 아티팩트는 UTC 환경에서 실행되므로, 모든 "지금" 계산을 KST로 통일
 export function nowKST() {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Layers, Users, UsersRound, Building2, Clock, User, Monitor, FileText, XCircle, AlertTriangle, CheckCircle2, Circle, X, Calendar, Home, LayoutGrid, LogOut, Settings, Search, BarChart2, ClipboardList, Inbox, ChevronDown, ChevronUp, AlertCircle, CheckCheck, Ban, Check } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
-  fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
+  fmtTSRange, fmtTSRangeFull, fmtTSDateFull, fmtRoomName, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, FLOORS, getFloor, getRoomFeatures, getRoomById, getRoomThumbnail, getRoomGallery } from '../data/master'
@@ -9,7 +9,7 @@ import { uploadRoomImage, deleteRoomImage, saveRoomImages, loadRoomImages, cance
 import { Upload, ImagePlus, Trash2, X as XIcon } from 'lucide-react'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../types'
 
-export function AdminView({bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject}) {
+export function AdminView({bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject, onDetail}) {
   const [activeTab, setActiveTab] = useState("bookings");
   const PER_PAGE = 15;
 
@@ -27,8 +27,8 @@ export function AdminView({bookings, setBookings, rooms, setRooms, users, setUse
           </button>
         ))}
       </div>
-      {activeTab==="approvals" && <AdminApprovals bookings={bookings} rooms={rooms} onApprove={onApprove} onReject={onReject} showToast={showToast} isMobile={isMobile}/>}
-      {activeTab==="bookings" && <AdminBookings bookings={bookings} setBookings={setBookings} rooms={rooms} showToast={showToast} isMobile={isMobile} PER_PAGE={PER_PAGE}/>}
+      {activeTab==="approvals" && <AdminApprovals bookings={bookings} rooms={rooms} onApprove={onApprove} onReject={onReject} showToast={showToast} isMobile={isMobile} onDetail={onDetail}/>}
+      {activeTab==="bookings" && <AdminBookings bookings={bookings} setBookings={setBookings} rooms={rooms} showToast={showToast} isMobile={isMobile} PER_PAGE={PER_PAGE} onDetail={onDetail}/>}
       {activeTab==="rooms" && <AdminRooms rooms={rooms} setRooms={setRooms} showToast={showToast} isMobile={isMobile}/>}
       {activeTab==="users" && <AdminUsers users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile}/>}
     </div>
@@ -36,7 +36,7 @@ export function AdminView({bookings, setBookings, rooms, setRooms, users, setUse
 }
 
 // ── Admin: 예약 관리 ──
-export function AdminBookings({bookings,setBookings,rooms,showToast,isMobile,PER_PAGE}){
+export function AdminBookings({bookings,setBookings,rooms,showToast,isMobile,PER_PAGE,onDetail}){
   const today=todayStr();
   const [dateFrom,setDateFrom]=useState(()=>{const d=new Date();return`${d.getFullYear()}-${fmt2(d.getMonth()+1)}-01`;});
   const [dateTo,setDateTo]=useState(()=>{const d=new Date();d.setMonth(d.getMonth()+1,0);return`${d.getFullYear()}-${fmt2(d.getMonth()+1)}-${fmt2(d.getDate())}`;});
@@ -123,12 +123,13 @@ export function AdminBookings({bookings,setBookings,rooms,showToast,isMobile,PER
               <tbody>{paged.map(b=>{
                 const r=rooms.find(rm=>rm.room_id===b.room_id);
                 const isCan=b.autoCancelled,isDone=b.checkedIn&&!isCan,isUp=!isCan&&tsDate(b.start_at)>=today;
-                return(<tr key={b.id} style={{borderBottom:"1px solid #F8FAFC"}}
+                return(<tr key={b.id} style={{borderBottom:"1px solid #F8FAFC",cursor:"pointer"}}
+                  onClick={()=>onDetail&&onDetail(b)}
                   onMouseEnter={e=>e.currentTarget.style.background="#FAFBFD"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                   <td style={{padding:"10px 14px",fontWeight:600,color:"#111",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.title}</td>
-                  <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{r?.room_name||"?"}</td>
-                  <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{tsDate(b.start_at)}</td>
-                  <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{fmtTSRange(b.start_at,b.end_at)}</td>
+                  <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{r ? fmtRoomName(r, {floor_name: r.floor_id+'층'}) : '?'}</td>
+                  <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{fmtTSDateFull(b.start_at)}</td>
+                  <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{fmtTSRangeFull(b.start_at,b.end_at)}</td>
                   <td style={{padding:"10px 14px",whiteSpace:"nowrap"}}><span style={{fontWeight:600,color:"#111"}}>{b.user}</span> <span style={{color:"#94A3B8",fontSize:11}}>{b.dept}</span></td>
                   <td style={{padding:"10px 14px",whiteSpace:"nowrap"}}>
                     {isCan&&<span style={{background:"#F1F5F9",color:"#94A3B8",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:999}}>취소</span>}
@@ -553,7 +554,7 @@ export function AdminUsers({users,setUsers,showToast,isMobile}){
 }
 
 // ── Admin: 승인 관리 ──────────────────────────────────────────────────────────
-export function AdminApprovals({bookings, rooms, onApprove, onReject, showToast, isMobile}) {
+export function AdminApprovals({bookings, rooms, onApprove, onReject, showToast, isMobile, onDetail}) {
   const [rejectModal, setRejectModal] = useState<{id:string;title:string;user:string}|null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
@@ -591,8 +592,8 @@ export function AdminApprovals({bookings, rooms, onApprove, onReject, showToast,
           {pending.map(b => {
             const fl = rooms.find(r=>r.room_id===b.room_id);
             return (
-              <div key={b.id} style={{background:'#fff',borderRadius:14,padding:'16px 20px',
-                border:'1.5px solid #FCD34D'}}>
+              <div key={b.id} onClick={()=>onDetail&&onDetail(b)} style={{background:'#fff',borderRadius:14,padding:'16px 20px',
+                border:'1.5px solid #FCD34D',cursor:'pointer'}}>
                 <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
@@ -605,7 +606,7 @@ export function AdminApprovals({bookings, rooms, onApprove, onReject, showToast,
                       신청자: {b.user} ({b.dept})
                     </div>
                     <div style={{fontSize:12,color:'#64748B',marginTop:2}}>
-                      {b.start_at.slice(0,10)} · {b.start_at.slice(11,16)} ~ {b.end_at.slice(11,16)}
+                      {fmtTSDateFull(b.start_at)} · {fmtTSRangeFull(b.start_at,b.end_at)}
                     </div>
                     {b.memo && <div style={{fontSize:11,color:'#94A3B8',marginTop:4}}>메모: {b.memo}</div>}
                   </div>
