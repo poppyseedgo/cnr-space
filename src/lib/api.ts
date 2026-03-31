@@ -85,10 +85,21 @@ export async function loadBookings(): Promise<Booking[]> {
       .order('start_at', { ascending: true })
 
     if (error) throw error
-    return (data ?? []).map(row => rowToBooking({
-      ...row,
-      attendees: (row.booking_attendees ?? []).map((a: any) => a.email)
-    }))
+    return (data ?? []).map(row => {
+      // booking_attendees 테이블 우선, 없으면 기존 컬럼 fallback
+      const fromJoin = (row.booking_attendees ?? []).map((a: any) => a.email).filter(Boolean)
+
+      let attendees: string[] = fromJoin
+      if (fromJoin.length === 0 && Array.isArray(row.attendees) && row.attendees.length > 0) {
+        // 기존 컬럼 데이터: string 또는 {email, name, ...} 객체 모두 처리
+        attendees = row.attendees.map((a: any) => {
+          if (typeof a === 'string') return a
+          return a.email ?? a.name ?? JSON.stringify(a)
+        }).filter(Boolean)
+      }
+
+      return rowToBooking({ ...row, attendees })
+    })
   } catch (e) {
     console.error('[api] loadBookings 실패:', e)
     return []
