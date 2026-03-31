@@ -769,31 +769,26 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
 export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyClick,onCheckIn}) {
   const isToday = selectedDate===todayStr(), now=nowMinutes();
 
-  const HH   = 120;  // 1시간 높이(px)
+  const HH   = 160;  // 1시간 높이(px) — 15분=40px로 여유있게
   const TW   = 64;   // 시간 레이블 열 너비
   const COL  = 200;  // 회의실 열 최소 너비
   const totalH = HOURS.length * HH;
   const minToPx = (min) => ((min - 7*60) / 60) * HH;
   const nowPx = isToday ? minToPx(now) : -1;
 
-  // 자동 스크롤 — 현재시간 기준으로 스크롤
+  // 가로 스크롤 ref (sticky 헤더용)
   const scrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!scrollRef.current) return;
-    const target = isToday ? Math.max(0, nowPx - 120) : 0; // 현재시간보다 120px 위
-    scrollRef.current.scrollTop = target;
-  }, [selectedDate, isToday, nowPx]);
 
   return (
     <div style={{
       background:"#fff", borderRadius:16, border:"1px solid #E2E8F0",
-      userSelect:"none", overflow:"hidden"
+      userSelect:"none",
+      clipPath:"inset(0 round 16px)",  /* overflow:hidden 대신 — sticky left 보장 */
     }}>
       {/* ── 단일 스크롤 컨테이너 (가로+세로 동시) — sticky top 정상 동작 ── */}
       <div ref={scrollRef} style={{
         overflowX:"auto",
-        overflowY:"auto",
-        maxHeight:"calc(100vh - 180px)",
+        overflowY:"visible",  /* 세로 전체 펼침 — 스크롤 없이 전체 표시 */
         WebkitOverflowScrolling:"touch",
       }}>
         {/* 전체 너비 고정 래퍼 */}
@@ -871,7 +866,9 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
               return (
                 <div key={room.room_id} style={{
                   width:COL, minWidth:COL, flexShrink:0, position:"relative",
-                  borderRight: ri<rooms.length-1 ? "1px solid #E2E8F0" : "none"
+                  borderRight: ri<rooms.length-1 ? "1px solid #E2E8F0" : "none",
+                  overflow:"hidden",           /* 슬롯이 인접 컬럼으로 넘치지 않도록 */
+                  height: totalH               /* 그리드 전체 높이와 동일하게 고정 */
                 }}>
                   {/* 시간 그리드 배경 */}
                   {HOURS.map(h=>(
@@ -927,17 +924,26 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
                           position:"absolute", top:top+2, left:6, right:6, height:h,
                           background:cardBg, border:`1.5px solid ${borderCol}`,
                           borderRadius:10, padding:"8px 10px", cursor:"pointer",
-                          zIndex:3, overflow:"hidden", transition:"all 0.12s",
+                          zIndex: isCan ? 1 : isAct ? 5 : 3,  /* 노쇼 맨 아래, 진행중 맨 위 */
+                          overflow:"hidden", transition:"all 0.12s",
+                          opacity: isCan ? 0.5 : 1,
                           boxShadow: isAct?`0 0 12px ${borderCol}44`:isCan?"none":"0 1px 4px rgba(0,0,0,0.06)"
                         }}
                         onMouseEnter={e=>{if(!isCan)e.currentTarget.style.filter="brightness(0.97)";}}
                         onMouseLeave={e=>{e.currentTarget.style.filter="none";}}>
+                        {/* 노쇼 칩 */}
+                        {isCan && h>28 && (
+                          <span style={{display:"inline-block",background:"#FEF3C7",color:"#92400E",
+                            fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:3,marginBottom:3}}>
+                            노쇼
+                          </span>
+                        )}
                         <div style={{fontSize:12,fontWeight:700,color:titleColor,
                           whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginBottom:2}}>
                           {b.title}
                         </div>
                         {h>36&&<div style={{fontSize:10,color:"#64748B",whiteSpace:"nowrap"}}>
-                          {fmtTSRange(b.start_at, b.end_at)} · {b.user}
+                          {fmtTSRange(b.start_at, b.end_at)}{isCan ? " (노쇼)" : ` · ${b.user}`}
                         </div>}
                         {isToday&&!isCan&&!b.checkedIn&&h>48&&(
                           <button className="btn"
