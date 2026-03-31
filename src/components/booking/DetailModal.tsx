@@ -12,8 +12,8 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, B
 export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser, rooms:rp=[]}) {
   const { isMobile } = useBreakpoint();
   const r=(rp.length>0?rp:ROOMS_DB).find(r=>r.room_id===b.room_id);
-  const floor=getFloor(r.floor_id);
-  const features=getRoomFeatures(r.room_id);
+  const floor=r ? getFloor(r.floor_id) : null;
+  const features=r ? getRoomFeatures(r.room_id) : [];
   const isToday=tsDate(b.start_at)===todayStr(),now=nowMinutes();
   const sm=tsMin(b.start_at),em=tsMin(b.end_at);
   const isAct=isToday&&sm<=now&&now<em&&!b.autoCancelled&&!b.earlyEnded,nci=isAct&&!b.checkedIn;
@@ -39,7 +39,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
             <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
               {b.autoCancelled&&<span className="chip" style={{background:"#F1F5F9",color:"#94A3B8",display:"inline-flex",alignItems:"center",gap:4}}><XCircle size={11} strokeWidth={1.8}/> 자동취소</span>}
               {b.checkedIn&&<span className="chip" style={{background:"#DCFCE7",color:"#16A34A",display:"inline-flex",alignItems:"center",gap:4}}><CheckCircle2 size={11} strokeWidth={1.8}/> 체크인 완료</span>}
-              {isAct&&!b.autoCancelled&&<span className="chip" style={{background:r.color+"18",color:r.color,display:"inline-flex",alignItems:"center",gap:4}}><Circle size={7} fill={r.color} strokeWidth={0}/> 진행 중</span>}
+              {isAct&&!b.autoCancelled&&r&&<span className="chip" style={{background:r.color+"18",color:r.color,display:"inline-flex",alignItems:"center",gap:4}}><Circle size={7} fill={r.color} strokeWidth={0}/> 진행 중</span>}
               {!isAct&&!b.autoCancelled&&isToday&&tl>0&&<span className="chip" style={{background:"#EEF2FF",color:"#6366F1",display:"inline-flex",alignItems:"center",gap:4}}><Clock size={11} strokeWidth={1.8}/> {tl<60?`${tl}분 후`:"예정"}</span>}
             </div>
             <div style={{fontSize: isMobile ? 17 : 20, fontWeight:800, color:"#111111", wordBreak:"break-word"}}>{b.title}</div>
@@ -51,7 +51,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
           {[
-            [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Building2 size={11} strokeWidth={1.8}/>회의실</span>, <span style={{color:r.color,fontWeight:700}}>{r.room_name}</span>, `${r.capacity}인`],
+            [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Building2 size={11} strokeWidth={1.8}/>회의실</span>, <span style={{color:r?.color,fontWeight:700}}>{r?.room_name ?? '-'}</span>, r ? `${r.capacity}인` : ''],
             [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Clock size={11} strokeWidth={1.8}/>시간</span>, `${fmtTSFull(b.start_at)} – ${fmtTSFull(b.end_at)}`, fmtTSDateFull(b.start_at)],
             [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><User size={11} strokeWidth={1.8}/>예약자</span>, b.user, b.dept],
             features.length>0&&[<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Monitor size={11} strokeWidth={1.8}/>설비</span>, features.map(f=>f.feature_name).join(", "), null],
