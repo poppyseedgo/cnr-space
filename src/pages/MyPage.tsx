@@ -6,7 +6,9 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById } from '../data/master'
 import { cancelBooking as apiCancelBooking, upsertBookingAttendees } from '../lib/api'
+import { WeeklyView } from '../components/layout/CalendarShell'
 import { supabase } from '../lib/supabase'
+import { useBreakpoint } from '../hooks/useBreakpoint'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../types'
 
 export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail, rooms:rp=[], users:up=[], authUserId=''}) {
@@ -331,6 +333,81 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
       </div>
     </div>
   );
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── My Booking Weekly View ────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, onCheckIn, onNewBooking, authUser}) {
+  const today = todayStr()
+  const [selectedDate, setSelectedDate] = useState(today)
+  const { isMobile } = useBreakpoint()
+
+  // 본인 예약만 필터
+  const myBookings = bookings.filter(b => b.user === currentUser)
+
+  // 주 네비게이션
+  const weekStart = getWeekStart(selectedDate)
+  const weekEnd   = addDays(weekStart, 6)
+  const ws = dateToObj(weekStart), we = dateToObj(weekEnd)
+  const weekLabel = `${ws.getFullYear()}년 ${MONTH_NAMES[ws.getMonth()]} ${ws.getDate()}일 – ${MONTH_NAMES[we.getMonth()]} ${we.getDate()}일`
+
+  const goWeek = (dir: number) => setSelectedDate(addDays(selectedDate, dir * 7))
+
+  return (
+    <div style={{maxWidth:1280, margin:"0 auto", padding: isMobile?"16px 12px":"28px 28px"}}>
+
+      {/* 헤더 */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 mb-4"
+        style={{padding: isMobile?"10px 12px":"12px 18px", display:"flex", alignItems:"center", gap:12, position:"relative"}}>
+
+        {/* 주 네비 — 가운데 고정 */}
+        <div className="flex items-center gap-2"
+          style={{position:"absolute", left:"50%", transform:"translateX(-50%)"}}>
+          <button className="btn rounded-lg text-slate-600 dark:text-slate-300"
+            style={{padding:"7px 14px", fontSize:20, background:"#FFFFFF", lineHeight:1}}
+            onClick={()=>goWeek(-1)}>‹</button>
+          <span style={{fontSize:isMobile?14:16, fontWeight:700, color:"#111111", whiteSpace:"nowrap"}}>
+            {weekLabel}
+          </span>
+          <button className="btn rounded-lg text-slate-600 dark:text-slate-300"
+            style={{padding:"7px 14px", fontSize:20, background:"#FFFFFF", lineHeight:1}}
+            onClick={()=>goWeek(1)}>›</button>
+          {selectedDate !== today && (
+            <button className="btn rounded-lg" style={{padding:"5px 10px", fontSize:11, background:"#111111", color:"#fff"}}
+              onClick={()=>setSelectedDate(today)}>오늘</button>
+          )}
+        </div>
+
+        {/* 우측: 예약하기 버튼 */}
+        <div style={{marginLeft:"auto"}}>
+          <button className="btn rounded-xl font-bold" onClick={onNewBooking}
+            style={{background:"#111111", color:"#fff", padding:"8px 18px", fontSize:13}}>
+            + 예약하기
+          </button>
+        </div>
+      </div>
+
+      {/* 내 예약 없을 때 */}
+      {myBookings.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-state-icon"><Inbox size={48} strokeWidth={1.2}/></div>
+          <div className="empty-state-title">이번 주 예약이 없습니다</div>
+          <div className="empty-state-body">새 예약을 추가해 보세요</div>
+        </div>
+      ) : (
+        <WeeklyView
+          bookings={myBookings}
+          selectedDate={selectedDate}
+          onDateClick={setSelectedDate}
+          onBlockClick={onDetail}
+          onEmptyClick={()=>onNewBooking()}
+          onCheckIn={onCheckIn}
+        />
+      )}
+    </div>
+  )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

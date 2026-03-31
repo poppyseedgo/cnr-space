@@ -14,7 +14,7 @@ import { BookingModal } from './components/booking/BookingModal'
 import { DetailModal } from './components/booking/DetailModal'
 import { BookingDoneModal } from './components/booking/BookingDoneModal'
 import { RecurDoneModal } from './components/booking/RecurDoneModal'
-import { MyPageView } from './pages/MyPage'
+import { MyPageView, MyBookingWeeklyView } from './pages/MyPage'
 import { AdminView } from './pages/AdminPage'
 import LoginPage from './pages/LoginPage'
 import { useBreakpoint, useVisualViewport } from './hooks/useBreakpoint'
@@ -36,7 +36,7 @@ function AppContent() {
   // URL 해시에서 초기 view 복원 (#home, #calendar, #mypage, #admin)
   const getViewFromHash = (): string => {
     const hash = window.location.hash.replace('#', '')
-    return ['home','calendar','mypage','admin'].includes(hash) ? hash : 'home'
+    return ['home','calendar','mybookings','mypage','admin'].includes(hash) ? hash : 'home'
   }
   const [view, setViewState] = useState<string>(getViewFromHash);
   const setView = (v: string) => {
@@ -94,7 +94,7 @@ function AppContent() {
     }
     // 최초 로그인(hash 없을 때)만 홈으로 이동, 새로고침 시 현재 hash 유지
     const currentHash = window.location.hash.replace('#', '');
-    if (!['home','calendar','mypage','admin'].includes(currentHash)) {
+    if (!['home','calendar','mybookings','mypage','admin'].includes(currentHash)) {
       setView('home');
     }
     setLoading(true);
@@ -626,22 +626,26 @@ function AppContent() {
               </div>
             </div>
 
-            {/* ② Nav pills (center) — mypage/admin에서는 숨김 */}
-            {(view==="home"||view==="calendar") ? (
+            {/* ② Nav pills (center) */}
+            {(view==="home"||view==="calendar"||view==="mybookings") ? (
               <div className="flex dark:bg-slate-700 rounded-full p-1 gap-1" style={{background:"#F3F4F8"}}>
-                {([ ["home", <Home size={14} strokeWidth={1.8}/>, "실시간 현황"] as const, ["calendar", <Calendar size={14} strokeWidth={1.8}/>, "캘린더 뷰"] as const ] as [string, React.ReactElement, string][]).map(([v,icon,label])=>(
+                {([
+                  ["home",       <Home size={14} strokeWidth={1.8}/>,     "실시간 현황", "현황"]    as const,
+                  ["calendar",   <Calendar size={14} strokeWidth={1.8}/>,  "캘린더 뷰",  "캘린더"]  as const,
+                  ["mybookings", <ClipboardList size={14} strokeWidth={1.8}/>, "내 예약", "내 예약"] as const,
+                ] as [string, React.ReactElement, string, string][]).map(([v,icon,label,mLabel])=>(
                   <button key={v} onClick={()=>setView(v)}
                     className="btn flex items-center gap-1.5 rounded-full font-bold transition-all whitespace-nowrap"
                     style={{
-                      padding: isMobile?"7px 12px":"8px 18px",
-                      fontSize: isMobile?12:13,
+                      padding: isMobile?"7px 10px":"8px 18px",
+                      fontSize: isMobile?11:13,
                       background: view===v ? (dark?"#F1F5F9":"#111111") : "transparent",
                       color: view===v ? (dark?"#111111":"#fff") : (dark?"#94A3B8":"#64748B"),
                       boxShadow: view===v ? "0 2px 8px rgba(0,0,0,0.18)" : "none",
                     }}>
                     <span style={{fontSize: isMobile?13:14}}>{icon}</span>
                     {!isMobile && label}
-                    {isMobile && (v==="home" ? "현황" : "캘린더")}
+                    {isMobile && mLabel}
                   </button>
                 ))}
               </div>
@@ -855,6 +859,12 @@ function AppContent() {
           {view==="calendar" && <CalendarShell bookings={bookings} rooms={rooms} selectedDate={selectedDate} setSelectedDate={setSelectedDate} calView={calView} setCalView={setCalView} onBookingClick={b=>setModal({type:"detail",data:b})} onNewBooking={(d,h,rid)=>setModal({type:"new",prefill:{room_id:rid,start:h!=null?`${fmt2(h)}:00`:undefined,end:h!=null?`${fmt2(h+1)}:00`:undefined},date:d}) } onCheckIn={checkIn} filterFloor={calFilterFloor} setFilterFloor={setCalFilterFloor} />}
         </div>
       )}
+      {view==="mybookings" && <MyBookingWeeklyView
+          bookings={bookings} currentUser={currentUser} rooms={rooms}
+          onDetail={b=>setModal({type:"detail",data:b})}
+          onCheckIn={checkIn} onNewBooking={()=>setModal({type:"new",prefill:{}})}
+          authUser={authUser}
+        />}
       {view==="mypage" && <MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} />}
       {view==="admin" && <AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onDetail={b=>setModal({type:'detail',data:b})} />}
 

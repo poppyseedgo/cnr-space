@@ -10,16 +10,14 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, B
 
 export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setSelectedDate, calView, setCalView, onBookingClick, onNewBooking, onCheckIn, filterFloor, setFilterFloor}) {
   const { isMobile, isTablet } = useBreakpoint();
-  const VIEWS=[{id:"timeline",label:"타임라인"},{id:"monthly",label:"월"},{id:"weekly",label:"주"},{id:"daily",label:"일"}];
+  const VIEWS=[{id:"timeline",label:"타임라인"},{id:"monthly",label:"월"},{id:"daily",label:"일"}];
   const navLabel=()=>{
     const d=dateToObj(selectedDate);
     if(calView==="monthly") return `${d.getFullYear()}년 ${MONTH_NAMES[d.getMonth()]}`;
-    if(calView==="weekly"){const ws=getWeekStart(selectedDate),we=addDays(ws,6),wd=dateToObj(ws),wed=dateToObj(we);return `${wd.getFullYear()}년 ${MONTH_NAMES[wd.getMonth()]} ${wd.getDate()}일 – ${MONTH_NAMES[wed.getMonth()]} ${wed.getDate()}일`;}
     return `${d.getFullYear()}년 ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}일 (${DAY_NAMES[d.getDay()]})`;
   };
   const navigate=(dir)=>{
     if(calView==="monthly"){const d=dateToObj(selectedDate);d.setMonth(d.getMonth()+dir);setSelectedDate(objToStr(d));}
-    else if(calView==="weekly") setSelectedDate(addDays(selectedDate,dir*7));
     else setSelectedDate(addDays(selectedDate,dir));
   };
 
@@ -203,7 +201,6 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
       </div>
 
       {calView==="monthly"  && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d=>{setSelectedDate(d);setCalView("daily");}} onBookingClick={onBookingClick} rooms={allRooms} />}
-      {calView==="weekly"   && <WeeklyView  bookings={filteredBks} selectedDate={selectedDate} onDateClick={setSelectedDate} onBlockClick={onBookingClick} onEmptyClick={(d,h)=>onNewBooking(d,h,null)} onCheckIn={onCheckIn} />}
       {calView==="daily"    && <DailyView   bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate)} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} rooms={allRooms} />}
       {calView==="timeline" && <TimelineView bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate)} rooms={filteredRooms} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} />}
     </div>
