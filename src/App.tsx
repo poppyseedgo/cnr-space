@@ -802,9 +802,7 @@ function AppContent() {
                                     </div>
                                   )
                                 })()}
-                                <div style={{fontSize:10,color:"#94A3B8",marginTop:4}}>
-                                  {fmtTSDateFull(n.created_at)} {fmtTSFull(n.created_at)}
-                                </div>
+
                               </div>
                             </div>
                           </div>
