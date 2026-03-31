@@ -8,7 +8,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, FLOORS, getFloor, getRoomFeatures, getRoomById, getRoomThumbnail, getRoomGallery } from '../../data/master'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
-export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, setSearchQ, filterFloor, setFilterFloor, onBook, onDetail, onCheckIn, onEarlyEnd, onCancel, currentUser, dark}) {
+export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, setSearchQ, filterFloor, setFilterFloor, onBook, onDetail, onBookingDetail, onCheckIn, onEarlyEnd, onCancel, currentUser, dark}) {
   const { isMobile, isTablet } = useBreakpoint();
   const today = todayStr();
   const now   = nowMinutes();
@@ -151,7 +151,7 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
 
             return (
               <div key={b.id} className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 rounded-2xl p-3"
-                onClick={()=>onDetail&&onDetail(b)}
+                onClick={()=>onBookingDetail&&onBookingDetail(b)}
                 style={{width:isMobile?"42vw":160, minWidth:140, minHeight:isMobile?120:140,
                   flexShrink:0, opacity: (cardState==="cancelled" || cardState==="noshow") ? 0.45 : 1,
                   border: cardState==="pending" ? "1.5px solid #FCD34D" : "none",
