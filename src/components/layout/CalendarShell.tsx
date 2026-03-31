@@ -607,8 +607,11 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
   }, [selectedDate, isToday, nowLeft]);
 
   return(
-    <div style={{background:"#fff",borderRadius:16,border:"1px solid #E2E8F0",overflow:"hidden"}}>
-      {/* 스크롤 컨테이너 */}
+    <div style={{background:"#fff",borderRadius:16,border:"1px solid #E2E8F0",
+      /* overflow:hidden 제거 — sticky left가 이 경계에 막히므로 */
+      clipPath:"inset(0 round 16px)",  /* borderRadius 시각 유지 */
+    }}>
+      {/* 스크롤 컨테이너 — sticky left 동작하려면 이 div가 overflow 경계여야 함 */}
       <div ref={scrollRef} style={{overflowX:"auto",overflowY:"visible"}} >
         {/* position:relative 필수 — 내부 absolute 기준점 */}
         <div style={{minWidth: LW + totalW, position:"relative"}}>
