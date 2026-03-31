@@ -790,18 +790,19 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
   }, [selectedDate, isToday, nowPx]);
 
   return (
-    <div
-      ref={scrollRef}
-      style={{
-        background:"#fff", borderRadius:16, border:"1px solid #E2E8F0",
-        userSelect:"none",
-        overflowX:"auto",
-        overflowY:"auto",
-        maxHeight:"calc(100vh - 180px)",
-        WebkitOverflowScrolling:"touch",
-        /* border + overflow:auto → borderRadius가 콘텐츠를 정확히 클리핑
-           sticky top/left는 이 scroll container 기준으로 동작 — 정상 */
-      }}>
+    <div style={{
+      borderRadius:16, border:"1px solid #E2E8F0",
+      overflow:"hidden",
+      background:"#fff", userSelect:"none",
+    }}>
+      <div
+        ref={scrollRef}
+        style={{
+          overflowX:"auto",
+          overflowY:"auto",
+          maxHeight:"calc(100vh - 180px)",
+          WebkitOverflowScrolling:"touch",
+        }}>
         {/* 전체 너비 고정 래퍼 */}
         <div style={{minWidth: TW + rooms.length * COL, position:"relative"}}>
 
@@ -973,6 +974,7 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
           </div>
         </div>
       </div>
+    </div>
   );
 }
 
