@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Layers, Users, UsersRound, Building2, Clock, User, Monitor, FileText, XCircle, AlertTriangle, CheckCircle2, Circle, X, Calendar, Home, LayoutGrid, LogOut, Settings, Search, BarChart2, ClipboardList, Inbox, ChevronDown, ChevronUp, AlertCircle, CheckCheck, Ban, Check, Bell } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
-  fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
+  fmtTSRange, fmtTSFull, fmtTSRangeFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from './utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById, getAdminOnlyRooms } from './data/master'
@@ -347,7 +347,7 @@ function AppContent() {
             userId: authUser.user_id,
             type: isAdminOnlyRoom ? 'booking_pending' : 'booking_created',
             title: notifTitle,
-            body: `${room?.room_name_ko ?? room?.room_name ?? ''} · ${bk.start_at.slice(5,10)} ${bk.start_at.slice(11,16)}`,
+            body: `${bk.title} · ${room?.room_name ?? ''} · ${fmtTSDateFull(bk.start_at)} ${fmtTSFull(bk.start_at)}`,
             bookingId: bk.id,
           }).catch(() => {})
         }
@@ -371,12 +371,21 @@ function AppContent() {
       await apiUpdateBooking(id, { checkedIn: true })
     insertAuditLog({ action: 'BOOKING_CHECKIN', entityType: 'booking', entityId: id, actorName: currentUser }).catch(()=>{});
       showToast("체크인 완료!");
+      if (authUser?.user_id && target) {
+        const r = rooms.find(rm => rm.room_id === target.room_id)
+        insertNotification({
+          userId: authUser.user_id, type: 'booking_checkin',
+          title: '체크인 완료',
+          body: `${target.title} · ${r?.room_name ?? ''} · ${fmtTSDateFull(target.start_at)} ${fmtTSFull(target.start_at)}`,
+          bookingId: id,
+        }).catch(() => {})
+      }
     } catch (err: any) {
       // 실패 시 롤백
       setBookings(prev => prev.map(b => b.id===id ? {...b, checkedIn:false} : b));
       showToast(err.message ?? "체크인에 실패했습니다.", "error");
     }
-  }, [showToast]);
+  }, [showToast, bookings, rooms, authUser?.user_id]);
 
   const earlyEnd = useCallback(async (id) => {
     const now = nowMinutes();
@@ -399,13 +408,22 @@ function AppContent() {
       await apiUpdateBooking(id, { earlyEnded: true, end_at: newEndAt });
       insertAuditLog({ action: 'BOOKING_EARLY_END', entityType: 'booking', entityId: id, actorName: currentUser }).catch(()=>{})
       showToast("사용 완료! 회의실이 반환되었습니다.");
+      if (authUser?.user_id && target) {
+        const r = rooms.find(rm => rm.room_id === target.room_id)
+        insertNotification({
+          userId: authUser.user_id, type: 'booking_early_end',
+          title: '회의실 반납 완료',
+          body: `${target.title} · ${r?.room_name ?? ''} · ${fmtTSDateFull(target.start_at)}`,
+          bookingId: id,
+        }).catch(() => {})
+      }
     } catch (err: any) {
       setBookings(prev => prev.map(b => b.id===id
         ? {...b, end_at: target.end_at, earlyEnded: false} : b
       ));
       showToast(err.message ?? "조기 반납에 실패했습니다.", "error");
     }
-  }, [bookings, showToast]);
+  }, [bookings, showToast, rooms, authUser?.user_id]);
 
   const cancelBooking = useCallback(async (id) => {
     // 취소 전 예약 정보 먼저 저장 (낙관적 업데이트 전에)
@@ -416,11 +434,12 @@ function AppContent() {
     try {
       await apiCancelBooking(id)
     insertAuditLog({ action: 'BOOKING_CANCELLED', entityType: 'booking', entityId: id, actorName: currentUser }).catch(()=>{});
-    if (authUser?.user_id) {
+    if (authUser?.user_id && targetBooking) {
+      const r = rooms.find(rm => rm.room_id === targetBooking.room_id)
       insertNotification({
         userId: authUser.user_id, type: 'booking_cancelled',
         title: '예약이 취소되었습니다',
-        body: targetBooking ? `${targetBooking.title}` : undefined,
+        body: `${targetBooking.title} · ${r?.room_name ?? ''} · ${fmtTSDateFull(targetBooking.start_at)} ${fmtTSFull(targetBooking.start_at)}`,
         bookingId: id,
       }).catch(() => {})
     }
@@ -464,10 +483,11 @@ function AppContent() {
       if (target) {
         const userProfile = users.find(u => u.name === target.user)
         if (userProfile?.user_id) {
+          const rApprove = rooms.find(rm => rm.room_id === target.room_id)
           insertNotification({
             userId: userProfile.user_id, type: 'booking_approved',
             title: '예약이 승인되었습니다',
-            body: `에메랄드 룸 · ${target.start_at.slice(5,10)} ${target.start_at.slice(11,16)}`,
+            body: `${target.title} · ${rApprove?.room_name ?? ''} · ${fmtTSDateFull(target.start_at)} ${fmtTSFull(target.start_at)}`,
             bookingId: id,
           }).catch(() => {})
         }
@@ -500,10 +520,13 @@ function AppContent() {
       if (target) {
         const userProfile = users.find(u => u.name === target.user)
         if (userProfile?.user_id) {
+          const rReject = rooms.find(rm => rm.room_id === target.room_id)
           insertNotification({
             userId: userProfile.user_id, type: 'booking_rejected',
             title: '예약 요청이 거절되었습니다',
-            body: reason ? `거절 사유: ${reason}` : '에메랄드 룸 예약 요청',
+            body: reason
+              ? `${target.title} · ${rReject?.room_name ?? ''} · 거절 사유: ${reason}`
+              : `${target.title} · ${rReject?.room_name ?? ''}`,
             bookingId: id,
           }).catch(() => {})
         }
@@ -539,6 +562,16 @@ function AppContent() {
       // attendees 변경 시 booking_attendees 테이블도 업데이트
       if (changes.attendees !== undefined) {
         upsertBookingAttendees(originalId, changes.attendees).catch(() => {})
+      }
+      // 예약 변경 인앱 알림
+      if (authUser?.user_id && prevBooking) {
+        const r = rooms.find(rm => rm.room_id === prevBooking.room_id)
+        insertNotification({
+          userId: authUser.user_id, type: 'booking_updated',
+          title: '예약이 변경되었습니다',
+          body: `${prevBooking.title} · ${r?.room_name ?? ''} · ${fmtTSDateFull(changes.start_at ?? prevBooking.start_at)} ${fmtTSFull(changes.start_at ?? prevBooking.start_at)}`,
+          bookingId: originalId,
+        }).catch(() => {})
       }
       // Audit log
       insertAuditLog({
@@ -580,8 +613,19 @@ function AppContent() {
     const ids=new Set(toCancel.map(b=>b.id));
     // 낙관적 UI 업데이트
     setBookings(prev => prev.map(b => ids.has(b.id) ? {...b, autoCancelled:true} : b));
-    // DB 반영
+    // DB 반영 + 노쇼 인앱 알림
     Promise.all(toCancel.map(b => apiCancelBooking(b.id))).catch(console.error);
+    if (authUser?.user_id) {
+      toCancel.filter(b => b.user === currentUser).forEach(b => {
+        const r = rooms.find(rm => rm.room_id === b.room_id)
+        insertNotification({
+          userId: authUser.user_id, type: 'booking_noshow',
+          title: '노쇼 처리 — 예약이 자동 취소되었습니다',
+          body: `${b.title} · ${r?.room_name ?? ''} · ${fmtTSDateFull(b.start_at)} ${fmtTSFull(b.start_at)}`,
+          bookingId: b.id,
+        }).catch(() => {})
+      })
+    }
   }, [tick]);
 
   const { isMobile, isTablet } = useBreakpoint();
@@ -675,7 +719,7 @@ function AppContent() {
                       background:"#EF4444",color:"#fff",
                       fontSize:9,fontWeight:700,borderRadius:999,
                       padding:"1px 4px",lineHeight:1.4,minWidth:14,textAlign:"center"}}>
-                      {unreadCount > 9 ? "9+" : unreadCount}
+                      {unreadCount > 99 ? "99+" : unreadCount}
                     </span>
                   )}
                 </button>
@@ -717,6 +761,10 @@ function AppContent() {
                           booking_approved: "#16A34A",
                           booking_rejected: "#DC2626",
                           booking_cancelled:"#64748B",
+                          booking_checkin:  "#2563EB",
+                          booking_early_end:"#7C3AED",
+                          booking_noshow:   "#EF4444",
+                          booking_updated:  "#0891B2",
                         }
                         const color = typeColors[n.type] ?? "#64748B"
                         return (
@@ -738,13 +786,24 @@ function AppContent() {
                                 background:n.is_read?"transparent":color,
                                 marginTop:6,flexShrink:0}}/>
                               <div style={{flex:1,minWidth:0}}>
+                                {/* 알림 제목 (상태 메시지) */}
                                 <div style={{fontSize:13,fontWeight:n.is_read?400:600,color:"#111",
-                                  marginBottom:2}}>{n.title}</div>
-                                {n.body && <div style={{fontSize:12,color:"#64748B"}}>{n.body}</div>}
-                                <div style={{fontSize:11,color:"#94A3B8",marginTop:4}}>
-                                  {new Date(n.created_at).toLocaleString("ko-KR",{
-                                    month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"
-                                  })}
+                                  marginBottom:3}}>{n.title}</div>
+                                {/* body 파싱: "회의제목 · 회의실 · 날짜 오전/오후 H:MM" */}
+                                {n.body && (() => {
+                                  const parts = n.body.split(' · ')
+                                  return (
+                                    <div style={{display:"flex",flexDirection:"column",gap:1}}>
+                                      {parts[0] && <div style={{fontSize:12,fontWeight:600,color:"#374151",
+                                        overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{parts[0]}</div>}
+                                      {parts.slice(1).map((p,i) => (
+                                        <div key={i} style={{fontSize:11,color:"#64748B"}}>{p}</div>
+                                      ))}
+                                    </div>
+                                  )
+                                })()}
+                                <div style={{fontSize:10,color:"#94A3B8",marginTop:4}}>
+                                  {fmtTSDateFull(n.created_at)} {fmtTSFull(n.created_at)}
                                 </div>
                               </div>
                             </div>
