@@ -91,10 +91,21 @@ export async function loadBookings(): Promise<Booking[]> {
 
       let attendees: string[] = fromJoin
       if (fromJoin.length === 0 && Array.isArray(row.attendees) && row.attendees.length > 0) {
-        // 기존 컬럼 데이터: string 또는 {email, name, ...} 객체 모두 처리
+        // 기존 컬럼: text[] 타입이라 JSON 문자열로 저장된 경우 파싱 필요
+        // 예: '{"user_id":"...","name":"...","email":"..."}' → email 추출
         attendees = row.attendees.map((a: any) => {
-          if (typeof a === 'string') return a
-          return a.email ?? a.name ?? JSON.stringify(a)
+          if (typeof a === 'string') {
+            // JSON 문자열인지 확인 후 파싱
+            if (a.startsWith('{')) {
+              try {
+                const parsed = JSON.parse(a)
+                return parsed.email ?? parsed.name ?? a
+              } catch { return a }
+            }
+            return a  // 일반 이메일 문자열
+          }
+          // 객체인 경우
+          return a.email ?? a.name ?? ''
         }).filter(Boolean)
       }
 
