@@ -55,6 +55,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   const [attendeeQ,  setAttendeeQ]  = useState("");
   const [attendeeFocus, setAttendeeFocus] = useState(false);
   const [recur, setRecur] = useState("NEVER"); // "NEVER" | "EVERY_DAY" | "EVERY_WEEK"
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const h = (e) => {
@@ -590,6 +592,23 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       {isMobile && <div style={{width:40,height:4,background:"#D1D5DB",borderRadius:2,
         position:"absolute",top:10,left:"50%",transform:"translateX(-50%)",zIndex:10}}/>}
 
+      {/* 예약 생성 로딩 오버레이 — submit 후 250ms 이상 소요 시 표시 */}
+      {isSubmitting && (
+        <div style={{
+          position:"absolute", inset:0, zIndex:50,
+          background:"rgba(255,255,255,0.85)",
+          backdropFilter:"blur(3px)",
+          borderRadius: isMobile ? "20px 20px 0 0" : 16,
+          display:"flex", flexDirection:"column",
+          alignItems:"center", justifyContent:"center",
+          gap:10,
+        }}>
+          {/* shimmer 블록 2개 — 스켈레톤 동일 스타일 */}
+          <div className="sk-block" style={{width:"45%", height:14, borderRadius:8}}/>
+          <div className="sk-block" style={{width:"28%", height:10, borderRadius:8}}/>
+        </div>
+      )}
+
       {/* ════ 헤더 (고정) ════ */}
       <div style={{padding: isMobile?"20px 20px 12px":"24px 28px 18px",
         borderBottom:"1px solid #F1F5F9",display:"flex",
@@ -848,7 +867,17 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               ← 이전
             </button>
             <button className="btn" disabled={!canSubmit}
-              onClick={()=>{ if(!canSubmit)return; editBooking ? onUpdate({...form},bookingDate) : onSubmit({...form,recur},bookingDate); }}
+              onClick={async ()=>{
+                if(!canSubmit)return;
+                // 250ms 후에도 완료 안 됐으면 오버레이 표시
+                submitTimerRef.current = setTimeout(()=>setIsSubmitting(true), 250);
+                try {
+                  editBooking ? await onUpdate({...form},bookingDate) : await onSubmit({...form,recur},bookingDate);
+                } finally {
+                  if(submitTimerRef.current) clearTimeout(submitTimerRef.current);
+                  setIsSubmitting(false);
+                }
+              }}
               style={{flex:2,padding:"15px",fontSize:15,fontWeight:700,borderRadius:14,
                 background:canSubmit?"#111111":"#E2E8F0",
                 color:canSubmit?"#fff":"#94A3B8",
@@ -1127,7 +1156,17 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             취소
           </button>
           <button className="btn" disabled={!canSubmit}
-            onClick={()=>{ if(!canSubmit)return; editBooking ? onUpdate({...form},bookingDate) : onSubmit({...form,recur},bookingDate); }}
+            onClick={async ()=>{
+                if(!canSubmit)return;
+                // 250ms 후에도 완료 안 됐으면 오버레이 표시
+                submitTimerRef.current = setTimeout(()=>setIsSubmitting(true), 250);
+                try {
+                  editBooking ? await onUpdate({...form},bookingDate) : await onSubmit({...form,recur},bookingDate);
+                } finally {
+                  if(submitTimerRef.current) clearTimeout(submitTimerRef.current);
+                  setIsSubmitting(false);
+                }
+              }}
             style={{flex:1,padding:"14px",fontSize:14,fontWeight:700,borderRadius:12,
               background:canSubmit?"#111":"#E2E8F0",
               color:canSubmit?"#fff":"#94A3B8",

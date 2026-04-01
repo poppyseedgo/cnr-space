@@ -143,12 +143,29 @@
     border: none;
     font-family: inherit;
     font-weight: 600;
-    transition: opacity 0.15s, transform 0.15s, background 0.15s;
+    transition: transform 0.08s ease, background 0.08s ease, box-shadow 0.08s ease;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
   }
-  .btn:active { opacity: 0.75; transform: scale(0.98); }
-  .btn:disabled { cursor: not-allowed; opacity: 0.5; }
+  /* 모바일·데스크탑 통합 — onPointerDown으로 .pressed 토글 */
+  .btn.pressed,
+  .btn:active {
+    transform: scale(0.95);
+    opacity: 0.88;
+  }
+  .btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+    transform: none !important;
+  }
+  /* hover는 데스크탑에서만 (hover:hover = 실제 마우스 기기) */
+  @media (hover: hover) {
+    .btn:hover:not(:disabled) {
+      opacity: 0.88;
+    }
+  }
 
   /* ── 카드 ── */
   .card {
