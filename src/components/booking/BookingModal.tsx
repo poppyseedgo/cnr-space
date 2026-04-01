@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
-import { usePressable } from '../../hooks/usePressable'
 import { Layers, Users, UsersRound, Building2, Clock, User, Monitor, FileText, XCircle, AlertTriangle, CheckCircle2, Circle, X, Calendar, Home, LayoutGrid, LogOut, Settings, Search, BarChart2, ClipboardList, Inbox, ChevronDown, ChevronUp, AlertCircle, CheckCheck, Ban, Check } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
@@ -12,8 +11,6 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, B
 export function BookingModal({prefill, date:initDate, editBooking=null, onClose, onSubmit, onUpdate, bookings, isAdmin=false, currentUser="홍길동", rooms:roomsProp=[], users:usersProp=[]}) {
   // ── 모든 hooks를 최상단에 선언 ──────────────────────────────────────────────
   const { isMobile, isTablet } = useBreakpoint();
-  const pressSubmit = usePressable();
-  const pressSubmit2 = usePressable();
   const { vh: vvHeight, off: vvOff } = useVisualViewport();
   const today = todayStr();
   const maxDateObj = new Date(); maxDateObj.setMonth(maxDateObj.getMonth()+1);
@@ -599,16 +596,23 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       {isSubmitting && (
         <div style={{
           position:"absolute", inset:0, zIndex:50,
-          background:"rgba(255,255,255,0.85)",
+          background:"rgba(255,255,255,0.88)",
           backdropFilter:"blur(3px)",
           borderRadius: isMobile ? "20px 20px 0 0" : 16,
           display:"flex", flexDirection:"column",
           alignItems:"center", justifyContent:"center",
-          gap:10,
+          gap:16,
         }}>
-          {/* shimmer 블록 2개 — 스켈레톤 동일 스타일 */}
-          <div className="sk-block" style={{width:"45%", height:14, borderRadius:8}}/>
-          <div className="sk-block" style={{width:"28%", height:10, borderRadius:8}}/>
+          {/* shimmer 블록 */}
+          <div className="sk-block" style={{width:"48%", height:14, borderRadius:8}}/>
+          <div className="sk-block" style={{width:"32%", height:10, borderRadius:8}}/>
+          {/* 텍스트 + 점 애니메이션 */}
+          <div style={{display:"flex",alignItems:"center",gap:4,marginTop:4}}>
+            <span style={{fontSize:13,fontWeight:600,color:"#111"}}>예약을 생성 중입니다</span>
+            <span className="loading-dots">
+              <span/><span/><span/>
+            </span>
+          </div>
         </div>
       )}
 
@@ -870,7 +874,6 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               ← 이전
             </button>
             <button className="btn" disabled={!canSubmit}
-              {...pressSubmit}
               onClick={async ()=>{
                 if(!canSubmit)return;
                 submitTimerRef.current = setTimeout(()=>setIsSubmitting(true), 250);
@@ -1159,8 +1162,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             취소
           </button>
           <button className="btn" disabled={!canSubmit}
-            {...pressSubmit2}
-              onClick={async ()=>{
+            onClick={async ()=>{
                 if(!canSubmit)return;
                 submitTimerRef.current = setTimeout(()=>setIsSubmitting(true), 250);
                 try {
