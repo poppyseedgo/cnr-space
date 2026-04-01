@@ -9,6 +9,7 @@ import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBo
 import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView, RoomDetailModal } from './components/room/HomeView'
+import { HomeSkeleton, CalendarSkeleton, MyPageSkeleton } from './components/skeleton'
 import { CalendarShell } from './components/layout/CalendarShell'
 import { BookingModal } from './components/booking/BookingModal'
 import { DetailModal } from './components/booking/DetailModal'
@@ -76,7 +77,15 @@ function AppContent() {
   }, [])  // 홈화면 전용
   const [calFilterFloor,  setCalFilterFloor]  = useState("ALL");  // 캘린더 전용
   const [tick, setTick]           = useState(0);
-  const [loading, setLoading]     = useState(true);
+  const [loading, setLoading]       = useState(true);
+  const [showSkeleton, setShowSkeleton] = useState(false); // 100ms 딜레이 후 표시
+
+  // 100ms 이상 로딩 시에만 스켈레톤 표시 (짧은 로딩은 깜박임 방지)
+  useEffect(() => {
+    if (!loading) { setShowSkeleton(false); return; }
+    const t = setTimeout(() => setShowSkeleton(true), 100);
+    return () => clearTimeout(t);
+  }, [loading]);
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
   const { currentUser: authUser, logout, isAdmin, loading: authLoading } = useAuth()
@@ -662,14 +671,32 @@ function AppContent() {
   if (!authUser) return <LoginPage />
 
   // ── 데이터 로딩 중 ──
-  if (loading) return (
-    <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-slate-900">
-      <div className="text-center text-slate-400">
-        <div className="mb-3" style={{display:"flex",justifyContent:"center"}}><Building2 size={48} strokeWidth={1.2} color="#CBD5E1"/></div>
-        <div className="text-sm font-semibold">로딩 중...</div>
+  if (loading) {
+    if (!showSkeleton) return null; // 100ms 미만이면 아무것도 표시 안 함
+    // 현재 뷰에 맞는 스켈레톤 렌더
+    const SkeletonComp = view === 'calendar' ? CalendarSkeleton
+                       : view === 'mypage'   ? MyPageSkeleton
+                       : HomeSkeleton;
+    return (
+      <div style={{background:'#F3F4F8', minHeight:'100vh'}}>
+        {/* 헤더 스켈레톤 */}
+        <div style={{background:'#fff', height:52, borderBottom:'1px solid #E2E8F0',
+          display:'flex', alignItems:'center', padding:'0 28px', gap:12}}>
+          <div className="sk-block" style={{width:88, height:20, borderRadius:6}} />
+          <div style={{flex:1, display:'flex', justifyContent:'center', gap:8}}>
+            <div className="sk-block" style={{width:100, height:32, borderRadius:999}} />
+            <div className="sk-block" style={{width:100, height:32, borderRadius:999}} />
+            <div className="sk-block" style={{width:100, height:32, borderRadius:999}} />
+          </div>
+          <div style={{display:'flex', gap:10}}>
+            <div className="sk-block" style={{width:32, height:32, borderRadius:'50%'}} />
+            <div className="sk-block" style={{width:32, height:32, borderRadius:'50%'}} />
+          </div>
+        </div>
+        <SkeletonComp />
       </div>
-    </div>
-  );
+    );
+  }
 
   return (
     <div className={dark ? "dark" : ""}>
