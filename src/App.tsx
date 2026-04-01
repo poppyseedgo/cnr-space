@@ -83,7 +83,7 @@ function AppContent() {
   // 100ms 이상 로딩 시에만 스켈레톤 표시 (짧은 로딩은 깜박임 방지)
   useEffect(() => {
     if (!loading) { setShowSkeleton(false); return; }
-    const t = setTimeout(() => setShowSkeleton(true), 100);
+    const t = setTimeout(() => setShowSkeleton(true), 300);
     return () => clearTimeout(t);
   }, [loading]);
   const [showDropdown, setShowDropdown] = useState(false);
