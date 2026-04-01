@@ -138,33 +138,46 @@
 @layer components {
 
   /* ── 버튼 기본 ── */
+  /* ── 버튼 기본 ── */
   .btn {
     cursor: pointer;
     border: none;
     font-family: inherit;
     font-weight: 600;
-    transition: transform 0.08s ease, background 0.08s ease, box-shadow 0.08s ease;
+    position: relative;
+    overflow: hidden;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
     user-select: none;
     -webkit-user-select: none;
+    /* B 타이밍 — shine sweep과 동일한 0.1s */
+    transition: transform 0.1s ease;
   }
-  /* 모바일·데스크탑 통합 — onPointerDown으로 .pressed 토글 */
   .btn.pressed,
   .btn:active {
-    transform: scale(0.95);
-    opacity: 0.88;
+    transform: scale(0.97);
   }
   .btn:disabled {
     cursor: not-allowed;
     opacity: 0.45;
     transform: none !important;
+    pointer-events: none;
   }
-  /* hover는 데스크탑에서만 (hover:hover = 실제 마우스 기기) */
+  /* hover — 데스크탑 마우스 기기에서만 */
   @media (hover: hover) {
-    .btn:hover:not(:disabled) {
-      opacity: 0.88;
-    }
+    .btn:hover:not(:disabled) { opacity: 0.9; }
+  }
+
+  /* ── Ripple (A 효과) ── */
+  .btn-ripple {
+    position: absolute;
+    border-radius: 50%;
+    transform: scale(0);
+    animation: btn-ripple-anim 0.5s ease-out forwards;
+    pointer-events: none;
+  }
+  @keyframes btn-ripple-anim {
+    to { transform: scale(4); opacity: 0; }
   }
 
   /* ── 카드 ── */

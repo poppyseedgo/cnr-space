@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
+import { usePressable } from '../../hooks/usePressable'
 import { Layers, Users, UsersRound, Building2, Clock, User, Monitor, FileText, XCircle, AlertTriangle, CheckCircle2, Circle, X, Calendar, Home, LayoutGrid, LogOut, Settings, Search, BarChart2, ClipboardList, Inbox, ChevronDown, ChevronUp, AlertCircle, CheckCheck, Ban, Check } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
@@ -11,6 +12,8 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, B
 export function BookingModal({prefill, date:initDate, editBooking=null, onClose, onSubmit, onUpdate, bookings, isAdmin=false, currentUser="홍길동", rooms:roomsProp=[], users:usersProp=[]}) {
   // ── 모든 hooks를 최상단에 선언 ──────────────────────────────────────────────
   const { isMobile, isTablet } = useBreakpoint();
+  const pressSubmit = usePressable();
+  const pressSubmit2 = usePressable();
   const { vh: vvHeight, off: vvOff } = useVisualViewport();
   const today = todayStr();
   const maxDateObj = new Date(); maxDateObj.setMonth(maxDateObj.getMonth()+1);
@@ -867,9 +870,9 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               ← 이전
             </button>
             <button className="btn" disabled={!canSubmit}
+              {...pressSubmit}
               onClick={async ()=>{
                 if(!canSubmit)return;
-                // 250ms 후에도 완료 안 됐으면 오버레이 표시
                 submitTimerRef.current = setTimeout(()=>setIsSubmitting(true), 250);
                 try {
                   editBooking ? await onUpdate({...form},bookingDate) : await onSubmit({...form,recur},bookingDate);
@@ -1156,9 +1159,9 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             취소
           </button>
           <button className="btn" disabled={!canSubmit}
-            onClick={async ()=>{
+            {...pressSubmit2}
+              onClick={async ()=>{
                 if(!canSubmit)return;
-                // 250ms 후에도 완료 안 됐으면 오버레이 표시
                 submitTimerRef.current = setTimeout(()=>setIsSubmitting(true), 250);
                 try {
                   editBooking ? await onUpdate({...form},bookingDate) : await onSubmit({...form,recur},bookingDate);
