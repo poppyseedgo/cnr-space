@@ -15,7 +15,7 @@ export const msalConfig: Configuration = {
     postLogoutRedirectUri: window.location.origin,
   },
   cache: {
-    cacheLocation: 'sessionStorage',
+    cacheLocation: 'localStorage',  // 팝업↔메인 창 공유 (sessionStorage는 창별 분리)
   },
 }
 
