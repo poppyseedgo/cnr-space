@@ -886,7 +886,7 @@ function AppContent() {
                       fontSize:13, fontWeight:600,
                       color: dark?"#fff":"#111111",
                     }}>
-                      {currentUser} <span style={{fontWeight:400,opacity:0.6}}>{currentDept}</span>
+                      {currentUser} <span style={{fontWeight:400,opacity:0.6}}>{currentDept.length > 10 ? currentDept.slice(0, 10) + '…' : currentDept}</span>
                     </span>
                   )}
                 </button>
@@ -902,7 +902,7 @@ function AppContent() {
                     {/* 사용자 정보 */}
                     <div style={{padding:"14px 16px",borderBottom:"1px solid #F1F5F9"}}>
                       <div style={{fontSize:13,fontWeight:700,color:"#111"}}>{currentUser}</div>
-                      <div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>{currentDept}</div>
+                      <div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>{currentDept.length > 10 ? currentDept.slice(0, 10) + '…' : currentDept}</div>
                     </div>
                     {/* 메뉴 항목 */}
                     <div style={{padding:"4px 0"}}>
@@ -972,7 +972,7 @@ function AppContent() {
           onCheckIn={checkIn} onNewBooking={()=>setModal({type:"new",prefill:{}})}
           authUser={authUser}
         />}
-      {view==="mypage" && <MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} />}
+      {view==="mypage" && <MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept.length > 10 ? currentDept.slice(0, 10) + '…' : currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} />}
       {view==="admin" && <AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onDetail={b=>setModal({type:'detail',data:b})} />}
 
       {/* ── Modals ── */}
