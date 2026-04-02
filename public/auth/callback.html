@@ -1,41 +1,42 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>C&R SPACE — 로그인 중...</title>
+  <title>C&R SPACE 로그인 처리 중...</title>
   <style>
-    body { margin: 0; display: flex; align-items: center; justify-content: center;
-           min-height: 100vh; background: #0F0F1A; font-family: sans-serif; }
-    p { color: rgba(255,255,255,0.5); font-size: 14px; }
+    body { margin:0; display:flex; align-items:center; justify-content:center;
+           min-height:100vh; background:#0F0F1A; font-family:sans-serif; }
+    p { color:rgba(255,255,255,0.4); font-size:13px; }
   </style>
 </head>
 <body>
   <p>로그인 처리 중...</p>
-  <script>
-    // MSAL 팝업 redirect 핸들러
-    // 이 페이지는 팝업 창에서만 열림
-    // MSAL이 URL hash/code를 감지하고 부모 창에 메시지를 보낸 후 팝업을 자동으로 닫음
-    if (window.opener) {
-      try {
-        window.opener.postMessage(window.location.href, window.location.origin);
-      } catch(e) {}
-    }
-  </script>
-  <script
-    src="https://alcdn.msauth.net/browser/3.27.0/js/msal-browser.min.js"
-    crossorigin="anonymous"
-  ></script>
-  <script>
-    // MSAL이 직접 팝업 응답을 처리하도록 인스턴스 생성
-    const clientId = document.referrer
-      ? new URLSearchParams(window.location.search).get('client_id') || ''
-      : '';
 
-    // handleRedirectPromise로 팝업 응답 처리 후 자동 닫힘
-    if (window.location.hash || window.location.search.includes('code=')) {
-      const authority = window.location.href.includes('983446eb')
-        ? 'https://login.microsoftonline.com/983446eb-5994-429a-977d-ea1a5e68fcdd'
-        : 'https://login.microsoftonline.com/common';
-    }
+  <script src="https://alcdn.msauth.net/browser/3.27.0/js/msal-browser.min.js"
+          crossorigin="anonymous"></script>
+  <script>
+    // 팝업 창에서 MSAL 응답 처리 후 자동으로 닫힘
+    const msalInstance = new msal.PublicClientApplication({
+      auth: {
+        clientId:    'd91c25bc-b8ea-4331-81ee-1a74632725f1',
+        authority:   'https://login.microsoftonline.com/983446eb-5994-429a-977d-ea1a5e68fcdd',
+        redirectUri:  window.location.origin + '/auth/callback.html',
+      },
+      cache: { cacheLocation: 'sessionStorage' },
+    });
+
+    msalInstance.initialize().then(function() {
+      return msalInstance.handleRedirectPromise();
+    }).then(function(response) {
+      // 처리 완료 → 팝업 자동 닫힘
+      if (window.opener) {
+        window.close();
+      }
+    }).catch(function(err) {
+      console.error('[MSAL callback]', err);
+      if (window.opener) {
+        window.close();
+      }
+    });
   </script>
 </body>
 </html>
