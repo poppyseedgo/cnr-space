@@ -1,14 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { msalInstance, isAzureEnabled } from '../lib/msalConfig'
 import { supabase, isSupabaseEnabled } from '../lib/supabase'
 import { APP_USERS } from '../data/master'
 import type { AppUser } from '../types'
 
 interface AuthContextType {
-  currentUser: AppUser | null
-  loading:     boolean
-  login:       (email: string, password: string) => Promise<void>
-  logout:      () => Promise<void>
-  isAdmin:     boolean
+  currentUser:    AppUser | null
+  loading:        boolean
+  login:          (email: string, password: string) => Promise<void>
+  loginWithAzure: () => Promise<void>
+  logout:         () => Promise<void>
+  isAdmin:        boolean
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -96,6 +98,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  const loginWithAzure = useCallback(async () => {
+    if (!isAzureEnabled) throw new Error('Azure AD 환경변수가 설정되지 않았습니다.')
+    await msalInstance.initialize()
+    const result = await msalInstance.loginPopup({
+      scopes: ['openid', 'profile', 'email', 'User.Read'],
+      prompt: 'select_account',
+    })
+    const { idToken, account } = result
+    if (!idToken || !account) throw new Error('토큰을 받지 못했습니다.')
+
+    // Supabase에 Azure 토큰으로 로그인
+    const { data: authData, error: authError } = await supabase.auth.signInWithIdToken({
+      provider: 'azure',
+      token: idToken,
+    })
+    if (authError) throw new Error(authError.message)
+    if (!authData.user) throw new Error('사용자 정보를 가져오지 못했습니다.')
+
+    // profiles upsert — azure_user_id 저장
+    await supabase.from('profiles').upsert({
+      id:            authData.user.id,
+      email:         account.username,
+      name:          account.name ?? account.username.split('@')[0],
+      azure_user_id: account.localAccountId,
+      updated_at:    new Date().toISOString(),
+    }, { onConflict: 'id' })
+
+    const user = await loadProfile(authData.user.id, account.username)
+    setCurrentUser(user)
+  }, [])
+
   const login = useCallback(async (email: string, password: string) => {
     if (!isSupabaseEnabled) {
       const found = APP_USERS.find(u => u.email === email)
@@ -128,7 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ currentUser, loading, login, logout, isAdmin: currentUser?.role === 'ADMIN' }}>
+    <AuthContext.Provider value={{ currentUser, loading, login, loginWithAzure, logout, isAdmin: currentUser?.role === 'ADMIN' }}>
       {children}
     </AuthContext.Provider>
   )
