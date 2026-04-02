@@ -10,15 +10,25 @@ const renderApp = () => {
 
 msalReady
   .then(() => {
-    // 팝업 창일 때만 handleRedirectPromise 실행
-    // 메인 창에서는 호출하지 않음 (no_token_request_cache_error 방지)
+    // 팝업 창 — 앱 렌더링 없이 auth 처리 후 닫힘
     if (window.opener) {
       return msalInstance.handleRedirectPromise()
+        .then(() => {
+          // MSAL이 자동으로 닫지 않으면 강제로 닫음
+          setTimeout(() => window.close(), 500)
+        })
+        .catch(() => {
+          window.close()
+        })
     }
-    return Promise.resolve(null)
+    // 메인 창 — 앱 렌더링
+    renderApp()
   })
-  .then(() => renderApp())
   .catch((err) => {
     console.error('[MSAL] 초기화 실패:', err)
-    renderApp()
+    if (window.opener) {
+      window.close()
+    } else {
+      renderApp()
+    }
   })
