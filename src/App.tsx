@@ -661,13 +661,6 @@ function AppContent() {
   const { isMobile, isTablet } = useBreakpoint();
   const { vh: vvH, off: vvOff } = useVisualViewport();
 
-  // ── auth/callback URL 처리 — MSAL popup 후 잠깐 이 URL로 올 수 있음 ──
-  useEffect(() => {
-    if (window.location.pathname === '/auth/callback') {
-      // MSAL이 popup에서 처리하므로 메인 창은 그냥 홈으로
-      window.history.replaceState({}, '', '/')
-    }
-  }, [])
 
   // ── 인증 로딩 중 ──
   if (authLoading) return (
