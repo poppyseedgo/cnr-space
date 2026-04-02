@@ -9,6 +9,13 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { sendTeamsDM } from '../send-notification/teams.ts'
+
+const AZURE_ENABLED = !!(
+  Deno.env.get('AZURE_TENANT_ID') &&
+  Deno.env.get('AZURE_CLIENT_ID') &&
+  Deno.env.get('AZURE_CLIENT_SECRET')
+)
 
 const CHECKIN_GRACE_MINUTES = 10
 
@@ -109,6 +116,50 @@ Deno.serve(async (req: Request) => {
         }
       } catch (e) {
         console.warn('[auto-cancel] 인앱 알림 실패 (취소는 정상 처리됨):', e)
+      }
+    }
+
+    // ── 노쇼 Teams DM 발송 ─────────────────────────────────────────────
+    if (AZURE_ENABLED) {
+      for (const b of toCancel) {
+        try {
+          const { data: bk } = await supabase
+            .from('bookings')
+            .select('profiles!bookings_user_id_fkey(email)')
+            .eq('id', b.id)
+            .single()
+
+          const userEmail = (bk?.profiles as any)?.email
+          if (!userEmail) continue
+
+          const d = new Date(b.start_at)
+          const k = new Date(d.getTime() + 9 * 60 * 60 * 1000)
+          const pad = (n: number) => String(n).padStart(2, '0')
+          const timeStr = `${k.getUTCFullYear()}.${pad(k.getUTCMonth()+1)}.${pad(k.getUTCDate())} ${pad(k.getUTCHours())}:${pad(k.getUTCMinutes())}`
+          const APP = Deno.env.get('APP_URL') ?? 'https://cnr-space.pages.dev'
+
+          const teamsHtml = `
+<div style="font-family:sans-serif;max-width:480px">
+  <div style="background:#DC2626;padding:14px 18px;border-radius:8px 8px 0 0">
+    <span style="font-size:16px;font-weight:700;color:#fff">🚫 노쇼 처리 — 예약이 자동 취소되었습니다</span>
+  </div>
+  <div style="border:1px solid #E2E8F0;border-top:none;padding:16px 18px;border-radius:0 0 8px 8px">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;color:#374151">
+      <tr><td style="padding:3px 0;color:#94A3B8;width:70px">회의</td><td style="font-weight:600">${b.title}</td></tr>
+      <tr><td style="padding:3px 0;color:#94A3B8">회의실</td><td>${b.room_name ?? ''}</td></tr>
+      <tr><td style="padding:3px 0;color:#94A3B8">시간</td><td>${timeStr}</td></tr>
+    </table>
+    <p style="font-size:12px;color:#6B7280;margin-top:10px">체크인하지 않아 예약이 자동 취소되었습니다.</p>
+    <a href="${APP}" style="display:inline-block;background:#111;color:#fff;padding:8px 16px;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700;margin-top:8px">
+      C&amp;R SPACE 열기 →
+    </a>
+  </div>
+</div>`
+
+          await sendTeamsDM(userEmail, teamsHtml)
+        } catch (e) {
+          console.warn('[auto-cancel] Teams DM 실패 (취소는 정상 처리됨):', e)
+        }
       }
     }
 
