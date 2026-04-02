@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { msalInstance, isAzureEnabled } from '../lib/msalConfig'
+import { msalInstance, msalReady, isAzureEnabled } from '../lib/msalConfig'
 import { supabase, isSupabaseEnabled } from '../lib/supabase'
 import { APP_USERS } from '../data/master'
 import type { AppUser } from '../types'
@@ -100,7 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loginWithAzure = useCallback(async () => {
     if (!isAzureEnabled) throw new Error('Azure AD 환경변수가 설정되지 않았습니다.')
-    await msalInstance.initialize()
+    await msalReady  // 이미 초기화된 Promise 재사용 — 중복 호출 방지
     const result = await msalInstance.loginPopup({
       scopes: ['openid', 'profile', 'email', 'User.Read'],
       prompt: 'select_account',
