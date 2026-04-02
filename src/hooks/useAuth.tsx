@@ -132,7 +132,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               return
             }
 
-            loadProfile(uid, email).then(user => {
+            loadProfile(uid, email).then(async user => {
+              // Azure 클레임에서 dept 가져와 빈 프로필 자동 업데이트
+              if (user && !user.dept) {
+                const meta = session.user.user_metadata ?? {}
+                const dept =
+                  meta.department ??
+                  meta.custom_claims?.department ??
+                  ''
+                if (dept) {
+                  await supabase.from('profiles').update({ dept }).eq('id', uid)
+                  user = { ...user, dept }
+                }
+              }
               setCurrentUser(user)
               setLoading(false)
             }).catch(() => setLoading(false))
@@ -198,7 +210,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       provider: 'azure',
       options: {
         scopes: 'openid profile email',
-        redirectTo: window.location.origin,
+        redirectTo: `${window.location.origin}/auth/callback`,
       },
     })
     if (error) throw new Error(error.message)
