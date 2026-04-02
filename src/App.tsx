@@ -902,7 +902,7 @@ function AppContent() {
                     {/* 사용자 정보 */}
                     <div style={{padding:"14px 16px",borderBottom:"1px solid #F1F5F9"}}>
                       <div style={{fontSize:13,fontWeight:700,color:"#111"}}>{currentUser}</div>
-                      <div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>{currentDept.length > 10 ? currentDept.slice(0, 10) + '…' : currentDept}</div>
+                      <div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>{currentDept}</div>
                     </div>
                     {/* 메뉴 항목 */}
                     <div style={{padding:"4px 0"}}>
