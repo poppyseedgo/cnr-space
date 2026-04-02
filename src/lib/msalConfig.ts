@@ -11,7 +11,7 @@ export const msalConfig: Configuration = {
   auth: {
     clientId:             CLIENT_ID || '',
     authority:            `https://login.microsoftonline.com/${TENANT_ID || 'common'}`,
-    redirectUri:          window.location.origin + '/sso',
+    redirectUri:          window.location.origin + '/auth/callback',
     postLogoutRedirectUri: window.location.origin,
   },
   cache: {
