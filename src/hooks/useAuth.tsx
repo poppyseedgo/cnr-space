@@ -198,7 +198,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       provider: 'azure',
       options: {
         scopes: 'openid profile email',
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: window.location.origin,
       },
     })
     if (error) throw new Error(error.message)
