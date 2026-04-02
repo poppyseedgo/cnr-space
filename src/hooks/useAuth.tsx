@@ -3,7 +3,6 @@ import { supabase, isSupabaseEnabled } from '../lib/supabase'
 import { APP_USERS } from '../data/master'
 import type { AppUser } from '../types'
 
-// ─── 상수 ────────────────────────────────────────────────────────────────────
 const ALLOWED_DOMAIN = '@cnrres.com'
 
 interface AuthContextType {
@@ -22,8 +21,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null)
   const [loading,     setLoading]     = useState(true)
   const [ssoError,    setSsoError]    = useState<string | null>(null)
-
-  // email/password login()이 이미 처리했음을 표시 → SIGNED_IN 중복 방지용
   const emailLoginHandled = useRef(false)
 
   function profileToUser(p: Record<string, any>): AppUser {
@@ -37,24 +34,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // profiles 테이블 조회 → 없으면 email로 재시도 → APP_USERS fallback
   async function loadProfile(userId: string, email: string): Promise<AppUser | null> {
     try {
       const { data, error } = await supabase
         .from('profiles').select('*').eq('id', userId).single()
       if (!error && data) return profileToUser(data)
     } catch {}
-    // SSO 신규 유저: DB 트리거가 profiles에 생성했을 수 있으므로 email로 재시도
     try {
       const { data, error } = await supabase
         .from('profiles').select('*').eq('email', email).single()
       if (!error && data) return profileToUser(data)
     } catch {}
-    // 최후 fallback: 하드코딩 APP_USERS (개발/데모용)
     return APP_USERS.find(u => u.email === email) ?? null
   }
 
-  // OAuth 콜백 URL 정리: /auth/callback → /
+  // Microsoft Graph API로 부서 정보 가져오기
+  // provider_token = SIGNED_IN 시 session.provider_token (MS Graph 액세스 토큰)
+  async function fetchDeptFromGraph(providerToken: string): Promise<string> {
+    try {
+      const res = await fetch(
+        'https://graph.microsoft.com/v1.0/me?$select=department',
+        { headers: { Authorization: `Bearer ${providerToken}` } }
+      )
+      if (!res.ok) return ''
+      const data = await res.json()
+      return data.department ?? ''
+    } catch {
+      return ''
+    }
+  }
+
+  // dept가 비어있으면 Graph API 결과로 profiles 업데이트
+  async function syncDept(
+    user: AppUser,
+    providerToken?: string | null
+  ): Promise<AppUser> {
+    if (user.dept) return user              // 이미 있으면 스킵
+    if (!providerToken) return user         // 토큰 없으면 스킵
+
+    const dept = await fetchDeptFromGraph(providerToken)
+    if (!dept) return user
+
+    try {
+      await supabase.from('profiles').update({ dept }).eq('id', user.user_id)
+    } catch {}
+    return { ...user, dept }
+  }
+
   function cleanCallbackUrl() {
     if (typeof window !== 'undefined' && window.location.pathname === '/auth/callback') {
       window.history.replaceState({}, document.title, '/')
@@ -62,7 +88,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    // ── localStorage 모드 (개발/데모) ────────────────────────────────────
     if (!isSupabaseEnabled) {
       const saved = localStorage.getItem('cnr_mock_user')
       if (saved) { try { setCurrentUser(JSON.parse(saved)) } catch {} }
@@ -70,7 +95,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    // ── URL 에러 파라미터 확인 (OAuth 실패 시 Supabase가 쿼리로 전달) ──
     const urlParams = new URLSearchParams(window.location.search)
     const errorDesc = urlParams.get('error_description')
     if (errorDesc) {
@@ -78,13 +102,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.history.replaceState({}, document.title, '/')
     }
 
-    // ── Supabase onAuthStateChange ────────────────────────────────────────
     const fallbackTimer = setTimeout(() => setLoading(false), 5000)
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
 
-        // ── 앱 시작 / 새로고침 / OAuth 리다이렉트 복귀 ──
+        // ── 앱 시작 / 새로고침 ──
         if (event === 'INITIAL_SESSION') {
           clearTimeout(fallbackTimer)
           cleanCallbackUrl()
@@ -93,7 +116,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const uid   = session.user.id
             const email = session.user.email ?? ''
 
-            // 도메인 검증
             if (!email.endsWith(ALLOWED_DOMAIN)) {
               await supabase.auth.signOut()
               setCurrentUser(null)
@@ -102,11 +124,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               return
             }
 
-            setTimeout(() => {
-              loadProfile(uid, email).then(user => {
+            setTimeout(async () => {
+              try {
+                let user = await loadProfile(uid, email)
+                // 새로고침 시에도 provider_token이 세션에 남아있으면 dept 동기화
+                if (user) user = await syncDept(user, session.provider_token)
                 setCurrentUser(user)
-                setLoading(false)
-              }).catch(() => setLoading(false))
+              } catch {}
+              setLoading(false)
             }, 0)
           } else {
             setCurrentUser(null)
@@ -114,13 +139,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        // ── OAuth 로그인 완료 (Azure SSO 코드 교환 완료 후 발화) ──
+        // ── OAuth 로그인 완료 ──
         else if (event === 'SIGNED_IN' && session?.user) {
           const provider = session.user.app_metadata?.provider
           cleanCallbackUrl()
 
           if (provider && provider !== 'email') {
-            // Azure SSO: login() 미호출 → 여기서 직접 프로필 로드
             const uid   = session.user.id
             const email = session.user.email ?? ''
 
@@ -132,31 +156,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               return
             }
 
-            loadProfile(uid, email).then(async user => {
-              // Azure 클레임에서 dept 가져와 빈 프로필 자동 업데이트
-              if (user && !user.dept) {
-                const meta = session.user.user_metadata ?? {}
-                const dept =
-                  meta.department ??
-                  meta.custom_claims?.department ??
-                  ''
-                if (dept) {
-                  await supabase.from('profiles').update({ dept }).eq('id', uid)
-                  user = { ...user, dept }
-                }
-              }
+            try {
+              let user = await loadProfile(uid, email)
+              // SIGNED_IN 시 provider_token 확실히 있음 → Graph API로 dept 가져오기
+              if (user) user = await syncDept(user, session.provider_token)
               setCurrentUser(user)
-              setLoading(false)
-            }).catch(() => setLoading(false))
+            } catch {}
+            setLoading(false)
 
           } else if (!emailLoginHandled.current) {
-            // email/password 신규 로그인인데 login()이 처리 못한 엣지 케이스
             const uid   = session.user.id
             const email = session.user.email ?? ''
-            loadProfile(uid, email).then(user => {
+            try {
+              const user = await loadProfile(uid, email)
               setCurrentUser(user)
-              setLoading(false)
-            }).catch(() => setLoading(false))
+            } catch {}
+            setLoading(false)
           }
 
           emailLoginHandled.current = false
@@ -176,7 +191,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  // ── Email + Password 로그인 ───────────────────────────────────────────────
   const login = useCallback(async (email: string, password: string) => {
     setSsoError(null)
     if (!isSupabaseEnabled) {
@@ -194,13 +208,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error(error.message)
     }
     if (data.user) {
-      emailLoginHandled.current = true  // SIGNED_IN 이벤트 중복 처리 방지
+      emailLoginHandled.current = true
       const user = await loadProfile(data.user.id, data.user.email ?? '')
       setCurrentUser(user)
     }
   }, [])
 
-  // ── Microsoft SSO 로그인 ─────────────────────────────────────────────────
   const loginWithMicrosoft = useCallback(async () => {
     setSsoError(null)
     if (!isSupabaseEnabled) {
@@ -209,15 +222,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'azure',
       options: {
-        scopes: 'openid profile email',
+        // User.Read 스코프 추가 → Graph API /me 호출 권한 (부서 정보 포함)
+        scopes: 'openid profile email User.Read',
         redirectTo: window.location.origin,
       },
     })
     if (error) throw new Error(error.message)
-    // 이후 Microsoft 로그인 페이지로 리다이렉트됨 → 복귀 시 SIGNED_IN 발화
   }, [])
 
-  // ── 로그아웃 ─────────────────────────────────────────────────────────────
   const logout = useCallback(async () => {
     setSsoError(null)
     if (!isSupabaseEnabled) {
