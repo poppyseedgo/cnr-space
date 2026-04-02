@@ -11,7 +11,7 @@ export const msalConfig: Configuration = {
   auth: {
     clientId:             CLIENT_ID || '',
     authority:            `https://login.microsoftonline.com/${TENANT_ID || 'common'}`,
-    redirectUri:          window.location.origin,  // popup 방식은 루트 URL로 충분
+    redirectUri:          window.location.origin + '/auth/callback.html',  // 팝업 전용 최소 페이지
     postLogoutRedirectUri: window.location.origin,
   },
   cache: {
