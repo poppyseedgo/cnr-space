@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { CalendarDays, Mail, Lock, AlertCircle, Eye, EyeOff, Circle } from 'lucide-react'
+import { Mail, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { isSupabaseEnabled, supabase } from '../lib/supabase'
-import { ROOMS_DB } from '../data/master'
 import { todayStr, tsDate, tsMin, nowMinutes } from '../utils/time'
 
 /**
@@ -86,33 +85,14 @@ function useGuestStats() {
   return stats
 }
 
-import { isAzureEnabled } from '../lib/msalConfig'
-
 export default function LoginPage() {
   const { login } = useAuth()
-  const { loginWithAzure } = useAuth()
-  const [azureLoading, setAzureLoading] = useState(false)
-  const [azureErr, setAzureErr] = useState('')
-
-  async function handleAzureLogin() {
-    setAzureErr('')
-    setAzureLoading(true)
-    try {
-      await loginWithAzure()
-    } catch (err: any) {
-      if (err?.errorCode !== 'user_cancelled') {
-        setAzureErr(err?.message ?? '회사 계정 로그인에 실패했습니다.')
-      }
-    } finally {
-      setAzureLoading(false)
-    }
-  }
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
   const [showPw,   setShowPw]   = useState(false)
   const [error,    setError]    = useState('')
   const [loading,  setLoading]  = useState(false)
-  const stats = useGuestStats()
+  const _stats = useGuestStats() // 로그인 화면에서는 미표시, SSO 전환 후 재활용 예정
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -128,118 +108,57 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10"
-      style={{ background: 'linear-gradient(145deg, #0F0F1A 0%, #1A1A2E 50%, #0F0F1A 100%)' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10 bg-white">
 
       <div className="w-full max-w-sm">
 
         {/* 로고 */}
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5"
-            style={{ background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)', boxShadow: '0 8px 32px rgba(99,102,241,0.4)' }}>
-            <CalendarDays size={30} color="#fff" strokeWidth={1.6} />
-          </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">C&R Space</h1>
-          <p className="text-sm mt-1.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
-            CNR Research 회의실 예약 시스템
+        <div className="text-center mb-5 overflow-hidden">
+          <div className="h-5" />
+          <h1 className="text-[30px] font-medium text-[#111] uppercase leading-9 tracking-tight">
+            C&R Space
+          </h1>
+          <div className="h-1.5" />
+          <p className="text-xs text-[#6a7282]">
+            C&R Research 회의실 예약 시스템
           </p>
         </div>
 
-        {/* 실시간 현황 */}
-        {isSupabaseEnabled && (
-          <div className="flex gap-3 mb-6">
-            {stats ? (
-              <>
-                <div className="flex-1 rounded-2xl px-4 py-3"
-                  style={{ background: 'rgba(244,63,94,0.12)', border: '1px solid rgba(244,63,94,0.2)' }}>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <Circle size={6} fill="#F43F5E" strokeWidth={0} />
-                    <span className="text-xs font-medium" style={{ color: 'rgba(244,63,94,0.8)' }}>사용중</span>
-                  </div>
-                  <p className="text-2xl font-bold text-white">
-                    {stats.busy}
-                    <span className="text-sm font-normal ml-1" style={{ color: 'rgba(255,255,255,0.4)' }}>개</span>
-                  </p>
-                </div>
-                <div className="flex-1 rounded-2xl px-4 py-3"
-                  style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.2)' }}>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <Circle size={6} fill="#10B981" strokeWidth={0} />
-                    <span className="text-xs font-medium" style={{ color: 'rgba(16,185,129,0.8)' }}>예약가능</span>
-                  </div>
-                  <p className="text-2xl font-bold text-white">
-                    {stats.available}
-                    <span className="text-sm font-normal ml-1" style={{ color: 'rgba(255,255,255,0.4)' }}>개</span>
-                  </p>
-                </div>
-              </>
-            ) : (
-              <>
-                {[0,1].map(i => (
-                  <div key={i} className="flex-1 h-20 rounded-2xl animate-pulse"
-                    style={{ background: 'rgba(255,255,255,0.06)' }} />
-                ))}
-              </>
-            )}
-          </div>
-        )}
-
         {/* 로그인 카드 */}
-        <div className="rounded-2xl px-6 py-6"
-          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', backdropFilter: 'blur(20px)' }}>
+        <div className="space-y-4 backdrop-blur-[10px]"
+          style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
 
           <form onSubmit={handleSubmit} className="space-y-4">
 
             {/* 이메일 */}
             <div>
-              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                이메일
-              </label>
-              <div className="relative">
-                <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-                  style={{ color: 'rgba(255,255,255,0.3)' }} />
+              <div className="flex items-center gap-2 px-3 py-3.5 rounded-xl border border-black/20 overflow-hidden">
+                <Mail size={14} className="flex-shrink-0 text-[rgba(17,17,17,0.3)]" />
                 <input
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  placeholder="name@cnrres.com"
+                  placeholder="email@cnrres.com"
                   required
-                  className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm text-white transition-all outline-none"
-                  style={{
-                    background: 'rgba(255,255,255,0.08)',
-                    border: '1px solid rgba(255,255,255,0.12)',
-                  }}
-                  onFocus={e => e.target.style.borderColor = 'rgba(99,102,241,0.8)'}
-                  onBlur={e  => e.target.style.borderColor = 'rgba(255,255,255,0.12)'}
+                  className="flex-1 text-[13px] text-[#111] bg-transparent outline-none placeholder:text-[rgba(17,17,17,0.3)]"
                 />
               </div>
             </div>
 
             {/* 비밀번호 */}
             <div>
-              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                비밀번호
-              </label>
-              <div className="relative">
-                <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-                  style={{ color: 'rgba(255,255,255,0.3)' }} />
+              <div className="flex items-center gap-2 px-3 py-3.5 rounded-xl border border-black/20 overflow-hidden">
+                <Lock size={14} className="flex-shrink-0 text-[rgba(17,17,17,0.3)]" />
                 <input
                   type={showPw ? 'text' : 'password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="비밀번호 입력"
                   required
-                  className="w-full pl-9 pr-10 py-2.5 rounded-xl text-sm text-white transition-all outline-none"
-                  style={{
-                    background: 'rgba(255,255,255,0.08)',
-                    border: '1px solid rgba(255,255,255,0.12)',
-                  }}
-                  onFocus={e => e.target.style.borderColor = 'rgba(99,102,241,0.8)'}
-                  onBlur={e  => e.target.style.borderColor = 'rgba(255,255,255,0.12)'}
+                  className="flex-1 text-[13px] text-[#111] bg-transparent outline-none placeholder:text-[rgba(17,17,17,0.3)]"
                 />
                 <button type="button" onClick={() => setShowPw(p => !p)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
-                  style={{ color: 'rgba(255,255,255,0.3)' }}>
+                  className="flex-shrink-0 text-[rgba(17,17,17,0.3)]">
                   {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>
@@ -247,55 +166,18 @@ export default function LoginPage() {
 
             {/* 오류 메시지 */}
             {error && (
-              <div className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm"
-                style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#FCA5A5' }}>
+              <div className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm bg-red-50 border border-red-200 text-red-600">
                 <AlertCircle size={14} className="flex-shrink-0" />
                 <span>{error}</span>
               </div>
             )}
 
-            {/* Azure AD 로그인 버튼 (환경변수 설정 시 표시) */}
-            {isAzureEnabled && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleAzureLogin}
-                  disabled={azureLoading}
-                  className="btn w-full py-2.5 rounded-xl text-sm font-bold transition-all"
-                  style={{
-                    background: azureLoading ? 'rgba(0,114,206,0.5)' : '#0072CE',
-                    color: '#fff',
-                    cursor: azureLoading ? 'not-allowed' : 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 23 23" fill="none">
-                    <path d="M1 1h10v10H1z" fill="#F25022"/>
-                    <path d="M12 1h10v10H12z" fill="#7FBA00"/>
-                    <path d="M1 12h10v10H1z" fill="#00A4EF"/>
-                    <path d="M12 12h10v10H12z" fill="#FFB900"/>
-                  </svg>
-                  {azureLoading ? '로그인 중…' : '회사 계정으로 로그인'}
-                </button>
-                {azureErr && <p style={{ color: '#FCA5A5', fontSize: 11, textAlign: 'center' }}>{azureErr}</p>}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0' }}>
-                  <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }}/>
-                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>또는</span>
-                  <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }}/>
-                </div>
-              </>
-            )}
-
-            {/* 이메일 로그인 버튼 */}
+            {/* 로그인 버튼 */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 rounded-xl text-sm font-bold text-white transition-all active:scale-95"
-              style={{
-                background: loading ? 'rgba(99,102,241,0.5)' : 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
-                boxShadow: loading ? 'none' : '0 4px 20px rgba(99,102,241,0.4)',
-                cursor: loading ? 'not-allowed' : 'pointer',
-              }}
+              className="w-full py-3.5 rounded-xl text-sm font-bold text-white bg-black transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ boxShadow: '0 4px 20px rgba(70,70,70,0.2)' }}
             >
               {loading ? '로그인 중…' : '로그인'}
             </button>
@@ -303,15 +185,58 @@ export default function LoginPage() {
           </form>
         </div>
 
+        {/* SSO 섹션 */}
+        <div className="mt-6 pt-6 rounded-3xl"
+          style={{ boxShadow: '10px 10px 60px rgba(0,0,0,0.04)' }}>
+          <div className="mb-4">
+            <p className="text-xs text-[#6a7282] leading-snug">
+              SSO 연동 후 작동 예정<br />
+              사내 Microsoft 계정으로 로그인하세요
+            </p>
+          </div>
+          <button
+            type="button"
+            className="w-full h-[41px] flex items-center rounded-[10px] border border-black/20 bg-white overflow-hidden transition-all hover:bg-slate-50 active:scale-[0.98]"
+          >
+            <div className="flex items-center justify-center px-2.5 h-full">
+              <svg width="21" height="21" viewBox="0 0 21 21" fill="none">
+                <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
+                <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
+                <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
+                <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
+              </svg>
+            </div>
+            <div className="flex-1 text-center pr-[41px]">
+              <span className="text-[15px] font-semibold text-[#5e5e5e] tracking-[0.375px]">
+                Sign in with Microsoft
+              </span>
+            </div>
+          </button>
+          <div className="flex items-center justify-center h-[41px]">
+            <p className="text-[11px] text-[#99a1af] text-center">
+              C&R Research 사내 계정 전용 · 외부 접근 불가
+            </p>
+          </div>
+        </div>
+
         {/* 데모 안내 */}
         {!isSupabaseEnabled && (
-          <div className="mt-4 p-3 rounded-xl text-xs space-y-1"
-            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)' }}>
-            <p className="font-bold" style={{ color: 'rgba(255,255,255,0.7)' }}>🧪 데모 모드</p>
-            <p>이메일: <code className="text-indigo-400 font-semibold">gohyunjung@me.com</code></p>
-            <p>비밀번호: <code className="text-indigo-400 font-semibold">cnr1234</code></p>
+          <div className="mt-4 p-3 rounded-xl text-xs space-y-1 bg-slate-50 border border-slate-200 text-slate-500">
+            <p className="font-bold text-slate-700">🧪 데모 모드</p>
+            <p>이메일: <code className="text-indigo-500 font-semibold">gohyunjung@me.com</code></p>
+            <p>비밀번호: <code className="text-indigo-500 font-semibold">cnr1234</code></p>
           </div>
         )}
+
+        {/* 문의 링크 */}
+        <div className="text-center px-8 py-6">
+          <p className="text-[11px] text-[#99a1af]">
+            문의사항이 있으신가요?{' '}
+            <span className="text-[#86ccff] font-medium cursor-pointer hover:underline">
+              IT 지원팀에 연락
+            </span>
+          </p>
+        </div>
 
       </div>
     </div>

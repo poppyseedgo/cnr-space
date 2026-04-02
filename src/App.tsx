@@ -11,7 +11,6 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } 
 import { HomeView, RoomDetailModal } from './components/room/HomeView'
 import { HomeSkeleton, CalendarSkeleton, MyPageSkeleton } from './components/skeleton'
 import { initGlobalRipple } from './hooks/useGlobalRipple'
-
 import { CalendarShell } from './components/layout/CalendarShell'
 import { BookingModal } from './components/booking/BookingModal'
 import { DetailModal } from './components/booking/DetailModal'
@@ -660,7 +659,6 @@ function AppContent() {
 
   const { isMobile, isTablet } = useBreakpoint();
   const { vh: vvH, off: vvOff } = useVisualViewport();
-
 
   // ── 인증 로딩 중 ──
   if (authLoading) return (

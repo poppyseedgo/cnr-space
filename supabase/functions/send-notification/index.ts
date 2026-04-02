@@ -12,14 +12,7 @@
 const RESEND_API_KEY   = Deno.env.get('RESEND_API_KEY') ?? ''
 const FROM_EMAIL       = 'C&R SPACE <onboarding@resend.dev>'
 const APP_URL          = Deno.env.get('APP_URL') ?? 'https://cnr-space.vercel.app'
-// ── Teams DM 설정 ──────────────────────────────────────────────────────────
-const AZURE_ENABLED = !!(
-  Deno.env.get('AZURE_TENANT_ID') &&
-  Deno.env.get('AZURE_CLIENT_ID') &&
-  Deno.env.get('AZURE_CLIENT_SECRET')
-)
-
-import { sendTeamsDM, sendTeamsDMBatch } from './teams.ts'
+const TEAMS_WEBHOOK_URL = Deno.env.get('TEAMS_WEBHOOK_URL') ?? ''
 
 // ── KST 시간 포맷 유틸 ─────────────────────────────────────────────────────
 function utcToKST(ts: string): string {
@@ -306,50 +299,6 @@ async function sendTeamsCard(type: string, booking: any): Promise<void> {
 }
 
 // ── Resend 발송 ────────────────────────────────────────────────────────────
-
-/** Teams DM용 HTML 메시지 생성 */
-function getTeamsHtml(type: string, booking: any): string {
-  const APP_URL_VAL = Deno.env.get('APP_URL') ?? 'https://cnr-space.pages.dev'
-  const icons: Record<string, string> = {
-    created:   '📅', updated: '🔄', cancelled: '❌',
-    noshow:    '🚫', approved: '✅', rejected: '⛔', pending: '🕐',
-  }
-  const icon  = icons[type] ?? '📢'
-  const titles: Record<string, string> = {
-    created:   '예약이 확정되었습니다',
-    updated:   '예약이 변경되었습니다',
-    cancelled: '예약이 취소되었습니다',
-    noshow:    '노쇼 처리 — 예약이 자동 취소되었습니다',
-    approved:  '예약이 승인되었습니다',
-    rejected:  '예약 요청이 거절되었습니다',
-    pending:   '승인 요청이 접수되었습니다',
-  }
-  const title = titles[type] ?? '예약 알림'
-  const start = utcToKST(booking.start_at)
-  const end   = utcToKST(booking.end_at)
-
-  return `
-<div style="font-family:sans-serif;max-width:480px">
-  <div style="background:#1F4E79;padding:14px 18px;border-radius:8px 8px 0 0">
-    <span style="font-size:18px;font-weight:700;color:#fff">${icon} ${title}</span>
-  </div>
-  <div style="border:1px solid #E2E8F0;border-top:none;padding:16px 18px;border-radius:0 0 8px 8px">
-    <table style="width:100%;border-collapse:collapse;font-size:13px;color:#374151">
-      <tr><td style="padding:4px 0;color:#94A3B8;width:70px">회의</td><td style="font-weight:600">${booking.title ?? ''}</td></tr>
-      <tr><td style="padding:4px 0;color:#94A3B8">회의실</td><td>${booking.room_name ?? ''}</td></tr>
-      <tr><td style="padding:4px 0;color:#94A3B8">시작</td><td>${start}</td></tr>
-      <tr><td style="padding:4px 0;color:#94A3B8">종료</td><td>${end}</td></tr>
-      ${booking.reject_reason ? `<tr><td style="padding:4px 0;color:#94A3B8">사유</td><td style="color:#DC2626">${booking.reject_reason}</td></tr>` : ''}
-    </table>
-    <div style="margin-top:14px">
-      <a href="${APP_URL_VAL}" style="display:inline-block;background:#111;color:#fff;padding:8px 16px;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700">
-        C&amp;R SPACE 열기 →
-      </a>
-    </div>
-  </div>
-</div>`
-}
-
 async function sendEmail(to: string[], subject: string, html: string) {
   if (!RESEND_API_KEY) {
     console.warn('[notify] RESEND_API_KEY 없음 — 발송 스킵')
@@ -417,22 +366,14 @@ Deno.serve(async (req: Request) => {
       sendTeamsCard(type, booking).catch(() => {})  // 비동기, 실패해도 이메일에 영향 없음
     }
 
-    // 1. 예약 생성자에게 이메일 + Teams DM 발송
+    // 1. 예약 생성자에게 발송
     if (booking.user_email) {
       const html = getEmailHtml(type, booking, false)
       await sendEmail([booking.user_email], subject, html)
       results.push({ to: booking.user_email, role: 'creator' })
-
-      // Teams DM
-      if (AZURE_ENABLED) {
-        const teamsHtml = getTeamsHtml(type, booking)
-        sendTeamsDM(booking.user_email, teamsHtml).catch(e =>
-          console.warn('[Teams] 생성자 DM 실패:', e)
-        )
-      }
     }
 
-    // 2. 참석자에게 이메일 + Teams DM 발송 (생성자 제외)
+    // 2. 참석자에게 발송 (생성자 제외)
     const attendees = attendeeEmails.filter((e: string) => e !== booking.user_email)
     if (attendees.length > 0) {
       const html = getEmailHtml(type, booking, true)
@@ -441,14 +382,6 @@ Deno.serve(async (req: Request) => {
         const batch = attendees.slice(i, i + 50)
         await sendEmail(batch, subject, html)
         results.push({ to: batch, role: 'attendees' })
-      }
-
-      // Teams DM 참석자 일괄 발송
-      if (AZURE_ENABLED) {
-        const teamsHtml = getTeamsHtml(type, booking)
-        sendTeamsDMBatch(attendees, teamsHtml).catch(e =>
-          console.warn('[Teams] 참석자 DM 실패:', e)
-        )
       }
     }
 
