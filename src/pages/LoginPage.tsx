@@ -7,10 +7,6 @@ import { todayStr, tsDate, tsMin, nowMinutes } from '../utils/time'
 /**
  * 사용중 측정 정책:
  *   checked_in = true + 현재 시각이 start_at ~ end_at 사이 + 취소/반납 없음
- * 예약됨 (사용중 아님):
- *   체크인 안 했거나 아직 시작 전
- * 예약가능:
- *   위 두 경우 모두 해당 없는 회의실
  */
 function useGuestStats() {
   const [stats, setStats] = useState<{ busy: number; available: number } | null>(null)
@@ -22,10 +18,9 @@ function useGuestStats() {
       try {
         const today = todayStr()
         const now   = nowMinutes()
-        // rooms 테이블에서 활성 회의실 수 직접 조회 (ROOMS_DB 하드코딩 제거)
         const { count } = await supabase
           .from('rooms').select('*', { count: 'exact', head: true }).eq('is_active', true)
-        const total = count ?? 9  // fallback
+        const total = count ?? 9
 
         const { data } = await supabase
           .from('bookings')
@@ -37,14 +32,9 @@ function useGuestStats() {
 
         if (!data) return
 
-        // 홈카드와 동일한 정책: 시간 범위 내 예약 = 사용중 (체크인 여부 무관)
-        // DB에서 오는 start_at이 UTC일 수 있으므로 KST 변환 후 비교
         const toKSTMin = (ts: string): number => {
           if (!ts) return 0
-          // +09:00 포함된 경우 그대로, UTC인 경우 +9시간 보정
-          if (ts.includes('+09:00') || ts.includes('+09')) {
-            return tsMin(ts)
-          }
+          if (ts.includes('+09:00') || ts.includes('+09')) return tsMin(ts)
           const d = new Date(ts)
           const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000)
           return kst.getUTCHours() * 60 + kst.getUTCMinutes()
@@ -61,8 +51,7 @@ function useGuestStats() {
         const busyRoomIds = new Set(
           data
             .filter(b =>
-              !b.auto_cancelled &&
-              !b.early_ended &&
+              !b.auto_cancelled && !b.early_ended &&
               toKSTDate(b.start_at) === today &&
               toKSTMin(b.start_at) <= now &&
               now < toKSTMin(b.end_at)
@@ -70,10 +59,7 @@ function useGuestStats() {
             .map(b => b.room_id)
         )
 
-        setStats({
-          busy:      busyRoomIds.size,
-          available: total - busyRoomIds.size,
-        })
+        setStats({ busy: busyRoomIds.size, available: total - busyRoomIds.size })
       } catch {}
     }
 
@@ -86,13 +72,19 @@ function useGuestStats() {
 }
 
 export default function LoginPage() {
-  const { login } = useAuth()
+  const { login, loginWithMicrosoft, ssoError } = useAuth()
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
   const [showPw,   setShowPw]   = useState(false)
   const [error,    setError]    = useState('')
   const [loading,  setLoading]  = useState(false)
-  const _stats = useGuestStats() // 로그인 화면에서는 미표시, SSO 전환 후 재활용 예정
+  const [ssoLoading, setSsoLoading] = useState(false)
+  _useGuestStats()
+
+  // SSO 에러를 로컬 error 상태로 표시
+  useEffect(() => {
+    if (ssoError) setError(ssoError)
+  }, [ssoError])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -105,6 +97,37 @@ export default function LoginPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function handleMicrosoftLogin() {
+    setError('')
+    setSsoLoading(true)
+    try {
+      await loginWithMicrosoft()
+      // 성공 시 Microsoft 페이지로 리다이렉트 → 이 코드 이후는 실행 안 됨
+    } catch (err: any) {
+      setError(err.message ?? 'Microsoft 로그인을 시작할 수 없습니다.')
+      setSsoLoading(false)
+    }
+  }
+
+  // /auth/callback 경로일 때: OAuth 처리 중 스피너 표시
+  const isCallbackPath = typeof window !== 'undefined' && window.location.pathname === '/auth/callback'
+
+  if (isCallbackPath) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white gap-4">
+        <div style={{
+          width: 36, height: 36,
+          border: '3px solid #E2E8F0',
+          borderTop: '3px solid #111',
+          borderRadius: '50%',
+          animation: 'spin 0.8s linear infinite',
+        }} />
+        <p className="text-sm text-[#6a7282]">Microsoft 로그인 처리 중…</p>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    )
   }
 
   return (
@@ -124,7 +147,60 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* 로그인 카드 */}
+        {/* ── Microsoft SSO 버튼 (메인) ── */}
+        <div className="mb-6 rounded-3xl"
+          style={{ boxShadow: '10px 10px 60px rgba(0,0,0,0.04)' }}>
+          <div className="mb-4">
+            <p className="text-xs text-[#6a7282] leading-snug">
+              사내 Microsoft 계정으로 로그인하세요
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleMicrosoftLogin}
+            disabled={ssoLoading || loading}
+            className="w-full h-[46px] flex items-center rounded-[10px] border border-black/20 bg-white overflow-hidden transition-all hover:bg-slate-50 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+            style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
+          >
+            <div className="flex items-center justify-center px-3 h-full">
+              {ssoLoading ? (
+                <div style={{
+                  width: 18, height: 18,
+                  border: '2px solid #E2E8F0',
+                  borderTop: '2px solid #5e5e5e',
+                  borderRadius: '50%',
+                  animation: 'spin 0.8s linear infinite',
+                }} />
+              ) : (
+                <svg width="21" height="21" viewBox="0 0 21 21" fill="none">
+                  <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
+                  <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
+                  <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
+                  <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
+                </svg>
+              )}
+            </div>
+            <div className="flex-1 text-center pr-[42px]">
+              <span className="text-[15px] font-semibold text-[#5e5e5e] tracking-[0.375px]">
+                {ssoLoading ? '연결 중…' : 'Sign in with Microsoft'}
+              </span>
+            </div>
+          </button>
+          <div className="flex items-center justify-center h-[36px]">
+            <p className="text-[11px] text-[#99a1af] text-center">
+              C&R Research 사내 계정 전용 · 외부 접근 불가
+            </p>
+          </div>
+        </div>
+
+        {/* 구분선 */}
+        <div className="flex items-center gap-3 mb-6">
+          <div className="flex-1 h-px bg-black/8" />
+          <span className="text-xs text-[#99a1af]">또는 이메일로 로그인</span>
+          <div className="flex-1 h-px bg-black/8" />
+        </div>
+
+        {/* 이메일 + 비밀번호 로그인 */}
         <div className="space-y-4 backdrop-blur-[10px]"
           style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
 
@@ -175,7 +251,7 @@ export default function LoginPage() {
             {/* 로그인 버튼 */}
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || ssoLoading}
               className="w-full py-3.5 rounded-xl text-sm font-bold text-white bg-black transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ boxShadow: '0 4px 20px rgba(70,70,70,0.2)' }}
             >
@@ -183,40 +259,6 @@ export default function LoginPage() {
             </button>
 
           </form>
-        </div>
-
-        {/* SSO 섹션 */}
-        <div className="mt-6 pt-6 rounded-3xl"
-          style={{ boxShadow: '10px 10px 60px rgba(0,0,0,0.04)' }}>
-          <div className="mb-4">
-            <p className="text-xs text-[#6a7282] leading-snug">
-              SSO 연동 후 작동 예정<br />
-              사내 Microsoft 계정으로 로그인하세요
-            </p>
-          </div>
-          <button
-            type="button"
-            className="w-full h-[41px] flex items-center rounded-[10px] border border-black/20 bg-white overflow-hidden transition-all hover:bg-slate-50 active:scale-[0.98]"
-          >
-            <div className="flex items-center justify-center px-2.5 h-full">
-              <svg width="21" height="21" viewBox="0 0 21 21" fill="none">
-                <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
-                <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
-                <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
-                <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
-              </svg>
-            </div>
-            <div className="flex-1 text-center pr-[41px]">
-              <span className="text-[15px] font-semibold text-[#5e5e5e] tracking-[0.375px]">
-                Sign in with Microsoft
-              </span>
-            </div>
-          </button>
-          <div className="flex items-center justify-center h-[41px]">
-            <p className="text-[11px] text-[#99a1af] text-center">
-              C&R Research 사내 계정 전용 · 외부 접근 불가
-            </p>
-          </div>
         </div>
 
         {/* 데모 안내 */}
@@ -239,6 +281,12 @@ export default function LoginPage() {
         </div>
 
       </div>
+
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// useGuestStats 내부에서만 사용 — alias로 lint 경고 방지
+function _useGuestStats() { return useGuestStats() }

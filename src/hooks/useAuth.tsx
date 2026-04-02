@@ -1,14 +1,19 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { supabase, isSupabaseEnabled } from '../lib/supabase'
 import { APP_USERS } from '../data/master'
 import type { AppUser } from '../types'
+
+// ─── 상수 ────────────────────────────────────────────────────────────────────
+const ALLOWED_DOMAIN = '@cnrres.com'
 
 interface AuthContextType {
   currentUser: AppUser | null
   loading:     boolean
   login:       (email: string, password: string) => Promise<void>
+  loginWithMicrosoft: () => Promise<void>
   logout:      () => Promise<void>
   isAdmin:     boolean
+  ssoError:    string | null
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -16,6 +21,10 @@ const AuthContext = createContext<AuthContextType | null>(null)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null)
   const [loading,     setLoading]     = useState(true)
+  const [ssoError,    setSsoError]    = useState<string | null>(null)
+
+  // email/password login()이 이미 처리했음을 표시 → SIGNED_IN 중복 방지용
+  const emailLoginHandled = useRef(false)
 
   function profileToUser(p: Record<string, any>): AppUser {
     return {
@@ -28,18 +37,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // profiles 조회 — auth lock과 무관하게 별도 실행
+  // profiles 테이블 조회 → 없으면 email로 재시도 → APP_USERS fallback
   async function loadProfile(userId: string, email: string): Promise<AppUser | null> {
     try {
       const { data, error } = await supabase
         .from('profiles').select('*').eq('id', userId).single()
       if (!error && data) return profileToUser(data)
     } catch {}
+    // SSO 신규 유저: DB 트리거가 profiles에 생성했을 수 있으므로 email로 재시도
+    try {
+      const { data, error } = await supabase
+        .from('profiles').select('*').eq('email', email).single()
+      if (!error && data) return profileToUser(data)
+    } catch {}
+    // 최후 fallback: 하드코딩 APP_USERS (개발/데모용)
     return APP_USERS.find(u => u.email === email) ?? null
   }
 
+  // OAuth 콜백 URL 정리: /auth/callback → /
+  function cleanCallbackUrl() {
+    if (typeof window !== 'undefined' && window.location.pathname === '/auth/callback') {
+      window.history.replaceState({}, document.title, '/')
+    }
+  }
+
   useEffect(() => {
-    // ── localStorage 모드 ──────────────────────────────────────────
+    // ── localStorage 모드 (개발/데모) ────────────────────────────────────
     if (!isSupabaseEnabled) {
       const saved = localStorage.getItem('cnr_mock_user')
       if (saved) { try { setCurrentUser(JSON.parse(saved)) } catch {} }
@@ -47,43 +70,88 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    // ── Supabase 모드 ──────────────────────────────────────────────
-    // getSession()을 직접 호출하지 않음 — onAuthStateChange가 내부적으로
-    // INITIAL_SESSION 이벤트를 발화시키면서 현재 세션을 전달함.
-    // getSession() + onAuthStateChange 동시 실행 시 auth lock 충돌 발생.
+    // ── URL 에러 파라미터 확인 (OAuth 실패 시 Supabase가 쿼리로 전달) ──
+    const urlParams = new URLSearchParams(window.location.search)
+    const errorDesc = urlParams.get('error_description')
+    if (errorDesc) {
+      setSsoError(decodeURIComponent(errorDesc))
+      window.history.replaceState({}, document.title, '/')
+    }
 
-    // 안전망: INITIAL_SESSION이 5초 내 안 오면 강제 로딩 종료
-    const fallbackTimer = setTimeout(() => {
-      setLoading(false)
-    }, 5000)
+    // ── Supabase onAuthStateChange ────────────────────────────────────────
+    const fallbackTimer = setTimeout(() => setLoading(false), 5000)
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      async (event, session) => {
+
+        // ── 앱 시작 / 새로고침 / OAuth 리다이렉트 복귀 ──
         if (event === 'INITIAL_SESSION') {
-          // 앱 시작/새로고침/새 탭 시 반드시 발화
           clearTimeout(fallbackTimer)
+          cleanCallbackUrl()
+
           if (session?.user) {
-            // ★ auth lock 해제 후 비동기로 프로필 조회 (lock 충돌 방지)
-            // setTimeout(0)으로 현재 이벤트 루프 사이클 이후 실행
             const uid   = session.user.id
             const email = session.user.email ?? ''
+
+            // 도메인 검증
+            if (!email.endsWith(ALLOWED_DOMAIN)) {
+              await supabase.auth.signOut()
+              setCurrentUser(null)
+              setLoading(false)
+              setSsoError(`${ALLOWED_DOMAIN} 사내 계정만 로그인할 수 있습니다.`)
+              return
+            }
+
             setTimeout(() => {
               loadProfile(uid, email).then(user => {
                 setCurrentUser(user)
                 setLoading(false)
-              }).catch(() => {
-                setLoading(false)
-              })
+              }).catch(() => setLoading(false))
             }, 0)
           } else {
-            // 미로그인 상태
             setCurrentUser(null)
             setLoading(false)
           }
-        } else if (event === 'SIGNED_IN' && session?.user) {
-          // 로그인 이벤트 (login() 함수 호출 후 발화)
-          // login()에서 이미 setCurrentUser 처리하므로 중복 방지
-        } else if (event === 'SIGNED_OUT') {
+        }
+
+        // ── OAuth 로그인 완료 (Azure SSO 코드 교환 완료 후 발화) ──
+        else if (event === 'SIGNED_IN' && session?.user) {
+          const provider = session.user.app_metadata?.provider
+          cleanCallbackUrl()
+
+          if (provider && provider !== 'email') {
+            // Azure SSO: login() 미호출 → 여기서 직접 프로필 로드
+            const uid   = session.user.id
+            const email = session.user.email ?? ''
+
+            if (!email.endsWith(ALLOWED_DOMAIN)) {
+              await supabase.auth.signOut()
+              setCurrentUser(null)
+              setLoading(false)
+              setSsoError(`${ALLOWED_DOMAIN} 사내 계정만 로그인할 수 있습니다.`)
+              return
+            }
+
+            loadProfile(uid, email).then(user => {
+              setCurrentUser(user)
+              setLoading(false)
+            }).catch(() => setLoading(false))
+
+          } else if (!emailLoginHandled.current) {
+            // email/password 신규 로그인인데 login()이 처리 못한 엣지 케이스
+            const uid   = session.user.id
+            const email = session.user.email ?? ''
+            loadProfile(uid, email).then(user => {
+              setCurrentUser(user)
+              setLoading(false)
+            }).catch(() => setLoading(false))
+          }
+
+          emailLoginHandled.current = false
+        }
+
+        // ── 로그아웃 ──
+        else if (event === 'SIGNED_OUT') {
           setCurrentUser(null)
           setLoading(false)
         }
@@ -96,7 +164,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  // ── Email + Password 로그인 ───────────────────────────────────────────────
   const login = useCallback(async (email: string, password: string) => {
+    setSsoError(null)
     if (!isSupabaseEnabled) {
       const found = APP_USERS.find(u => u.email === email)
       if (!found)                 throw new Error('등록되지 않은 이메일입니다.')
@@ -112,12 +182,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error(error.message)
     }
     if (data.user) {
+      emailLoginHandled.current = true  // SIGNED_IN 이벤트 중복 처리 방지
       const user = await loadProfile(data.user.id, data.user.email ?? '')
       setCurrentUser(user)
     }
   }, [])
 
+  // ── Microsoft SSO 로그인 ─────────────────────────────────────────────────
+  const loginWithMicrosoft = useCallback(async () => {
+    setSsoError(null)
+    if (!isSupabaseEnabled) {
+      throw new Error('SSO는 Supabase 연결 후 사용 가능합니다.')
+    }
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'azure',
+      options: {
+        scopes: 'openid profile email',
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    })
+    if (error) throw new Error(error.message)
+    // 이후 Microsoft 로그인 페이지로 리다이렉트됨 → 복귀 시 SIGNED_IN 발화
+  }, [])
+
+  // ── 로그아웃 ─────────────────────────────────────────────────────────────
   const logout = useCallback(async () => {
+    setSsoError(null)
     if (!isSupabaseEnabled) {
       setCurrentUser(null)
       localStorage.removeItem('cnr_mock_user')
@@ -128,7 +218,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ currentUser, loading, login, logout, isAdmin: currentUser?.role === 'ADMIN' }}>
+    <AuthContext.Provider value={{
+      currentUser,
+      loading,
+      login,
+      loginWithMicrosoft,
+      logout,
+      isAdmin: currentUser?.role === 'ADMIN',
+      ssoError,
+    }}>
       {children}
     </AuthContext.Provider>
   )
