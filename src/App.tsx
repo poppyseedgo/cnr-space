@@ -11,6 +11,7 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } 
 import { HomeView, RoomDetailModal } from './components/room/HomeView'
 import { HomeSkeleton, CalendarSkeleton, MyPageSkeleton } from './components/skeleton'
 import { initGlobalRipple } from './hooks/useGlobalRipple'
+
 import { CalendarShell } from './components/layout/CalendarShell'
 import { BookingModal } from './components/booking/BookingModal'
 import { DetailModal } from './components/booking/DetailModal'
