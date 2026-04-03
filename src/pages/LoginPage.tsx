@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { Mail, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
-import { isSupabaseEnabled, supabase } from '../lib/supabase'
-import { todayStr, tsDate, tsMin, nowMinutes } from '../utils/time'
+import { supabase } from '../lib/supabase'
+import { todayStr, tsMin, nowMinutes } from '../utils/time'
 
 /**
  * 사용중 측정 정책:
@@ -12,8 +12,6 @@ function useGuestStats() {
   const [stats, setStats] = useState<{ busy: number; available: number } | null>(null)
 
   useEffect(() => {
-    if (!isSupabaseEnabled) return
-
     async function fetchStats() {
       try {
         const today = todayStr()
@@ -41,7 +39,7 @@ function useGuestStats() {
         }
         const toKSTDate = (ts: string): string => {
           if (!ts) return ''
-          if (ts.includes('+09:00') || ts.includes('+09')) return tsDate(ts)
+          if (ts.includes('+09:00') || ts.includes('+09')) return todayStr()
           const d = new Date(ts)
           const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000)
           const pad = (n: number) => String(n).padStart(2, '0')
@@ -72,12 +70,8 @@ function useGuestStats() {
 }
 
 export default function LoginPage() {
-  const { login, loginWithMicrosoft, ssoError } = useAuth()
-  const [email,    setEmail]    = useState('')
-  const [password, setPassword] = useState('')
-  const [showPw,   setShowPw]   = useState(false)
-  const [error,    setError]    = useState('')
-  const [loading,  setLoading]  = useState(false)
+  const { loginWithMicrosoft, ssoError } = useAuth()
+  const [error,      setError]      = useState('')
   const [ssoLoading, setSsoLoading] = useState(false)
   _useGuestStats()
 
@@ -85,19 +79,6 @@ export default function LoginPage() {
   useEffect(() => {
     if (ssoError) setError(ssoError)
   }, [ssoError])
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
-    try {
-      await login(email.trim(), password)
-    } catch (err: any) {
-      setError(err.message ?? '로그인에 실패했습니다.')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   async function handleMicrosoftLogin() {
     setError('')
@@ -158,9 +139,8 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={handleMicrosoftLogin}
-            disabled={ssoLoading || loading}
+            disabled={ssoLoading}
             className="w-full h-[46px] flex items-center rounded-[10px] border border-black/20 bg-white overflow-hidden transition-all hover:bg-slate-50 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
-            style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
           >
             <div className="flex items-center justify-center px-3 h-full">
               {ssoLoading ? (
@@ -186,89 +166,21 @@ export default function LoginPage() {
               </span>
             </div>
           </button>
+
+          {/* SSO 오류 메시지 */}
+          {error && (
+            <div className="flex items-center gap-2 rounded-xl px-3 py-2.5 mt-3 text-sm bg-red-50 border border-red-200 text-red-600">
+              <AlertCircle size={14} className="flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
           <div className="flex items-center justify-center h-[36px]">
             <p className="text-[11px] text-[#99a1af] text-center">
               C&R Research 사내 계정 전용 · 외부 접근 불가
             </p>
           </div>
         </div>
-
-        {/* 구분선 */}
-        <div className="flex items-center gap-3 mb-6">
-          <div className="flex-1 h-px bg-black/8" />
-          <span className="text-xs text-[#99a1af]">또는 이메일로 로그인</span>
-          <div className="flex-1 h-px bg-black/8" />
-        </div>
-
-        {/* 이메일 + 비밀번호 로그인 */}
-        <div className="space-y-4 backdrop-blur-[10px]"
-          style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-
-            {/* 이메일 */}
-            <div>
-              <div className="flex items-center gap-2 px-3 py-3.5 rounded-xl border border-black/20 overflow-hidden">
-                <Mail size={14} className="flex-shrink-0 text-[rgba(17,17,17,0.3)]" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="email@cnrres.com"
-                  required
-                  className="flex-1 text-[13px] text-[#111] bg-transparent outline-none placeholder:text-[rgba(17,17,17,0.3)]"
-                />
-              </div>
-            </div>
-
-            {/* 비밀번호 */}
-            <div>
-              <div className="flex items-center gap-2 px-3 py-3.5 rounded-xl border border-black/20 overflow-hidden">
-                <Lock size={14} className="flex-shrink-0 text-[rgba(17,17,17,0.3)]" />
-                <input
-                  type={showPw ? 'text' : 'password'}
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder="비밀번호 입력"
-                  required
-                  className="flex-1 text-[13px] text-[#111] bg-transparent outline-none placeholder:text-[rgba(17,17,17,0.3)]"
-                />
-                <button type="button" onClick={() => setShowPw(p => !p)}
-                  className="flex-shrink-0 text-[rgba(17,17,17,0.3)]">
-                  {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
-              </div>
-            </div>
-
-            {/* 오류 메시지 */}
-            {error && (
-              <div className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm bg-red-50 border border-red-200 text-red-600">
-                <AlertCircle size={14} className="flex-shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            {/* 로그인 버튼 */}
-            <button
-              type="submit"
-              disabled={loading || ssoLoading}
-              className="w-full py-3.5 rounded-xl text-sm font-bold text-white bg-black transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ boxShadow: '0 4px 20px rgba(70,70,70,0.2)' }}
-            >
-              {loading ? '로그인 중…' : '로그인'}
-            </button>
-
-          </form>
-        </div>
-
-        {/* 데모 안내 */}
-        {!isSupabaseEnabled && (
-          <div className="mt-4 p-3 rounded-xl text-xs space-y-1 bg-slate-50 border border-slate-200 text-slate-500">
-            <p className="font-bold text-slate-700">🧪 데모 모드</p>
-            <p>이메일: <code className="text-indigo-500 font-semibold">gohyunjung@me.com</code></p>
-            <p>비밀번호: <code className="text-indigo-500 font-semibold">cnr1234</code></p>
-          </div>
-        )}
 
         {/* 문의 링크 */}
         <div className="text-center px-8 py-6">
