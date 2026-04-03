@@ -700,7 +700,7 @@ function AppContent() {
         }}>C&amp;R Space</span>
         <span style={{
           display:"inline-block", width:2, height:30,
-          background:"#6366F1", borderRadius:1,
+          background: dark ? "#F1F5F9" : "#111111", borderRadius:1,
           animation:"cnr-cursor 0.65s step-end infinite"
         }}/>
       </div>
@@ -716,10 +716,10 @@ function AppContent() {
       {/* 하단 진행 바 */}
       <div style={{
         position:"absolute", bottom:0, left:0, right:0, height:3,
-        background: dark ? "rgba(99,102,241,0.15)" : "rgba(99,102,241,0.1)"
+        background: dark ? "rgba(241,245,249,0.1)" : "rgba(17,17,17,0.08)"
       }}>
         <div style={{
-          height:"100%", background:"#6366F1",
+          height:"100%", background: dark ? "#F1F5F9" : "#111111",
           borderRadius:"0 2px 2px 0",
           transformOrigin:"left",
           animation:"cnr-bar 3s ease-out forwards"
