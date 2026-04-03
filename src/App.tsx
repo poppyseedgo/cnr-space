@@ -674,7 +674,7 @@ function AppContent() {
       display:"flex", flexDirection:"column",
       alignItems:"center", justifyContent:"center",
       minHeight:"100vh",
-      background: dark ? "#0F172A" : "#F3F4F8",
+      background: "#F3F4F8",
       gap: 10, position:"relative", overflow:"hidden"
     }}>
       <style>{`
@@ -683,10 +683,6 @@ function AppContent() {
           15%  { clip-path: inset(0 100% 0 0); }
           72%  { clip-path: inset(0 0% 0 0); }
           100% { clip-path: inset(0 0% 0 0); }
-        }
-        @keyframes cnr-cursor {
-          0%, 49% { opacity: 1; }
-          50%, 100% { opacity: 0; }
         }
         @keyframes cnr-sub {
           0%, 68%  { opacity: 0; transform: translateY(8px); }
@@ -699,27 +695,20 @@ function AppContent() {
         }
       `}</style>
 
-      {/* 로고 텍스트 + 커서 */}
-      <div style={{ display:"flex", alignItems:"center", gap:4 }}>
-        <span style={{
-          fontSize: 28, fontWeight: 600, letterSpacing: "-0.5px",
-          color: dark ? "#F1F5F9" : "#1E293B",
-          animation: "cnr-reveal 1.8s cubic-bezier(0.4,0,0.2,1) forwards"
-        }}>C&amp;R Space</span>
-        <span style={{
-          display:"inline-block", width:2, height:30,
-          background: dark ? "#F1F5F9" : "#111111", borderRadius:1,
-          animation:"cnr-cursor 0.65s step-end infinite"
-        }}/>
-      </div>
+      {/* 로고 텍스트 */}
+      <span style={{
+        fontSize: 28, fontWeight: 600, letterSpacing: "-0.5px",
+        color: dark ? "#F1F5F9" : "#1E293B",
+        animation: "cnr-reveal 1.8s cubic-bezier(0.4,0,0.2,1) forwards"
+      }}>C&amp;R Space</span>
 
       {/* 서브타이틀 */}
       <div style={{
-        fontSize: 13, color: dark ? "#64748B" : "#94A3B8",
-        letterSpacing:"0.04em",
+        fontSize: 11, color: dark ? "#64748B" : "#94A3B8",
+        letterSpacing:"0.02em",
         opacity:0,
         animation:"cnr-sub 2.2s ease forwards"
-      }}>씨엔알리서치 회의실 예약 시스템</div>
+      }}>회의실 예약 시스템 연결 중...</div>
 
       {/* 하단 진행 바 */}
       <div style={{
