@@ -660,11 +660,71 @@ function AppContent() {
   const { isMobile, isTablet } = useBreakpoint();
   const { vh: vvH, off: vvOff } = useVisualViewport();
 
-  // ── 인증 로딩 중 ──
+  // ── 인증 로딩 중 (Text Reveal) ──
   if (authLoading) return (
-    <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:"#F3F4F8"}}>
-      <div style={{width:32,height:32,border:"3px solid #E2E8F0",borderTop:"3px solid #6366F1",borderRadius:"50%",animation:"spin 0.8s linear infinite"}} />
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    <div style={{
+      display:"flex", flexDirection:"column",
+      alignItems:"center", justifyContent:"center",
+      minHeight:"100vh",
+      background: dark ? "#0F172A" : "#F3F4F8",
+      gap: 10, position:"relative", overflow:"hidden"
+    }}>
+      <style>{`
+        @keyframes cnr-reveal {
+          0%   { clip-path: inset(0 100% 0 0); }
+          15%  { clip-path: inset(0 100% 0 0); }
+          72%  { clip-path: inset(0 0% 0 0); }
+          100% { clip-path: inset(0 0% 0 0); }
+        }
+        @keyframes cnr-cursor {
+          0%, 49% { opacity: 1; }
+          50%, 100% { opacity: 0; }
+        }
+        @keyframes cnr-sub {
+          0%, 68%  { opacity: 0; transform: translateY(8px); }
+          100%     { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes cnr-bar {
+          0%   { transform: scaleX(0); }
+          70%  { transform: scaleX(0.7); }
+          100% { transform: scaleX(0.88); }
+        }
+      `}</style>
+
+      {/* 로고 텍스트 + 커서 */}
+      <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+        <span style={{
+          fontSize: 28, fontWeight: 600, letterSpacing: "-0.5px",
+          color: dark ? "#F1F5F9" : "#1E293B",
+          animation: "cnr-reveal 1.8s cubic-bezier(0.4,0,0.2,1) forwards"
+        }}>C&amp;R Space</span>
+        <span style={{
+          display:"inline-block", width:2, height:30,
+          background:"#6366F1", borderRadius:1,
+          animation:"cnr-cursor 0.65s step-end infinite"
+        }}/>
+      </div>
+
+      {/* 서브타이틀 */}
+      <div style={{
+        fontSize: 13, color: dark ? "#64748B" : "#94A3B8",
+        letterSpacing:"0.04em",
+        opacity:0,
+        animation:"cnr-sub 2.2s ease forwards"
+      }}>씨엔알리서치 회의실 예약 시스템</div>
+
+      {/* 하단 진행 바 */}
+      <div style={{
+        position:"absolute", bottom:0, left:0, right:0, height:3,
+        background: dark ? "rgba(99,102,241,0.15)" : "rgba(99,102,241,0.1)"
+      }}>
+        <div style={{
+          height:"100%", background:"#6366F1",
+          borderRadius:"0 2px 2px 0",
+          transformOrigin:"left",
+          animation:"cnr-bar 3s ease-out forwards"
+        }}/>
+      </div>
     </div>
   )
 
