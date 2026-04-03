@@ -470,22 +470,15 @@ export function AdminUsers({users,setUsers,showToast,isMobile}){
   };
   const openEdit=(u)=>{setForm(u?{name:u.name,dept:u.dept,email:u.email,role:u.role}:{name:"",dept:"",email:"",role:"USER"});setEditUser(u||{user_id:null});};
   const saveEdit = async () => {
+    if (!editUser?.user_id) return;
     if(!form.name.trim()||!form.email.trim()){showToast("이름과 이메일은 필수입니다.","error");return;}
     try {
-      if (editUser.user_id) {
-        // 기존 사용자 수정 — profiles 테이블 update
-        await updateProfile(editUser.user_id, {
-          name: form.name, dept: form.dept,
-          role: form.role, employee_id: form.employee_id ?? ''
-        });
-        setUsers(users.map(u => u.user_id===editUser.user_id ? {...u,...form} : u));
-        showToast("수정되었습니다.");
-      } else {
-        // 신규 사용자 추가 — Auth 없이는 불가, 안내 메시지
-        showToast("신규 사용자는 Supabase 대시보드 → Authentication에서 추가해주세요.", "info");
-        setEditUser(null);
-        return;
-      }
+      await updateProfile(editUser.user_id, {
+        name: form.name, dept: form.dept,
+        role: form.role, employee_id: form.employee_id ?? ''
+      });
+      setUsers(users.map(u => u.user_id===editUser.user_id ? {...u,...form} : u));
+      showToast("수정되었습니다.");
       setEditUser(null);
     } catch (err: any) { showToast(err.message, 'error'); }
   };
@@ -493,7 +486,6 @@ export function AdminUsers({users,setUsers,showToast,isMobile}){
     <div className="anm">
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
         <div style={{fontSize:15,fontWeight:800,color:"#111"}}>전체 {users.length}명 <span style={{color:"#94A3B8",fontWeight:400,fontSize:13}}>· ADMIN {adminCount}명</span></div>
-        <button className="btn" onClick={()=>openEdit(null)} style={{background:"#111",color:"#fff",padding:"8px 16px",fontSize:12,borderRadius:10}}>+ 사용자 추가</button>
       </div>
       <div style={{background:"#fff",borderRadius:12,padding:"10px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
         <Search size={14} strokeWidth={1.8} style={{color:"#94A3B8",flexShrink:0}}/>
@@ -532,7 +524,7 @@ export function AdminUsers({users,setUsers,showToast,isMobile}){
         <div onClick={e=>e.target===e.currentTarget&&setEditUser(null)} style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",backdropFilter:"blur(6px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
           <div className="anm" style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:400,padding:"24px",boxShadow:"0 20px 60px rgba(0,0,0,0.15)"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-              <div style={{fontSize:16,fontWeight:800,color:"#111"}}>{editUser.user_id?"사용자 수정":"새 사용자 추가"}</div>
+              <div style={{fontSize:16,fontWeight:800,color:"#111"}}>"사용자 수정"</div>
               <button className="btn" onClick={()=>setEditUser(null)} style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%",background:"#F1F5F9",color:"#64748B"}}><X size={14} strokeWidth={2}/></button>
             </div>
             {[{k:"name",l:"이름 *"},{k:"dept",l:"부서"},{k:"email",l:"이메일 *"}].map(f=>(

@@ -87,6 +87,14 @@ function AppContent() {
     const t = setTimeout(() => setShowSkeleton(true), 300);
     return () => clearTimeout(t);
   }, [loading]);
+  const [splashDone, setSplashDone] = useState(false); // Text Reveal 최소 표시 보장
+
+  // Text Reveal 최소 표시 시간 (애니메이션 완료 타이밍)
+  useEffect(() => {
+    const t = setTimeout(() => setSplashDone(true), 1600);
+    return () => clearTimeout(t);
+  }, []);
+
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
   const { currentUser: authUser, logout, isAdmin, loading: authLoading } = useAuth()
@@ -661,7 +669,7 @@ function AppContent() {
   const { vh: vvH, off: vvOff } = useVisualViewport();
 
   // ── 인증 로딩 중 (Text Reveal) ──
-  if (authLoading) return (
+  if (authLoading || !splashDone) return (
     <div style={{
       display:"flex", flexDirection:"column",
       alignItems:"center", justifyContent:"center",
