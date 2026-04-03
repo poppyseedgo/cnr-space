@@ -770,8 +770,8 @@ function AppContent() {
             {/* ① 브랜드 (left) — 클릭 시 홈 */}
             <div className="flex items-center min-w-0 cursor-pointer" onClick={()=>setView("home")}>
               <div className="min-w-0">
-                <div className="font-extrabold text-slate-900 dark:text-white tracking-tight truncate"
-                  style={{fontSize: isMobile?13:15}}>
+                <div className="font-semibold text-slate-900 dark:text-white truncate"
+                  style={{fontSize: isMobile?13:15, letterSpacing:0}}>
                   {isMobile ? "C&R" : "C&R SPACE"}
                 </div>
               </div>

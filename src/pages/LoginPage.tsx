@@ -148,7 +148,7 @@ export default function LoginPage() {
         </div>
 
         {/* ── Microsoft SSO 버튼 (메인) ── */}
-        <div className="mb-6 rounded-3xl"
+        <div className="mb-6 rounded-3xl p-6"
           style={{ boxShadow: '10px 10px 60px rgba(0,0,0,0.04)' }}>
           <div className="mb-4">
             <p className="text-xs text-[#6a7282] leading-snug">
