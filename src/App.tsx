@@ -685,8 +685,8 @@ function AppContent() {
           100% { clip-path: inset(0 0% 0 0); }
         }
         @keyframes cnr-sub {
-          0%   { opacity: 0; transform: translateY(6px); }
-          100% { opacity: 1; transform: translateY(0); }
+          0%, 68%  { opacity: 0; transform: translateY(8px); }
+          100%     { opacity: 1; transform: translateY(0); }
         }
         @keyframes cnr-bar {
           0%   { transform: scaleX(0); }
@@ -707,7 +707,7 @@ function AppContent() {
         fontSize: 11, color: dark ? "#64748B" : "#94A3B8",
         letterSpacing:"0.02em",
         opacity:0,
-        animation:"cnr-sub 1.8s cubic-bezier(0.4,0,0.2,1) forwards"
+        animation:"cnr-sub 2.2s ease forwards"
       }}>회의실 예약 시스템 연결 중...</div>
 
       {/* 하단 진행 바 */}
