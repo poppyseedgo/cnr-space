@@ -255,6 +255,48 @@ function localLoadBookings(seed: Booking[]): Booking[] {
 }
 
 // ── rooms 테이블 전체 로드 (Supabase) ────────────────────────────────────────
+/** Admin 전용: is_active 필터 없이 전체 회의실 로드 */
+export async function loadAllRooms(): Promise<Room[]> {
+  if (!isSupabaseEnabled) {
+    const { ROOMS_DB } = await import('../data/master')
+    return ROOMS_DB
+  }
+  try {
+    const [roomsRes, roomFeaturesRes] = await Promise.all([
+      supabase.from('rooms').select('*').order('room_id'),
+      supabase.from('room_features').select('*, features(*)'),
+    ])
+    if (roomsRes.error) throw roomsRes.error
+
+    const rfMap = new Map<number, Feature[]>()
+    for (const rf of roomFeaturesRes.data ?? []) {
+      const f = rf.features as any
+      if (!f) continue
+      if (!rfMap.has(rf.room_id)) rfMap.set(rf.room_id, [])
+      rfMap.get(rf.room_id)!.push({ feature_id: f.feature_id, feature_key: f.feature_key, feature_name: f.feature_name })
+    }
+    return (roomsRes.data ?? []).map(row => ({
+      room_id:      row.room_id,
+      floor_id:     row.floor_id      ?? 1,
+      room_code:    row.room_code     ?? '',
+      room_name:    row.room_name     ?? '',
+      room_name_ko: row.room_name_ko  ?? '',
+      capacity:     row.capacity      ?? 4,
+      notes:        row.notes         ?? '',
+      is_active:    row.is_active     ?? true,
+      is_admin_only: row.is_admin_only ?? false,
+      color:        row.color         ?? '#111111',
+      thumbnail:    row.thumbnail_url ?? '',
+      gallery:      row.gallery_urls  ?? [],
+      features:     rfMap.get(row.room_id) ?? [],
+    }))
+  } catch (e) {
+    console.error('[api] loadAllRooms 실패:', e)
+    const { ROOMS_DB } = await import('../data/master')
+    return ROOMS_DB
+  }
+}
+
 export async function loadRooms(): Promise<Room[]> {
   if (!isSupabaseEnabled) {
     const { ROOMS_DB } = await import('../data/master')
