@@ -371,7 +371,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
   const tabs = [
     { id:'dashboard', icon:<BarChart2 size={14} strokeWidth={1.8}/>,  label:'대시보드' },
     { id:'bookings',  icon:<Calendar  size={14} strokeWidth={1.8}/>,  label:'예약 관리' },
-    { id:'approvals', icon:<Inbox     size={14} strokeWidth={1.8}/>,  label:'승인 관리', badge: bookings.filter(b=>b.status==='pending').length },
+    { id:'approvals', icon:<Inbox     size={14} strokeWidth={1.8}/>,  label:'승인 관리', badge: bookings.filter(b => b.status === 'pending' && !b.autoCancelled).length },
     { id:'rooms',     icon:<Building2 size={14} strokeWidth={1.8}/>,  label:'회의실 관리' },
     { id:'users',     icon:<Users     size={14} strokeWidth={1.8}/>,  label:'사용자 관리' },
   ]
@@ -434,7 +434,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile }) {
   const isNoshow = (b: Booking) => b.autoCancelled && !b.checkedIn && !b.earlyEnded
   const confirmed = filtered.filter(b => !b.autoCancelled && b.status !== 'rejected')
   const noshowRate = past.length > 0 ? Math.round(past.filter(isNoshow).length / past.length * 100) : 0
-  const pendingCount = bookings.filter(b => b.status === 'pending').length
+  const pendingCount = bookings.filter(b => b.status === 'pending' && !b.autoCancelled).length
 
   // 차트: 날짜별 추이
   const dayRange = useMemo(() => {
