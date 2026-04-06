@@ -5,7 +5,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from './utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById, getAdminOnlyRooms } from './data/master'
-import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking, upsertBookingAttendees, insertNotification, loadNotifications, markNotificationRead, markAllNotificationsRead, subscribeNotifications, type AppNotification } from './lib/api'
+import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking, upsertBookingAttendees, insertNotification, loadNotifications, markNotificationRead, markAllNotificationsRead, subscribeNotifications, expirePendingBooking, type AppNotification } from './lib/api'
 import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView, RoomDetailModal } from './components/room/HomeView'
@@ -637,31 +637,65 @@ function AppContent() {
     return true;
   }, [bookings, showToast]);
 
-  // Auto-cancel (미체크인 예약 자동 취소)
+  // Auto-cancel: ① 노쇼(미체크인) 자동 취소  ② pending 승인 기한 초과 자동 취소
   useEffect(() => {
-    const now=nowMinutes(), today=todayStr();
+    const now=nowMinutes(), today=todayStr(), nowMs=Date.now();
+
+    // ① 노쇼: 오늘 예약 중 체크인 없이 CHECKIN_WINDOW_MIN 경과
     const toCancel=bookings.filter(b=>
       tsDate(b.start_at)===today &&
       !b.checkedIn && !b.autoCancelled && !b.earlyEnded &&
-      now > tsMin(b.start_at)+CHECKIN_WINDOW_MIN &&
-      true  // 모든 예약 대상
+      b.status !== 'pending' &&   // pending은 별도 처리
+      now > tsMin(b.start_at)+CHECKIN_WINDOW_MIN
     );
-    if(toCancel.length===0) return;
-    const ids=new Set(toCancel.map(b=>b.id));
-    // 낙관적 UI 업데이트
-    setBookings(prev => prev.map(b => ids.has(b.id) ? {...b, autoCancelled:true} : b));
-    // DB 반영 + 노쇼 인앱 알림
-    Promise.all(toCancel.map(b => apiCancelBooking(b.id))).catch(console.error);
-    if (authUser?.user_id) {
-      toCancel.filter(b => b.user === currentUser).forEach(b => {
-        const r = rooms.find(rm => rm.room_id === b.room_id)
-        insertNotification({
-          userId: authUser.user_id, type: 'booking_noshow',
-          title: '노쇼 처리 — 예약이 자동 취소되었습니다',
-          body: `${b.title} · ${r?.room_name ?? ''} · ${fmtTSDateFull(b.start_at)} ${fmtTSFull(b.start_at)}`,
-          bookingId: b.id,
-        }).catch(() => {})
-      })
+    if(toCancel.length>0){
+      const ids=new Set(toCancel.map(b=>b.id));
+      setBookings(prev => prev.map(b => ids.has(b.id) ? {...b, autoCancelled:true} : b));
+      Promise.all(toCancel.map(b => apiCancelBooking(b.id))).catch(console.error);
+      if (authUser?.user_id) {
+        toCancel.filter(b => b.user === currentUser).forEach(b => {
+          const r = rooms.find(rm => rm.room_id === b.room_id)
+          insertNotification({
+            userId: authUser.user_id, type: 'booking_noshow',
+            title: '노쇼 처리 — 예약이 자동 취소되었습니다',
+            body: `${b.title} · ${r?.room_name ?? ''} · ${fmtTSDateFull(b.start_at)} ${fmtTSFull(b.start_at)}`,
+            bookingId: b.id,
+          }).catch(() => {})
+        })
+      }
+    }
+
+    // ② pending 승인 기한 초과: start_at 1분 전 이후 경과
+    const pendingExpired = bookings.filter(b =>
+      b.status === 'pending' && !b.autoCancelled &&
+      nowMs >= new Date(b.start_at).getTime() - 60_000
+    );
+    if(pendingExpired.length > 0){
+      const expiredIds = new Set(pendingExpired.map(b => b.id));
+      setBookings(prev => prev.map(b => expiredIds.has(b.id) ? {...b, autoCancelled:true, cancelledBy:'system'} : b));
+      pendingExpired.forEach(b => {
+        expirePendingBooking(b.id).catch(() => {});
+        const r = rooms.find(rm => rm.room_id === b.room_id);
+        // 예약자 인앱 알림
+        const userProfile = users.find(u => u.name === b.user);
+        if(userProfile?.user_id){
+          insertNotification({
+            userId: userProfile.user_id, type: 'booking_expired',
+            title: '승인 기한이 지나 예약이 자동 취소되었습니다',
+            body: `${b.title} · ${r?.room_name ?? ''} · ${fmtTSDateFull(b.start_at)} ${fmtTSFull(b.start_at)}`,
+            bookingId: b.id,
+          }).catch(() => {});
+        }
+        // 어드민 전원 인앱 알림
+        users.filter(u => u.role === 'ADMIN').forEach(admin => {
+          insertNotification({
+            userId: admin.user_id, type: 'booking_expired',
+            title: '미승인 예약이 자동 취소되었습니다',
+            body: `${b.title} · ${r?.room_name ?? ''} · 신청자: ${b.user} · ${fmtTSDateFull(b.start_at)}`,
+            bookingId: b.id,
+          }).catch(() => {});
+        });
+      });
     }
   }, [tick]);
 

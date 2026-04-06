@@ -557,6 +557,20 @@ export async function updateProfile(userId: string, fields: {
   if (error) throw new Error(`사용자 정보 수정 실패: ${error.message}`)
 }
 
+/** pending 예약 승인 기한 초과 처리 (status 유지, auto_cancelled=true) */
+export async function expirePendingBooking(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('bookings')
+    .update({ auto_cancelled: true, cancelled_by: 'system' })
+    .eq('id', id)
+    .eq('status', 'pending')  // pending 상태인 것만 처리
+  if (error) throw new Error(`기한 초과 처리 실패: ${error.message}`)
+  await insertAuditLog({
+    action: 'BOOKING_CANCELLED' as any, entityType: 'booking', entityId: id,
+    afterData: { reason: '승인 기한 초과 자동 취소', cancelled_by: 'system' }
+  })
+}
+
 // ── 에메랄드 승인/거절 ────────────────────────────────────────────────────────
 
 /** 관리자 승인 → status: confirmed */
