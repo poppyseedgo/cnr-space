@@ -115,6 +115,36 @@ export async function loadBookings(): Promise<Booking[]> {
   }
 }
 
+// ── 기간별 예약 조회 (Admin Dashboard 전용) ───────────────────────────────────
+// Supabase Pro PITR 기준 전체 기간 조회 가능, 날짜 범위는 KST 기준
+export async function loadBookingsByRange(from: string, to: string): Promise<Booking[]> {
+  if (!isSupabaseEnabled) return []
+  try {
+    const fromISO = new Date(from + 'T00:00:00+09:00').toISOString()
+    const toISO   = new Date(to   + 'T23:59:59+09:00').toISOString()
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('*')
+      .gte('start_at', fromISO)
+      .lte('start_at', toISO)
+      .order('start_at', { ascending: false })
+    if (error) throw error
+    return (data ?? []).map(row => {
+      const b = rowToBooking(row)
+      if (Array.isArray(row.attendees) && row.attendees.length > 0) {
+        b.attendees = row.attendees.map((a: any) => {
+          if (typeof a === 'string') return a
+          return a?.name ?? a?.email ?? ''
+        }).filter(Boolean)
+      }
+      return b
+    })
+  } catch (e) {
+    console.error('[api] loadBookingsByRange 실패:', e)
+    return []
+  }
+}
+
 // ── saveBookings (하위 호환) ──────────────────────────────────────────────────
 export async function saveBookings(bookings: Booking[]): Promise<void> {
   if (!isSupabaseEnabled) { localSaveBookings(bookings); return }
