@@ -107,22 +107,32 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   // 기간별 조회 리스트
   // 기간별 기록은 allMyBookings(전체) 기반, 없으면 myBookings fallback
   const baseBookings = allMyBookings.length > 0 ? allMyBookings : myBookings;
-  const filteredList = useMemo(()=>{
-    return baseBookings.filter(b=>{
-      const d=tsDate(b.start_at);
-      if(d<listFrom||d>listTo) return false;
-      if(listStatus==="upcoming"&&(b.autoCancelled||d<today)) return false;
-      if(listStatus==="completed"&&(!b.checkedIn&&!b.earlyEnded||b.autoCancelled)) return false;
-      if(listStatus==="cancelled"&&!b.autoCancelled) return false;
-      return true;
-    }).sort((a,b)=>b.start_at.localeCompare(a.start_at));
-  },[myBookings,listFrom,listTo,listStatus,today]);
+
+  // ★ 날짜 범위만 적용한 전체 목록 (상태 필터 미적용) — 버튼 카운트 기준
+  const dateFilteredList = useMemo(() =>
+    baseBookings.filter(b => {
+      const d = tsDate(b.start_at);
+      return d >= listFrom && d <= listTo;
+    }),
+  [allMyBookings, myBookings, listFrom, listTo]);
+
+  // ★ Bug Fix: listStats는 dateFilteredList(날짜만 필터) 기준 — 상태 필터 무관하게 고정
   const listStats = {
-    all: filteredList.length,
-    up: filteredList.filter(b=>!b.autoCancelled&&tsDate(b.start_at)>=today).length,
-    done: filteredList.filter(b=>(b.checkedIn||b.earlyEnded)&&!b.autoCancelled).length,
-    can: filteredList.filter(b=>b.autoCancelled).length,
+    all:  dateFilteredList.length,
+    up:   dateFilteredList.filter(b => !b.autoCancelled && tsDate(b.start_at) >= today).length,
+    done: dateFilteredList.filter(b => (b.checkedIn || b.earlyEnded) && !b.autoCancelled).length,
+    can:  dateFilteredList.filter(b => b.autoCancelled).length,
   };
+
+  // 상태 필터까지 적용한 최종 목록
+  const filteredList = useMemo(() =>
+    dateFilteredList.filter(b => {
+      if (listStatus === "upcoming"  && (b.autoCancelled || tsDate(b.start_at) < today)) return false;
+      if (listStatus === "completed" && ((!b.checkedIn && !b.earlyEnded) || b.autoCancelled)) return false;
+      if (listStatus === "cancelled" && !b.autoCancelled) return false;
+      return true;
+    }).sort((a, b) => b.start_at.localeCompare(a.start_at)),
+  [dateFilteredList, listStatus, today]);
 
   return(
     <div style={{maxWidth:960,margin:"0 auto",padding:isMobile?"16px 12px":"28px 24px"}}>
