@@ -255,6 +255,11 @@ export async function updateBooking(
   return rowToBooking(data[0])
 }
 
+/** 관리자 강제 취소 — cancelled_by: 'admin' 으로 저장해 일반 취소·노쇼와 구분 */
+export async function adminForceCancel(id: string): Promise<void> {
+  await updateBooking(id, { autoCancelled: true, cancelledBy: 'admin' })
+}
+
 // ── 취소 ─────────────────────────────────────────────────────────────────────
 export async function cancelBooking(id: string): Promise<void> {
   await updateBooking(id, { autoCancelled: true, cancelledBy: 'user' })

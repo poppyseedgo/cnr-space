@@ -5,7 +5,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from './utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById, getAdminOnlyRooms } from './data/master'
-import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking, upsertBookingAttendees, insertNotification, loadNotifications, markNotificationRead, markAllNotificationsRead, subscribeNotifications, expirePendingBooking, type AppNotification } from './lib/api'
+import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking, upsertBookingAttendees, insertNotification, loadNotifications, markNotificationRead, markAllNotificationsRead, subscribeNotifications, expirePendingBooking, adminForceCancel, type AppNotification } from './lib/api'
 import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView, RoomDetailModal } from './components/room/HomeView'
@@ -572,7 +572,55 @@ function AppContent() {
     } catch (err: any) { showToast(err.message, 'error') }
   }, [showToast, bookings, rooms, users, sendNotification])
 
-  // ── 예약 변경 ──────────────────────────────────────────────────────────────
+  // ── 관리자 강제 취소 ────────────────────────────────────────────────────────
+  const adminForceCancelBooking = useCallback(async (id: string, reason: string) => {
+    const targetB = bookings.find(b => b.id === id)
+    try {
+      await adminForceCancel(id)
+      // 낙관적 UI 업데이트
+      setBookings(prev => prev.map(b => b.id === id ? { ...b, autoCancelled: true, cancelledBy: 'admin' } : b))
+
+      // Audit log
+      insertAuditLog({
+        action: 'ADMIN_FORCE_CANCEL', entityType: 'booking', entityId: id,
+        actorName: currentUser,
+        afterData: { reason, title: targetB?.title, user: targetB?.user },
+      }).catch(() => {})
+
+      // 예약자 인앱 알림
+      const userProfile = users.find(u => u.name === targetB?.user)
+      if (userProfile?.user_id && targetB) {
+        const r = rooms.find(rm => rm.room_id === targetB.room_id)
+        insertNotification({
+          userId: userProfile.user_id,
+          type: 'booking_admin_cancelled',
+          title: '관리자에 의해 예약이 강제 취소되었습니다',
+          body: reason
+            ? `${targetB.title} · ${r?.room_name ?? ''} · ${fmtTSDateFull(targetB.start_at)} ${fmtTSFull(targetB.start_at)} · 사유: ${reason}`
+            : `${targetB.title} · ${r?.room_name ?? ''} · ${fmtTSDateFull(targetB.start_at)} ${fmtTSFull(targetB.start_at)}`,
+          bookingId: id,
+        }).catch(() => {})
+      }
+
+      // 이메일 알림 (기존 cancelled 타입 재사용)
+      if (targetB && userProfile?.email) {
+        const cancelledRoom = rooms.find(r => r.room_id === targetB.room_id)
+        sendNotification('cancelled', {
+          ...targetB,
+          user_email: userProfile.email,
+          room_name: cancelledRoom?.room_name_ko ?? cancelledRoom?.room_name ?? '',
+          admin_force: true,
+          cancel_reason: reason || '관리자 강제 취소',
+        })
+      }
+
+      showToast('예약이 강제 취소되었습니다.', 'info')
+    } catch (err: any) {
+      // 실패 시 롤백
+      setBookings(prev => prev.map(b => b.id === id ? { ...b, autoCancelled: false, cancelledBy: null } : b))
+      showToast(err.message ?? '취소 중 오류가 발생했습니다.', 'error')
+    }
+  }, [bookings, rooms, users, currentUser, showToast, sendNotification])
   const updateBooking = useCallback(async (form, date, originalId) => {
     if (!form.room_id || !form.title.trim() || timeToMin(form.start) >= timeToMin(form.end)) {
       showToast("예약 정보를 확인해주세요.", "error"); return false;
@@ -894,18 +942,20 @@ function AppContent() {
                         </div>
                       ) : notifications.map(n => {
                         const typeColors: Record<string,string> = {
-                          booking_created:  "#16A34A",
-                          booking_pending:  "#D97706",
-                          booking_approved: "#16A34A",
-                          booking_rejected: "#DC2626",
-                          booking_cancelled:"#64748B",
-                          booking_checkin:      "#2563EB",
-                          booking_early_end:    "#7C3AED",
-                          booking_noshow:       "#EF4444",
-                          booking_updated:      "#0891B2",
-                          checkin_reminder_10:  "#0891B2",
-                          checkin_required:     "#16A34A",
-                          checkin_warning:      "#EF4444",
+                          booking_created:          "#16A34A",
+                          booking_pending:          "#D97706",
+                          booking_approved:         "#16A34A",
+                          booking_rejected:         "#DC2626",
+                          booking_cancelled:        "#64748B",
+                          booking_admin_cancelled:  "#DC2626",  // 관리자 강제취소 — 빨간색
+                          booking_checkin:          "#2563EB",
+                          booking_early_end:        "#7C3AED",
+                          booking_noshow:           "#EF4444",
+                          booking_expired:          "#94A3B8",
+                          booking_updated:          "#0891B2",
+                          checkin_reminder_10:      "#0891B2",
+                          checkin_required:         "#16A34A",
+                          checkin_warning:          "#EF4444",
                         }
                         const color = typeColors[n.type] ?? "#64748B"
                         return (
@@ -1064,7 +1114,7 @@ function AppContent() {
           authUser={authUser}
         />}
       {view==="mypage" && <MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} />}
-      {view==="admin" && <AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onDetail={b=>setModal({type:'detail',data:b})} />}
+      {view==="admin" && <AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={adminForceCancelBooking} onDetail={b=>setModal({type:'detail',data:b})} />}
 
       {/* ── Modals ── */}
       {modal && (

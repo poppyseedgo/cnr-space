@@ -37,7 +37,9 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
           <div style={{flex:1,minWidth:0,marginRight:12}}>
             <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
-              {b.autoCancelled&&<span className="chip" style={{background:"#F1F5F9",color:"#94A3B8",display:"inline-flex",alignItems:"center",gap:4}}><XCircle size={11} strokeWidth={1.8}/> 자동취소</span>}
+              {/* ★ 관리자 강제취소 — 최우선 표시 */}
+              {b.cancelledBy==='admin'&&<span className="chip" style={{background:"#111",color:"#fff",display:"inline-flex",alignItems:"center",gap:4}}><AlertTriangle size={11} strokeWidth={1.8}/> 관리자 강제취소</span>}
+              {b.autoCancelled&&b.cancelledBy!=='admin'&&<span className="chip" style={{background:"#F1F5F9",color:"#94A3B8",display:"inline-flex",alignItems:"center",gap:4}}><XCircle size={11} strokeWidth={1.8}/> 자동취소</span>}
               {b.checkedIn&&<span className="chip" style={{background:"#DCFCE7",color:"#16A34A",display:"inline-flex",alignItems:"center",gap:4}}><CheckCircle2 size={11} strokeWidth={1.8}/> 체크인 완료</span>}
               {b.earlyEnded&&<span className="chip" style={{background:"#EDE9FE",color:"#7C3AED",display:"inline-flex",alignItems:"center",gap:4}}><CheckCircle2 size={11} strokeWidth={1.8}/> 조기 반납</span>}
               {isAct&&!b.autoCancelled&&r&&<span className="chip" style={{background:r.color+"18",color:r.color,display:"inline-flex",alignItems:"center",gap:4}}><Circle size={7} fill={r.color} strokeWidth={0}/> 진행 중</span>}

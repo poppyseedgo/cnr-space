@@ -365,7 +365,7 @@ function AggTable({ rows, cols, onExport }: { rows: any[]; cols:{k:string;l:stri
 }
 
 // ─── AdminView ─────────────────────────────────────────────────────────────────
-export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject, onDetail }) {
+export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject, onForceCancel, onDetail }) {
   const [activeTab, setActiveTab] = useState('dashboard')
   const PER_PAGE = 15
   const tabs = [
@@ -391,7 +391,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
         ))}
       </div>
       {activeTab==='dashboard' && <AdminDashboard bookings={bookings} rooms={rooms} users={users} isMobile={isMobile}/>}
-      {activeTab==='bookings'  && <AdminBookings  bookings={bookings} setBookings={setBookings} rooms={rooms} showToast={showToast} isMobile={isMobile} PER_PAGE={PER_PAGE} onDetail={onDetail}/>}
+      {activeTab==='bookings'  && <AdminBookings  bookings={bookings} setBookings={setBookings} rooms={rooms} onForceCancel={onForceCancel} showToast={showToast} isMobile={isMobile} PER_PAGE={PER_PAGE} onDetail={onDetail}/>}
       {activeTab==='approvals' && <AdminApprovals bookings={bookings} rooms={rooms} onApprove={onApprove} onReject={onReject} showToast={showToast} isMobile={isMobile} onDetail={onDetail}/>}
       {activeTab==='rooms'     && <AdminRooms     showToast={showToast} isMobile={isMobile}/>}
       {activeTab==='users'     && <AdminUsers     users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile}/>}
@@ -653,7 +653,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile }) {
 }
 
 // ─── AdminBookings ─────────────────────────────────────────────────────────────
-export function AdminBookings({ bookings, setBookings, rooms, showToast, isMobile, PER_PAGE, onDetail }) {
+export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, showToast, isMobile, PER_PAGE, onDetail }) {
   const today=todayStr()
   const [dateFrom, setDateFrom]=useState(()=>{const d=new Date();return`${d.getFullYear()}-${fmt2(d.getMonth()+1)}-01`})
   const [dateTo,   setDateTo]  =useState(()=>{const d=new Date();d.setMonth(d.getMonth()+1,0);return`${d.getFullYear()}-${fmt2(d.getMonth()+1)}-${fmt2(d.getDate())}`})
@@ -664,7 +664,8 @@ export function AdminBookings({ bookings, setBookings, rooms, showToast, isMobil
   const [cancelModal,  setCancelModal] =useState<Booking|null>(null)
   const [cancelReason, setCancelReason]=useState('')
   const [cancelling,   setCancelling]  =useState(false)
-  const isNoshow=(b:Booking)=>b.autoCancelled&&!b.checkedIn&&!b.earlyEnded
+  // 관리자 강제취소는 cancelledBy==='admin', 노쇼는 그 외 autoCancelled
+  const isNoshow=(b:Booking)=>b.autoCancelled&&!b.checkedIn&&!b.earlyEnded&&b.cancelledBy!=='admin'
   const filtered=useMemo(()=>bookings.filter(b=>{
     const d=tsDate(b.start_at)
     if(d<dateFrom||d>dateTo)return false
@@ -674,26 +675,32 @@ export function AdminBookings({ bookings, setBookings, rooms, showToast, isMobil
     if(filterStatus==='completed'&&!((b.checkedIn||b.earlyEnded)&&!b.autoCancelled))return false
     if(filterStatus==='cancelled'&&!(b.autoCancelled||b.status==='rejected'))return false
     if(filterStatus==='noshow'&&!isNoshow(b))return false
+    if(filterStatus==='adminCancel'&&b.cancelledBy!=='admin')return false
     return true
   }).sort((a,b)=>b.start_at.localeCompare(a.start_at)),[bookings,dateFrom,dateTo,filterRoom,filterUser,filterStatus,today])
   const totalPages=Math.max(1,Math.ceil(filtered.length/PER_PAGE))
   const paged=filtered.slice((page-1)*PER_PAGE,page*PER_PAGE)
-  const stats={all:filtered.length,upcoming:filtered.filter(b=>!b.autoCancelled&&b.status!=='rejected'&&tsDate(b.start_at)>=today).length,completed:filtered.filter(b=>(b.checkedIn||b.earlyEnded)&&!b.autoCancelled).length,cancelled:filtered.filter(b=>b.autoCancelled||b.status==='rejected').length,noshow:filtered.filter(isNoshow).length}
+  const stats={
+    all:filtered.length,
+    upcoming:filtered.filter(b=>!b.autoCancelled&&b.status!=='rejected'&&tsDate(b.start_at)>=today).length,
+    completed:filtered.filter(b=>(b.checkedIn||b.earlyEnded)&&!b.autoCancelled).length,
+    cancelled:filtered.filter(b=>b.autoCancelled||b.status==='rejected').length,
+    noshow:filtered.filter(isNoshow).length,
+    adminCancel:filtered.filter(b=>b.cancelledBy==='admin').length,
+  }
+  // ★ App.tsx의 adminForceCancelBooking 콜백 위임 (알림·이메일·audit 모두 App에서 처리)
   const doCancel=async(id:string)=>{
     if(cancelling)return; setCancelling(true)
-    const reason=cancelReason||'관리자 강제 취소', targetB=bookings.find(b=>b.id===id)
-    try {
-      await apiCancelBooking(id)
-      setBookings(prev=>prev.map(b=>b.id===id?{...b,autoCancelled:true,cancelledBy:'system'}:b))
-      insertAuditLog({action:'ADMIN_FORCE_CANCEL',entityType:'booking',entityId:id,afterData:{reason,title:targetB?.title,user:targetB?.user}}).catch(()=>{})
-      showToast('예약이 강제 취소되었습니다.','info')
-    } catch(err:any){showToast(err.message??'취소 중 오류','error')}
-    finally{setCancelling(false);setCancelModal(null);setCancelReason('')}
+    try { await onForceCancel(id, cancelReason||'관리자 강제 취소') }
+    catch(err:any){ showToast(err.message??'취소 중 오류','error') }
+    finally{ setCancelling(false); setCancelModal(null); setCancelReason('') }
   }
   const getBadge=(b:Booking)=>{
     const d=tsDate(b.start_at)
-    if(b.status==='pending')return<span style={{background:'#FEF3C7',color:'#92400E',fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:999}}>승인대기</span>
-    if(b.status==='rejected')return<span style={{background:'#F1F5F9',color:'#94A3B8',fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:999}}>거절</span>
+    if(b.status==='pending'&&!b.autoCancelled)return<span style={{background:'#FEF3C7',color:'#92400E',fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:999}}>승인대기</span>
+    if(b.status==='rejected')return<span style={{background:'#FEE2E2',color:'#DC2626',fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:999}}>거절</span>
+    // ★ 관리자 강제취소 — 가장 먼저 체크 (다른 취소 케이스와 명확히 구분)
+    if(b.cancelledBy==='admin')return<span style={{background:'#111',color:'#fff',fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:999,display:'inline-flex',alignItems:'center',gap:3}}><AlertTriangle size={9} strokeWidth={2.5}/>관리자 강제취소</span>
     if(isNoshow(b)&&d<today)return<span style={{background:'#FEF3C7',color:'#D97706',fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:999}}>노쇼</span>
     if(b.autoCancelled)return<span style={{background:'#F1F5F9',color:'#94A3B8',fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:999}}>취소</span>
     if(b.checkedIn||b.earlyEnded)return<span style={{background:'#DCFCE7',color:'#16A34A',fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:999}}>완료</span>
@@ -722,11 +729,23 @@ export function AdminBookings({ bookings, setBookings, rooms, showToast, isMobil
           </div>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:6,marginTop:12,flexWrap:'wrap'}}>
-          {[{id:'ALL',l:`전체 ${stats.all}`},{id:'upcoming',l:`예정 ${stats.upcoming}`},{id:'completed',l:`완료 ${stats.completed}`},{id:'noshow',l:`노쇼 ${stats.noshow}`},{id:'cancelled',l:`취소 ${stats.cancelled}`}].map(s=>(
-            <button key={s.id} className="btn" onClick={()=>{setFilterStatus(s.id);setPage(1)}} style={{padding:'5px 12px',fontSize:11,borderRadius:999,background:filterStatus===s.id?'#111':'#F8FAFC',color:filterStatus===s.id?'#fff':'#64748B',border:filterStatus===s.id?'none':'1px solid #E2E8F0'}}>{s.l}</button>
+          {[
+            {id:'ALL',        l:`전체 ${stats.all}`},
+            {id:'upcoming',   l:`예정 ${stats.upcoming}`},
+            {id:'completed',  l:`완료 ${stats.completed}`},
+            {id:'noshow',     l:`노쇼 ${stats.noshow}`},
+            {id:'cancelled',  l:`취소 ${stats.cancelled}`},
+            {id:'adminCancel',l:`관리자취소 ${stats.adminCancel}`, dark:true},
+          ].map(s=>(
+            <button key={s.id} className="btn" onClick={()=>{setFilterStatus(s.id);setPage(1)}}
+              style={{padding:'5px 12px',fontSize:11,borderRadius:999,
+                background:filterStatus===s.id?((s as any).dark?'#111':'#111'):'#F8FAFC',
+                color:filterStatus===s.id?'#fff':'#64748B',
+                border:filterStatus===s.id?'none':'1px solid #E2E8F0'}}>{s.l}</button>
           ))}
           <button className="btn" onClick={()=>{
-            const csvRows=filtered.map(b=>{const r=rooms.find(rm=>rm.room_id===b.room_id);return{회의명:b.title,회의실:r?.room_name??'',날짜:tsDate(b.start_at),시작:b.start_at.slice(11,16),종료:b.end_at.slice(11,16),예약자:b.user,부서:b.dept,상태:b.autoCancelled?'취소':b.checkedIn?'완료':b.status==='pending'?'승인대기':'예정'}})
+            const getStatus=(b:Booking)=>b.cancelledBy==='admin'?'관리자강제취소':b.autoCancelled?'취소':b.checkedIn?'완료':b.status==='pending'?'승인대기':'예정'
+            const csvRows=filtered.map(b=>{const r=rooms.find(rm=>rm.room_id===b.room_id);return{회의명:b.title,회의실:r?.room_name??'',날짜:tsDate(b.start_at),시작:b.start_at.slice(11,16),종료:b.end_at.slice(11,16),예약자:b.user,부서:b.dept,상태:getStatus(b)}})
             exportCSV(csvRows,`예약목록_${dateFrom}_${dateTo}`)
           }} style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:5,padding:'5px 12px',fontSize:11,borderRadius:999,background:'#F8FAFC',border:'1px solid #E2E8F0',color:'#374151',fontWeight:700}}>
             <Download size={10}/> CSV
