@@ -322,9 +322,36 @@ async function sendEmail(to: string[], subject: string, html: string) {
   return data
 }
 
+// ── Supabase 환경변수 (booking_attendees 조회용) ────────────────────────────
+const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')              ?? ''
+const SERVICE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+
+// ── booking_attendees 테이블에서 참석자 이메일 조회 ─────────────────────────
+async function fetchAttendeeEmails(bookingId: string, creatorEmail: string): Promise<string[]> {
+  if (!bookingId || !SUPABASE_URL) return []
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/booking_attendees?booking_id=eq.${bookingId}&select=email`,
+      {
+        headers: {
+          'apikey':         SERVICE_KEY,
+          'Authorization': `Bearer ${SERVICE_KEY}`,
+          'Content-Type':  'application/json',
+        },
+      }
+    )
+    if (!res.ok) return []
+    const rows: { email: string }[] = await res.json()
+    // 생성자 제외, 빈 이메일 제외
+    return rows.map(r => r.email).filter(e => e && e !== creatorEmail)
+  } catch (e) {
+    console.warn('[notify] booking_attendees 조회 실패:', e)
+    return []
+  }
+}
+
 // ── 메인 핸들러 ────────────────────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
-  // CORS preflight
   const corsHeaders = {
     'Access-Control-Allow-Origin':  '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -335,6 +362,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    // attendeeEmails: pending(Admin 알림) 전용으로만 사용
     const { type, booking, attendeeEmails = [] } = await req.json()
 
     if (!type || !booking) {
@@ -344,16 +372,14 @@ Deno.serve(async (req: Request) => {
     const subject = getSubject(type, booking)
     const results = []
 
-    // pending(승인 요청)은 Admin에게 발송, 나머지는 예약자에게 발송
+    // ── pending: Admin 전원에게 발송 ────────────────────────────────────────
     if (type === 'pending') {
-      // Admin 이메일 목록으로 발송 (attendeeEmails에 admin_emails 담겨 옴)
       const adminEmails = attendeeEmails.filter((e: string) => !!e)
       if (adminEmails.length > 0) {
         const html = getEmailHtml(type, booking, false)
         await sendEmail(adminEmails, subject, html)
         results.push({ to: adminEmails, role: 'admins' })
       }
-      // Teams에도 pending 알림 발송 (Admin 채널)
       await sendTeamsCard('pending', booking)
       return new Response(
         JSON.stringify({ success: true, sent: results.length, results }),
@@ -361,29 +387,34 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    // Teams 알림 발송 (created/approved/rejected/cancelled/noshow)
-    if (['created', 'approved', 'rejected', 'cancelled', 'noshow'].includes(type)) {
-      sendTeamsCard(type, booking).catch(() => {})  // 비동기, 실패해도 이메일에 영향 없음
+    // ── Teams 알림 (비동기, 실패해도 이메일에 영향 없음) ────────────────────
+    if (['created', 'approved', 'rejected', 'cancelled', 'noshow', 'updated'].includes(type)) {
+      sendTeamsCard(type, booking).catch(() => {})
     }
 
-    // 1. 예약 생성자에게 발송
+    // ── booking_attendees 테이블에서 참석자 조회 ────────────────────────────
+    const attendeeEmailList = booking.id
+      ? await fetchAttendeeEmails(booking.id, booking.user_email ?? '')
+      : []
+
+    // ── 1. 예약 생성자에게 발송 ─────────────────────────────────────────────
     if (booking.user_email) {
       const html = getEmailHtml(type, booking, false)
       await sendEmail([booking.user_email], subject, html)
       results.push({ to: booking.user_email, role: 'creator' })
     }
 
-    // 2. 참석자에게 발송 (생성자 제외)
-    const attendees = attendeeEmails.filter((e: string) => e !== booking.user_email)
-    if (attendees.length > 0) {
+    // ── 2. 참석자에게 발송 (50명씩 배치) ───────────────────────────────────
+    if (attendeeEmailList.length > 0) {
       const html = getEmailHtml(type, booking, true)
-      // Resend는 한 번에 최대 50명 — 초과 시 배치 처리
-      for (let i = 0; i < attendees.length; i += 50) {
-        const batch = attendees.slice(i, i + 50)
+      for (let i = 0; i < attendeeEmailList.length; i += 50) {
+        const batch = attendeeEmailList.slice(i, i + 50)
         await sendEmail(batch, subject, html)
         results.push({ to: batch, role: 'attendees' })
       }
     }
+
+    console.log(`[notify] ${type} 발송 완료 — 예약자 1명 + 참석자 ${attendeeEmailList.length}명`)
 
     return new Response(
       JSON.stringify({ success: true, sent: results.length, results }),
