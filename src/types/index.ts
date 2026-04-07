@@ -45,12 +45,21 @@ export type UserRole = 'USER' | 'ADMIN'
 
 export interface AppUser {
   user_id:     string
-  employee_id: string   // 사번 (동명이인 구분 + SSO 로그인 식별자)
+  employee_id: string
   name:        string
   dept:        string
   role:        UserRole
   email:       string
-  is_active?:  boolean  // false = 퇴사자 (Azure AD 계정 삭제 감지), undefined = 재직 중
+  is_active?:  boolean
+}
+
+export interface DepartedUser {
+  id:          string
+  name:        string
+  email:       string
+  dept:        string
+  employee_id: string
+  departed_at: string  // ISO 타임스탬프
 }
 
 // ─── 예약 타입 ──────────────────────────────────────────────────────────────────

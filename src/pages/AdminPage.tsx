@@ -15,9 +15,9 @@ import {
   cancelBooking as apiCancelBooking, insertAuditLog, upsertRoom,
   toggleRoomActive, saveRoomFeatures, loadFeatures, updateProfile,
   loadAllRooms, loadBookingsByRange, expirePendingBooking,
-  syncAllUsers, loadUsers, type SyncResult,
+  syncAllUsers, loadUsers, loadDepartedUsers, type SyncResult,
 } from '../lib/api'
-import type { Booking, Room, AppUser } from '../types'
+import type { Booking, Room, AppUser, DepartedUser } from '../types'
 
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
 function addDaysStr(base: string, days: number): string {
@@ -911,14 +911,43 @@ export function AdminRooms({ showToast, isMobile }) {
 
 // ─── AdminUsers ────────────────────────────────────────────────────────────────
 export function AdminUsers({ users, setUsers, showToast, isMobile }) {
+  type FilterType = 'all' | 'admin' | 'unlogged' | 'departed'
+  const [filter,     setFilter]     = useState<FilterType>('all')
   const [searchQ,    setSearchQ]    = useState('')
   const [editUser,   setEditUser]   = useState<any>(null)
   const [form,       setForm]       = useState<Record<string,any>>({})
   const [syncing,    setSyncing]    = useState(false)
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null)
+  const [departed,   setDeparted]   = useState<DepartedUser[]>([])
 
-  // 검색 필터
-  const filtered = users.filter(u => {
+  // 퇴사자 목록 로드
+  useEffect(() => {
+    loadDepartedUsers().then(setDeparted).catch(() => {})
+  }, [])
+
+  // 동기화 로그
+  const SYNC_LOG_KEY = 'cnr_sync_logs'
+  const loadSyncLogs = (): SyncResult[] => {
+    try { return JSON.parse(localStorage.getItem(SYNC_LOG_KEY) ?? '[]') } catch { return [] }
+  }
+  const saveSyncLog = (r: SyncResult) => {
+    localStorage.setItem(SYNC_LOG_KEY, JSON.stringify([r, ...loadSyncLogs()].slice(0, 20)))
+  }
+  const [syncLogs, setSyncLogs] = useState<SyncResult[]>(loadSyncLogs)
+  const [showLogs, setShowLogs] = useState(false)
+
+  // 필터 카운트
+  const counts = {
+    all:      users.length,
+    admin:    users.filter(u => u.role === 'ADMIN').length,
+    unlogged: users.filter(u => !u.dept).length,
+    departed: departed.length,
+  }
+
+  // 검색 + 필터 적용
+  const filteredUsers = users.filter(u => {
+    if (filter === 'admin'    && u.role !== 'ADMIN') return false
+    if (filter === 'unlogged' && u.dept)             return false
     if (!searchQ) return true
     const q = searchQ.toLowerCase()
     return u.name.toLowerCase().includes(q)
@@ -926,8 +955,13 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
         || u.email.toLowerCase().includes(q)
   })
 
-  // 미로그인 인원 수 (dept 미채워진 사람 = 아직 SSO 로그인 안 한 직원)
-  const notYetLoggedIn = users.filter(u => !u.dept).length
+  const filteredDeparted = departed.filter(u => {
+    if (!searchQ) return true
+    const q = searchQ.toLowerCase()
+    return u.name.toLowerCase().includes(q)
+        || u.dept.toLowerCase().includes(q)
+        || u.email.toLowerCase().includes(q)
+  })
 
   // 권한 토글
   const toggleRole = async (uid: string) => {
@@ -944,38 +978,26 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
   }
 
   const openEdit = (u: any) => {
-    setForm(u ? { name: u.name, dept: u.dept, email: u.email, role: u.role } : { name: '', dept: '', email: '', role: 'USER' })
-    setEditUser(u ?? { user_id: null })
+    setForm({ name: u.name, dept: u.dept, email: u.email, role: u.role })
+    setEditUser(u)
   }
 
   const saveEdit = async () => {
     if (!editUser?.user_id) return
     if (!form.name.trim()) { showToast('이름은 필수입니다.', 'error'); return }
-    const prevUser = users.find(u => u.user_id === editUser.user_id)
+    const prev = users.find(u => u.user_id === editUser.user_id)
     setUsers(users.map(u => u.user_id === editUser.user_id ? { ...u, ...form } : u))
     try {
       await updateProfile(editUser.user_id, { name: form.name, dept: form.dept, role: form.role })
       showToast('수정되었습니다.')
       setEditUser(null)
     } catch (err: any) {
-      if (prevUser) setUsers(users.map(u => u.user_id === editUser.user_id ? prevUser : u))
+      if (prev) setUsers(users.map(u => u.user_id === editUser.user_id ? prev : u))
       showToast(err.message, 'error')
     }
   }
 
-  // 동기화 로그 로컬 저장 (최근 20건)
-  const SYNC_LOG_KEY = 'cnr_sync_logs'
-  const loadSyncLogs = (): SyncResult[] => {
-    try { return JSON.parse(localStorage.getItem(SYNC_LOG_KEY) ?? '[]') } catch { return [] }
-  }
-  const saveSyncLog = (result: SyncResult) => {
-    const logs = [result, ...loadSyncLogs()].slice(0, 20)
-    localStorage.setItem(SYNC_LOG_KEY, JSON.stringify(logs))
-  }
-  const [syncLogs,    setSyncLogs]    = useState<SyncResult[]>(loadSyncLogs)
-  const [showLogs,    setShowLogs]    = useState(false)
-
-  // Azure AD 전체 동기화
+  // Azure AD 동기화
   const handleSync = async () => {
     setSyncing(true)
     setSyncResult(null)
@@ -984,8 +1006,9 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
       setSyncResult(result)
       saveSyncLog(result)
       setSyncLogs(loadSyncLogs())
-      const refreshed = await loadUsers()
+      const [refreshed, refreshedDeparted] = await Promise.all([loadUsers(), loadDepartedUsers()])
       setUsers(refreshed)
+      setDeparted(refreshedDeparted)
       showToast(`동기화 완료 — ${result.synced}명 반영`, 'info')
     } catch (err: any) {
       showToast(err.message ?? 'Azure AD 동기화 실패', 'error')
@@ -994,59 +1017,35 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
     }
   }
 
+  // 필터 탭 목록
+  const filterTabs: { id: FilterType; label: string; color?: string }[] = [
+    { id: 'all',      label: `전체 ${counts.all}` },
+    { id: 'admin',    label: `Admin ${counts.admin}` },
+    { id: 'unlogged', label: `미로그인 ${counts.unlogged}`, color: '#92400E' },
+    { id: 'departed', label: `퇴사자 ${counts.departed}`, color: '#DC2626' },
+  ]
+
   return (
     <div className="anm">
-      {/* ── 헤더 행 ── */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12, flexWrap:'wrap', gap:10 }}>
-        <div>
-          <span style={{ fontSize:15, fontWeight:800, color:'#111' }}>
-            전체 {users.length}명
-          </span>
-          <span style={{ color:'#94A3B8', fontWeight:400, fontSize:13 }}>
-            {' '}· ADMIN {users.filter(u => u.role === 'ADMIN').length}명
-          </span>
-          {notYetLoggedIn > 0 && (
-            <span style={{
-              marginLeft:8, fontSize:11, fontWeight:700,
-              background:'#FEF3C7', color:'#92400E',
-              padding:'2px 8px', borderRadius:999,
-            }}>
-              미로그인 {notYetLoggedIn}명
-            </span>
-          )}
-          {users.filter(u => !u.is_active).length > 0 && (
-            <span style={{
-              marginLeft:8, fontSize:11, fontWeight:700,
-              background:'#FEF2F2', color:'#DC2626',
-              padding:'2px 8px', borderRadius:999,
-            }}>
-              퇴사 {users.filter(u => !u.is_active).length}명
-            </span>
-          )}
-        </div>
-        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-          {/* Azure AD 동기화 버튼 */}
-          <button
-            className="btn"
-            onClick={handleSync}
-            disabled={syncing}
-            style={{
-              display:'flex', alignItems:'center', gap:5,
-              padding:'6px 12px', fontSize:11, borderRadius:8,
-              background: syncing ? '#F1F5F9' : '#EFF6FF',
-              border:'1px solid #BFDBFE',
-              color: syncing ? '#94A3B8' : '#2563EB',
-              fontWeight:700, cursor: syncing ? 'not-allowed' : 'pointer',
-            }}
-          >
+      {/* ── 헤더 ── */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14, flexWrap:'wrap', gap:10 }}>
+        <div style={{ fontSize:15, fontWeight:800, color:'#111' }}>사용자 관리</div>
+        <div style={{ display:'flex', gap:8 }}>
+          <button className="btn" onClick={handleSync} disabled={syncing}
+            style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', fontSize:11, borderRadius:8,
+              background: syncing ? '#F1F5F9' : '#EFF6FF', border:'1px solid #BFDBFE',
+              color: syncing ? '#94A3B8' : '#2563EB', fontWeight:700, cursor: syncing ? 'not-allowed' : 'pointer' }}>
             <RotateCw size={11} strokeWidth={2.5} style={{ animation: syncing ? 'spin 1s linear infinite' : 'none' }}/>
             {syncing ? '동기화 중...' : 'Azure AD 동기화'}
           </button>
-          <button
-            className="btn"
-            onClick={() => exportCSV(users.map(u => ({ 이름:u.name, 부서:u.dept||'(미로그인)', 이메일:u.email, 권한:u.role })), '사용자목록')}
-            style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', fontSize:11, borderRadius:8, background:'#F8FAFC', border:'1px solid #E2E8F0', color:'#374151', fontWeight:700 }}
-          >
+          <button className="btn"
+            onClick={() => exportCSV(
+              filter === 'departed'
+                ? filteredDeparted.map(u => ({ 이름:u.name, 부서:u.dept, 이메일:u.email, 퇴사일:u.departed_at.slice(0,10) }))
+                : filteredUsers.map(u => ({ 이름:u.name, 부서:u.dept||'(미로그인)', 이메일:u.email, 권한:u.role })),
+              filter === 'departed' ? '퇴사자목록' : '사용자목록'
+            )}
+            style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', fontSize:11, borderRadius:8, background:'#F8FAFC', border:'1px solid #E2E8F0', color:'#374151', fontWeight:700 }}>
             <Download size={10}/> CSV
           </button>
         </div>
@@ -1054,27 +1053,19 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
 
       {/* ── 동기화 결과 배너 ── */}
       {syncResult && (
-        <div style={{
-          display:'flex', alignItems:'center', justifyContent:'space-between',
-          padding:'8px 14px', marginBottom:12, borderRadius:10,
-          background:'#F0FDF4', border:'1px solid #86EFAC',
-        }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 14px', marginBottom:10, borderRadius:10, background:'#F0FDF4', border:'1px solid #86EFAC', flexWrap:'wrap', gap:6 }}>
           <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
             <CheckCircle2 size={13} strokeWidth={2} color="#16A34A"/>
-            <span style={{ fontSize:12, fontWeight:600, color:'#15803D' }}>
-              Azure AD 동기화 완료
-            </span>
-            <span style={{ fontSize:11, color:'#64748B' }}>
-              총 {syncResult.total}명 조회 · {syncResult.synced}명 반영
-            </span>
-            {syncResult.deactivated > 0 && (
+            <span style={{ fontSize:12, fontWeight:600, color:'#15803D' }}>Azure AD 동기화 완료</span>
+            <span style={{ fontSize:11, color:'#64748B' }}>총 {syncResult.total}명 · {syncResult.synced}명 반영</span>
+            {syncResult.departed > 0 && (
               <span style={{ fontSize:11, fontWeight:700, color:'#DC2626', background:'#FEF2F2', padding:'1px 8px', borderRadius:999 }}>
-                퇴사자 {syncResult.deactivated}명 처리
+                퇴사자 {syncResult.departed}명
                 {syncResult.cancelledBookings > 0 && ` · 예약 ${syncResult.cancelledBookings}건 취소`}
               </span>
             )}
           </div>
-          <span style={{ fontSize:10, color:'#94A3B8', flexShrink:0 }}>
+          <span style={{ fontSize:10, color:'#94A3B8' }}>
             {new Date(syncResult.syncedAt).toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit' })}
           </span>
         </div>
@@ -1082,20 +1073,20 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
 
       {/* ── 동기화 이력 ── */}
       {syncLogs.length > 0 && (
-        <div style={{ marginBottom:12 }}>
+        <div style={{ marginBottom:10 }}>
           <button className="btn" onClick={() => setShowLogs(v => !v)}
             style={{ fontSize:11, color:'#94A3B8', background:'none', display:'flex', alignItems:'center', gap:4, padding:'2px 0' }}>
             <RotateCw size={10} strokeWidth={2}/>
             동기화 이력 {syncLogs.length}건 {showLogs ? '▲' : '▼'}
           </button>
           {showLogs && (
-            <div style={{ marginTop:8, background:'#F8FAFC', borderRadius:10, overflow:'hidden', border:'1px solid #E2E8F0' }}>
+            <div style={{ marginTop:6, background:'#F8FAFC', borderRadius:10, overflow:'hidden', border:'1px solid #E2E8F0' }}>
               {syncLogs.map((log, i) => (
-                <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 14px', borderBottom: i < syncLogs.length-1 ? '1px solid #F1F5F9' : 'none', fontSize:11 }}>
+                <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'7px 14px', borderBottom: i < syncLogs.length-1 ? '1px solid #F1F5F9' : 'none', fontSize:11 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                     <span style={{ color:'#64748B' }}>{new Date(log.syncedAt).toLocaleString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })}</span>
                     <span style={{ color:'#374151' }}>총 {log.total}명 · {log.synced}명 반영</span>
-                    {log.deactivated > 0 && <span style={{ color:'#DC2626', fontWeight:700 }}>퇴사 {log.deactivated}명</span>}
+                    {(log as any).departed > 0 && <span style={{ color:'#DC2626', fontWeight:700 }}>퇴사 {(log as any).departed}명</span>}
                   </div>
                   <span style={{ color: log.success ? '#16A34A' : '#DC2626', fontWeight:700 }}>{log.success ? '성공' : '실패'}</span>
                 </div>
@@ -1105,29 +1096,27 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
         </div>
       )}
 
-      {/* ── 미로그인 안내 배너 (동기화 후 미로그인 인원 있을 때만) ── */}
-      {notYetLoggedIn > 0 && (
-        <div style={{
-          display:'flex', alignItems:'center', gap:8,
-          padding:'8px 14px', marginBottom:12, borderRadius:10,
-          background:'#FFFBEB', border:'1px solid #FDE68A',
-        }}>
-          <AlertCircle size={12} strokeWidth={2} color="#D97706" style={{ flexShrink:0 }}/>
-          <span style={{ fontSize:11, color:'#92400E' }}>
-            부서 미표시 직원 {notYetLoggedIn}명은 SSO 로그인 시 자동으로 부서가 채워집니다.
-          </span>
-        </div>
-      )}
+      {/* ── 필터 탭 ── */}
+      <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' }}>
+        {filterTabs.map(t => (
+          <button key={t.id} className="btn" onClick={() => setFilter(t.id)}
+            style={{
+              padding:'5px 14px', borderRadius:999, fontSize:12, fontWeight:700, cursor:'pointer',
+              background: filter === t.id ? '#111' : '#F8FAFC',
+              color:      filter === t.id ? '#fff' : (t.color ?? '#374151'),
+              border:     filter === t.id ? 'none' : `1px solid ${t.color ? '#E2E8F0' : '#E2E8F0'}`,
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
 
       {/* ── 검색창 ── */}
       <div style={{ background:'#fff', borderRadius:12, padding:'10px 16px', marginBottom:12, display:'flex', alignItems:'center', gap:8 }}>
         <Search size={14} strokeWidth={1.8} style={{ color:'#94A3B8', flexShrink:0 }}/>
-        <input
-          value={searchQ}
-          onChange={e => setSearchQ(e.target.value)}
+        <input value={searchQ} onChange={e => setSearchQ(e.target.value)}
           placeholder="이름, 부서, 이메일로 검색..."
-          style={{ flex:1, border:'none', outline:'none', fontSize:13, background:'transparent', color:'#111' }}
-        />
+          style={{ flex:1, border:'none', outline:'none', fontSize:13, background:'transparent', color:'#111' }}/>
         {searchQ && (
           <button className="btn" onClick={() => setSearchQ('')} style={{ background:'none', color:'#CBD5E1', display:'flex', alignItems:'center' }}>
             <X size={11} strokeWidth={2}/>
@@ -1136,109 +1125,136 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
       </div>
 
       {/* ── 사용자 목록 ── */}
-      <div style={{ background:'#fff', borderRadius:16, overflow:'hidden' }}>
-        {isMobile ? (
-          <div>
-            {filtered.map(u => (
-              <div key={u.user_id} style={{ padding:'14px 20px', borderBottom:'1px solid #F8FAFC', display:'flex', alignItems:'center', gap:12 }}>
-                <div style={{ width:36, height:36, borderRadius:'50%', background:u.role==='ADMIN'?'#111':'#E2E8F0', color:u.role==='ADMIN'?'#fff':'#64748B', fontSize:13, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                  {u.name.charAt(0)}
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
-                    {u.name}{' '}
-                    {u.is_active === false
-                      ? <span style={{ fontSize:10, fontWeight:700, background:'#FEE2E2', color:'#DC2626', padding:'1px 6px', borderRadius:999 }}>퇴사</span>
-                      : u.dept
+      {filter !== 'departed' && (
+        <div style={{ background:'#fff', borderRadius:16, overflow:'hidden' }}>
+          {isMobile ? (
+            <div>
+              {filteredUsers.map(u => (
+                <div key={u.user_id} style={{ padding:'14px 20px', borderBottom:'1px solid #F8FAFC', display:'flex', alignItems:'center', gap:12 }}>
+                  <div style={{ width:36, height:36, borderRadius:'50%', background:u.role==='ADMIN'?'#111':'#E2E8F0', color:u.role==='ADMIN'?'#fff':'#64748B', fontSize:13, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                    {u.name.charAt(0)}
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
+                      {u.name}{' '}
+                      {u.dept
                         ? <span style={{ color:'#94A3B8', fontWeight:400 }}>{u.dept}</span>
                         : <span style={{ fontSize:10, fontWeight:700, background:'#FEF3C7', color:'#92400E', padding:'1px 6px', borderRadius:999 }}>미로그인</span>
-                    }
-                  </div>
-                  <div style={{ fontSize:11, color:'#94A3B8', marginTop:1 }}>{u.email}</div>
-                </div>
-                <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-                  <button className="btn" onClick={() => toggleRole(u.user_id)} style={{ padding:'4px 10px', fontSize:10, borderRadius:999, fontWeight:700, background:u.role==='ADMIN'?'#111':'#F8FAFC', color:u.role==='ADMIN'?'#fff':'#64748B', border:u.role==='ADMIN'?'none':'1px solid #E2E8F0' }}>
-                    {u.role}
-                  </button>
-                  <button className="btn" onClick={() => openEdit(u)} style={{ background:'#F1F5F9', color:'#64748B', padding:'4px 10px', fontSize:10, borderRadius:999 }}>수정</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-            <thead>
-              <tr style={{ background:'#F8FAFC' }}>
-                {['', '이름', '부서', '이메일', '권한', '관리'].map(h => (
-                  <th key={h} style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:700, color:'#94A3B8', borderBottom:'1px solid #F1F5F9' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(u => (
-                <tr key={u.user_id} style={{ borderBottom:'1px solid #F8FAFC', opacity: u.is_active === false ? 0.5 : 1 }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#FAFBFD')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                  <td style={{ padding:'10px 14px', width:48 }}>
-                    <div style={{ width:32, height:32, borderRadius:'50%', background:u.role==='ADMIN'?'#111':'#E2E8F0', color:u.role==='ADMIN'?'#fff':'#64748B', fontSize:12, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                      {u.name.charAt(0)}
+                      }
                     </div>
-                  </td>
-                  <td style={{ padding:'10px 14px', fontWeight:600, color:'#111' }}>
-                    {u.name}
-                    {u.is_active === false && (
-                      <span style={{ marginLeft:6, fontSize:10, fontWeight:700, background:'#FEE2E2', color:'#DC2626', padding:'1px 6px', borderRadius:999 }}>
-                        퇴사
-                      </span>
-                    )}
-                  </td>
-                  <td style={{ padding:'10px 14px', color:'#64748B' }}>
-                    {u.dept || (
-                      <span style={{ fontSize:10, fontWeight:700, background:'#FEF3C7', color:'#92400E', padding:'2px 8px', borderRadius:999 }}>
-                        미로그인
-                      </span>
-                    )}
-                  </td>
-                  <td style={{ padding:'10px 14px', color:'#64748B' }}>{u.email}</td>
-                  <td style={{ padding:'10px 14px' }}>
-                    <button className="btn" onClick={() => toggleRole(u.user_id)} style={{ padding:'4px 12px', fontSize:11, borderRadius:999, fontWeight:700, background:u.role==='ADMIN'?'#111':'#F8FAFC', color:u.role==='ADMIN'?'#fff':'#64748B', border:u.role==='ADMIN'?'none':'1px solid #E2E8F0' }}>
+                    <div style={{ fontSize:11, color:'#94A3B8', marginTop:1 }}>{u.email}</div>
+                  </div>
+                  <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                    <button className="btn" onClick={() => toggleRole(u.user_id)}
+                      style={{ padding:'4px 10px', fontSize:10, borderRadius:999, fontWeight:700, background:u.role==='ADMIN'?'#111':'#F8FAFC', color:u.role==='ADMIN'?'#fff':'#64748B', border:u.role==='ADMIN'?'none':'1px solid #E2E8F0' }}>
                       {u.role}
                     </button>
-                  </td>
-                  <td style={{ padding:'10px 14px' }}>
-                    <button className="btn" onClick={() => openEdit(u)} style={{ background:'#F1F5F9', color:'#64748B', padding:'6px 14px', fontSize:11, borderRadius:10 }}>수정</button>
-                  </td>
-                </tr>
+                    <button className="btn" onClick={() => openEdit(u)} style={{ background:'#F1F5F9', color:'#64748B', padding:'4px 10px', fontSize:10, borderRadius:999 }}>수정</button>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+            </div>
+          ) : (
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+              <thead>
+                <tr style={{ background:'#F8FAFC' }}>
+                  {['', '이름', '부서', '이메일', '권한', '관리'].map(h => (
+                    <th key={h} style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:700, color:'#94A3B8', borderBottom:'1px solid #F1F5F9' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUsers.map(u => (
+                  <tr key={u.user_id} style={{ borderBottom:'1px solid #F8FAFC' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#FAFBFD')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    <td style={{ padding:'10px 14px', width:48 }}>
+                      <div style={{ width:32, height:32, borderRadius:'50%', background:u.role==='ADMIN'?'#111':'#E2E8F0', color:u.role==='ADMIN'?'#fff':'#64748B', fontSize:12, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        {u.name.charAt(0)}
+                      </div>
+                    </td>
+                    <td style={{ padding:'10px 14px', fontWeight:600, color:'#111' }}>{u.name}</td>
+                    <td style={{ padding:'10px 14px', color:'#64748B' }}>
+                      {u.dept || <span style={{ fontSize:10, fontWeight:700, background:'#FEF3C7', color:'#92400E', padding:'2px 8px', borderRadius:999 }}>미로그인</span>}
+                    </td>
+                    <td style={{ padding:'10px 14px', color:'#64748B' }}>{u.email}</td>
+                    <td style={{ padding:'10px 14px' }}>
+                      <button className="btn" onClick={() => toggleRole(u.user_id)}
+                        style={{ padding:'4px 12px', fontSize:11, borderRadius:999, fontWeight:700, background:u.role==='ADMIN'?'#111':'#F8FAFC', color:u.role==='ADMIN'?'#fff':'#64748B', border:u.role==='ADMIN'?'none':'1px solid #E2E8F0' }}>
+                        {u.role}
+                      </button>
+                    </td>
+                    <td style={{ padding:'10px 14px' }}>
+                      <button className="btn" onClick={() => openEdit(u)} style={{ background:'#F1F5F9', color:'#64748B', padding:'6px 14px', fontSize:11, borderRadius:10 }}>수정</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
-      {/* ── 편집 드로어 (우측 슬라이드) ── */}
-      {/* 딤 배경 */}
-      <div
-        onClick={() => setEditUser(null)}
-        style={{
-          position:'fixed', inset:0, background:'rgba(15,23,42,0.4)',
-          backdropFilter:'blur(2px)', zIndex:900,
-          opacity: editUser ? 1 : 0,
-          pointerEvents: editUser ? 'auto' : 'none',
-          transition:'opacity 0.25s',
-        }}
+      {/* ── 퇴사자 목록 ── */}
+      {filter === 'departed' && (
+        <div style={{ background:'#fff', borderRadius:16, overflow:'hidden' }}>
+          {isMobile ? (
+            <div>
+              {filteredDeparted.map(u => (
+                <div key={u.id} style={{ padding:'14px 20px', borderBottom:'1px solid #F8FAFC', display:'flex', alignItems:'center', gap:12, opacity:0.7 }}>
+                  <div style={{ width:36, height:36, borderRadius:'50%', background:'#FEE2E2', color:'#DC2626', fontSize:13, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                    {u.name.charAt(0)}
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:600, color:'#374151' }}>
+                      {u.name}{' '}
+                      <span style={{ fontSize:10, fontWeight:700, background:'#FEE2E2', color:'#DC2626', padding:'1px 6px', borderRadius:999 }}>퇴사</span>
+                    </div>
+                    <div style={{ fontSize:11, color:'#94A3B8', marginTop:1 }}>{u.dept} · {u.email}</div>
+                    <div style={{ fontSize:10, color:'#CBD5E1', marginTop:2 }}>퇴사일: {u.departed_at.slice(0,10)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+              <thead>
+                <tr style={{ background:'#FEF2F2' }}>
+                  {['', '이름', '부서', '이메일', '퇴사일'].map(h => (
+                    <th key={h} style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:700, color:'#94A3B8', borderBottom:'1px solid #FEE2E2' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredDeparted.map(u => (
+                  <tr key={u.id} style={{ borderBottom:'1px solid #F8FAFC', opacity:0.75 }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#FFF5F5')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    <td style={{ padding:'10px 14px', width:48 }}>
+                      <div style={{ width:32, height:32, borderRadius:'50%', background:'#FEE2E2', color:'#DC2626', fontSize:12, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        {u.name.charAt(0)}
+                      </div>
+                    </td>
+                    <td style={{ padding:'10px 14px', fontWeight:600, color:'#374151' }}>
+                      {u.name}
+                      <span style={{ marginLeft:6, fontSize:10, fontWeight:700, background:'#FEE2E2', color:'#DC2626', padding:'1px 6px', borderRadius:999 }}>퇴사</span>
+                    </td>
+                    <td style={{ padding:'10px 14px', color:'#94A3B8' }}>{u.dept || '-'}</td>
+                    <td style={{ padding:'10px 14px', color:'#94A3B8' }}>{u.email}</td>
+                    <td style={{ padding:'10px 14px', color:'#94A3B8' }}>{u.departed_at.slice(0,10)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* ── 편집 드로어 ── */}
+      <div onClick={() => setEditUser(null)}
+        style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.4)', backdropFilter:'blur(2px)', zIndex:900, opacity: editUser ? 1 : 0, pointerEvents: editUser ? 'auto' : 'none', transition:'opacity 0.25s' }}
       />
-      {/* 드로어 패널 */}
-      <div style={{
-        position:'fixed', top:0, right:0, bottom:0,
-        width: isMobile ? '100%' : 380,
-        background:'#fff',
-        boxShadow:'-8px 0 40px rgba(0,0,0,0.12)',
-        zIndex:910,
-        display:'flex', flexDirection:'column',
-        transform: editUser ? 'translateX(0)' : 'translateX(100%)',
-        transition:'transform 0.28s cubic-bezier(0.32,0.72,0,1)',
-      }}>
-        {/* 드로어 헤더 */}
+      <div style={{ position:'fixed', top:0, right:0, bottom:0, width: isMobile ? '100%' : 380, background:'#fff', boxShadow:'-8px 0 40px rgba(0,0,0,0.12)', zIndex:910, display:'flex', flexDirection:'column', transform: editUser ? 'translateX(0)' : 'translateX(100%)', transition:'transform 0.28s cubic-bezier(0.32,0.72,0,1)' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'20px 24px', borderBottom:'1px solid #F1F5F9', flexShrink:0 }}>
           <div>
             <div style={{ fontSize:16, fontWeight:800, color:'#111' }}>사용자 수정</div>
@@ -1248,10 +1264,7 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
             <X size={14} strokeWidth={2}/>
           </button>
         </div>
-
-        {/* 드로어 바디 */}
         <div style={{ flex:1, overflowY:'auto', padding:'24px' }}>
-          {/* 아바타 */}
           {editUser && (
             <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:24, padding:'16px', background:'#F8FAFC', borderRadius:12 }}>
               <div style={{ width:44, height:44, borderRadius:'50%', background: form.role==='ADMIN' ? '#111' : '#E2E8F0', color: form.role==='ADMIN' ? '#fff' : '#64748B', fontSize:16, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
@@ -1263,13 +1276,11 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
               </div>
             </div>
           )}
-
-          {/* 입력 필드 */}
-          {[{ k:'name', l:'이름 *', placeholder:'이름을 입력하세요' }, { k:'dept', l:'부서', placeholder:'부서를 입력하세요' }].map(f => (
+          {[{ k:'name', l:'이름 *', ph:'이름을 입력하세요' }, { k:'dept', l:'부서', ph:'부서를 입력하세요' }].map(f => (
             <div key={f.k} style={{ marginBottom:16 }}>
               <label style={{ fontSize:11, fontWeight:700, color:'#94A3B8', display:'block', marginBottom:6 }}>{f.l}</label>
               <input value={form[f.k] || ''} onChange={e => setForm(p => ({ ...p, [f.k]: e.target.value }))}
-                placeholder={f.placeholder}
+                placeholder={f.ph}
                 style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1px solid #E2E8F0', fontSize:14, background:'#fff', outline:'none', boxSizing:'border-box' }}
                 onFocus={e => e.target.style.borderColor='#111'}
                 onBlur={e => e.target.style.borderColor='#E2E8F0'}/>
@@ -1291,8 +1302,6 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
             </div>
           </div>
         </div>
-
-        {/* 드로어 푸터 */}
         <div style={{ padding:'16px 24px 28px', borderTop:'1px solid #F1F5F9', display:'flex', gap:8, flexShrink:0 }}>
           <button className="btn" onClick={() => setEditUser(null)} style={{ flex:1, background:'#F1F5F9', color:'#64748B', padding:'13px', fontSize:14, borderRadius:12 }}>취소</button>
           <button className="btn" onClick={saveEdit} style={{ flex:2, background:'#111', color:'#fff', padding:'13px', fontSize:14, fontWeight:700, borderRadius:12 }}>저장</button>
@@ -1301,7 +1310,6 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
     </div>
   )
 }
-
 
 // ─── AdminApprovals ────────────────────────────────────────────────────────────
 // 승인 정책:

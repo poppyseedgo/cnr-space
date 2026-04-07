@@ -722,26 +722,36 @@ export async function searchGraphUsers(
 
 export interface SyncResult {
   success:           boolean
-  total:             number   // Azure AD에서 조회된 전체 인원
-  synced:            number   // profiles 테이블에 UPSERT된 인원
-  skipped:           number   // 이름/이메일 없어서 제외된 계정 수
-  deactivated:       number   // 퇴사 처리된 인원 (Azure AD에서 삭제됨)
-  cancelledBookings: number   // 퇴사자 미래 예약 취소 수
-  syncedAt:          string   // ISO 타임스탬프
+  total:             number
+  synced:            number
+  skipped:           number
+  departed:          number   // 퇴사 처리된 인원 (profiles 삭제 + departed_users 이력 저장)
+  cancelledBookings: number
+  syncedAt:          string
   error?:            string
 }
 
-/**
- * Azure AD 전체 임직원을 profiles 테이블에 사전 동기화
- * - 신규: name + email 삽입, dept = '' (미로그인 배지 표시)
- * - 기존: name + email 갱신, dept는 건드리지 않음 (로그인 후 채워진 값 보존)
- * - Admin 전용 기능
- */
 export async function syncAllUsers(): Promise<SyncResult> {
   const { data, error } = await supabase.functions.invoke('sync-all-users')
   if (error) throw new Error(error.message ?? 'Azure AD 동기화 실패')
   if (!data?.success) throw new Error(data?.error ?? 'Azure AD 동기화 실패')
   return data as SyncResult
+}
+
+// ── 퇴사자 목록 조회 ─────────────────────────────────────────────────────────
+export async function loadDepartedUsers(): Promise<import('../types').DepartedUser[]> {
+  if (!isSupabaseEnabled) return []
+  try {
+    const { data, error } = await supabase
+      .from('departed_users')
+      .select('id, name, email, dept, employee_id, departed_at')
+      .order('departed_at', { ascending: false })
+    if (error) throw error
+    return data ?? []
+  } catch (e) {
+    console.error('[api] loadDepartedUsers 실패:', e)
+    return []
+  }
 }
 
 /** notifications Realtime 구독 — userId 필터로 본인 알림만 수신 */
