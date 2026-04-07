@@ -618,7 +618,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       {/* 예약 생성 로딩 오버레이 — submit 후 250ms 이상 소요 시 표시 */}
       {isSubmitting && (
         <div style={{
-          position:"absolute", inset:0, zIndex:100,
+          position:"absolute", inset:0, zIndex:500,
           background:"rgba(255,255,255,0.88)",
           backdropFilter:"blur(3px)",
           borderRadius: isMobile ? "20px 20px 0 0" : 16,
