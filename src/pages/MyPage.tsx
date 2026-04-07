@@ -97,11 +97,17 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
     return{total,checkedIn:ci,cancelled:can,rate,topRoom,topCount:top?top[1]:0};
   },[myBookings,statYear,statMonth]);
 
-  // 이번달 요약
+  // 이번달 요약 — allMyBookings(전체 이력) 기준
   const thisPrefix=`${new Date().getFullYear()}-${fmt2(new Date().getMonth()+1)}`;
-  const thisBks=myBookings.filter(b=>tsDate(b.start_at).startsWith(thisPrefix)&&!b.autoCancelled);
-  const thisCI=thisBks.filter(b=>b.checkedIn).length;
-  const thisRate=thisBks.length>0?Math.round((thisCI/thisBks.length)*100):0;
+  const baseForStats = allMyBookings.length > 0 ? allMyBookings : myBookings;
+  const thisBks = baseForStats.filter(b => tsDate(b.start_at).startsWith(thisPrefix));
+  // 체크인율: 이미 지난 예약만 분모로 (미래 예약 제외)
+  const thisPastBks = thisBks.filter(b =>
+    tsDate(b.start_at) < today ||
+    (tsDate(b.start_at) === today && tsMin(b.end_at) <= now)
+  );
+  const thisCI = thisPastBks.filter(b => b.checkedIn).length;
+  const thisRate = thisPastBks.length > 0 ? Math.round((thisCI / thisPastBks.length) * 100) : 0;
 
   // 기간별 조회 리스트
   // 기간별 기록은 allMyBookings(전체) 기반, 없으면 myBookings fallback
