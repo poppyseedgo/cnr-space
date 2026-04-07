@@ -85,17 +85,18 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   const cancelled = useMemo(()=>myBookings.filter(b=>b.autoCancelled).sort((a,b)=>b.start_at.localeCompare(a.start_at)),[myBookings]);
   const tabData = tab==="upcoming"?upcoming:tab==="completed"?completed:cancelled;
 
-  // 월별 통계
+  // 월별 통계 — allMyBookings(전체 이력) 기준
   const monthStats = useMemo(()=>{
+    const base = allMyBookings.length > 0 ? allMyBookings : myBookings;
     const prefix=`${statYear}-${fmt2(statMonth+1)}`;
-    const mb=myBookings.filter(b=>tsDate(b.start_at).startsWith(prefix));
+    const mb=base.filter(b=>tsDate(b.start_at).startsWith(prefix));
     const total=mb.length, ci=mb.filter(b=>(b.checkedIn||b.earlyEnded)&&!b.autoCancelled).length, can=mb.filter(b=>b.autoCancelled).length;
     const rate=total>0?Math.round((ci/total)*100):0;
     const rc={};mb.filter(b=>!b.autoCancelled).forEach(b=>{rc[b.room_id]=(rc[b.room_id]||0)+1;});
     const top=Object.entries(rc).sort((a,b)=>(b[1] as number)-(a[1] as number))[0];
   const topRoom=top?(allRooms.find(r=>r.room_id===Number(top[0])) ?? null):null;
     return{total,checkedIn:ci,cancelled:can,rate,topRoom,topCount:top?top[1]:0};
-  },[myBookings,statYear,statMonth]);
+  },[allMyBookings,myBookings,statYear,statMonth]);
 
   // 이번달 요약 — allMyBookings(전체 이력) 기준
   const thisPrefix=`${new Date().getFullYear()}-${fmt2(new Date().getMonth()+1)}`;
@@ -155,11 +156,11 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
         </div>
         <div style={{display:"flex",gap:12}}>
           <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 16px",textAlign:"center"}}>
-            <div style={{fontSize:20,fontWeight:800,color:"#111"}}>{thisBks.length}</div>
+            <div style={{fontSize:20,fontWeight:800,color:"#111"}}>{allLoading ? "—" : thisBks.length}</div>
             <div style={{fontSize:11,color:"#94A3B8",fontWeight:600}}>이번 달 예약</div>
           </div>
           <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 16px",textAlign:"center"}}>
-            <div style={{fontSize:20,fontWeight:800,color:thisRate>=70?"#16A34A":"#D97706"}}>{thisRate}%</div>
+            <div style={{fontSize:20,fontWeight:800,color:thisRate>=70?"#16A34A":"#D97706"}}>{allLoading ? "—" : `${thisRate}%`}</div>
             <div style={{fontSize:11,color:"#94A3B8",fontWeight:600}}>체크인율</div>
           </div>
         </div>
