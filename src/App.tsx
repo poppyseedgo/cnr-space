@@ -5,7 +5,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from './utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById, getAdminOnlyRooms } from './data/master'
-import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking, upsertBookingAttendees, insertNotification, loadNotifications, markNotificationRead, markAllNotificationsRead, subscribeNotifications, expirePendingBooking, adminForceCancel, type AppNotification } from './lib/api'
+import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking, upsertBookingAttendees, getBookingAttendees, insertNotification, loadNotifications, markNotificationRead, markAllNotificationsRead, subscribeNotifications, expirePendingBooking, adminForceCancel, type AppNotification } from './lib/api'
 import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView, RoomDetailModal } from './components/room/HomeView'
@@ -202,7 +202,7 @@ function AppContent() {
 
   // ── 이메일 알림 발송 (Fire & Forget — 실패해도 예약 로직에 영향 없음) ──
   const sendNotification = useCallback(async (
-    type: 'created' | 'updated' | 'cancelled' | 'noshow' | 'pending' | 'approved' | 'rejected',
+    type: 'created' | 'updated' | 'cancelled' | 'noshow' | 'pending' | 'approved' | 'rejected' | 'attendee_removed',
     booking: any,
     attendeeEmails: string[] = []
   ) => {
@@ -644,11 +644,19 @@ function AppContent() {
     setModal(null);
     try {
       const prevBooking = bookings.find(b => b.id === originalId)
+
+      // diff 계산: upsertBookingAttendees 전에 현재 참석자 조회
+      const oldAttendeeEmails = changes.attendees !== undefined
+        ? await getBookingAttendees(originalId)
+        : []
+
       await apiUpdateBooking(originalId, changes);
-      // attendees 변경 시 booking_attendees 테이블도 업데이트
+
+      // attendees 변경 시 booking_attendees 업데이트
       if (changes.attendees !== undefined) {
-        upsertBookingAttendees(originalId, changes.attendees).catch(() => {})
+        await upsertBookingAttendees(originalId, changes.attendees)
       }
+
       // 예약 변경 인앱 알림
       if (authUser?.user_id && prevBooking) {
         const r = rooms.find(rm => rm.room_id === prevBooking.room_id)
@@ -667,15 +675,34 @@ function AppContent() {
         afterData:  { title: changes.title, start_at: changes.start_at, end_at: changes.end_at, room_id: changes.room_id }
       }).catch(() => {})
       showToast("예약이 변경되었습니다.");
+
       // 이메일 알림 발송
       const updatedB = bookings.find(b => b.id === originalId);
       if (updatedB) {
         const updatedRoom = rooms.find(r => r.room_id === (changes.room_id ?? updatedB.room_id))
-        sendNotification('updated', {
+        const basePayload = {
           ...updatedB, ...changes,
           user_email: authUser?.email,
           room_name:  updatedRoom?.room_name_ko ?? updatedRoom?.room_name ?? String(updatedB.room_id) + 'F',
-        });
+        }
+
+        // 변경 알림 (예약자 + 유지/신규 참석자)
+        sendNotification('updated', basePayload)
+
+        // 제거된 참석자 별도 알림
+        if (changes.attendees !== undefined) {
+          const newAttendeeEmails = (changes.attendees as any[])
+            .map(a => typeof a === 'string' ? a : (a as any).email ?? '')
+            .filter(Boolean)
+          const removedEmails = oldAttendeeEmails.filter(e => !newAttendeeEmails.includes(e))
+          if (removedEmails.length > 0) {
+            sendNotification('attendee_removed', {
+              ...basePayload,
+              user_email:     null,           // 예약자에게는 발송 안 함
+              removed_emails: removedEmails,  // Edge Function에서 직접 사용
+            })
+          }
+        }
       }
     } catch (err: any) {
       // 실패 시 원복
