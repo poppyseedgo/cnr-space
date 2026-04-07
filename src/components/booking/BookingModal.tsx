@@ -58,23 +58,31 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   const [recur, setRecur] = useState("NEVER"); // "NEVER" | "EVERY_DAY" | "EVERY_WEEK"
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [graphUsers,  setGraphUsers]  = useState<AppUser[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const [graphUsers,    setGraphUsers]    = useState<AppUser[]>([]);
+  const [isSearching,   setIsSearching]   = useState(false);
+  const [searchedQuery, setSearchedQuery] = useState("");
 
-  // attendeeQ debounce 350ms → Graph API 검색
+  // attendeeQ debounce 200ms → Graph API 검색
   useEffect(() => {
-    if (attendeeQ.trim().length < 1) {
+    const q = attendeeQ.trim();
+    // 입력값 없으면 즉시 동기 초기화 (리스트 잔존 방지)
+    if (q.length < 1) {
       setGraphUsers([]);
       setIsSearching(false);
+      setSearchedQuery("");
       return;
     }
+    // 검색 중 표시를 debounce 전에 즉시 세팅 (깜빡임 방지)
     setIsSearching(true);
     const timer = setTimeout(async () => {
-      const results = await searchGraphUsers(attendeeQ.trim(), currentUserEmail || undefined);
+      const results = await searchGraphUsers(q, currentUserEmail || undefined);
       setGraphUsers(results);
+      setSearchedQuery(q);
       setIsSearching(false);
-    }, 350);
-    return () => clearTimeout(timer);
+    }, 200);
+    return () => {
+      clearTimeout(timer);
+    };
   }, [attendeeQ, currentUserEmail]);
 
 
@@ -334,7 +342,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             검색 중...
           </div>
         )}
-        {attendeeFocus && attendeeQ.trim().length > 0 && !isSearching && attendeeSuggestions.length === 0 && (
+        {attendeeFocus && attendeeQ.trim().length > 0 && !isSearching && searchedQuery === attendeeQ.trim() && attendeeSuggestions.length === 0 && (
           <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:400,
             background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
             padding:"12px 14px",fontSize:12,color:"#94A3B8",
@@ -1103,7 +1111,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                     검색 중...
                   </div>
                 )}
-                {attendeeFocus && attendeeQ.trim().length > 0 && !isSearching && attendeeSuggestions.length === 0 && (
+                {attendeeFocus && attendeeQ.trim().length > 0 && !isSearching && searchedQuery === attendeeQ.trim() && attendeeSuggestions.length === 0 && (
                   <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:400,
                     background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
                     padding:"12px 14px",fontSize:12,color:"#94A3B8",
