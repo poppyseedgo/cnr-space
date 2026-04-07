@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
     const { query, excludeId } = await req.json() as { query: string; excludeId?: string }
 
     // 2글자 미만 검색 차단 (Graph API $search 최소 2자 권장)
-    if (!query || query.trim().length < 2) {
+    if (!query || query.trim().length < 1) {
       return new Response(JSON.stringify({ users: [] }), {
         headers: { ...CORS, 'Content-Type': 'application/json' },
       })

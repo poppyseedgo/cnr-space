@@ -63,7 +63,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
 
   // attendeeQ debounce 350ms → Graph API 검색
   useEffect(() => {
-    if (attendeeQ.trim().length < 2) {
+    if (attendeeQ.trim().length < 1) {
       setGraphUsers([]);
       setIsSearching(false);
       return;
