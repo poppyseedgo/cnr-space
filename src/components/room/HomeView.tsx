@@ -5,10 +5,10 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtRangeFull, fmtTimeFull, fmtTSRangeFull, fmtTSFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../../utils/time'
-import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, FLOORS, getFloor, getRoomFeatures, getRoomById, getRoomThumbnail, getRoomGallery } from '../../data/master'
+import { FLOORS, getFloor } from '../../data/floors'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
-export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, setSearchQ, filterFloor, setFilterFloor, onBook, onDetail, onBookingDetail, onCheckIn, onEarlyEnd, onCancel, currentUser, dark}) {
+export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearchQ, filterFloor, setFilterFloor, onBook, onDetail, onBookingDetail, onCheckIn, onEarlyEnd, onCancel, currentUser, dark}) {
   const { isMobile, isTablet } = useBreakpoint();
   const today = todayStr();
   const now   = nowMinutes();
@@ -120,7 +120,7 @@ export function HomeView({bookings, rooms:roomsData=ROOMS_DB, tick, searchQ, set
               오늘 예약 없음
             </div>
           ) : myBookings.map(b => {
-            const r = roomsData.find(r=>r.room_id===b.room_id) ?? ROOMS_DB.find(r=>r.room_id===b.room_id);
+            const r = roomsData.find(r=>r.room_id===b.room_id);
             const isActive   = tsDate(b.start_at)===today && tsMin(b.start_at)<=now && now<tsMin(b.end_at) && !b.autoCancelled;
             const isPast     = tsMin(b.end_at) < now;
             const minsUntil  = tsMin(b.start_at) - now;   // 시작까지 남은 분
@@ -307,8 +307,8 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
   // 다음 예약 (현재 시각 이후 가장 가까운 것)
   const nextBk   = todayBks.find(b => tsMin(b.start_at) > now);
 
-  const features  = getRoomFeatures(r.room_id);
-  const thumbnail = (r.thumbnail && r.thumbnail.length > 0) ? r.thumbnail : getRoomThumbnail(r.room_id);
+  const features  = r.features ?? [];
+  const thumbnail = r.thumbnail ?? '';
 
   return (
     <div className="anm room-card bg-white dark:bg-slate-800 rounded-2xl flex flex-col"
@@ -510,11 +510,11 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
 export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {room:any,bookings:any[],onClose:any,onBook:any,onDetail?:any}) {
   const { isMobile } = useBreakpoint();
   const floor    = getFloor(r.floor_id);
-  const features = getRoomFeatures(r.room_id);
+  const features = r.features ?? [];
   const today    = todayStr();
   const todayBks = bookings.filter(b=>b.room_id===r.room_id&&tsDate(b.start_at)===today&&!b.autoCancelled&&!b.earlyEnded).sort((a,b)=>a.start_at.localeCompare(b.start_at));
   const status   = getRoomStatus(r.room_id, bookings, today);
-  const thumbnail = (r.thumbnail && r.thumbnail.length > 0) ? r.thumbnail : getRoomThumbnail(r.room_id);
+  const thumbnail = r.thumbnail ?? '';
 
   const [lightbox, setLightbox] = useState(false);
 

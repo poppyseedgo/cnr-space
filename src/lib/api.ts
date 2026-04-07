@@ -296,10 +296,6 @@ function localSaveBookings(bookings: Booking[]) {
 // ── rooms 테이블 전체 로드 (Supabase) ────────────────────────────────────────
 /** Admin 전용: is_active 필터 없이 전체 회의실 로드 */
 export async function loadAllRooms(): Promise<Room[]> {
-  if (!isSupabaseEnabled) {
-    const { ROOMS_DB } = await import('../data/master')
-    return ROOMS_DB
-  }
   try {
     const [roomsRes, roomFeaturesRes] = await Promise.all([
       supabase.from('rooms').select('*').order('room_id'),
@@ -331,18 +327,12 @@ export async function loadAllRooms(): Promise<Room[]> {
     }))
   } catch (e) {
     console.error('[api] loadAllRooms 실패:', e)
-    const { ROOMS_DB } = await import('../data/master')
-    return ROOMS_DB
+    return []
   }
 }
 
 export async function loadRooms(): Promise<Room[]> {
-  if (!isSupabaseEnabled) {
-    const { ROOMS_DB } = await import('../data/master')
-    return ROOMS_DB
-  }
   try {
-    // rooms + room_features + features 한 번에 조회
     const [roomsRes, featuresRes, roomFeaturesRes] = await Promise.all([
       supabase.from('rooms').select('*').eq('is_active', true).order('room_id'),
       supabase.from('features').select('*'),
@@ -376,8 +366,7 @@ export async function loadRooms(): Promise<Room[]> {
     }))
   } catch (e) {
     console.error('[api] loadRooms 실패:', e)
-    const { ROOMS_DB } = await import('../data/master')
-    return ROOMS_DB
+    return []
   }
 }
 
@@ -388,10 +377,6 @@ export async function saveRooms(_rooms: Room[]): Promise<void> {
 
 // ── profiles 테이블 전체 로드 (Supabase) ──────────────────────────────────────
 export async function loadUsers(): Promise<AppUser[]> {
-  if (!isSupabaseEnabled) {
-    const { APP_USERS } = await import('../data/master')
-    return APP_USERS
-  }
   try {
     const { data, error } = await supabase
       .from('profiles')
@@ -410,8 +395,7 @@ export async function loadUsers(): Promise<AppUser[]> {
     }))
   } catch (e) {
     console.error('[api] loadUsers 실패:', e)
-    const { APP_USERS } = await import('../data/master')
-    return APP_USERS
+    return []
   }
 }
 

@@ -4,12 +4,12 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../../utils/time'
-import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById } from '../../data/master'
+import { getFloor } from '../../data/floors'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
 export function BookingDoneModal({booking:b, onClose, rooms:rp=[]}) {
   const { isMobile } = useBreakpoint();
-  const r = (rp.length>0?rp:ROOMS_DB).find(r=>r.room_id===b.room_id);
+  const r = rp.find(r=>r.room_id===b.room_id);
   const floor = getFloor(r?.floor_id);
 
   return (

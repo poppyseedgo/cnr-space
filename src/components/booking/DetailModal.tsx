@@ -4,14 +4,14 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtTimeFull, fmtTSFull, fmtTSRangeFull, fmtDateFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../../utils/time'
-import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById } from '../../data/master'
+import { getFloor } from '../../data/floors'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
 export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser, rooms:rp=[]}) {
   const { isMobile } = useBreakpoint();
-  const r=(rp.length>0?rp:ROOMS_DB).find(r=>r.room_id===b.room_id);
+  const r=rp.find(r=>r.room_id===b.room_id);
   const floor=r ? getFloor(r.floor_id) : null;
-  const features=r ? getRoomFeatures(r.room_id) : [];
+  const features=r?.features ?? [];
   const isToday=tsDate(b.start_at)===todayStr(),now=nowMinutes();
   const sm=tsMin(b.start_at),em=tsMin(b.end_at);
   const isAct=isToday&&sm<=now&&now<em&&!b.autoCancelled&&!b.earlyEnded,nci=isAct&&!b.checkedIn;

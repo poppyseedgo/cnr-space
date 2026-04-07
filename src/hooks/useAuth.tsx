@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { supabase, isSupabaseEnabled } from '../lib/supabase'
-import { APP_USERS } from '../data/master'
 import type { AppUser } from '../types'
 
 const ALLOWED_DOMAIN = '@cnrres.com'
@@ -59,7 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .from('profiles').select('*').eq('email', email).single()
       if (!error && data) return profileToUser(data)
     } catch {}
-    return APP_USERS.find(u => u.email === email) ?? null
+    return null
   }
 
   // Graph API로 부서 가져와 DB 저장 (첫 SSO 로그인 시, fire-and-forget)
@@ -193,14 +192,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     setSsoError(null)
-    if (!isSupabaseEnabled) {
-      const found = APP_USERS.find(u => u.email === email)
-      if (!found)                 throw new Error('등록되지 않은 이메일입니다.')
-      if (password !== 'cnr1234') throw new Error('비밀번호가 올바르지 않습니다.')
-      setCurrentUser(found)
-      localStorage.setItem('cnr_mock_user', JSON.stringify(found))
-      return
-    }
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
       if (error.message.includes('Invalid login'))       throw new Error('이메일 또는 비밀번호가 올바르지 않습니다.')

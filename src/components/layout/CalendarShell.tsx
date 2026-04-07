@@ -5,7 +5,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtTSRangeFull, fmtRangeFull, fmtTSFull, fmtTimeFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../../utils/time'
-import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, FLOORS, getFloor, getRoomFeatures, getRoomById, getRoomThumbnail, getRoomGallery } from '../../data/master'
+import { FLOORS, getFloor } from '../../data/floors'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
 export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setSelectedDate, calView, setCalView, onBookingClick, onNewBooking, onCheckIn, filterFloor, setFilterFloor}) {
@@ -21,7 +21,7 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
     else setSelectedDate(addDays(selectedDate,dir));
   };
 
-  const allRooms = roomsProp.length > 0 ? roomsProp : ROOMS_DB;  // fallback
+  const allRooms = roomsProp;
   const filteredRooms = filterFloor==="ALL" ? allRooms.filter(r=>r.is_active) : allRooms.filter(r=>r.is_active&&r.floor_id===parseInt(filterFloor));
   const filteredBks = filterFloor==="ALL" ? bookings : bookings.filter(b=>filteredRooms.some(r=>r.room_id===b.room_id));
 
@@ -241,7 +241,7 @@ export function MonthlyView({bookings,selectedDate,onDayClick,onBookingClick,roo
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:2}}>
                 {dbs.slice(0,3).map(b=>{
-                  const allRooms = mvRooms.length>0 ? mvRooms : ROOMS_DB;
+                  const allRooms = mvRooms;
                   const r = allRooms.find(r=>r.room_id===b.room_id);
                   if (!r) return null;  /* 층 필터로 숨겨진 회의실 예약 → 렌더 스킵 */
                   return <div key={b.id} onClick={e=>{e.stopPropagation();onBookingClick(b);}} style={{background:r.color+"18",borderLeft:`2px solid ${r.color}`,borderRadius:3,padding:"2px 5px",fontSize:10,color:r.color,fontWeight:600,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",cursor:"pointer"}}>{fmtTS(b.start_at)} {b.title}</div>;
@@ -605,7 +605,7 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
         RH=80,  // 회의실 1행 높이(px) — 9개 × 80 = 720px
         LW=148; // 왼쪽 회의실명 영역 너비
 
-  const rooms = (dvRooms.length>0?dvRooms:ROOMS_DB).filter(r=>r.is_active);
+  const rooms = dvRooms.filter(r=>r.is_active);
   const totalW = CW * HOURS.length;
 
   // 현재시간 위치 — 가로 스크롤 자동 이동
@@ -822,7 +822,7 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
             {/* 회의실 헤더 컬럼들 */}
             {rooms.map((room, ri) => {
               const floor    = getFloor(room.floor_id);
-              const features = getRoomFeatures(room.room_id);
+              const features = room.features ?? [];
               const status   = getRoomStatus(room.room_id, bookings, selectedDate);
               const isAvail  = status.type==="AVAILABLE" || status.type==="SOON";
               return (
@@ -994,7 +994,7 @@ export function ListView({bookings,selectedDate,setSelectedDate,onItemClick,onCh
         ? <div style={{textAlign:"center",padding:"80px 0",color:"#CBD5E1"}}><div style={{display:"flex",justifyContent:"center",marginBottom:16}}><Inbox size={48} strokeWidth={1.2} color="#CBD5E1"/></div><div style={{fontSize:17,fontWeight:600,color:"#94A3B8"}}>이 날 예약이 없습니다</div></div>
         : <div style={{display:"flex",flexDirection:"column",gap:10,maxWidth:800}}>
             {sorted.map(b=>{
-              const r=(lvRooms.length>0?lvRooms:ROOMS_DB).find(r=>r.room_id===b.room_id);
+              const r=lvRooms.find(r=>r.room_id===b.room_id);
               const fl=getFloor(r.floor_id);
               const isAct=isToday&&tsMin(b.start_at)<=now&&now<tsMin(b.end_at)&&!b.earlyEnded;
               const nci=isAct&&!b.checkedIn;

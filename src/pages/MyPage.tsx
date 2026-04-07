@@ -4,7 +4,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtRangeFull, fmtTSFull, fmtTimeFull, fmtTSRangeFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../utils/time'
-import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById } from '../data/master'
+
 import { cancelBooking as apiCancelBooking, upsertBookingAttendees } from '../lib/api'
 import { WeeklyView } from '../components/layout/CalendarShell'
 import { supabase } from '../lib/supabase'
@@ -17,8 +17,8 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   const [statMonth, setStatMonth] = useState(()=>new Date().getMonth());
   const today = todayStr();
   const now = nowMinutes();
-  const allUsers = up.length>0 ? up : APP_USERS;
-  const allRooms = rp.length>0 ? rp : ROOMS_DB;  // 컴포넌트 스코프 — 모든 곳에서 접근 가능
+  const allUsers = up;
+  const allRooms = rp;
   const userInfo = allUsers.find(u=>u.name===currentUser);
 
   // 기간별 조회
@@ -27,7 +27,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   const [listStatus, setListStatus] = useState("ALL"); // ALL | upcoming | completed | cancelled
   // 전체 내 예약 기록 (마이페이지 전용 — 기간 제한 없이)
   const [allMyBookings, setAllMyBookings] = useState<Booking[]>([]);
-  const [allLoading, setAllLoading] = useState(true);
+  const [allLoading, setAllLoading] = useState(false);
 
   useEffect(() => {
     if (!authUserId) return;
@@ -107,7 +107,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
     tsDate(b.start_at) < today ||
     (tsDate(b.start_at) === today && tsMin(b.end_at) <= now)
   );
-  const thisCI = thisPastBks.filter(b => b.checkedIn || b.earlyEnded).length;
+  const thisCI = thisPastBks.filter(b => b.checkedIn).length;
   const thisRate = thisPastBks.length > 0 ? Math.round((thisCI / thisPastBks.length) * 100) : 0;
 
   // 기간별 조회 리스트

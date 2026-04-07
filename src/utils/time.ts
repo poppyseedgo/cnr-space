@@ -1,5 +1,4 @@
 import type { Booking, ConflictResult, RoomStatus } from '../types'
-import { ROOMS_DB, ADMIN_ONLY_ROOMS } from '../data/master'
 
 // ─── Util ─────────────────────────────────────────────────────────────────────
 export const HOURS = Array.from({ length: 13 }, (_, i) => i + 7);

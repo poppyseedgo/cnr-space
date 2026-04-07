@@ -5,7 +5,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../../utils/time'
-import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById } from '../../data/master'
+import { getFloor } from '../../data/floors'
 import { searchGraphUsers } from '../../lib/api'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
@@ -131,11 +131,11 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
 
   const validTime   = form.start < form.end;
   const durMin      = timeToMin(form.end) - timeToMin(form.start);
-  const allRooms = roomsProp.length > 0 ? roomsProp : ROOMS_DB;
+  const allRooms = roomsProp;
   const selectedRoom     = form.room_id ? allRooms.find(r=>r.room_id===form.room_id) : null;
   const isApprovalRoom   = !editBooking && !isAdmin && (selectedRoom?.is_admin_only ?? false);  // 일반 유저만 승인 요청, Admin은 바로 예약
   const selectedFloor    = selectedRoom  ? getFloor(selectedRoom.floor_id) : null;
-  const selectedFeatures = selectedRoom  ? getRoomFeatures(selectedRoom.room_id) : [];
+  const selectedFeatures = selectedRoom?.features ?? [];
 
   // ── 편집 모드에서 자기 자신 예약 제외 (충돌 검사 용) ──
   const bookingsForCheck = editBooking

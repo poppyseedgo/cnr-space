@@ -9,7 +9,7 @@ import {
   todayStr, tsDate, tsMin, fmtTSDateFull, fmtTSRangeFull,
   fmt2, objToStr,
 } from '../utils/time'
-import { FLOORS, getFloor } from '../data/master'
+import { FLOORS, getFloor } from '../data/floors'
 import {
   uploadRoomImage, deleteRoomImage, saveRoomImages, loadRoomImages,
   cancelBooking as apiCancelBooking, insertAuditLog, upsertRoom,
