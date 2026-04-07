@@ -904,9 +904,37 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
   const [editUser,setEditUser]=useState<any>(null)
   const [form,setForm]=useState<Record<string,any>>({})
   const filtered=users.filter(u=>{if(!searchQ)return true;const q=searchQ.toLowerCase();return u.name.toLowerCase().includes(q)||u.dept.toLowerCase().includes(q)||u.email.toLowerCase().includes(q)})
-  const toggleRole=async(uid:string)=>{const next=users.find(u=>u.user_id===uid)?.role==='ADMIN'?'USER':'ADMIN';try{await updateProfile(uid,{role:next});setUsers(users.map(u=>u.user_id===uid?{...u,role:next}:u));showToast(`권한이 ${next}로 변경되었습니다.`,'info')}catch(err:any){showToast(err.message,'error')}}
+  const toggleRole=async(uid:string)=>{
+    const prev=users.find(u=>u.user_id===uid)?.role
+    const next=prev==='ADMIN'?'USER':'ADMIN'
+    // 낙관적 UI 업데이트
+    setUsers(users.map(u=>u.user_id===uid?{...u,role:next}:u))
+    try{
+      await updateProfile(uid,{role:next})
+      showToast(`권한이 ${next}로 변경되었습니다.`,'info')
+    }catch(err:any){
+      // DB 반영 실패 → UI 원복
+      setUsers(users.map(u=>u.user_id===uid?{...u,role:prev??'USER'}:u))
+      showToast(err.message,'error')
+    }
+  }
   const openEdit=(u:any)=>{setForm(u?{name:u.name,dept:u.dept,email:u.email,role:u.role}:{name:'',dept:'',email:'',role:'USER'});setEditUser(u??{user_id:null})}
-  const saveEdit=async()=>{if(!editUser?.user_id)return;if(!form.name.trim()){showToast('이름은 필수입니다.','error');return};try{await updateProfile(editUser.user_id,{name:form.name,dept:form.dept,role:form.role});setUsers(users.map(u=>u.user_id===editUser.user_id?{...u,...form}:u));showToast('수정되었습니다.');setEditUser(null)}catch(err:any){showToast(err.message,'error')}}
+  const saveEdit=async()=>{
+    if(!editUser?.user_id)return
+    if(!form.name.trim()){showToast('이름은 필수입니다.','error');return}
+    const prevUser=users.find(u=>u.user_id===editUser.user_id)
+    // 낙관적 UI 업데이트
+    setUsers(users.map(u=>u.user_id===editUser.user_id?{...u,...form}:u))
+    try{
+      await updateProfile(editUser.user_id,{name:form.name,dept:form.dept,role:form.role})
+      showToast('수정되었습니다.')
+      setEditUser(null)
+    }catch(err:any){
+      // DB 반영 실패 → UI 원복
+      if(prevUser) setUsers(users.map(u=>u.user_id===editUser.user_id?prevUser:u))
+      showToast(err.message,'error')
+    }
+  }
   return(
     <div className="anm">
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:10}}>

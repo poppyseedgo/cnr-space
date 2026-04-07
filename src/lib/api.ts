@@ -553,13 +553,33 @@ export async function loadFeatures(): Promise<{ feature_id: number; feature_key:
 
 // ── profiles 테이블 수정 (AdminPage 사용자 관리) ──────────────────────────────
 
-/** 사용자 role/dept/name 수정 */
+/** 사용자 role/dept/name 수정
+ *
+ * ⚠️ RLS 요구사항: profiles 테이블에 아래 정책이 있어야 관리자가 타인 프로필 수정 가능
+ *   CREATE POLICY "admins_can_update_profiles" ON public.profiles
+ *   FOR UPDATE TO authenticated
+ *   USING ( (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'ADMIN' )
+ *   WITH CHECK ( (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'ADMIN' );
+ */
 export async function updateProfile(userId: string, fields: {
   name?: string; dept?: string; role?: string; employee_id?: string
 }): Promise<void> {
-  const { error } = await supabase
-    .from('profiles').update(fields).eq('id', userId)
+  // .select('id')를 추가해 실제 업데이트된 행 수를 확인
+  // RLS가 차단하면 error는 null이지만 data가 빈 배열 → 명시적 에러 발생
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(fields)
+    .eq('id', userId)
+    .select('id')
+
   if (error) throw new Error(`사용자 정보 수정 실패: ${error.message}`)
+
+  if (!data || data.length === 0) {
+    throw new Error(
+      'DB에 반영되지 않았습니다. Supabase 대시보드에서 profiles 테이블의 UPDATE RLS 정책을 확인해주세요.\n' +
+      '필요한 정책: admins_can_update_profiles (ADMIN 역할 사용자가 모든 프로필 수정 허용)'
+    )
+  }
 }
 
 /** pending 예약 승인 기한 초과 처리 (status 유지, auto_cancelled=true) */
