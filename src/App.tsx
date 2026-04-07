@@ -113,7 +113,9 @@ function AppContent() {
     }
     // 최초 로그인(hash 없을 때)만 홈으로 이동, 새로고침 시 현재 hash 유지
     const currentHash = window.location.hash.replace('#', '');
-    if (!['home','calendar','mybookings','mypage','admin'].includes(currentHash)) {
+    const isValidHash = ['home','calendar','mybookings','mypage','admin'].includes(currentHash)
+      || currentHash.startsWith('admin-tab-');
+    if (!isValidHash) {
       setView('home');
     }
     setLoading(true);
