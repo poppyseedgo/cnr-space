@@ -27,7 +27,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   const [listStatus, setListStatus] = useState("ALL"); // ALL | upcoming | completed | cancelled
   // 전체 내 예약 기록 (마이페이지 전용 — 기간 제한 없이)
   const [allMyBookings, setAllMyBookings] = useState<Booking[]>([]);
-  const [allLoading, setAllLoading] = useState(false);
+  const [allLoading, setAllLoading] = useState(true);
 
   useEffect(() => {
     if (!authUserId) return;
@@ -107,7 +107,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
     tsDate(b.start_at) < today ||
     (tsDate(b.start_at) === today && tsMin(b.end_at) <= now)
   );
-  const thisCI = thisPastBks.filter(b => b.checkedIn).length;
+  const thisCI = thisPastBks.filter(b => b.checkedIn || b.earlyEnded).length;
   const thisRate = thisPastBks.length > 0 ? Math.round((thisCI / thisPastBks.length) * 100) : 0;
 
   // 기간별 조회 리스트
