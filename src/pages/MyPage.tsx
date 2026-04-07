@@ -56,7 +56,6 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
             earlyEnded:    row.early_ended ?? false,
             recurGroupId:  row.recur_group_id ?? null,
             createdAt:     new Date(row.created_at).getTime(),
-            _seed:         false,
           })));
         }
         setAllLoading(false);

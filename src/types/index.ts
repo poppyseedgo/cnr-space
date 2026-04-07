@@ -75,7 +75,6 @@ export interface Booking {
   createdAt: number
   recurGroupId?: string | null
   /** true = 시드 데이터, false = 사용자가 직접 생성 */
-  _seed?: boolean
 }
 
 // ─── 예약 폼 타입 (BookingModal 입력값) ─────────────────────────────────────────

@@ -268,7 +268,6 @@ function AppContent() {
 
       // ── freshBookings 준비 ──
       // 단건(NEVER): canSubmit이 이미 충돌 검사를 마쳤으므로 메모리 상태 직접 사용.
-      //              storage.get + seedDemoBookings 재실행 비용 제거 → 즉시 응답.
       // 반복(EVERY_DAY/WEEK): 다수 날짜를 루프 돌며 freshBookings를 갱신해가므로
       //                       storage에서 최신값을 로드해 race condition 방지.
       let freshBookings;
@@ -309,7 +308,6 @@ function AppContent() {
           status:       isAdminOnlyRoom ? 'pending' : 'confirmed',
           createdAt,
           recurGroupId,  // null이면 단건, 값이 있으면 반복 그룹
-          _seed:         false,
         };
         newBookings.push(nb);
         // 이후 루프의 충돌 검사에도 새 예약 반영
@@ -1135,8 +1133,8 @@ function AppContent() {
             zIndex:1000,
             padding: isMobile ? 0 : 16,
           }}>
-          {modal.type==="new"         && <BookingModal prefill={modal.prefill} date={modal.date||selectedDate} onClose={()=>setModal(null)} onSubmit={addBooking} onUpdate={()=>false} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} currentUserEmail={authUser?.email} rooms={rooms} users={users} />}
-          {modal.type==="edit"         && <BookingModal prefill={{}} editBooking={modal.data} date={tsDate(modal.data.start_at)} onClose={()=>setModal(null)} onSubmit={async ()=>false} onUpdate={(form,date)=>updateBooking(form,date,modal.data.id)} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} currentUserEmail={authUser?.email} rooms={rooms} users={users} />}
+          {modal.type==="new"         && <BookingModal prefill={modal.prefill} date={modal.date||selectedDate} onClose={()=>setModal(null)} onSubmit={addBooking} onUpdate={()=>false} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} rooms={rooms} users={users} />}
+          {modal.type==="edit"         && <BookingModal prefill={{}} editBooking={modal.data} date={tsDate(modal.data.start_at)} onClose={()=>setModal(null)} onSubmit={async ()=>false} onUpdate={(form,date)=>updateBooking(form,date,modal.data.id)} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} rooms={rooms} users={users} />}
           {modal.type==="detail"      && <DetailModal booking={modal.data} onClose={()=>setModal(null)} onCheckIn={checkIn} onCancel={cancelBooking} onEdit={(b)=>setModal({type:"edit",data:b})} currentUser={currentUser} rooms={rooms} />}
           {modal.type==="bookingDone" && <BookingDoneModal booking={modal.data} onClose={()=>setModal(null)} rooms={rooms} />}
           {modal.type==="recurDone"    && <RecurDoneModal data={modal.data} onClose={()=>setModal(null)} />}

@@ -3,7 +3,6 @@
  *
  * 버그 수정:
  *  1. UTC→KST 변환: Supabase는 timestamptz를 UTC로 반환 → +9h 보정 필요
- *  2. .single() → .maybeSingle(): seed 예약은 DB에 없어 0행 반환 시 에러 방지
  */
 
 import { supabase, isSupabaseEnabled } from './supabase'
@@ -41,7 +40,6 @@ function rowToBooking(row: Record<string, any>): Booking {
     originalEndAt: row.original_end_at ?? null,
     recurGroupId:  row.recur_group_id ?? null,
     createdAt:     new Date(row.created_at).getTime(),
-    _seed:         false,
   }
 }
 
@@ -71,7 +69,7 @@ function bookingToRow(b: Booking, userId: string) {
 // ── 전체 조회 (날짜 범위 필터링) ─────────────────────────────────────────────
 // 오늘 기준 과거 7일 ~ 미래 60일 범위만 로딩
 export async function loadBookings(): Promise<Booking[]> {
-  if (!isSupabaseEnabled) return localLoadBookings([])
+  if (!isSupabaseEnabled) return localGetBookings()
   try {
     const from = new Date()
     from.setDate(from.getDate() - 7)
@@ -235,7 +233,7 @@ export async function updateBooking(
   if (changes.start_at      !== undefined) dbChanges.start_at       = changes.start_at
   if (changes.room_id       !== undefined) dbChanges.room_id        = changes.room_id
   // ↑ DB 컬럼과 매핑되는 필드만 명시적으로 포함
-  // user_employee_id, _seed, createdAt 등 프론트 전용 필드는 제외됨
+  // user_employee_id, createdAt 등 프론트 전용 필드는 제외됨
 
   const { data, error } = await supabase
     .from('bookings').update(dbChanges).eq('id', id).select()
@@ -246,10 +244,10 @@ export async function updateBooking(
     throw new Error(error.message)
   }
 
-  // data가 빈 배열 → DB에 없는 row(seed) 이거나 RLS 차단
+  // data가 빈 배열 → RLS 차단
   // 두 경우 모두 UI는 낙관적 업데이트 상태 유지, 조용히 null 반환
   if (!data || data.length === 0) {
-    console.warn('[api] updateBooking: 업데이트 0행 (seed 또는 RLS 차단), id=', id)
+    console.warn('[api] updateBooking: 업데이트 0행 (RLS 차단), id=', id)
     return null
   }
   return rowToBooking(data[0])
@@ -281,12 +279,7 @@ function localGetBookings(): Booking[] {
   try { return JSON.parse(localStorage.getItem(LS_KEY) ?? '[]') } catch { return [] }
 }
 function localSaveBookings(bookings: Booking[]) {
-  localStorage.setItem(LS_KEY, JSON.stringify(bookings.filter(b => b._seed === false)))
-}
-function localLoadBookings(seed: Booking[]): Booking[] {
-  const user = localGetBookings()
-  const ids  = new Set(user.map(b => b.id))
-  return [...seed.filter(b => !ids.has(b.id)), ...user]
+  localStorage.setItem(LS_KEY, JSON.stringify(bookings))
 }
 
 // ── rooms 테이블 전체 로드 (Supabase) ────────────────────────────────────────
@@ -689,32 +682,4 @@ export function subscribeNotifications(onNew: (payload: any) => void, userId?: s
     }, (payload) => onNew(payload))
     .subscribe()
   return () => { supabase.removeChannel(channel) }
-}
-
-// ── Microsoft Graph API 직원 검색 ────────────────────────────────────────────
-/**
- * Graph API (User.ReadBasic.All Application 권한)로 전체 Azure AD 직원 검색
- * Supabase Edge Function 'search-users' 경유
- *
- * @param query     - 이름 또는 이메일 검색어 (2자 이상)
- * @param excludeId - 현재 사용자 user_id (검색 결과에서 제외)
- */
-export async function searchGraphUsers(
-  query: string,
-  excludeEmail?: string
-): Promise<AppUser[]> {
-  if (!isSupabaseEnabled || query.trim().length < 1) return []
-  try {
-    const { data, error } = await supabase.functions.invoke('search-users', {
-      body: { query: query.trim(), excludeEmail },
-    })
-    if (error) {
-      console.error('[api] searchGraphUsers 실패:', error)
-      return []
-    }
-    return (data?.users ?? []) as AppUser[]
-  } catch (e) {
-    console.error('[api] searchGraphUsers 예외:', e)
-    return []
-  }
 }
