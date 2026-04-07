@@ -703,7 +703,7 @@ export async function searchGraphUsers(
   query: string,
   excludeId?: string
 ): Promise<AppUser[]> {
-  if (!isSupabaseEnabled || query.trim().length < 2) return []
+  if (!isSupabaseEnabled || query.trim().length < 1) return []
   try {
     const { data, error } = await supabase.functions.invoke('search-users', {
       body: { query: query.trim(), excludeId },

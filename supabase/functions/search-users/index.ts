@@ -4,8 +4,13 @@
  * Microsoft Graph API User.ReadBasic.All (Application 권한) 사용
  * client_credentials 플로우로 토큰 발급 → /users $search 호출
  *
- * 호출 방법 (프론트에서):
- *   await supabase.functions.invoke('search-users', { body: { query: '홍길동', excludeId: 'uuid' } })
+ * ⚠️ User.ReadBasic.All 한계:
+ *   - accountEnabled 필드 미반환 → 코드 레벨 필터링 불가 (User.Read.All 필요)
+ *   - department 필드 미반환 → dept 빈 값 (User.Read.All 필요)
+ *   - 현재는 이름/이메일 기반 검색만 가능
+ *
+ * ⚠️ Graph API 제약:
+ *   - $search와 $filter는 동시 사용 불가 → $filter 제거, 코드 레벨로 처리
  */
 
 const TENANT_ID     = Deno.env.get('AZURE_TENANT_ID')     ?? ''
@@ -60,19 +65,20 @@ Deno.serve(async (req) => {
   try {
     const { query, excludeId } = await req.json() as { query: string; excludeId?: string }
 
-    // 2글자 미만 검색 차단 (Graph API $search 최소 2자 권장)
+    // 1글자 미만 검색 차단
     if (!query || query.trim().length < 1) {
       return new Response(JSON.stringify({ users: [] }), {
         headers: { ...CORS, 'Content-Type': 'application/json' },
       })
     }
 
-    const q = query.trim()
+    const q     = query.trim()
     const token = await getGraphToken()
 
-    // $search 는 ConsistencyLevel: eventual 필수
-    // displayName OR mail 양쪽 검색
-    // accountEnabled=true 필터로 재직자만
+    // ⚠️ $search와 $filter 동시 사용 불가 → $filter 제거
+    // accountEnabled 필터링은 코드 레벨에서 처리
+    // User.ReadBasic.All: displayName, givenName, mail, photo, surname, userPrincipalName 만 반환
+    // User.Read.All 승인 시: department, accountEnabled 추가 가능
     const searchUrl = new URL('https://graph.microsoft.com/v1.0/users')
     searchUrl.searchParams.set(
       '$search',
@@ -82,14 +88,13 @@ Deno.serve(async (req) => {
       '$select',
       'id,displayName,mail,department,userPrincipalName,accountEnabled'
     )
-    searchUrl.searchParams.set('$filter', 'accountEnabled eq true')
-    searchUrl.searchParams.set('$top', '10')
+    searchUrl.searchParams.set('$top', '15')  // 필터링 후 8개 확보용
     searchUrl.searchParams.set('$count', 'true')
 
     const graphRes = await fetch(searchUrl.toString(), {
       headers: {
         Authorization:    `Bearer ${token}`,
-        ConsistencyLevel: 'eventual',
+        ConsistencyLevel: 'eventual',  // $search 사용 시 필수
       },
     })
 
@@ -97,7 +102,7 @@ Deno.serve(async (req) => {
       const text = await graphRes.text()
       console.error('[search-users] Graph API 오류:', text)
       return new Response(JSON.stringify({ users: [], error: 'Graph API 오류' }), {
-        status: 200, // 프론트에서 빈 결과로 처리하도록 200 반환
+        status: 200,
         headers: { ...CORS, 'Content-Type': 'application/json' },
       })
     }
@@ -105,18 +110,21 @@ Deno.serve(async (req) => {
     const graphData = await graphRes.json()
     const rawUsers: any[] = graphData.value ?? []
 
-    // AppUser 형태로 매핑 + 현재 사용자 제외
+    // AppUser 형태로 매핑
+    // accountEnabled: User.ReadBasic.All에서는 null 반환 → 필터링 스킵
+    //                 User.Read.All 승인 시 false인 퇴사자 자동 제외
     const users = rawUsers
       .filter(u => u.id !== excludeId)
+      .filter(u => u.accountEnabled !== false)  // null(ReadBasic)이면 통과, false(Read.All)면 제외
       .map(u => ({
         user_id:     u.id,
         employee_id: u.userPrincipalName ?? '',
         name:        u.displayName       ?? '',
-        dept:        u.department        ?? '',
+        dept:        u.department        ?? '',  // ReadBasic: 빈 값, Read.All: 실제 부서
         role:        'USER' as const,
         email:       u.mail ?? u.userPrincipalName ?? '',
       }))
-      .filter(u => u.name && u.email) // 이름/이메일 없는 계정 제외
+      .filter(u => u.name && u.email)  // 이름/이메일 없는 계정 제외
       .slice(0, 8)
 
     return new Response(JSON.stringify({ users }), {
