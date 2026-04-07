@@ -368,7 +368,16 @@ function AggTable({ rows, cols, onExport }: { rows: any[]; cols:{k:string;l:stri
 
 // ─── AdminView ─────────────────────────────────────────────────────────────────
 export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject, onForceCancel, onDetail }) {
-  const [activeTab, setActiveTab] = useState('dashboard')
+  const TABS = ['dashboard','bookings','approvals','rooms','users']
+  const getTabFromHash = () => {
+    const t = window.location.hash.replace('#admin-tab-','')
+    return TABS.includes(t) ? t : 'dashboard'
+  }
+  const [activeTab, setActiveTab] = useState(getTabFromHash)
+  const setTab = (t: string) => {
+    setActiveTab(t)
+    window.location.hash = `admin-tab-${t}`
+  }
   const PER_PAGE = 15
   const tabs = [
     { id:'dashboard', icon:<BarChart2 size={14} strokeWidth={1.8}/>,  label:'대시보드' },
@@ -381,7 +390,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
     <div className="max-w-[1200px] mx-auto px-3 py-4 sm:px-6 sm:py-7">
       <div className="anm flex gap-1 mb-5 bg-white rounded-xl p-1.5 overflow-x-auto" style={{ scrollbarWidth:'none' }}>
         {tabs.map(t=>(
-          <button key={t.id} className="btn" onClick={()=>setActiveTab(t.id)}
+          <button key={t.id} className="btn" onClick={()=>setTab(t.id)}
             style={{ flex:1, minWidth:isMobile?40:80, padding:isMobile?'9px 6px':'10px', fontSize:isMobile?11:13, borderRadius:10,
               fontWeight:activeTab===t.id?700:500, background:activeTab===t.id?'#111':'transparent',
               color:activeTab===t.id?'#fff':'#64748B', display:'flex', alignItems:'center', justifyContent:'center',
@@ -954,6 +963,18 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
     }
   }
 
+  // 동기화 로그 로컬 저장 (최근 20건)
+  const SYNC_LOG_KEY = 'cnr_sync_logs'
+  const loadSyncLogs = (): SyncResult[] => {
+    try { return JSON.parse(localStorage.getItem(SYNC_LOG_KEY) ?? '[]') } catch { return [] }
+  }
+  const saveSyncLog = (result: SyncResult) => {
+    const logs = [result, ...loadSyncLogs()].slice(0, 20)
+    localStorage.setItem(SYNC_LOG_KEY, JSON.stringify(logs))
+  }
+  const [syncLogs,    setSyncLogs]    = useState<SyncResult[]>(loadSyncLogs)
+  const [showLogs,    setShowLogs]    = useState(false)
+
   // Azure AD 전체 동기화
   const handleSync = async () => {
     setSyncing(true)
@@ -961,7 +982,8 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
     try {
       const result = await syncAllUsers()
       setSyncResult(result)
-      // profiles 테이블 재조회해서 목록 갱신
+      saveSyncLog(result)
+      setSyncLogs(loadSyncLogs())
       const refreshed = await loadUsers()
       setUsers(refreshed)
       showToast(`동기화 완료 — ${result.synced}명 반영`, 'info')
@@ -1055,6 +1077,31 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
           <span style={{ fontSize:10, color:'#94A3B8', flexShrink:0 }}>
             {new Date(syncResult.syncedAt).toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit' })}
           </span>
+        </div>
+      )}
+
+      {/* ── 동기화 이력 ── */}
+      {syncLogs.length > 0 && (
+        <div style={{ marginBottom:12 }}>
+          <button className="btn" onClick={() => setShowLogs(v => !v)}
+            style={{ fontSize:11, color:'#94A3B8', background:'none', display:'flex', alignItems:'center', gap:4, padding:'2px 0' }}>
+            <RotateCw size={10} strokeWidth={2}/>
+            동기화 이력 {syncLogs.length}건 {showLogs ? '▲' : '▼'}
+          </button>
+          {showLogs && (
+            <div style={{ marginTop:8, background:'#F8FAFC', borderRadius:10, overflow:'hidden', border:'1px solid #E2E8F0' }}>
+              {syncLogs.map((log, i) => (
+                <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 14px', borderBottom: i < syncLogs.length-1 ? '1px solid #F1F5F9' : 'none', fontSize:11 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                    <span style={{ color:'#64748B' }}>{new Date(log.syncedAt).toLocaleString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })}</span>
+                    <span style={{ color:'#374151' }}>총 {log.total}명 · {log.synced}명 반영</span>
+                    {log.deactivated > 0 && <span style={{ color:'#DC2626', fontWeight:700 }}>퇴사 {log.deactivated}명</span>}
+                  </div>
+                  <span style={{ color: log.success ? '#16A34A' : '#DC2626', fontWeight:700 }}>{log.success ? '성공' : '실패'}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1168,43 +1215,89 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
         )}
       </div>
 
-      {/* ── 편집 모달 ── */}
-      {editUser && (
-        <div onClick={e => e.target === e.currentTarget && setEditUser(null)}
-          style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.55)', backdropFilter:'blur(6px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000, padding:16 }}>
-          <div className="anm" style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:400, padding:'24px', boxShadow:'0 20px 60px rgba(0,0,0,0.15)' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-              <div style={{ fontSize:16, fontWeight:800, color:'#111' }}>사용자 수정</div>
-              <button className="btn" onClick={() => setEditUser(null)} style={{ width:32, height:32, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:'50%', background:'#F1F5F9', color:'#64748B' }}>
-                <X size={14} strokeWidth={2}/>
-              </button>
-            </div>
-            {[{ k:'name', l:'이름 *' }, { k:'dept', l:'부서' }].map(f => (
-              <div key={f.k} style={{ marginBottom:14 }}>
-                <label style={{ fontSize:11, fontWeight:700, color:'#94A3B8', display:'block', marginBottom:4 }}>{f.l}</label>
-                <input value={form[f.k] || ''} onChange={e => setForm(p => ({ ...p, [f.k]: e.target.value }))}
-                  style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:'1px solid #E2E8F0', fontSize:14, background:'#F8FAFC', outline:'none' }}/>
+      {/* ── 편집 드로어 (우측 슬라이드) ── */}
+      {/* 딤 배경 */}
+      <div
+        onClick={() => setEditUser(null)}
+        style={{
+          position:'fixed', inset:0, background:'rgba(15,23,42,0.4)',
+          backdropFilter:'blur(2px)', zIndex:900,
+          opacity: editUser ? 1 : 0,
+          pointerEvents: editUser ? 'auto' : 'none',
+          transition:'opacity 0.25s',
+        }}
+      />
+      {/* 드로어 패널 */}
+      <div style={{
+        position:'fixed', top:0, right:0, bottom:0,
+        width: isMobile ? '100%' : 380,
+        background:'#fff',
+        boxShadow:'-8px 0 40px rgba(0,0,0,0.12)',
+        zIndex:910,
+        display:'flex', flexDirection:'column',
+        transform: editUser ? 'translateX(0)' : 'translateX(100%)',
+        transition:'transform 0.28s cubic-bezier(0.32,0.72,0,1)',
+      }}>
+        {/* 드로어 헤더 */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'20px 24px', borderBottom:'1px solid #F1F5F9', flexShrink:0 }}>
+          <div>
+            <div style={{ fontSize:16, fontWeight:800, color:'#111' }}>사용자 수정</div>
+            {editUser?.email && <div style={{ fontSize:11, color:'#94A3B8', marginTop:2 }}>{editUser.email}</div>}
+          </div>
+          <button className="btn" onClick={() => setEditUser(null)} style={{ width:32, height:32, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:'50%', background:'#F1F5F9', color:'#64748B' }}>
+            <X size={14} strokeWidth={2}/>
+          </button>
+        </div>
+
+        {/* 드로어 바디 */}
+        <div style={{ flex:1, overflowY:'auto', padding:'24px' }}>
+          {/* 아바타 */}
+          {editUser && (
+            <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:24, padding:'16px', background:'#F8FAFC', borderRadius:12 }}>
+              <div style={{ width:44, height:44, borderRadius:'50%', background: form.role==='ADMIN' ? '#111' : '#E2E8F0', color: form.role==='ADMIN' ? '#fff' : '#64748B', fontSize:16, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                {(form.name || '?').charAt(0)}
               </div>
-            ))}
-            <div style={{ marginBottom:14 }}>
-              <label style={{ fontSize:11, fontWeight:700, color:'#94A3B8', display:'block', marginBottom:4 }}>이메일 (읽기 전용)</label>
-              <input value={form.email || ''} readOnly style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:'1px solid #E2E8F0', fontSize:14, background:'#F8FAFC', outline:'none', color:'#94A3B8' }}/>
+              <div>
+                <div style={{ fontSize:14, fontWeight:700, color:'#111' }}>{form.name || '이름 없음'}</div>
+                <div style={{ fontSize:11, color:'#94A3B8', marginTop:2 }}>{form.dept || '부서 미입력'}</div>
+              </div>
             </div>
-            <div style={{ marginBottom:14 }}>
-              <label style={{ fontSize:11, fontWeight:700, color:'#94A3B8', display:'block', marginBottom:4 }}>권한</label>
-              <select value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value }))}
-                style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:'1px solid #E2E8F0', fontSize:14, background:'#F8FAFC', outline:'none' }}>
-                <option value="USER">USER</option>
-                <option value="ADMIN">ADMIN</option>
-              </select>
+          )}
+
+          {/* 입력 필드 */}
+          {[{ k:'name', l:'이름 *', placeholder:'이름을 입력하세요' }, { k:'dept', l:'부서', placeholder:'부서를 입력하세요' }].map(f => (
+            <div key={f.k} style={{ marginBottom:16 }}>
+              <label style={{ fontSize:11, fontWeight:700, color:'#94A3B8', display:'block', marginBottom:6 }}>{f.l}</label>
+              <input value={form[f.k] || ''} onChange={e => setForm(p => ({ ...p, [f.k]: e.target.value }))}
+                placeholder={f.placeholder}
+                style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1px solid #E2E8F0', fontSize:14, background:'#fff', outline:'none', boxSizing:'border-box' }}
+                onFocus={e => e.target.style.borderColor='#111'}
+                onBlur={e => e.target.style.borderColor='#E2E8F0'}/>
             </div>
-            <div style={{ display:'flex', gap:8, marginTop:20 }}>
-              <button className="btn" onClick={() => setEditUser(null)} style={{ flex:1, background:'#F1F5F9', color:'#64748B', padding:'12px', fontSize:13, borderRadius:12 }}>취소</button>
-              <button className="btn" onClick={saveEdit} style={{ flex:1, background:'#111', color:'#fff', padding:'12px', fontSize:13, fontWeight:700, borderRadius:12 }}>저장</button>
+          ))}
+          <div style={{ marginBottom:16 }}>
+            <label style={{ fontSize:11, fontWeight:700, color:'#94A3B8', display:'block', marginBottom:6 }}>이메일</label>
+            <input value={form.email || ''} readOnly style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1px solid #F1F5F9', fontSize:14, background:'#F8FAFC', outline:'none', color:'#94A3B8', boxSizing:'border-box' }}/>
+          </div>
+          <div style={{ marginBottom:16 }}>
+            <label style={{ fontSize:11, fontWeight:700, color:'#94A3B8', display:'block', marginBottom:6 }}>권한</label>
+            <div style={{ display:'flex', gap:8 }}>
+              {['USER','ADMIN'].map(r => (
+                <button key={r} className="btn" onClick={() => setForm(p => ({ ...p, role: r }))}
+                  style={{ flex:1, padding:'11px', borderRadius:10, fontSize:13, fontWeight:700, border:`1.5px solid ${form.role===r?'#111':'#E2E8F0'}`, background: form.role===r?'#111':'#F8FAFC', color: form.role===r?'#fff':'#64748B', cursor:'pointer' }}>
+                  {r}
+                </button>
+              ))}
             </div>
           </div>
         </div>
-      )}
+
+        {/* 드로어 푸터 */}
+        <div style={{ padding:'16px 24px 28px', borderTop:'1px solid #F1F5F9', display:'flex', gap:8, flexShrink:0 }}>
+          <button className="btn" onClick={() => setEditUser(null)} style={{ flex:1, background:'#F1F5F9', color:'#64748B', padding:'13px', fontSize:14, borderRadius:12 }}>취소</button>
+          <button className="btn" onClick={saveEdit} style={{ flex:2, background:'#111', color:'#fff', padding:'13px', fontSize:14, fontWeight:700, borderRadius:12 }}>저장</button>
+        </div>
+      </div>
     </div>
   )
 }

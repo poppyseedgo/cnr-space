@@ -38,6 +38,7 @@ function AppContent() {
   // URL 해시에서 초기 view 복원 (#home, #calendar, #mypage, #admin)
   const getViewFromHash = (): string => {
     const hash = window.location.hash.replace('#', '')
+    if (hash.startsWith('admin-tab-')) return 'admin'
     return ['home','calendar','mybookings','mypage','admin'].includes(hash) ? hash : 'home'
   }
   const [view, setViewState] = useState<string>(getViewFromHash);
