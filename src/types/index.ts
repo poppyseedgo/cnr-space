@@ -50,6 +50,7 @@ export interface AppUser {
   dept:        string
   role:        UserRole
   email:       string
+  is_active:   boolean  // false = 퇴사자 (Azure AD 계정 삭제 감지)
 }
 
 // ─── 예약 타입 ──────────────────────────────────────────────────────────────────

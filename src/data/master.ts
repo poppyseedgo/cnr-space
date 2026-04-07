@@ -86,22 +86,22 @@ export function getAdminOnlyRooms(rooms: Room[]): Set<number> {
 
 // ─── app_user 테이블 ─────────────────────────────────────────────────────────
 export const APP_USERS: AppUser[] = [
-  { user_id:"u001", employee_id:"CNR0001", name:"고현정",  dept:"MS",        role:"USER",  email:"gohyunjung@cnrres.com"  },
-  { user_id:"u002", employee_id:"CNR0002", name:"어드민",  dept:"MS",        role:"ADMIN",  email:"gohyunjung@me.com"  },
-  { user_id:"u003", employee_id:"CNR0003", name:"박찬희",  dept:"MS",          role:"USER",  email:"chpark@cnrres.com"   },
-  { user_id:"u004", employee_id:"CNR0004", name:"송보람",  dept:"MS",         role:"USER",  email:"song.boram@cnrres.com"   },
-  { user_id:"u005", employee_id:"CNR0005", name:"김기남",  dept:"파트장",         role:"USER", email:"knkim@cnrres.com"   },
-  { user_id:"u006", employee_id:"CNR0006", name:"임지영",  dept:"HR",          role:"USER",  email:"jyim@cnrres.com"  },
-  { user_id:"u007", employee_id:"CNR0007", name:"강동원",  dept:"Platform",    role:"USER",  email:"kangdw@cnrresearch.com"  },
-  { user_id:"u008", employee_id:"CNR0008", name:"윤하은",  dept:"RWO",         role:"USER",  email:"yoonhe@cnrresearch.com"  },
-  { user_id:"u009", employee_id:"CNR0009", name:"오세훈",  dept:"BD",          role:"USER",  email:"ohsh@cnrresearch.com"    },
-  { user_id:"u010", employee_id:"CNR0010", name:"임채원",  dept:"CTM",         role:"USER",  email:"limcw@cnrresearch.com"   },
-  { user_id:"u011", employee_id:"CNR0011", name:"송지원",  dept:"CO",          role:"USER",  email:"songjw@cnrresearch.com"  },
-  { user_id:"u012", employee_id:"CNR0012", name:"황민서",  dept:"Platform",    role:"USER",  email:"hwangms@cnrresearch.com" },
-  { user_id:"u013", employee_id:"CNR0013", name:"조성현",  dept:"임원",         role:"ADMIN", email:"joshh@cnrresearch.com"   },
-  { user_id:"u014", employee_id:"CNR0014", name:"나지은",  dept:"RWO",         role:"USER",  email:"naje@cnrresearch.com"    },
-  { user_id:"u015", employee_id:"CNR0015", name:"류승민",  dept:"BD",          role:"USER",  email:"ryusm@cnrresearch.com"   },
-  { user_id:"u016", employee_id:"CNR0016", name:"홍길동",  dept:"CTM",         role:"ADMIN",  email:"gohyunjung@cnrres.com"  },
+  { user_id:"u001", employee_id:"CNR0001", name:"고현정",  dept:"MS",        role:"USER",  email:"gohyunjung@cnrres.com",       is_active:true },
+  { user_id:"u002", employee_id:"CNR0002", name:"어드민",  dept:"MS",        role:"ADMIN", email:"gohyunjung@me.com",           is_active:true },
+  { user_id:"u003", employee_id:"CNR0003", name:"박찬희",  dept:"MS",        role:"USER",  email:"chpark@cnrres.com",           is_active:true },
+  { user_id:"u004", employee_id:"CNR0004", name:"송보람",  dept:"MS",        role:"USER",  email:"song.boram@cnrres.com",       is_active:true },
+  { user_id:"u005", employee_id:"CNR0005", name:"김기남",  dept:"파트장",     role:"USER",  email:"knkim@cnrres.com",            is_active:true },
+  { user_id:"u006", employee_id:"CNR0006", name:"임지영",  dept:"HR",        role:"USER",  email:"jyim@cnrres.com",             is_active:true },
+  { user_id:"u007", employee_id:"CNR0007", name:"강동원",  dept:"Platform",  role:"USER",  email:"kangdw@cnrresearch.com",      is_active:true },
+  { user_id:"u008", employee_id:"CNR0008", name:"윤하은",  dept:"RWO",       role:"USER",  email:"yoonhe@cnrresearch.com",      is_active:true },
+  { user_id:"u009", employee_id:"CNR0009", name:"오세훈",  dept:"BD",        role:"USER",  email:"ohsh@cnrresearch.com",        is_active:true },
+  { user_id:"u010", employee_id:"CNR0010", name:"임채원",  dept:"CTM",       role:"USER",  email:"limcw@cnrresearch.com",       is_active:true },
+  { user_id:"u011", employee_id:"CNR0011", name:"송지원",  dept:"CO",        role:"USER",  email:"songjw@cnrresearch.com",      is_active:true },
+  { user_id:"u012", employee_id:"CNR0012", name:"황민서",  dept:"Platform",  role:"USER",  email:"hwangms@cnrresearch.com",     is_active:true },
+  { user_id:"u013", employee_id:"CNR0013", name:"조성현",  dept:"임원",       role:"ADMIN", email:"joshh@cnrresearch.com",       is_active:true },
+  { user_id:"u014", employee_id:"CNR0014", name:"나지은",  dept:"RWO",       role:"USER",  email:"naje@cnrresearch.com",        is_active:true },
+  { user_id:"u015", employee_id:"CNR0015", name:"류승민",  dept:"BD",        role:"USER",  email:"ryusm@cnrresearch.com",       is_active:true },
+  { user_id:"u016", employee_id:"CNR0016", name:"홍길동",  dept:"CTM",       role:"ADMIN", email:"gohyunjung@cnrres.com",       is_active:true },
 ];
 
 // ─── 헬퍼 함수 ──────────────────────────────────────────────────────────────

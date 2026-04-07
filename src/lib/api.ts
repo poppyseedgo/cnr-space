@@ -384,7 +384,7 @@ export async function loadUsers(): Promise<AppUser[]> {
   try {
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, employee_id, name, dept, role, email')
+      .select('id, employee_id, name, dept, role, email, is_active')
       .order('name')
     if (error) throw error
 
@@ -395,6 +395,7 @@ export async function loadUsers(): Promise<AppUser[]> {
       dept:        row.dept        ?? '',
       role:        (row.role === 'ADMIN' ? 'ADMIN' : 'USER') as 'USER' | 'ADMIN',
       email:       row.email       ?? '',
+      is_active:   row.is_active   ?? true,
     }))
   } catch (e) {
     console.error('[api] loadUsers 실패:', e)
@@ -670,6 +671,32 @@ export async function markAllNotificationsRead(): Promise<void> {
   await supabase.from('notifications')
     .update({ is_read: true })
     .eq('is_read', false)
+}
+
+// ── Azure AD 전체 임직원 사전 동기화 ─────────────────────────────────────────
+
+export interface SyncResult {
+  success:           boolean
+  total:             number   // Azure AD에서 조회된 전체 인원
+  synced:            number   // profiles 테이블에 UPSERT된 인원
+  skipped:           number   // 이름/이메일 없어서 제외된 계정 수
+  deactivated:       number   // 퇴사 처리된 인원 (Azure AD에서 삭제됨)
+  cancelledBookings: number   // 퇴사자 미래 예약 취소 수
+  syncedAt:          string   // ISO 타임스탬프
+  error?:            string
+}
+
+/**
+ * Azure AD 전체 임직원을 profiles 테이블에 사전 동기화
+ * - 신규: name + email 삽입, dept = '' (미로그인 배지 표시)
+ * - 기존: name + email 갱신, dept는 건드리지 않음 (로그인 후 채워진 값 보존)
+ * - Admin 전용 기능
+ */
+export async function syncAllUsers(): Promise<SyncResult> {
+  const { data, error } = await supabase.functions.invoke('sync-all-users')
+  if (error) throw new Error(error.message ?? 'Azure AD 동기화 실패')
+  if (!data?.success) throw new Error(data?.error ?? 'Azure AD 동기화 실패')
+  return data as SyncResult
 }
 
 /** notifications Realtime 구독 — userId 필터로 본인 알림만 수신 */
