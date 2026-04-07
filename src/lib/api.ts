@@ -684,7 +684,7 @@ export async function searchGraphUsers(
   query: string,
   excludeEmail?: string
 ): Promise<AppUser[]> {
-  if (!isSupabaseEnabled || query.trim().length < 2) return []
+  if (!isSupabaseEnabled || query.trim().length < 1) return []
   try {
     const q = query.trim()
     // profiles 테이블에서 직접 검색
