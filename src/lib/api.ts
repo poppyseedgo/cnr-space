@@ -690,3 +690,31 @@ export function subscribeNotifications(onNew: (payload: any) => void, userId?: s
     .subscribe()
   return () => { supabase.removeChannel(channel) }
 }
+
+// ── Microsoft Graph API 직원 검색 ────────────────────────────────────────────
+/**
+ * Graph API (User.ReadBasic.All Application 권한)로 전체 Azure AD 직원 검색
+ * Supabase Edge Function 'search-users' 경유
+ *
+ * @param query     - 이름 또는 이메일 검색어 (2자 이상)
+ * @param excludeId - 현재 사용자 user_id (검색 결과에서 제외)
+ */
+export async function searchGraphUsers(
+  query: string,
+  excludeId?: string
+): Promise<AppUser[]> {
+  if (!isSupabaseEnabled || query.trim().length < 2) return []
+  try {
+    const { data, error } = await supabase.functions.invoke('search-users', {
+      body: { query: query.trim(), excludeId },
+    })
+    if (error) {
+      console.error('[api] searchGraphUsers 실패:', error)
+      return []
+    }
+    return (data?.users ?? []) as AppUser[]
+  } catch (e) {
+    console.error('[api] searchGraphUsers 예외:', e)
+    return []
+  }
+}

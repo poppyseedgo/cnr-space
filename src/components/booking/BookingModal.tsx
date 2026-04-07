@@ -6,9 +6,10 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../../utils/time'
 import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRoomById } from '../../data/master'
+import { searchGraphUsers } from '../../lib/api'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
-export function BookingModal({prefill, date:initDate, editBooking=null, onClose, onSubmit, onUpdate, bookings, isAdmin=false, currentUser="홍길동", rooms:roomsProp=[], users:usersProp=[]}) {
+export function BookingModal({prefill, date:initDate, editBooking=null, onClose, onSubmit, onUpdate, bookings, isAdmin=false, currentUser="홍길동", currentUserId="", rooms:roomsProp=[], users:usersProp=[]}) {
   // ── 모든 hooks를 최상단에 선언 ──────────────────────────────────────────────
   const { isMobile, isTablet } = useBreakpoint();
   const { vh: vvHeight, off: vvOff } = useVisualViewport();
@@ -57,6 +58,25 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   const [recur, setRecur] = useState("NEVER"); // "NEVER" | "EVERY_DAY" | "EVERY_WEEK"
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [graphUsers,  setGraphUsers]  = useState<AppUser[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  // attendeeQ debounce 350ms → Graph API 검색
+  useEffect(() => {
+    if (attendeeQ.trim().length < 2) {
+      setGraphUsers([]);
+      setIsSearching(false);
+      return;
+    }
+    setIsSearching(true);
+    const timer = setTimeout(async () => {
+      const results = await searchGraphUsers(attendeeQ.trim(), currentUserId || undefined);
+      setGraphUsers(results);
+      setIsSearching(false);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [attendeeQ, currentUserId]);
+
 
   useEffect(() => {
     const h = (e) => {
@@ -236,14 +256,9 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   const removeAttendee = (uid) => set("attendees", form.attendees.filter(a => a.user_id !== uid));
 
   // 검색 결과: 현재 사용자 + 이미 추가된 사람 제외
-  const attendeeSuggestions = attendeeQ.trim().length > 0
-    ? (usersProp.length > 0 ? usersProp : APP_USERS).filter(u =>
-        u.user_id !== ((usersProp.length > 0 ? usersProp : APP_USERS).find(x => x.name === currentUser)?.user_id) &&
-        !form.attendees.find(a => a.user_id === u.user_id) &&
-        (u.name.includes(attendeeQ) || u.dept.toLowerCase().includes(attendeeQ.toLowerCase()) ||
-         u.email.toLowerCase().includes(attendeeQ.toLowerCase()))
-      ).slice(0, 6)
-    : [];
+  // Graph API 결과에서 이미 추가된 참석자만 제거
+  const attendeeSuggestions = graphUsers
+    .filter(u => !form.attendees.find(a => a.user_id === u.user_id));
 
   // 참석자 UI JSX (재사용: 모바일 Step1 + 데스크톱 폼)
   const AttendeeSection = (compact = false) => (
@@ -311,7 +326,15 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             ))}
           </div>
         )}
-        {attendeeFocus && attendeeQ.trim().length > 0 && attendeeSuggestions.length === 0 && (
+        {attendeeFocus && attendeeQ.trim().length > 0 && isSearching && (
+          <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:400,
+            background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
+            padding:"12px 14px",fontSize:12,color:"#94A3B8",
+            boxShadow:"0 8px 24px rgba(0,0,0,0.08)"}}>
+            검색 중...
+          </div>
+        )}
+        {attendeeFocus && attendeeQ.trim().length > 0 && !isSearching && attendeeSuggestions.length === 0 && (
           <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:400,
             background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
             padding:"12px 14px",fontSize:12,color:"#94A3B8",
@@ -1072,6 +1095,22 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                         <span style={{fontSize:11,color:"#CBD5E1"}}>+ 추가</span>
                       </div>
                     ))}
+                  </div>
+                )}
+                {attendeeFocus && attendeeQ.trim().length > 0 && isSearching && (
+                  <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:400,
+                    background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
+                    padding:"12px 14px",fontSize:12,color:"#94A3B8",
+                    boxShadow:"0 8px 24px rgba(0,0,0,0.08)"}}>
+                    검색 중...
+                  </div>
+                )}
+                {attendeeFocus && attendeeQ.trim().length > 0 && !isSearching && attendeeSuggestions.length === 0 && (
+                  <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:400,
+                    background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
+                    padding:"12px 14px",fontSize:12,color:"#94A3B8",
+                    boxShadow:"0 8px 24px rgba(0,0,0,0.08)"}}>
+                    검색 결과가 없습니다
                   </div>
                 )}
               </div>
