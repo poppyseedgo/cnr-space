@@ -673,6 +673,33 @@ export async function markAllNotificationsRead(): Promise<void> {
     .eq('is_read', false)
 }
 
+// ── 참석자 검색 (search-users Edge Function → Graph API) ─────────────────────
+
+/**
+ * 예약 모달 참석자 검색
+ * @param query    - 검색어 (이름 또는 이메일)
+ * @param excludeId - 현재 사용자 user_id (검색 결과에서 제외)
+ */
+export async function searchGraphUsers(
+  query: string,
+  excludeId?: string
+): Promise<AppUser[]> {
+  if (!isSupabaseEnabled || query.trim().length < 2) return []
+  try {
+    const { data, error } = await supabase.functions.invoke('search-users', {
+      body: { query: query.trim(), excludeId },
+    })
+    if (error) {
+      console.error('[api] searchGraphUsers 실패:', error)
+      return []
+    }
+    return (data?.users ?? []) as AppUser[]
+  } catch (e) {
+    console.error('[api] searchGraphUsers 예외:', e)
+    return []
+  }
+}
+
 // ── Azure AD 전체 임직원 사전 동기화 ─────────────────────────────────────────
 
 export interface SyncResult {
