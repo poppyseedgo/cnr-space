@@ -619,17 +619,19 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       {isSubmitting && (
         <div style={{
           position:"absolute", inset:0, zIndex:100,
-          background:"rgba(255,255,255,0.75)",
-          backdropFilter:"blur(2px)",
+          background:"rgba(255,255,255,0.88)",
+          backdropFilter:"blur(3px)",
           borderRadius: isMobile ? "20px 20px 0 0" : 16,
-          display:"flex", alignItems:"center", justifyContent:"center",
+          display:"flex", flexDirection:"column",
+          alignItems:"center", justifyContent:"center",
+          gap:16,
         }}>
-          <div style={{
-            width:28, height:28, borderRadius:"50%",
-            border:"3px solid #E2E8F0",
-            borderTopColor:"#111111",
-            animation:"spin 0.7s linear infinite",
-          }}/>
+          <div style={{display:"flex",alignItems:"center",gap:4}}>
+            <span style={{fontSize:13,fontWeight:600,color:"#111"}}>예약을 생성 중입니다</span>
+            <span className="loading-dots">
+              <span/><span/><span/>
+            </span>
+          </div>
         </div>
       )}
 
