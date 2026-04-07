@@ -701,12 +701,12 @@ export function subscribeNotifications(onNew: (payload: any) => void, userId?: s
  */
 export async function searchGraphUsers(
   query: string,
-  excludeId?: string
+  excludeEmail?: string
 ): Promise<AppUser[]> {
   if (!isSupabaseEnabled || query.trim().length < 1) return []
   try {
     const { data, error } = await supabase.functions.invoke('search-users', {
-      body: { query: query.trim(), excludeId },
+      body: { query: query.trim(), excludeEmail },
     })
     if (error) {
       console.error('[api] searchGraphUsers 실패:', error)

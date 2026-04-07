@@ -9,7 +9,7 @@ import { ROOMS_DB, APP_USERS, ADMIN_ONLY_ROOMS, getFloor, getRoomFeatures, getRo
 import { searchGraphUsers } from '../../lib/api'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
-export function BookingModal({prefill, date:initDate, editBooking=null, onClose, onSubmit, onUpdate, bookings, isAdmin=false, currentUser="홍길동", currentUserId="", rooms:roomsProp=[], users:usersProp=[]}) {
+export function BookingModal({prefill, date:initDate, editBooking=null, onClose, onSubmit, onUpdate, bookings, isAdmin=false, currentUser="홍길동", currentUserEmail="", rooms:roomsProp=[], users:usersProp=[]}) {
   // ── 모든 hooks를 최상단에 선언 ──────────────────────────────────────────────
   const { isMobile, isTablet } = useBreakpoint();
   const { vh: vvHeight, off: vvOff } = useVisualViewport();
@@ -70,12 +70,12 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
     }
     setIsSearching(true);
     const timer = setTimeout(async () => {
-      const results = await searchGraphUsers(attendeeQ.trim(), currentUserId || undefined);
+      const results = await searchGraphUsers(attendeeQ.trim(), currentUserEmail || undefined);
       setGraphUsers(results);
       setIsSearching(false);
     }, 350);
     return () => clearTimeout(timer);
-  }, [attendeeQ, currentUserId]);
+  }, [attendeeQ, currentUserEmail]);
 
 
   useEffect(() => {
@@ -265,7 +265,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
     <div>
       <label style={{fontSize:11,fontWeight:700,color:"#94A3B8",display:"block",
         marginBottom:6,letterSpacing:"0.4px"}}>
-        참석자 <span style={{fontWeight:400,color:"#CBD5E1"}}>(선택 · SSO 연동 시 초대 메일 자동 발송)</span>
+        참석자 <span style={{fontWeight:400,color:"#CBD5E1"}}>(선택 · 초대 메일 자동 발송)</span>
       </label>
 
       {/* 선택된 참석자 칩 */}
@@ -618,24 +618,18 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       {/* 예약 생성 로딩 오버레이 — submit 후 250ms 이상 소요 시 표시 */}
       {isSubmitting && (
         <div style={{
-          position:"absolute", inset:0, zIndex:50,
-          background:"rgba(255,255,255,0.88)",
-          backdropFilter:"blur(3px)",
+          position:"absolute", inset:0, zIndex:100,
+          background:"rgba(255,255,255,0.75)",
+          backdropFilter:"blur(2px)",
           borderRadius: isMobile ? "20px 20px 0 0" : 16,
-          display:"flex", flexDirection:"column",
-          alignItems:"center", justifyContent:"center",
-          gap:16,
+          display:"flex", alignItems:"center", justifyContent:"center",
         }}>
-          {/* shimmer 블록 */}
-          <div className="sk-block" style={{width:"48%", height:14, borderRadius:8}}/>
-          <div className="sk-block" style={{width:"32%", height:10, borderRadius:8}}/>
-          {/* 텍스트 + 점 애니메이션 */}
-          <div style={{display:"flex",alignItems:"center",gap:4,marginTop:4}}>
-            <span style={{fontSize:13,fontWeight:600,color:"#111"}}>예약을 생성 중입니다</span>
-            <span className="loading-dots">
-              <span/><span/><span/>
-            </span>
-          </div>
+          <div style={{
+            width:28, height:28, borderRadius:"50%",
+            border:"3px solid #E2E8F0",
+            borderTopColor:"#111111",
+            animation:"spin 0.7s linear infinite",
+          }}/>
         </div>
       )}
 
@@ -691,6 +685,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               <div>
                 <label style={{fontSize:11,fontWeight:700,color:"#94A3B8",display:"block",marginBottom:6}}>회의 제목 *</label>
                 <input value={form.title} onChange={e=>set("title",e.target.value)} placeholder="회의 제목을 입력하세요" maxLength={40}
+                  autoComplete="off"
                   style={{width:"100%",background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:10,
                     color:"#111111",padding:"12px 14px",fontSize:15,outline:"none"}}
                   onFocus={e=>e.target.style.borderColor="#111111"}
@@ -928,6 +923,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             <div>
               <label style={{fontSize:13,fontWeight:700,color:"#111",display:"block",marginBottom:8}}>회의 제목 <span style={{color:"#EF4444"}}>*</span></label>
               <input value={form.title} onChange={e=>set("title",e.target.value)} placeholder="회의 제목을 입력하세요 40자" maxLength={40}
+                autoComplete="off"
                 style={{width:"100%",background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
                   color:"#111",padding:"12px 16px",fontSize:14,outline:"none"}}
                 onFocus={e=>e.target.style.borderColor="#111"}
@@ -1078,7 +1074,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               <div ref={attendeeRef} style={{position:"relative"}}>
                 <input value={attendeeQ} onChange={e=>{setAttendeeQ(e.target.value);setAttendeeFocus(true);}}
                   onFocus={()=>setAttendeeFocus(true)}
-                  placeholder="회의 참석자에게 메일이 발송됩니다 SSO 연동시 작동"
+                  placeholder="참석자에게 메일이 발송됩니다"
                   style={{width:"100%",background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
                     color:"#111",padding:"12px 16px",fontSize:13,outline:"none"}}/>
                 {attendeeFocus && attendeeSuggestions.length > 0 && (
