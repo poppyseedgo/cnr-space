@@ -677,25 +677,43 @@ export async function markAllNotificationsRead(): Promise<void> {
 
 /**
  * 예약 모달 참석자 검색
- * @param query    - 검색어 (이름 또는 이메일)
- * @param excludeId - 현재 사용자 user_id (검색 결과에서 제외)
+ * @param query        - 검색어 (이름, 이메일, 부서)
+ * @param excludeEmail - 현재 사용자 이메일 (검색 결과에서 제외)
  */
 export async function searchGraphUsers(
   query: string,
-  excludeId?: string
+  excludeEmail?: string
 ): Promise<AppUser[]> {
   if (!isSupabaseEnabled || query.trim().length < 2) return []
   try {
-    const { data, error } = await supabase.functions.invoke('search-users', {
-      body: { query: query.trim(), excludeId },
-    })
+    const q = query.trim()
+    // profiles 테이블에서 직접 검색
+    // is_active = false(퇴사자) 제외, 이름·이메일·부서 중 하나라도 일치하면 반환
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, employee_id, name, dept, role, email, is_active')
+      .or(`name.ilike.%${q}%,email.ilike.%${q}%,dept.ilike.%${q}%`)
+      .neq('is_active', false)
+      .limit(8)
+
     if (error) {
-      console.error('[api] searchGraphUsers 실패:', error)
+      console.error('[api] searchGraphUsers(profiles) 실패:', error)
       return []
     }
-    return (data?.users ?? []) as AppUser[]
+
+    return (data ?? [])
+      .filter(row => row.email !== excludeEmail)   // 본인 제외
+      .map(row => ({
+        user_id:     row.id,
+        employee_id: row.employee_id ?? '',
+        name:        row.name        ?? '',
+        dept:        row.dept        ?? '',
+        role:        (row.role === 'ADMIN' ? 'ADMIN' : 'USER') as 'USER' | 'ADMIN',
+        email:       row.email       ?? '',
+        is_active:   row.is_active   ?? true,
+      }))
   } catch (e) {
-    console.error('[api] searchGraphUsers 예외:', e)
+    console.error('[api] searchGraphUsers(profiles) 예외:', e)
     return []
   }
 }
