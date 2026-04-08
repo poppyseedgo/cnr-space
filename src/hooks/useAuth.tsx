@@ -124,8 +124,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setLoading(false)
 
             // DB 프로필은 백그라운드에서 조회 후 업데이트 (name/dept/role 보정)
-            loadProfile(uid, email).then(user => {
-              if (user) setCurrentUser(user)
+            loadProfile(uid, email).then(async user => {
+              if (!user) return
+              // DB dept가 비어있으면 Graph API로 보정 (sync로 인해 dept 유실된 경우 복구)
+              if (!user.dept && session.provider_token) {
+                const dept = await fetchAndSaveDept(uid, session.provider_token)
+                if (dept) user = { ...user, dept }
+              }
+              setCurrentUser(user)
             }).catch(() => {})
 
           } else {
