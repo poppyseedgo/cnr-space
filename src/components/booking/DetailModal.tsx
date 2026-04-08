@@ -7,6 +7,8 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
 import { getFloor } from '../../data/floors'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
+import { UserAvatar } from '../common/UserAvatar'
+
 export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser, rooms:rp=[]}) {
   const { isMobile } = useBreakpoint();
   const r=rp.find(r=>r.room_id===b.room_id);
@@ -86,11 +88,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
                   <div key={typeof a === "string" ? a : (a as any).user_id ?? idx} style={{display:"inline-flex",alignItems:"center",gap:5,
                     background:"#EEF2FF",color:"#000",fontSize:11,fontWeight:600,
                     padding:"3px 10px 3px 6px",borderRadius:999}}>
-                    <div style={{width:18,height:18,borderRadius:"50%",background:"#3D88FF",
-                      color:"#fff",fontSize:9,fontWeight:800,
-                      display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      {(typeof a === "string" ? a : (a as any).name ?? "?").charAt(0)}
-                    </div>
+                    <UserAvatar name={typeof a === "string" ? a : (a as any).name ?? "?"} avatarUrl={(a as any).avatar_url ?? null} size={18} bgColor="#3D88FF" />
                     {typeof a === "string" ? a : (a as any).name ?? a}
                   </div>
                 ))}

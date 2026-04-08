@@ -910,6 +910,8 @@ export function AdminRooms({ showToast, isMobile }) {
 }
 
 // ─── AdminUsers ────────────────────────────────────────────────────────────────
+import { UserAvatar } from '../components/common/UserAvatar'
+
 export function AdminUsers({ users, setUsers, showToast, isMobile }) {
   type FilterType = 'all' | 'admin' | 'unlogged' | 'departed'
   const [filter,     setFilter]     = useState<FilterType>('all')
@@ -1131,9 +1133,7 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
             <div>
               {filteredUsers.map(u => (
                 <div key={u.user_id} style={{ padding:'14px 20px', borderBottom:'1px solid #F8FAFC', display:'flex', alignItems:'center', gap:12 }}>
-                  <div style={{ width:36, height:36, borderRadius:'50%', background:u.role==='ADMIN'?'#111':'#E2E8F0', color:u.role==='ADMIN'?'#fff':'#64748B', fontSize:13, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                    {u.name.charAt(0)}
-                  </div>
+                  <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={36} bgColor={u.role==='ADMIN'?'#111':'#E2E8F0'} textColor={u.role==='ADMIN'?'#fff':'#64748B'} />
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
                       {u.name}{' '}
@@ -1169,9 +1169,7 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
                     onMouseEnter={e => (e.currentTarget.style.background = '#FAFBFD')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                     <td style={{ padding:'10px 14px', width:48 }}>
-                      <div style={{ width:32, height:32, borderRadius:'50%', background:u.role==='ADMIN'?'#111':'#E2E8F0', color:u.role==='ADMIN'?'#fff':'#64748B', fontSize:12, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                        {u.name.charAt(0)}
-                      </div>
+                      <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={32} bgColor={u.role==='ADMIN'?'#111':'#E2E8F0'} textColor={u.role==='ADMIN'?'#fff':'#64748B'} />
                     </td>
                     <td style={{ padding:'10px 14px', fontWeight:600, color:'#111' }}>{u.name}</td>
                     <td style={{ padding:'10px 14px', color:'#64748B' }}>

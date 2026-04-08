@@ -18,6 +18,7 @@ import { BookingDoneModal } from './components/booking/BookingDoneModal'
 import { RecurDoneModal } from './components/booking/RecurDoneModal'
 // ── 무거운 페이지는 lazy load — 초기 번들에서 제외 ─────────────────────────
 const MyPageView          = lazy(() => import('./pages/MyPage').then(m => ({ default: m.MyPageView })))
+import { UserAvatar } from './components/common/UserAvatar'
 const MyBookingWeeklyView = lazy(() => import('./pages/MyPage').then(m => ({ default: m.MyBookingWeeklyView })))
 const AdminView           = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminView })))
 import LoginPage from './pages/LoginPage'
@@ -1043,15 +1044,7 @@ function AppContent() {
                     borderColor: dark?"#475569":"#E2E8F0",
                     cursor:"pointer",
                   }}>
-                  <div style={{
-                    width:28, height:28, borderRadius:"50%",
-                    background: "#CBECFF",
-                    display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize:12, fontWeight:800,
-                    color: "#111111",
-                  }}>
-                    {currentUser.charAt(0)}
-                  </div>
+                  <UserAvatar name={currentUser} avatarUrl={authUser?.avatar_url} size={28} bgColor="#CBECFF" textColor="#111111" />
                   {!isMobile && (
                     <span style={{
                       fontSize:13, fontWeight:600,
@@ -1143,7 +1136,7 @@ function AppContent() {
           onCheckIn={checkIn} onNewBooking={()=>setModal({type:"new",prefill:{}})}
           authUser={authUser}
         /></Suspense>}
-      {view==="mypage" && <Suspense fallback={null}><MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} /></Suspense>}
+      {view==="mypage" && <Suspense fallback={null}><MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} avatarUrl={authUser?.avatar_url ?? null} /></Suspense>}
       {view==="admin" && <Suspense fallback={null}><AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={adminForceCancelBooking} onDetail={b=>setModal({type:'detail',data:b})} /></Suspense>}
 
       {/* ── Modals ── */}
