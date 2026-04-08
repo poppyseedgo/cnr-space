@@ -5,7 +5,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../utils/time'
 
-import { cancelBooking as apiCancelBooking, upsertBookingAttendees } from '../lib/api'
+import { cancelBooking as apiCancelBooking, upsertBookingAttendees, isMyBooking } from '../lib/api'
 import { WeeklyView } from '../components/layout/CalendarShell'
 import { supabase } from '../lib/supabase'
 import { useBreakpoint } from '../hooks/useBreakpoint'
@@ -13,7 +13,7 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, B
 
 import { UserAvatar } from '../components/common/UserAvatar'
 
-export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail, rooms:rp=[], users:up=[], authUserId='', avatarUrl=null}) {
+export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail, rooms:rp=[], users:up=[], authUserId='', authUserEmail='', avatarUrl=null}) {
   const [tab, setTab] = useState("upcoming");
   const [statYear, setStatYear] = useState(()=>new Date().getFullYear());
   const [statMonth, setStatMonth] = useState(()=>new Date().getMonth());
@@ -83,8 +83,8 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
 
   // user_id 기반 필터 (정확) → fallback: name 기반 (SSO 연동 전)
   const myBookings = useMemo(()=>
-    bookings.filter(b => b.user === currentUser),
-  [bookings, currentUser]);
+    bookings.filter(b => isMyBooking(b, authUserId, authUserEmail)),
+  [bookings, authUserId, authUserEmail]);
   const upcoming = useMemo(()=>myBookings.filter(b=>!b.autoCancelled&&(tsDate(b.start_at)>today||(tsDate(b.start_at)===today&&tsMin(b.end_at)>now))).sort((a,b)=>a.start_at.localeCompare(b.start_at)),[myBookings,today,now]);
   const completed = useMemo(()=>myBookings.filter(b=>!b.autoCancelled&&b.checkedIn&&(tsDate(b.start_at)<today||(tsDate(b.start_at)===today&&tsMin(b.end_at)<=now))).sort((a,b)=>b.start_at.localeCompare(a.start_at)),[myBookings,today,now]);
   const cancelled = useMemo(()=>myBookings.filter(b=>b.autoCancelled).sort((a,b)=>b.start_at.localeCompare(a.start_at)),[myBookings]);
@@ -308,7 +308,7 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
   const { isMobile } = useBreakpoint()
 
   // 본인 예약만 필터
-  const myBookings = bookings.filter(b => b.user === currentUser)
+  const myBookings = bookings.filter(b => isMyBooking(b, authUser?.user_id ?? '', authUser?.email ?? ''))
 
   // 오늘 내 예약 (취소 제외, 사용자가 취소한 것만 제외)
   const todayBookings = myBookings
