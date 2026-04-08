@@ -6,7 +6,7 @@
  */
 
 import { supabase, isSupabaseEnabled } from './supabase'
-import type { Booking, Room, AppUser, Feature } from '../types'
+import type { Booking, Room, AppUser, Feature, AttendeeRef } from '../types'
 
 // ── UTC → KST 변환 ───────────────────────────────────────────────────────────
 // Supabase가 UTC ISO 문자열로 반환하므로 앱 기준인 KST로 보정
@@ -27,10 +27,11 @@ function rowToBooking(row: Record<string, any>): Booking {
     room_id:       row.room_id,
     title:         row.title,
     memo:          row.memo ?? '',
-    attendees:     Array.isArray(row.attendees) ? row.attendees : [],
-    start_at:      utcToKST(row.start_at),   // ★ 버그2 수정
-    end_at:        utcToKST(row.end_at),     // ★ 버그2 수정
+    attendees:     [],                         // loadBookings에서 booking_attendees join으로 채움
+    start_at:      utcToKST(row.start_at),
+    end_at:        utcToKST(row.end_at),
     user:          row.user_name,
+    user_id:       row.user_id ?? undefined,   // 예약자 UUID — avatar 역조회용
     dept:          row.user_dept,
     checkedIn:     row.checked_in,
     autoCancelled: row.auto_cancelled,
@@ -76,35 +77,22 @@ export async function loadBookings(): Promise<Booking[]> {
     const to = new Date()
     to.setDate(to.getDate() + 60)
 
-    // bookings 조회 (attendees는 원본 jsonb 컬럼에서 직접 추출)
+    // bookings + booking_attendees join 조회
+    // bookings.attendees JSONB는 신규 예약에 저장 안 됨 → booking_attendees 테이블이 정본
     const { data, error } = await supabase
       .from('bookings')
-      .select('*')
+      .select('*, booking_attendees(email, name)')
       .gte('start_at', from.toISOString())
       .lte('start_at', to.toISOString())
       .order('start_at', { ascending: true })
 
     if (error) throw error
     return (data ?? []).map(row => {
-      // bookings.attendees 원본 jsonb 컬럼에서 name 추출 (가장 신뢰할 수 있는 소스)
-      let attendees: string[] = []
-      if (Array.isArray(row.attendees) && row.attendees.length > 0) {
-        attendees = row.attendees.map((a: any) => {
-          if (!a) return ''
-          if (typeof a === 'string') {
-            if (a.startsWith('{')) {
-              try { const p = JSON.parse(a); return p.name ?? p.email ?? '' }
-              catch { return '' }
-            }
-            return a  // 그냥 이메일/이름 문자열
-          }
-          // 객체: name 우선, 없으면 email
-          return a.name ?? a.email ?? ''
-        }).filter(Boolean)
-      }
-
-      const parsed = rowToBooking({ ...row })
-      parsed.attendees = attendees
+      const parsed = rowToBooking(row)
+      // booking_attendees 테이블에서 attendees 파싱 (email이 유일 키)
+      parsed.attendees = (row.booking_attendees ?? [])
+        .map((a: any): AttendeeRef => ({ email: a.email ?? '', name: a.name ?? '' }))
+        .filter((a: AttendeeRef) => a.email || a.name)
       return parsed
     })
   } catch (e) {
@@ -122,19 +110,16 @@ export async function loadBookingsByRange(from: string, to: string): Promise<Boo
     const toISO   = new Date(to   + 'T23:59:59+09:00').toISOString()
     const { data, error } = await supabase
       .from('bookings')
-      .select('*')
+      .select('*, booking_attendees(email, name)')
       .gte('start_at', fromISO)
       .lte('start_at', toISO)
       .order('start_at', { ascending: false })
     if (error) throw error
     return (data ?? []).map(row => {
       const b = rowToBooking(row)
-      if (Array.isArray(row.attendees) && row.attendees.length > 0) {
-        b.attendees = row.attendees.map((a: any) => {
-          if (typeof a === 'string') return a
-          return a?.name ?? a?.email ?? ''
-        }).filter(Boolean)
-      }
+      b.attendees = (row.booking_attendees ?? [])
+        .map((a: any): AttendeeRef => ({ email: a.email ?? '', name: a.name ?? '' }))
+        .filter((a: AttendeeRef) => a.email || a.name)
       return b
     })
   } catch (e) {
@@ -189,19 +174,16 @@ export async function insertBooking(booking: Booking): Promise<Booking> {
 // ── booking_attendees 저장 (예약 생성/수정 시 호출) ────────────────────────
 export async function upsertBookingAttendees(
   bookingId: string,
-  attendees: string[] | {email?: string; name?: string; user_id?: string}[]
+  attendees: { email?: string; name?: string }[]
 ): Promise<void> {
   await supabase.from('booking_attendees').delete().eq('booking_id', bookingId)
   if (!attendees || attendees.length === 0) return
   const rows = attendees
-    .map(a => {
-      if (typeof a === 'string') return { booking_id: bookingId, email: a, name: '' }
-      return {
-        booking_id: bookingId,
-        email: (a as any).email ?? '',
-        name:  (a as any).name  ?? '',
-      }
-    })
+    .map(a => ({
+      booking_id: bookingId,
+      email: a.email ?? '',
+      name:  a.name  ?? '',
+    }))
     .filter(r => r.email || r.name)
   if (rows.length === 0) return
   const { error } = await supabase.from('booking_attendees').insert(rows)

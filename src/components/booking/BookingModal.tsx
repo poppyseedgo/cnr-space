@@ -10,6 +10,7 @@ import { searchGraphUsers } from '../../lib/api'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
 import { UserAvatar } from '../common/UserAvatar'
+import { AttendeeChip } from '../common/AttendeeChip'
 
 export function BookingModal({prefill, date:initDate, editBooking=null, onClose, onSubmit, onUpdate, bookings, isAdmin=false, currentUser="홍길동", currentUserEmail="", rooms:roomsProp=[], users:usersProp=[]}) {
   // ── 모든 hooks를 최상단에 선언 ──────────────────────────────────────────────
@@ -33,7 +34,18 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
         start:     tsTime(editBooking.start_at),  // "HH:MM" 24시간 형식 유지
         end:       tsTime(editBooking.end_at),
         memo:      editBooking.memo || "",
-        attendees: editBooking.attendees || [],
+        // AttendeeRef[] → AttendeeFormItem[]
+        // email로 usersProp에서 역조회해 user_id·dept·avatar_url 복원
+        attendees: (editBooking.attendees || []).map(a => {
+          const u = (usersProp as any[]).find(u => u.email === a.email)
+          return {
+            user_id:    u?.user_id   ?? a.email,   // 없으면 email을 임시 key로
+            name:       a.name       || u?.name    || a.email,
+            email:      a.email,
+            dept:       u?.dept      ?? '',
+            avatar_url: u?.avatar_url ?? null,
+          }
+        }),
       };
     }
     // 현재 시각 기준 다음 15분 단위 스냅 (예: 6:08 → 6:15, 6:15 → 6:30)
@@ -280,20 +292,15 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
 
       {/* 선택된 참석자 칩 */}
       {form.attendees.length > 0 && (
-        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+        <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:8}}>
           {form.attendees.map(a => (
-            <div key={a.user_id} style={{
-              display:"inline-flex",alignItems:"center",gap:5,
-              background:"#EEF2FF",color:"#000",
-              fontSize:11,fontWeight:600,padding:"4px 10px 4px 8px",borderRadius:999,
-            }}>
-              <UserAvatar name={typeof a === 'string' ? a : (a as any).name ?? '?'} avatarUrl={(a as any).avatar_url ?? usersProp.find((u:any)=>u.email===(a as any).email)?.avatar_url ?? null} size={18} bgColor="#3D88FF" />
-              <span>{typeof a === 'string' ? a : (a as any).name}</span>
-              {typeof a !== 'string' && <span style={{color:"rgba(0,0,0,0.4)",fontSize:10}}>{(a as any).dept}</span>}
-              <button onClick={()=>removeAttendee(typeof a === 'string' ? a : (a as any).user_id)}
-                style={{background:"none",border:"none",cursor:"pointer",
-                  color:"#d4d4d4",lineHeight:1,padding:0,marginLeft:2,display:"flex",alignItems:"center"}}><X size={10} strokeWidth={2}/></button>
-            </div>
+            <AttendeeChip
+              key={a.user_id}
+              name={a.name}
+              avatarUrl={a.avatar_url}
+              dept={a.dept}
+              onRemove={() => removeAttendee(a.user_id)}
+            />
           ))}
         </div>
       )}
@@ -318,7 +325,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   cursor:"pointer",borderBottom:"1px solid #F8FAFC"}}
                 onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
                 onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
-                <UserAvatar name={u.name} avatarUrl={usersProp.find((p:any)=>p.email===u.email)?.avatar_url ?? null} size={28} />
+                <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={28} />
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:13,fontWeight:600,color:"#111111"}}>{u.name}</div>
                   <div style={{fontSize:11,color:"#94A3B8"}}>{u.dept} · {u.email}</div>
@@ -1063,15 +1070,15 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             <div>
               <label style={{fontSize:13,fontWeight:700,color:"#111",display:"block",marginBottom:8}}>참석자</label>
               {form.attendees.length > 0 && (
-                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:8}}>
                   {form.attendees.map(a => (
-                    <div key={a.user_id} style={{display:"inline-flex",alignItems:"center",gap:5,
-                      background:"#EEF2FF",color:"#000",fontSize:11,fontWeight:600,padding:"4px 10px 4px 8px",borderRadius:999}}>
-                      <div style={{width:18,height:18,borderRadius:"50%",background:"#3D88FF",color:"#fff",fontSize:9,fontWeight:800,
-                        display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{(typeof a === 'string' ? a : (a as any).name ?? '?').charAt(0).toUpperCase()}</div>
-                      {a.name}
-                      <button onClick={()=>removeAttendee(a.user_id)} style={{background:"none",border:"none",cursor:"pointer",color:"#6366F1",padding:0,marginLeft:2,display:"inline-flex",alignItems:"center"}}><X size={11} strokeWidth={2}/></button>
-                    </div>
+                    <AttendeeChip
+                      key={a.user_id}
+                      name={a.name}
+                      avatarUrl={a.avatar_url}
+                      dept={a.dept}
+                      onRemove={() => removeAttendee(a.user_id)}
+                    />
                   ))}
                 </div>
               )}
@@ -1089,8 +1096,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                         style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",cursor:"pointer",borderBottom:"1px solid #F8FAFC"}}
                         onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
                         onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
-                        <div style={{width:28,height:28,borderRadius:"50%",background:"#111",color:"#fff",fontSize:11,fontWeight:800,
-                          display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{u.name.charAt(0)}</div>
+                        <UserAvatar name={u.name} avatarUrl={u.avatar_url ?? null} size={28} />
                         <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:"#111"}}>{u.name}</div><div style={{fontSize:11,color:"#94A3B8"}}>{u.dept} · {u.email}</div></div>
                         <span style={{fontSize:11,color:"#CBD5E1"}}>+ 추가</span>
                       </div>

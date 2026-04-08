@@ -64,6 +64,20 @@ export interface DepartedUser {
   departed_at: string  // ISO 타임스탬프
 }
 
+// ─── 참석자 타입 ─────────────────────────────────────────────────────────────
+// AttendeeRef: DB 저장/조회용 최소 식별자 (email이 유일 키)
+export interface AttendeeRef {
+  email: string
+  name:  string
+}
+
+// AttendeeFormItem: BookingModal 내부 폼 상태용 (아바타·부서 포함 풍부한 객체)
+export interface AttendeeFormItem extends AttendeeRef {
+  user_id:     string
+  dept?:       string
+  avatar_url?: string | null
+}
+
 // ─── 예약 타입 ──────────────────────────────────────────────────────────────────
 
 export interface Booking {
@@ -71,11 +85,12 @@ export interface Booking {
   room_id: number
   title: string
   memo?: string
-  attendees?: string[]
+  attendees?: AttendeeRef[]          // email+name 쌍 — 화면 표시 및 avatar 역조회 키
   /** "YYYY-MM-DDThh:mm:ss+09:00" */
   start_at: string
   end_at: string
   user:              string
+  user_id?:          string   // 예약자 UUID — users 배열에서 avatar_url 역조회용
   user_employee_id?: string   // 사번 (동명이인 구분용)
   dept:              string
   checkedIn:         boolean
@@ -95,7 +110,7 @@ export interface BookingForm {
   room_id: number | null
   title: string
   memo: string
-  attendees: string[]
+  attendees: AttendeeFormItem[]     // 폼 내부: user_id·dept·avatar_url 포함 풍부한 객체
   start: string   // "HH:MM"
   end: string     // "HH:MM"
   recur: RecurType

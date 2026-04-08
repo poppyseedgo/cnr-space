@@ -8,8 +8,9 @@ import { getFloor } from '../../data/floors'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
 import { UserAvatar } from '../common/UserAvatar'
+import { AttendeeChip } from '../common/AttendeeChip'
 
-export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser, rooms:rp=[]}) {
+export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser, rooms:rp=[], users:up=[]}) {
   const { isMobile } = useBreakpoint();
   const r=rp.find(r=>r.room_id===b.room_id);
   const floor=r ? getFloor(r.floor_id) : null;
@@ -67,7 +68,6 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
                   </span>
                 : `${fmtTSFull(b.start_at)} – ${fmtTSFull(b.end_at)}`,
               fmtTSDateFull(b.start_at)],
-            [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><User size={11} strokeWidth={1.8}/>예약자</span>, b.user, b.dept],
             features.length>0&&[<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Monitor size={11} strokeWidth={1.8}/>설비</span>, features.map(f=>f.feature_name).join(", "), null],
             b.memo&&[<span style={{display:"inline-flex",alignItems:"center",gap:4}}><FileText size={11} strokeWidth={1.8}/>메모</span>, b.memo, null],
           ].filter(Boolean).map(([label,main,sub],i)=>(
@@ -79,19 +79,44 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
               </div>
             </div>
           ))}
-          {/* 참석자 */}
+
+          {/* 예약자 — user_id로 users에서 avatar_url 역조회 (패턴 C) */}
+          {(()=>{
+            const owner = (up as any[]).find(u => u.user_id === b.user_id)
+            return (
+              <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
+                <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0,display:"flex",alignItems:"center",gap:4}}>
+                  <User size={11} strokeWidth={1.8}/>예약자
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <UserAvatar name={b.user} avatarUrl={owner?.avatar_url ?? null} size={24} />
+                  <div>
+                    <div style={{fontSize:13,color:"#111111",fontWeight:600}}>{b.user}</div>
+                    <div style={{fontSize:11,color:"#94A3B8",marginTop:1}}>{b.dept}</div>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* 참석자 — email로 users에서 avatar_url·dept 역조회 (패턴 B) */}
           {b.attendees && b.attendees.length > 0 && (
             <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
-              <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0,paddingTop:2,display:"flex",alignItems:"center",gap:4}}><Users size={11} strokeWidth={1.8}/>참석자</div>
+              <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0,paddingTop:2,display:"flex",alignItems:"center",gap:4}}>
+                <Users size={11} strokeWidth={1.8}/>참석자
+              </div>
               <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {b.attendees.map((a, idx)=>(
-                  <div key={typeof a === "string" ? a : (a as any).user_id ?? idx} style={{display:"inline-flex",alignItems:"center",gap:5,
-                    background:"#EEF2FF",color:"#000",fontSize:11,fontWeight:600,
-                    padding:"3px 10px 3px 6px",borderRadius:999}}>
-                    <UserAvatar name={typeof a === "string" ? a : (a as any).name ?? "?"} avatarUrl={(a as any).avatar_url ?? null} size={18} bgColor="#3D88FF" />
-                    {typeof a === "string" ? a : (a as any).name ?? a}
-                  </div>
-                ))}
+                {b.attendees.map((a, idx) => {
+                  const u = (up as any[]).find(u => u.email === a.email)
+                  return (
+                    <AttendeeChip
+                      key={a.email || idx}
+                      name={a.name || a.email}
+                      avatarUrl={u?.avatar_url ?? null}
+                      dept={u?.dept}
+                    />
+                  )
+                })}
               </div>
             </div>
           )}

@@ -36,7 +36,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
     setAllLoading(true);
     supabase
       .from('bookings')
-      .select('*, booking_attendees(email)')
+      .select('*, booking_attendees(email, name)')
       .eq('user_id', authUserId)
       .order('start_at', { ascending: false })
       .then(({ data, error }) => {
@@ -46,7 +46,10 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
             room_id:       row.room_id,
             title:         row.title,
             memo:          row.memo ?? '',
-            attendees:     (row.booking_attendees ?? []).map((a: any) => a.email),
+            attendees:     (row.booking_attendees ?? []).map((a: any) => ({
+              email: a.email ?? '',
+              name:  a.name  ?? '',
+            })),
             start_at:      row.start_at,
             end_at:        row.end_at,
             user:          row.user_name,
