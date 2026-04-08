@@ -5,7 +5,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from './utils/time'
 import { getFloor } from './data/floors'
-import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking, upsertBookingAttendees, getBookingAttendees, insertNotification, loadNotifications, markNotificationRead, markAllNotificationsRead, subscribeNotifications, expirePendingBooking, adminForceCancel, type AppNotification } from './lib/api'
+import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadBookingById, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking, upsertBookingAttendees, getBookingAttendees, insertNotification, loadNotifications, markNotificationRead, markAllNotificationsRead, subscribeNotifications, expirePendingBooking, adminForceCancel, type AppNotification, type BookingRealtimeEvent } from './lib/api'
 import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView, RoomDetailModal } from './components/room/HomeView'
@@ -135,7 +135,7 @@ function AppContent() {
   // 알림 로드 + Realtime 구독
   useEffect(() => {
     if (!authUser) { setNotifications([]); return; }
-    loadNotifications().then(setNotifications);
+    loadNotifications(authUser.user_id).then(setNotifications);
     const unsub = subscribeNotifications((payload) => {
       // payload.new 에서 직접 새 알림 추가 — Edge Function insert 즉시 반영
       if (payload?.new) {
@@ -151,7 +151,7 @@ function AppContent() {
           created_at: n.created_at,
         } as AppNotification, ...prev]);
       } else {
-        loadNotifications().then(setNotifications);
+        loadNotifications(authUser.user_id).then(setNotifications);
       }
     }, authUser.user_id);
     return unsub;
@@ -163,8 +163,56 @@ function AppContent() {
     const iv = setInterval(() => setTick(t => t+1), 10000);
 
     // ② Realtime 구독 → 다른 사람 예약/취소/체크인 시 즉시 반영
-    const unsubscribe = subscribeBookings(() => {
-      loadBookings().then(b => setBookings(b))
+    // ⚡ payload 기반 단건 패치: 전체 refetch 제거
+    //   DELETE → filter로 제거 (DB 조회 0회)
+    //   UPDATE → rowToBooking으로 state patch (DB 조회 0회, attendees는 기존 state 유지)
+    //   INSERT → loadBookingById 단건 조회 (attendees 포함, DB 조회 1회)
+    const unsubscribe = subscribeBookings(async ({ eventType, newRow, oldId }) => {
+      if (eventType === 'DELETE') {
+        const id = oldId ?? newRow?.id
+        if (id) setBookings(prev => prev.filter(b => b.id !== id))
+        return
+      }
+      if (!newRow?.id) return
+
+      if (eventType === 'UPDATE') {
+        // DB row → Booking 변환 (attendees 제외 — booking_attendees 테이블은 UPDATE 이벤트에 포함 안 됨)
+        // 기존 state의 attendees를 보존하고 나머지 필드만 패치
+        const patched = {
+          id:            newRow.id,
+          room_id:       newRow.room_id,
+          title:         newRow.title,
+          memo:          newRow.memo ?? '',
+          start_at:      newRow.start_at,
+          end_at:        newRow.end_at,
+          user:          newRow.user_name,
+          user_id:       newRow.user_id ?? undefined,
+          dept:          newRow.user_dept,
+          checkedIn:     newRow.checked_in,
+          autoCancelled: newRow.auto_cancelled,
+          cancelledBy:   newRow.cancelled_by ?? null,
+          status:        newRow.status ?? 'confirmed',
+          earlyEnded:    newRow.early_ended ?? false,
+          originalEndAt: newRow.original_end_at ?? null,
+          recurGroupId:  newRow.recur_group_id ?? null,
+        }
+        setBookings(prev => prev.map(b =>
+          b.id === patched.id ? { ...b, ...patched } : b
+        ))
+        return
+      }
+
+      if (eventType === 'INSERT') {
+        // INSERT: attendees 포함을 위해 단건 조회 (1회 DB read)
+        const booking = await loadBookingById(newRow.id)
+        if (booking) {
+          setBookings(prev => {
+            // 낙관적 업데이트로 이미 추가된 경우 dedup
+            if (prev.some(b => b.id === booking.id)) return prev
+            return [...prev, booking].sort((a, b) => a.start_at.localeCompare(b.start_at))
+          })
+        }
+      }
     });
 
     // ③ Page Visibility API → 탭 복귀 시 데이터 강제 새로고침
@@ -956,7 +1004,7 @@ function AppContent() {
                       </span>
                       {unreadCount > 0 && (
                         <button className="btn" onClick={()=>{
-                          markAllNotificationsRead()
+                          markAllNotificationsRead(authUser?.user_id ?? '')
                           setNotifications(prev => prev.map(n => ({...n, is_read:true})))
                         }} style={{fontSize:11,color:"#64748B",padding:"2px 8px",borderRadius:6,
                           border:"1px solid #E2E8F0",background:"#F8FAFC"}}>
