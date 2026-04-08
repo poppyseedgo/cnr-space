@@ -380,7 +380,7 @@ export async function loadUsers(): Promise<AppUser[]> {
   try {
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, employee_id, name, dept, role, email, is_active')
+      .select('id, employee_id, name, dept, role, email, is_active, avatar_url')
       .order('name')
     if (error) throw error
 
@@ -392,6 +392,7 @@ export async function loadUsers(): Promise<AppUser[]> {
       role:        (row.role === 'ADMIN' ? 'ADMIN' : 'USER') as 'USER' | 'ADMIN',
       email:       row.email       ?? '',
       is_active:   row.is_active   ?? true,
+      avatar_url:  row.avatar_url  ?? null,
     }))
   } catch (e) {
     console.error('[api] loadUsers 실패:', e)
@@ -686,7 +687,7 @@ export async function searchGraphUsers(
     // is_active = false(퇴사자) 제외, 이름·이메일·부서 중 하나라도 일치하면 반환
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, employee_id, name, dept, role, email, is_active')
+      .select('id, employee_id, name, dept, role, email, is_active, avatar_url')
       .or(`name.ilike.%${q}%,email.ilike.%${q}%,dept.ilike.%${q}%`)
       .neq('is_active', false)
       .limit(8)
