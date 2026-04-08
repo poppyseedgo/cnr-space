@@ -1,6 +1,6 @@
 // @ts-nocheck
 /**
- * sync-all-users Edge Function v4
+ * sync-all-users Edge Function v5
  * Microsoft Graph API User.ReadBasic.All (Application 권한)
  *
  * 퇴사자 처리 정책:
@@ -8,16 +8,17 @@
  *   - profiles 테이블에서 DELETE (이메일 재사용 가능하도록)
  *   - 미래 예약 auto_cancelled = true
  *
- * 신규 직원:
- *   - Azure AD object id로 profiles INSERT
- *   - role='USER', dept='' (첫 SSO 로그인 시 트리거가 dept 채움)
+ * 신규 직원 INSERT id 결정 기준:
+ *   - auth.users에 존재(로그인 이력 있음) → auth.users.id 사용
+ *   - auth.users에 없음(미로그인)         → Azure AD object id 사용
+ *     (첫 SSO 로그인 시 handle_sso_new_user 트리거가 id 교체 + dept 채움)
  *
- * 기존 직원 (로그인 이력 있음):
- *   - name, employee_id 만 PATCH
- *   - dept, role 절대 건드리지 않음
+ * 기존 직원 PATCH:
+ *   - name, employee_id 만 갱신
+ *   - id, dept, role 절대 건드리지 않음
  *
  * 안전장치:
- *   - 퇴사자가 전체 profiles의 30% 초과 시 싱크 중단 (이상 감지)
+ *   - 퇴사자가 전체 profiles의 30% 초과 시 싱크 중단
  */
 
 const TENANT_ID     = Deno.env.get('AZURE_TENANT_ID')           ?? ''
@@ -85,12 +86,7 @@ async function fetchAllAzureUsers(token: string): Promise<any[]> {
 
 // ── profiles 전체 조회 ───────────────────────────────────────────────────────
 async function fetchAllProfiles(): Promise<{
-  id: string
-  name: string
-  email: string
-  dept: string
-  employee_id: string
-  role: string
+  id: string; name: string; email: string; dept: string; employee_id: string; role: string
 }[]> {
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/profiles?select=id,name,email,dept,employee_id,role`,
@@ -100,19 +96,42 @@ async function fetchAllProfiles(): Promise<{
   return await res.json()
 }
 
+// ── auth.users 이메일 → id 맵 조회 ──────────────────────────────────────────
+// 로그인한 적 있는 계정은 auth.users에 존재
+// INSERT 시 이 id를 사용해야 앱이 해당 프로필을 정상 인식
+async function fetchAuthUserEmailMap(): Promise<Map<string, string>> {
+  const emailToId = new Map<string, string>()
+  let page = 0
+  const perPage = 1000
+
+  while (true) {
+    const res = await fetch(
+      `${SUPABASE_URL}/auth/v1/admin/users?page=${page}&per_page=${perPage}`,
+      {
+        headers: {
+          'apikey':         SERVICE_KEY,
+          'Authorization': `Bearer ${SERVICE_KEY}`,
+        },
+      }
+    )
+    if (!res.ok) throw new Error(`auth.users 조회 실패 (${res.status}): ${await res.text()}`)
+    const data = await res.json()
+    const users = data.users ?? []
+    for (const u of users) {
+      if (u.email) emailToId.set(u.email.toLowerCase(), u.id)
+    }
+    if (users.length < perPage) break
+    page++
+  }
+  return emailToId
+}
+
 // ── 퇴사자 처리 ─────────────────────────────────────────────────────────────
-// 1. departed_users에 이력 INSERT (화면에서 퇴사자 목록 표시용)
-// 2. profiles에서 DELETE (이메일 unique constraint 해제 → 재사용 가능)
 async function processDeparted(departed: {
-  id: string
-  name: string
-  email: string
-  dept: string
-  employee_id: string
+  id: string; name: string; email: string; dept: string; employee_id: string
 }[]): Promise<void> {
   if (departed.length === 0) return
 
-  // departed_users INSERT (ON CONFLICT DO NOTHING: 중복 방지)
   const rows = departed.map(p => ({
     id:          p.id,
     name:        p.name        ?? '',
@@ -134,11 +153,9 @@ async function processDeparted(departed: {
     console.error('[sync] departed_users INSERT 실패:', await insertRes.text())
   }
 
-  // profiles DELETE
   const ids    = departed.map(p => `"${p.id}"`).join(',')
-  const filter = `id=in.(${ids})`
   const delRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/profiles?${filter}`,
+    `${SUPABASE_URL}/rest/v1/profiles?id=in.(${ids})`,
     {
       method:  'DELETE',
       headers: { ...sbHeaders, 'Prefer': 'return=minimal' },
@@ -183,11 +200,10 @@ async function cancelFutureBookings(userIds: string[]): Promise<number> {
 }
 
 // ── profiles 신규/기존 분리 처리 ─────────────────────────────────────────────
-// 신규: INSERT (role='USER', dept='')
-// 기존: PATCH name + employee_id 만 — dept, role 절대 건드리지 않음
 async function syncProfiles(
   azUsers: any[],
-  existingEmails: Set<string>
+  existingEmails: Set<string>,
+  authEmailMap: Map<string, string>,
 ): Promise<{ inserted: number; updated: number; skipped: number }> {
 
   const rows = azUsers
@@ -201,13 +217,12 @@ async function syncProfiles(
 
   if (rows.length === 0) return { inserted: 0, updated: 0, skipped: azUsers.length }
 
-  // 신규 직원: existingEmails에 없는 이메일
-  // profiles.id = Azure AD object id (FK 제약 제거됨)
-  // 첫 SSO 로그인 시 handle_sso_new_user 트리거가 id를 auth.users.id로 교체 + dept 채움
+  // 신규 직원 INSERT
   const toInsert = rows
     .filter(r => !existingEmails.has(r.email))
     .map(r => ({
-      id:          r.azureId,
+      // 로그인 이력 있으면 auth.users.id, 없으면 Azure Object id
+      id:          authEmailMap.get(r.email) ?? r.azureId,
       name:        r.name,
       email:       r.email,
       employee_id: r.employee_id,
@@ -227,8 +242,7 @@ async function syncProfiles(
     if (!res.ok) throw new Error(`profiles INSERT 실패 (${res.status}): ${await res.text()}`)
   }
 
-  // 기존 직원: name + employee_id 만 PATCH
-  // dept, role 은 절대 건드리지 않음 (어드민 권한, 부서 정보 보존)
+  // 기존 직원 PATCH — name, employee_id 만 갱신, id/dept/role 건드리지 않음
   const toUpdate = rows.filter(r => existingEmails.has(r.email))
   for (const row of toUpdate) {
     const res = await fetch(
@@ -236,10 +250,7 @@ async function syncProfiles(
       {
         method:  'PATCH',
         headers: { ...sbHeaders, 'Prefer': 'return=minimal' },
-        body:    JSON.stringify({
-          name:        row.name,
-          employee_id: row.employee_id,
-        }),
+        body:    JSON.stringify({ name: row.name, employee_id: row.employee_id }),
       }
     )
     if (!res.ok) console.error(`[sync] PATCH 실패 (${row.email}):`, await res.text())
@@ -260,32 +271,26 @@ Deno.serve(async (req) => {
     // 1. Azure AD 전체 조회
     const token   = await getGraphToken()
     const azUsers = await fetchAllAzureUsers(token)
-
-    // ✅ 핵심 수정: userPrincipalName(employee_id) 기준으로 Set 구성
-    // 이전 버그: azUsers.map(u => u.id) — Azure Object ID
-    //           profiles.filter(p => !azIdSet.has(p.id)) — Supabase UUID와 비교 → 전원 퇴사자 판정
-    const azUPNSet = new Set(
-      azUsers.map(u => (u.userPrincipalName ?? '').toLowerCase())
-    )
+    const azUPNSet = new Set(azUsers.map(u => (u.userPrincipalName ?? '').toLowerCase()))
 
     // 2. profiles 전체 조회
     const profiles       = await fetchAllProfiles()
     const existingEmails = new Set(profiles.map(p => (p.email ?? '').toLowerCase()))
 
-    // 3. 퇴사자 감지
-    // 조건: employee_id 있는 계정(Azure AD 경유) 중 Azure AD UPN 목록에 없는 계정
-    // employee_id 없는 계정(수동 생성 계정, 어드민 직접 추가)은 보호
+    // 3. auth.users 이메일 → id 맵 (로그인 이력 있는 계정 id 보존)
+    const authEmailMap = await fetchAuthUserEmailMap()
+
+    // 4. 퇴사자 감지 (employee_id 있는 계정만 — 수동 생성 계정 보호)
     const departed = profiles.filter(
       p => p.employee_id && !azUPNSet.has(p.employee_id.toLowerCase())
     )
 
-    // 안전장치: 퇴사자가 전체 profiles의 30% 초과 시 싱크 중단
-    // (이상 감지 — Azure API 오류나 로직 버그로 인한 대규모 삭제 방지)
+    // 안전장치: 퇴사자 30% 초과 시 싱크 중단
     const employeeProfiles = profiles.filter(p => p.employee_id)
     if (employeeProfiles.length > 0) {
-      const departedRatio = departed.length / employeeProfiles.length
-      if (departedRatio > 0.3) {
-        const msg = `[sync] 안전장치 발동: 퇴사자 비율 ${Math.round(departedRatio * 100)}% (${departed.length}/${employeeProfiles.length}) — 30% 초과로 싱크 중단`
+      const ratio = departed.length / employeeProfiles.length
+      if (ratio > 0.3) {
+        const msg = `[sync] 안전장치 발동: 퇴사자 비율 ${Math.round(ratio * 100)}% (${departed.length}/${employeeProfiles.length}) — 30% 초과로 싱크 중단`
         console.error(msg)
         return new Response(
           JSON.stringify({ success: false, error: msg, aborted: true }),
@@ -294,25 +299,19 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4. 퇴사자: departed_users INSERT + profiles DELETE + 미래 예약 취소
+    // 5. 퇴사자 처리
     await processDeparted(departed)
     const cancelledCount = await cancelFutureBookings(departed.map(p => p.id))
-
-    // 퇴사자 email을 existingEmails에서 제거 (재입사자 INSERT 가능하도록)
     departed.forEach(p => existingEmails.delete((p.email ?? '').toLowerCase()))
 
-    // 5. 신규/기존 직원 처리
-    const { inserted, updated, skipped } = await syncProfiles(azUsers, existingEmails)
+    // 6. 신규/기존 직원 처리
+    const { inserted, updated, skipped } = await syncProfiles(azUsers, existingEmails, authEmailMap)
 
     const result = {
-      success:           true,
-      total:             azUsers.length,
-      inserted,
-      updated,
-      skipped,
-      departed:          departed.length,
-      cancelledBookings: cancelledCount,
-      syncedAt:          new Date().toISOString(),
+      success: true, total: azUsers.length,
+      inserted, updated, skipped,
+      departed: departed.length, cancelledBookings: cancelledCount,
+      syncedAt: new Date().toISOString(),
     }
 
     console.log('[sync-all-users] 완료:', JSON.stringify(result))
