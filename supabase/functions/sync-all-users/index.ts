@@ -1,6 +1,6 @@
 // @ts-nocheck
 /**
- * sync-all-users Edge Function v5
+ * sync-all-users Edge Function v6
  * Microsoft Graph API User.ReadBasic.All (Application 권한)
  *
  * 퇴사자 처리 정책:
@@ -11,11 +11,17 @@
  * 신규 직원 INSERT id 결정 기준:
  *   - auth.users에 존재(로그인 이력 있음) → auth.users.id 사용
  *   - auth.users에 없음(미로그인)         → Azure AD object id 사용
- *     (첫 SSO 로그인 시 handle_sso_new_user 트리거가 id 교체 + dept 채움)
  *
  * 기존 직원 PATCH:
  *   - name, employee_id 만 갱신
- *   - id, dept, role 절대 건드리지 않음
+ *   - id, dept, role, avatar_url 절대 건드리지 않음
+ *
+ * 프로필 사진 동기화:
+ *   - avatar_url 없는 계정만 처리 (이미 있으면 skip)
+ *   - 1회 실행 시 최대 50명 처리 (timeout 방지)
+ *   - 10개씩 병렬 처리
+ *   - 사진 없는 계정(404)은 정상 케이스로 skip
+ *   - 실패해도 전체 sync 영향 없음
  *
  * 안전장치:
  *   - 퇴사자가 전체 profiles의 30% 초과 시 싱크 중단
@@ -86,10 +92,11 @@ async function fetchAllAzureUsers(token: string): Promise<any[]> {
 
 // ── profiles 전체 조회 ───────────────────────────────────────────────────────
 async function fetchAllProfiles(): Promise<{
-  id: string; name: string; email: string; dept: string; employee_id: string; role: string
+  id: string; name: string; email: string; dept: string
+  employee_id: string; role: string; avatar_url: string | null
 }[]> {
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/profiles?select=id,name,email,dept,employee_id,role`,
+    `${SUPABASE_URL}/rest/v1/profiles?select=id,name,email,dept,employee_id,role,avatar_url`,
     { headers: sbHeaders }
   )
   if (!res.ok) throw new Error(`profiles 조회 실패 (${res.status}): ${await res.text()}`)
@@ -97,8 +104,6 @@ async function fetchAllProfiles(): Promise<{
 }
 
 // ── auth.users 이메일 → id 맵 조회 ──────────────────────────────────────────
-// 로그인한 적 있는 계정은 auth.users에 존재
-// INSERT 시 이 id를 사용해야 앱이 해당 프로필을 정상 인식
 async function fetchAuthUserEmailMap(): Promise<Map<string, string>> {
   const emailToId = new Map<string, string>()
   let page = 0
@@ -107,15 +112,10 @@ async function fetchAuthUserEmailMap(): Promise<Map<string, string>> {
   while (true) {
     const res = await fetch(
       `${SUPABASE_URL}/auth/v1/admin/users?page=${page}&per_page=${perPage}`,
-      {
-        headers: {
-          'apikey':         SERVICE_KEY,
-          'Authorization': `Bearer ${SERVICE_KEY}`,
-        },
-      }
+      { headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` } }
     )
     if (!res.ok) throw new Error(`auth.users 조회 실패 (${res.status}): ${await res.text()}`)
-    const data = await res.json()
+    const data  = await res.json()
     const users = data.users ?? []
     for (const u of users) {
       if (u.email) emailToId.set(u.email.toLowerCase(), u.id)
@@ -149,21 +149,14 @@ async function processDeparted(departed: {
       body:    JSON.stringify(rows),
     }
   )
-  if (!insertRes.ok) {
-    console.error('[sync] departed_users INSERT 실패:', await insertRes.text())
-  }
+  if (!insertRes.ok) console.error('[sync] departed_users INSERT 실패:', await insertRes.text())
 
   const ids    = departed.map(p => `"${p.id}"`).join(',')
   const delRes = await fetch(
     `${SUPABASE_URL}/rest/v1/profiles?id=in.(${ids})`,
-    {
-      method:  'DELETE',
-      headers: { ...sbHeaders, 'Prefer': 'return=minimal' },
-    }
+    { method: 'DELETE', headers: { ...sbHeaders, 'Prefer': 'return=minimal' } }
   )
-  if (!delRes.ok) {
-    console.error('[sync] profiles DELETE 실패:', await delRes.text())
-  }
+  if (!delRes.ok) console.error('[sync] profiles DELETE 실패:', await delRes.text())
 }
 
 // ── 퇴사자 미래 예약 자동 취소 ───────────────────────────────────────────────
@@ -192,14 +185,12 @@ async function cancelFutureBookings(userIds: string[]): Promise<number> {
       body:    JSON.stringify({ auto_cancelled: true, cancelled_by: 'system' }),
     }
   )
-  if (!patchRes.ok) {
-    console.error('[sync] 예약 취소 실패:', await patchRes.text())
-    return 0
-  }
-  return targets.length
+  if (!patchRes.ok) console.error('[sync] 예약 취소 실패:', await patchRes.text())
+  return patchRes.ok ? targets.length : 0
 }
 
 // ── profiles 신규/기존 분리 처리 ─────────────────────────────────────────────
+// name, employee_id 만 갱신 — id, dept, role, avatar_url 절대 건드리지 않음
 async function syncProfiles(
   azUsers: any[],
   existingEmails: Set<string>,
@@ -217,11 +208,10 @@ async function syncProfiles(
 
   if (rows.length === 0) return { inserted: 0, updated: 0, skipped: azUsers.length }
 
-  // 신규 직원 INSERT
+  // 신규 INSERT
   const toInsert = rows
     .filter(r => !existingEmails.has(r.email))
     .map(r => ({
-      // 로그인 이력 있으면 auth.users.id, 없으면 Azure Object id
       id:          authEmailMap.get(r.email) ?? r.azureId,
       name:        r.name,
       email:       r.email,
@@ -242,7 +232,7 @@ async function syncProfiles(
     if (!res.ok) throw new Error(`profiles INSERT 실패 (${res.status}): ${await res.text()}`)
   }
 
-  // 기존 직원 PATCH — name, employee_id 만 갱신, id/dept/role 건드리지 않음
+  // 기존 PATCH — name, employee_id 만
   const toUpdate = rows.filter(r => existingEmails.has(r.email))
   for (const row of toUpdate) {
     const res = await fetch(
@@ -256,11 +246,105 @@ async function syncProfiles(
     if (!res.ok) console.error(`[sync] PATCH 실패 (${row.email}):`, await res.text())
   }
 
-  return {
-    inserted: toInsert.length,
-    updated:  toUpdate.length,
-    skipped:  azUsers.length - rows.length,
+  return { inserted: toInsert.length, updated: toUpdate.length, skipped: azUsers.length - rows.length }
+}
+
+// ── 프로필 사진 동기화 ───────────────────────────────────────────────────────
+// avatar_url 없는 계정만 처리, 1회 최대 50명, 10개씩 병렬
+async function syncAvatars(
+  azUsers: any[],
+  profiles: { id: string; email: string; avatar_url: string | null }[],
+  token: string,
+): Promise<{ synced: number; skipped: number; noPhoto: number; failed: number }> {
+
+  // email → { profileId, azureId } 맵
+  const emailMap = new Map<string, { profileId: string; azureId: string }>()
+  for (const u of azUsers) {
+    const email = (u.mail ?? u.userPrincipalName ?? '').toLowerCase()
+    if (email) emailMap.set(email, { profileId: '', azureId: u.id })
   }
+  for (const p of profiles) {
+    const email = (p.email ?? '').toLowerCase()
+    const entry = emailMap.get(email)
+    if (entry) entry.profileId = p.id
+  }
+
+  // avatar_url 없는 계정만 추출, 최대 50명
+  const targets = profiles
+    .filter(p => !p.avatar_url && p.email)
+    .slice(0, 50)
+    .map(p => ({ email: (p.email ?? '').toLowerCase(), profileId: p.id }))
+    .filter(t => emailMap.get(t.email)?.azureId)
+
+  if (targets.length === 0) return { synced: 0, skipped: profiles.length, noPhoto: 0, failed: 0 }
+
+  let synced = 0, noPhoto = 0, failed = 0
+  const CHUNK = 10
+
+  for (let i = 0; i < targets.length; i += CHUNK) {
+    const chunk = targets.slice(i, i + CHUNK)
+    await Promise.all(chunk.map(async ({ email, profileId }) => {
+      const azureId = emailMap.get(email)!.azureId
+      try {
+        // 1. Graph API photo 조회
+        const photoRes = await fetch(
+          `https://graph.microsoft.com/v1.0/users/${azureId}/photo/$value`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+        if (photoRes.status === 404) { noPhoto++; return } // 사진 없음 — 정상
+        if (!photoRes.ok) { failed++; return }
+
+        const contentType  = photoRes.headers.get('content-type') ?? 'image/jpeg'
+        const arrayBuffer  = await photoRes.arrayBuffer()
+        const fileName     = `${profileId}.jpg`
+
+        // 2. Supabase Storage 업로드 (upsert)
+        const uploadRes = await fetch(
+          `${SUPABASE_URL}/storage/v1/object/avatars/${fileName}`,
+          {
+            method:  'POST',
+            headers: {
+              'apikey':         SERVICE_KEY,
+              'Authorization': `Bearer ${SERVICE_KEY}`,
+              'Content-Type':   contentType,
+              'x-upsert':       'true',
+            },
+            body: arrayBuffer,
+          }
+        )
+        if (!uploadRes.ok) {
+          console.error(`[avatar] Storage 업로드 실패 (${email}):`, await uploadRes.text())
+          failed++
+          return
+        }
+
+        // 3. public URL 조회
+        const urlRes = await fetch(
+          `${SUPABASE_URL}/storage/v1/object/public/avatars/${fileName}`,
+          { method: 'HEAD', headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` } }
+        )
+        const avatarUrl = `${SUPABASE_URL}/storage/v1/object/public/avatars/${fileName}`
+
+        // 4. profiles.avatar_url 업데이트
+        const patchRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`,
+          {
+            method:  'PATCH',
+            headers: { ...sbHeaders, 'Prefer': 'return=minimal' },
+            body:    JSON.stringify({ avatar_url: avatarUrl }),
+          }
+        )
+        if (patchRes.ok) synced++
+        else { console.error(`[avatar] profiles PATCH 실패 (${email}):`, await patchRes.text()); failed++ }
+
+      } catch (e) {
+        console.error(`[avatar] 처리 실패 (${email}):`, e)
+        failed++
+      }
+    }))
+  }
+
+  return { synced, skipped: profiles.length - targets.length, noPhoto, failed }
 }
 
 // ── 메인 핸들러 ──────────────────────────────────────────────────────────────
@@ -269,15 +353,15 @@ Deno.serve(async (req) => {
 
   try {
     // 1. Azure AD 전체 조회
-    const token   = await getGraphToken()
-    const azUsers = await fetchAllAzureUsers(token)
+    const token    = await getGraphToken()
+    const azUsers  = await fetchAllAzureUsers(token)
     const azUPNSet = new Set(azUsers.map(u => (u.userPrincipalName ?? '').toLowerCase()))
 
     // 2. profiles 전체 조회
     const profiles       = await fetchAllProfiles()
     const existingEmails = new Set(profiles.map(p => (p.email ?? '').toLowerCase()))
 
-    // 3. auth.users 이메일 → id 맵 (로그인 이력 있는 계정 id 보존)
+    // 3. auth.users 이메일 → id 맵
     const authEmailMap = await fetchAuthUserEmailMap()
 
     // 4. 퇴사자 감지 (employee_id 있는 계정만 — 수동 생성 계정 보호)
@@ -307,11 +391,17 @@ Deno.serve(async (req) => {
     // 6. 신규/기존 직원 처리
     const { inserted, updated, skipped } = await syncProfiles(azUsers, existingEmails, authEmailMap)
 
+    // 7. 프로필 사진 동기화 (avatar_url 없는 계정만, 최대 50명)
+    const avatarResult = await syncAvatars(azUsers, profiles, token)
+
     const result = {
-      success: true, total: azUsers.length,
+      success: true,
+      total:   azUsers.length,
       inserted, updated, skipped,
-      departed: departed.length, cancelledBookings: cancelledCount,
-      syncedAt: new Date().toISOString(),
+      departed:          departed.length,
+      cancelledBookings: cancelledCount,
+      avatar:            avatarResult,
+      syncedAt:          new Date().toISOString(),
     }
 
     console.log('[sync-all-users] 완료:', JSON.stringify(result))
