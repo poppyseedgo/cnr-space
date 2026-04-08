@@ -51,7 +51,6 @@ export interface AppUser {
   role:        UserRole
   email:       string
   is_active?:  boolean
-  avatar_url?: string | null
 }
 
 export interface DepartedUser {

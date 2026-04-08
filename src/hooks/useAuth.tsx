@@ -26,11 +26,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return {
       user_id:     p.id,
       employee_id: p.employee_id ?? '',
-      name:        p.name       ?? '사용자',
-      dept:        p.dept       ?? '',
-      role:        p.role       ?? 'USER',
-      email:       p.email      ?? '',
-      avatar_url:  p.avatar_url ?? null,
+      name:        p.name  ?? '사용자',
+      dept:        p.dept  ?? '',
+      role:        p.role  ?? 'USER',
+      email:       p.email ?? '',
     }
   }
 
@@ -75,46 +74,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (dept) await supabase.from('profiles').update({ dept }).eq('id', userId)
       return dept
     } catch { return '' }
-  }
-
-  // Graph API /me/photo/$value 로 프로필 사진 가져와 Storage 저장
-  // provider_token (Delegated) 사용 — 본인 사진만 접근
-  // avatar_url 이 이미 있으면 호출하지 않음 (호출부에서 판단)
-  async function fetchAndSaveAvatar(userId: string, providerToken: string): Promise<string | null> {
-    try {
-      // 1. Graph API 에서 photo binary
-      const photoRes = await fetch(
-        'https://graph.microsoft.com/v1.0/me/photo/$value',
-        { headers: { Authorization: `Bearer ${providerToken}` } }
-      )
-      // 404 = 사진 없음 (정상 케이스)
-      if (!photoRes.ok) return null
-
-      const contentType = photoRes.headers.get('content-type') ?? 'image/jpeg'
-      const blob = await photoRes.blob()
-
-      // 2. Supabase Storage 업로드 — avatars/{userId}.jpg
-      //    RLS: authenticated 유저가 본인 uid.jpg 만 쓰기 허용
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(`${userId}.jpg`, blob, { upsert: true, contentType })
-
-      if (uploadError) {
-        console.warn('[avatar] Storage 업로드 실패:', uploadError.message)
-        return null
-      }
-
-      // 3. public URL 취득
-      const { data } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(`${userId}.jpg`)
-      const avatarUrl = data.publicUrl
-
-      // 4. profiles.avatar_url PATCH
-      await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', userId)
-
-      return avatarUrl
-    } catch { return null }
   }
 
   function cleanCallbackUrl() {
@@ -165,8 +124,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setLoading(false)
 
             // DB 프로필은 백그라운드에서 조회 후 업데이트 (name/dept/role 보정)
-            loadProfile(uid, email).then(user => {
-              if (user) setCurrentUser(user)
+            loadProfile(uid, email).then(async user => {
+              if (!user) return
+              // DB dept가 비어있으면 Graph API로 보정 (sync로 인해 dept 유실된 경우 복구)
+              if (!user.dept && session.provider_token) {
+                const dept = await fetchAndSaveDept(uid, session.provider_token)
+                if (dept) user = { ...user, dept }
+              }
+              setCurrentUser(user)
             }).catch(() => {})
 
           } else {
@@ -196,17 +161,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setCurrentUser(sessionToUser(session.user))
             setLoading(false)
 
-            // 백그라운드: DB 프로필 조회 + Graph API 부서/사진 동기화
+            // 백그라운드: DB 프로필 조회 + Graph API 부서 동기화
             loadProfile(uid, email).then(async user => {
               if (!user) return
               if (!user.dept && session.provider_token) {
                 const dept = await fetchAndSaveDept(uid, session.provider_token)
                 if (dept) user = { ...user, dept }
-              }
-              // avatar_url 없을 때만 fetch (이미 있으면 DB 값 그대로 사용)
-              if (!user.avatar_url && session.provider_token) {
-                const avatarUrl = await fetchAndSaveAvatar(uid, session.provider_token)
-                if (avatarUrl) user = { ...user, avatar_url: avatarUrl }
               }
               setCurrentUser(user)
             }).catch(() => {})
