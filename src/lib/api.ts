@@ -728,13 +728,25 @@ export interface SyncResult {
 
 export async function syncAllUsers(forceRefreshAvatars = false): Promise<SyncResult> {
   const { data: { session } } = await supabase.auth.getSession()
-  const functionName = forceRefreshAvatars
-    ? 'sync-all-users?forceRefreshAvatars=true'
-    : 'sync-all-users'
-  const { data, error } = await supabase.functions.invoke(functionName, {
-    headers: { Authorization: `Bearer ${session?.access_token ?? ''}` },
+  if (!session?.access_token) throw new Error('로그인 세션이 없습니다. 다시 로그인해주세요.')
+
+  const qs    = forceRefreshAvatars ? '?forceRefreshAvatars=true' : ''
+  const url   = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-all-users${qs}`
+  const res   = await fetch(url, {
+    method:  'POST',
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'apikey':        import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+      'Content-Type':  'application/json',
+    },
   })
-  if (error) throw new Error(error.message ?? 'Azure AD 동기화 실패')
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText)
+    throw new Error(`Azure AD 동기화 실패 (${res.status}): ${text}`)
+  }
+
+  const data = await res.json()
   if (!data?.success) throw new Error(data?.error ?? 'Azure AD 동기화 실패')
   return data as SyncResult
 }
