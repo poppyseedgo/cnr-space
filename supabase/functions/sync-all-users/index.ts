@@ -271,7 +271,7 @@ async function syncAvatars(
 
   // avatar_url 없는 계정만 추출, 최대 50명
   const targets = profiles
-    .filter(p => !p.avatar_url && p.email)
+    .filter(p => p.avatar_url === null && p.email)
     .slice(0, 50)
     .map(p => ({ email: (p.email ?? '').toLowerCase(), profileId: p.id }))
     .filter(t => emailMap.get(t.email)?.azureId)
@@ -291,7 +291,19 @@ async function syncAvatars(
           `https://graph.microsoft.com/v1.0/users/${azureId}/photo/$value`,
           { headers: { Authorization: `Bearer ${token}` } }
         )
-        if (photoRes.status === 404) { noPhoto++; return } // 사진 없음 — 정상
+        if (photoRes.status === 404) {
+          noPhoto++
+          // 사진 없음 확인 → '' 로 마킹해서 다음 sync에서 재시도 안 하게 함
+          await fetch(
+            `${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}`,
+            {
+              method:  'PATCH',
+              headers: { ...sbHeaders, 'Prefer': 'return=minimal' },
+              body:    JSON.stringify({ avatar_url: '' }),
+            }
+          ).catch(() => {})
+          return
+        } // 사진 없음 — 정상
         if (!photoRes.ok) { failed++; return }
 
         const contentType  = photoRes.headers.get('content-type') ?? 'image/jpeg'
