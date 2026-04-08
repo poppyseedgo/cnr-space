@@ -4,9 +4,8 @@
  * Cron: 매 5분
  * 역할: 예약 시작 후 10분 경과, 체크인 없는 예약 자동 취소 (노쇼)
  *
- * [변경 사항]
- * - send-notification 호출 시 user_email 제거 (Edge Fn이 DB에서 직접 조회)
- * - 참석자 인앱 알림 추가 (booking_attendees 테이블 조회)
+ * [수정]
+ * - bookings.room_name 컬럼 없음 → rooms 테이블 별도 조회 후 room_id로 매핑
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -36,7 +35,7 @@ Deno.serve(async (req) => {
     // ── 자동취소 대상 조회 ────────────────────────────────────────────────────
     const { data: toCancel, error: fetchError } = await supabase
       .from('bookings')
-      .select('id, title, user_id, user_name, user_dept, room_name, start_at, end_at')
+      .select('id, title, user_id, user_name, user_dept, room_id, start_at, end_at')
       .eq('checked_in',     false)
       .eq('auto_cancelled', false)
       .eq('early_ended',    false)
@@ -52,6 +51,18 @@ Deno.serve(async (req) => {
       )
     }
 
+    // ── rooms 테이블에서 room_name 별도 조회 후 매핑 ─────────────────────────
+    const roomIds = [...new Set(toCancel.map(b => b.room_id).filter(Boolean))]
+    const { data: roomRows } = await supabase
+      .from('rooms')
+      .select('room_id, room_name')
+      .in('room_id', roomIds)
+
+    const roomMap = new Map()
+    for (const r of roomRows ?? []) {
+      roomMap.set(r.room_id, r.room_name ?? '')
+    }
+
     // ── 일괄 취소 ────────────────────────────────────────────────────────────
     const ids = toCancel.map(b => b.id)
     const { error: updateError } = await supabase
@@ -62,16 +73,18 @@ Deno.serve(async (req) => {
     if (updateError) throw updateError
     console.log(`[auto-cancel] ${toCancel.length}건 자동취소:`, ids)
 
-    // ── 각 건별 후처리: Audit log + 인앱 알림 + 이메일 알림 ─────────────────
+    // ── 각 건별 후처리 ────────────────────────────────────────────────────────
     for (const b of toCancel) {
-      // KST 시간 포맷 (인앱 알림 body용)
+      const roomName = roomMap.get(b.room_id) ?? ''
+
+      // KST 시간 포맷
       const d = new Date(b.start_at)
       const k = new Date(d.getTime() + 9 * 60 * 60 * 1000)
       const pad = n => String(n).padStart(2, '0')
       const h = k.getUTCHours()
       const dateStr = `${k.getUTCFullYear()}년 ${k.getUTCMonth()+1}월 ${k.getUTCDate()}일`
       const timeStr = `${h < 12 ? '오전' : '오후'} ${h === 0 ? 12 : h > 12 ? h - 12 : h}:${pad(k.getUTCMinutes())}`
-      const inappBody = `${b.title} · ${b.room_name ?? ''} · ${dateStr} ${timeStr}`
+      const inappBody = `${b.title} · ${roomName} · ${dateStr} ${timeStr}`
 
       // Audit log
       try {
@@ -104,15 +117,15 @@ Deno.serve(async (req) => {
         }
       }
 
-      // 참석자 인앱 알림 (booking_attendees 테이블에서 조회)
+      // 참석자 인앱 알림
       try {
         const { data: attendeeRows } = await supabase
           .from('booking_attendees')
-          .select('user_id, email')
+          .select('user_id')
           .eq('booking_id', b.id)
 
         for (const att of attendeeRows ?? []) {
-          if (!att.user_id) continue  // user_id 없으면 인앱 알림 불가 (이메일은 send-notification이 처리)
+          if (!att.user_id) continue
           await supabase.from('notifications').insert({
             user_id:    att.user_id,
             type:       'booking_noshow',
@@ -127,8 +140,6 @@ Deno.serve(async (req) => {
       }
 
       // 이메일 알림 — send-notification Edge Fn 호출
-      // booking.user_id와 booking.id만 전달하면
-      // send-notification이 DB에서 예약자·참석자 이메일을 직접 조회해 발송
       try {
         await fetch(
           `${Deno.env.get('SUPABASE_URL')}/functions/v1/send-notification`,
@@ -146,7 +157,7 @@ Deno.serve(async (req) => {
                 title:     b.title,
                 user_name: b.user_name,
                 user_dept: b.user_dept ?? '',
-                room_name: b.room_name ?? '',
+                room_name: roomName,
                 start_at:  b.start_at,
                 end_at:    b.end_at,
               },

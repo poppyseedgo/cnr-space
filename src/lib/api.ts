@@ -81,7 +81,7 @@ export async function loadBookings(): Promise<Booking[]> {
     // bookings.attendees JSONB는 신규 예약에 저장 안 됨 → booking_attendees 테이블이 정본
     const { data, error } = await supabase
       .from('bookings')
-      .select('*, booking_attendees(email, name, user_id)')
+      .select('*, booking_attendees(email, name)')
       .gte('start_at', from.toISOString())
       .lte('start_at', to.toISOString())
       .order('start_at', { ascending: true })
@@ -91,7 +91,7 @@ export async function loadBookings(): Promise<Booking[]> {
       const parsed = rowToBooking(row)
       // booking_attendees 테이블에서 attendees 파싱 (email이 유일 키)
       parsed.attendees = (row.booking_attendees ?? [])
-        .map((a: any): AttendeeRef => ({ email: a.email ?? '', name: a.name ?? '', user_id: a.user_id ?? undefined }))
+        .map((a: any): AttendeeRef => ({ email: a.email ?? '', name: a.name ?? '' }))
         .filter((a: AttendeeRef) => a.email || a.name)
       return parsed
     })
@@ -110,7 +110,7 @@ export async function loadBookingsByRange(from: string, to: string): Promise<Boo
     const toISO   = new Date(to   + 'T23:59:59+09:00').toISOString()
     const { data, error } = await supabase
       .from('bookings')
-      .select('*, booking_attendees(email, name, user_id)')
+      .select('*, booking_attendees(email, name)')
       .gte('start_at', fromISO)
       .lte('start_at', toISO)
       .order('start_at', { ascending: false })
@@ -118,7 +118,7 @@ export async function loadBookingsByRange(from: string, to: string): Promise<Boo
     return (data ?? []).map(row => {
       const b = rowToBooking(row)
       b.attendees = (row.booking_attendees ?? [])
-        .map((a: any): AttendeeRef => ({ email: a.email ?? '', name: a.name ?? '', user_id: a.user_id ?? undefined }))
+        .map((a: any): AttendeeRef => ({ email: a.email ?? '', name: a.name ?? '' }))
         .filter((a: AttendeeRef) => a.email || a.name)
       return b
     })
@@ -172,19 +172,17 @@ export async function insertBooking(booking: Booking): Promise<Booking> {
 }
 
 // ── booking_attendees 저장 (예약 생성/수정 시 호출) ────────────────────────
-// user_id: AttendeeFormItem에서 전달 — DB에 저장해 isMyBooking 필터 및 알림 수신에 활용
 export async function upsertBookingAttendees(
   bookingId: string,
-  attendees: { email?: string; name?: string; user_id?: string }[]
+  attendees: { email?: string; name?: string }[]
 ): Promise<void> {
   await supabase.from('booking_attendees').delete().eq('booking_id', bookingId)
   if (!attendees || attendees.length === 0) return
   const rows = attendees
     .map(a => ({
       booking_id: bookingId,
-      email:   a.email   ?? '',
-      name:    a.name    ?? '',
-      user_id: (a as any).user_id ?? null,
+      email: a.email ?? '',
+      name:  a.name  ?? '',
     }))
     .filter(r => r.email || r.name)
   if (rows.length === 0) return
@@ -259,52 +257,13 @@ export async function cancelBooking(id: string): Promise<void> {
 }
 
 // ── Realtime 구독 ────────────────────────────────────────────────────────────
-//
-// ⚡ 성능 개선 (2025-04):
-//   기존: 이벤트 발생 시 항상 onUpdate() → loadBookings() 전체 재조회
-//   개선: payload를 직접 전달 → App에서 단건 패치 처리
-//   효과: 50명 동시 접속 시 1건 변경 → 기존 50회 전체 조회 → 개선 후 최대 1회 단건 조회
-//
-export type BookingRealtimeEvent = {
-  eventType: 'INSERT' | 'UPDATE' | 'DELETE'
-  newRow?: Record<string, any>   // INSERT/UPDATE의 새 row
-  oldId?: string                 // UPDATE/DELETE의 기존 id (replica identity default면 id만)
-}
-
-export function subscribeBookings(onEvent: (event: BookingRealtimeEvent) => void) {
+export function subscribeBookings(onUpdate: () => void) {
   if (!isSupabaseEnabled) return () => {}
   const channel = supabase
     .channel('bookings-realtime')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, (payload) => {
-      onEvent({
-        eventType: payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE',
-        newRow:    payload.new as Record<string, any> | undefined,
-        oldId:     (payload.old as any)?.id,
-      })
-    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => onUpdate())
     .subscribe()
   return () => { supabase.removeChannel(channel) }
-}
-
-// ── 단건 조회 (Realtime INSERT 수신 시 attendees 포함 fetch) ─────────────────
-export async function loadBookingById(id: string): Promise<Booking | null> {
-  if (!isSupabaseEnabled || !id) return null
-  try {
-    const { data, error } = await supabase
-      .from('bookings')
-      .select('*, booking_attendees(email, name, user_id)')
-      .eq('id', id)
-      .single()
-    if (error || !data) return null
-    const booking = rowToBooking(data)
-    booking.attendees = (data.booking_attendees ?? [])
-      .map((a: any): AttendeeRef => ({ email: a.email ?? '', name: a.name ?? '', user_id: a.user_id ?? undefined }))
-      .filter((a: AttendeeRef) => a.email || a.name)
-    return booking
-  } catch (e) {
-    console.error('[api] loadBookingById 실패:', e)
-    return null
-  }
 }
 
 // ── localStorage fallback ────────────────────────────────────────────────────
@@ -669,16 +628,11 @@ export async function insertNotification(params: {
   if (error) console.warn('[api] insertNotification 실패:', error.message)
 }
 
-/** 내 알림 목록 (최근 30건)
- * ⚠️ userId 를 명시적으로 전달해야 Postgres가 notifications(user_id, created_at) 인덱스를 사용함
- *    RLS에만 의존하면 전체 테이블 스캔 후 필터 → 사용자 수 증가 시 성능 저하
- */
-export async function loadNotifications(userId: string): Promise<AppNotification[]> {
-  if (!userId) return []
+/** 내 알림 목록 (최근 30건) */
+export async function loadNotifications(): Promise<AppNotification[]> {
   const { data, error } = await supabase
     .from('notifications')
     .select('*')
-    .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(30)
   if (error) return []
@@ -690,12 +644,10 @@ export async function markNotificationRead(id: string): Promise<void> {
   await supabase.from('notifications').update({ is_read: true }).eq('id', id)
 }
 
-/** 전체 읽음 처리 — userId 필수: RLS 의존 없이 명시적 본인 범위만 업데이트 */
-export async function markAllNotificationsRead(userId: string): Promise<void> {
-  if (!userId) return
+/** 전체 읽음 처리 */
+export async function markAllNotificationsRead(): Promise<void> {
   await supabase.from('notifications')
     .update({ is_read: true })
-    .eq('user_id', userId)
     .eq('is_read', false)
 }
 
@@ -791,23 +743,4 @@ export function subscribeNotifications(onNew: (payload: any) => void, userId?: s
     }, (payload) => onNew(payload))
     .subscribe()
   return () => { supabase.removeChannel(channel) }
-}
-
-// ── isMyBooking 헬퍼 ─────────────────────────────────────────────────────────
-// 예약의 멤버(예약자 또는 참석자) 여부 확인
-// 사용처: 나의 예약 필터, 홈 카드 표시 (MyPage, MyBookingWeeklyView)
-// 우선순위: user_id 일치 > email 일치 (email fallback: 마이그레이션 이전 데이터 대응)
-export function isMyBooking(
-  b: Booking,
-  myUserId: string,
-  myEmail: string
-): boolean {
-  if (!myUserId && !myEmail) return false
-  // 예약자 체크
-  if (myUserId && b.user_id === myUserId) return true
-  // 참석자 체크 (user_id 우선, email fallback)
-  return (b.attendees ?? []).some(a =>
-    (myUserId && !!a.user_id && a.user_id === myUserId) ||
-    (myEmail && !!a.email && a.email.toLowerCase() === myEmail.toLowerCase())
-  )
 }

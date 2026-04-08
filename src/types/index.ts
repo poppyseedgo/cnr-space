@@ -65,13 +65,10 @@ export interface DepartedUser {
 }
 
 // ─── 참석자 타입 ─────────────────────────────────────────────────────────────
-// AttendeeRef: DB 저장/조회용 최소 식별자
-// user_id: 내부 직원이면 profiles.id, 외부 참석자면 undefined
-// email fallback: 마이그레이션 이전 데이터 또는 user_id 없는 케이스 대응
+// AttendeeRef: DB 저장/조회용 최소 식별자 (email이 유일 키)
 export interface AttendeeRef {
-  email:   string
-  name:    string
-  user_id?: string
+  email: string
+  name:  string
 }
 
 // AttendeeFormItem: BookingModal 내부 폼 상태용 (아바타·부서 포함 풍부한 객체)
