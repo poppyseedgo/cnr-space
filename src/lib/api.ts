@@ -707,6 +707,7 @@ export async function searchGraphUsers(
         role:        (row.role === 'ADMIN' ? 'ADMIN' : 'USER') as 'USER' | 'ADMIN',
         email:       row.email       ?? '',
         is_active:   row.is_active   ?? true,
+        avatar_url:  row.avatar_url  ?? null,
       }))
   } catch (e) {
     console.error('[api] searchGraphUsers(profiles) 예외:', e)
