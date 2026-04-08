@@ -30,6 +30,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       dept:        p.dept  ?? '',
       role:        p.role  ?? 'USER',
       email:       p.email ?? '',
+      avatar_url:  p.avatar_url ?? null,
     }
   }
 

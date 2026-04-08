@@ -50,6 +50,7 @@ export interface AppUser {
   dept:        string
   role:        UserRole
   email:       string
+  avatar_url?: string | null
   is_active?:  boolean
 }
 
@@ -57,6 +58,7 @@ export interface DepartedUser {
   id:          string
   name:        string
   email:       string
+  avatar_url?: string | null
   dept:        string
   employee_id: string
   departed_at: string  // ISO 타임스탬프
