@@ -1265,9 +1265,7 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
         <div style={{ flex:1, overflowY:'auto', padding:'24px' }}>
           {editUser && (
             <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:24, padding:'16px', background:'#F8FAFC', borderRadius:12 }}>
-              <div style={{ width:44, height:44, borderRadius:'50%', background: form.role==='ADMIN' ? '#111' : '#E2E8F0', color: form.role==='ADMIN' ? '#fff' : '#64748B', fontSize:16, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                {(form.name || '?').charAt(0)}
-              </div>
+              <UserAvatar name={form.name || '?'} avatarUrl={editUser?.avatar_url ?? null} size={44} bgColor={form.role==='ADMIN'?'#111':'#E2E8F0'} textColor={form.role==='ADMIN'?'#fff':'#64748B'} />
               <div>
                 <div style={{ fontSize:14, fontWeight:700, color:'#111' }}>{form.name || '이름 없음'}</div>
                 <div style={{ fontSize:11, color:'#94A3B8', marginTop:2 }}>{form.dept || '부서 미입력'}</div>

@@ -287,7 +287,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               background:"#EEF2FF",color:"#000",
               fontSize:11,fontWeight:600,padding:"4px 10px 4px 8px",borderRadius:999,
             }}>
-              <UserAvatar name={typeof a === 'string' ? a : (a as any).name ?? '?'} avatarUrl={(a as any).avatar_url ?? null} size={18} bgColor="#3D88FF" />
+              <UserAvatar name={typeof a === 'string' ? a : (a as any).name ?? '?'} avatarUrl={(a as any).avatar_url ?? usersProp.find((u:any)=>u.email===(a as any).email)?.avatar_url ?? null} size={18} bgColor="#3D88FF" />
               <span>{typeof a === 'string' ? a : (a as any).name}</span>
               {typeof a !== 'string' && <span style={{color:"rgba(0,0,0,0.4)",fontSize:10}}>{(a as any).dept}</span>}
               <button onClick={()=>removeAttendee(typeof a === 'string' ? a : (a as any).user_id)}
@@ -318,7 +318,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   cursor:"pointer",borderBottom:"1px solid #F8FAFC"}}
                 onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
                 onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
-                <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={28} />
+                <UserAvatar name={u.name} avatarUrl={usersProp.find((p:any)=>p.email===u.email)?.avatar_url ?? null} size={28} />
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:13,fontWeight:600,color:"#111111"}}>{u.name}</div>
                   <div style={{fontSize:11,color:"#94A3B8"}}>{u.dept} · {u.email}</div>
