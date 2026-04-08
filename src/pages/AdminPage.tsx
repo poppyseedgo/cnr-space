@@ -18,6 +18,7 @@ import {
   syncAllUsers, loadUsers, loadDepartedUsers, type SyncResult,
 } from '../lib/api'
 import type { Booking, Room, AppUser, DepartedUser } from '../types'
+import { UserAvatar } from '../components/common/UserAvatar'
 
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
 function addDaysStr(base: string, days: number): string {
@@ -1131,9 +1132,13 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
             <div>
               {filteredUsers.map(u => (
                 <div key={u.user_id} style={{ padding:'14px 20px', borderBottom:'1px solid #F8FAFC', display:'flex', alignItems:'center', gap:12 }}>
-                  <div style={{ width:36, height:36, borderRadius:'50%', background:u.role==='ADMIN'?'#111':'#E2E8F0', color:u.role==='ADMIN'?'#fff':'#64748B', fontSize:13, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                    {u.name.charAt(0)}
-                  </div>
+                  <UserAvatar
+                    name={u.name}
+                    avatarUrl={u.avatar_url}
+                    size={36}
+                    bgColor={u.role === 'ADMIN' ? '#111' : '#E2E8F0'}
+                    textColor={u.role === 'ADMIN' ? '#fff' : '#64748B'}
+                  />
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
                       {u.name}{' '}
@@ -1169,9 +1174,13 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
                     onMouseEnter={e => (e.currentTarget.style.background = '#FAFBFD')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                     <td style={{ padding:'10px 14px', width:48 }}>
-                      <div style={{ width:32, height:32, borderRadius:'50%', background:u.role==='ADMIN'?'#111':'#E2E8F0', color:u.role==='ADMIN'?'#fff':'#64748B', fontSize:12, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                        {u.name.charAt(0)}
-                      </div>
+                      <UserAvatar
+                        name={u.name}
+                        avatarUrl={u.avatar_url}
+                        size={32}
+                        bgColor={u.role === 'ADMIN' ? '#111' : '#E2E8F0'}
+                        textColor={u.role === 'ADMIN' ? '#fff' : '#64748B'}
+                      />
                     </td>
                     <td style={{ padding:'10px 14px', fontWeight:600, color:'#111' }}>{u.name}</td>
                     <td style={{ padding:'10px 14px', color:'#64748B' }}>
@@ -1202,9 +1211,13 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
             <div>
               {filteredDeparted.map(u => (
                 <div key={u.id} style={{ padding:'14px 20px', borderBottom:'1px solid #F8FAFC', display:'flex', alignItems:'center', gap:12, opacity:0.7 }}>
-                  <div style={{ width:36, height:36, borderRadius:'50%', background:'#FEE2E2', color:'#DC2626', fontSize:13, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                    {u.name.charAt(0)}
-                  </div>
+                  <UserAvatar
+                    name={u.name}
+                    avatarUrl={null}
+                    size={36}
+                    bgColor='#FEE2E2'
+                    textColor='#DC2626'
+                  />
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:13, fontWeight:600, color:'#374151' }}>
                       {u.name}{' '}
@@ -1231,9 +1244,13 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
                     onMouseEnter={e => (e.currentTarget.style.background = '#FFF5F5')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                     <td style={{ padding:'10px 14px', width:48 }}>
-                      <div style={{ width:32, height:32, borderRadius:'50%', background:'#FEE2E2', color:'#DC2626', fontSize:12, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                        {u.name.charAt(0)}
-                      </div>
+                      <UserAvatar
+                        name={u.name}
+                        avatarUrl={null}
+                        size={32}
+                        bgColor='#FEE2E2'
+                        textColor='#DC2626'
+                      />
                     </td>
                     <td style={{ padding:'10px 14px', fontWeight:600, color:'#374151' }}>
                       {u.name}

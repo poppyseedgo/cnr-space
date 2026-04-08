@@ -9,6 +9,7 @@ import { cancelBooking as apiCancelBooking, upsertBookingAttendees } from '../li
 import { WeeklyView } from '../components/layout/CalendarShell'
 import { supabase } from '../lib/supabase'
 import { useBreakpoint } from '../hooks/useBreakpoint'
+import { UserAvatar } from '../components/common/UserAvatar'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../types'
 
 export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail, rooms:rp=[], users:up=[], authUserId=''}) {
@@ -146,10 +147,11 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
       {/* 프로필 카드 */}
       <div className="anm" style={{background:"#fff",borderRadius:16,padding:isMobile?"20px":"24px 28px",marginBottom:20,
         display:"flex",alignItems:isMobile?"flex-start":"center",gap:isMobile?16:20,flexDirection:isMobile?"column":"row"}}>
-        <div style={{width:56,height:56,borderRadius:"50%",background:"#111",color:"#fff",
-          display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:800,flexShrink:0}}>
-          {currentUser.charAt(0)}
-        </div>
+        <UserAvatar
+          name={currentUser}
+          avatarUrl={allUsers.find(u => u.name === currentUser)?.avatar_url}
+          size={56}
+        />
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:20,fontWeight:800,color:"#111"}}>{currentUser}</div>
           <div style={{fontSize:13,color:"#64748B",marginTop:2}}>{currentDept} · {userInfo?.email}</div>
