@@ -257,13 +257,52 @@ export async function cancelBooking(id: string): Promise<void> {
 }
 
 // ── Realtime 구독 ────────────────────────────────────────────────────────────
-export function subscribeBookings(onUpdate: () => void) {
+//
+// ⚡ 성능 개선 (2025-04):
+//   기존: 이벤트 발생 시 항상 onUpdate() → loadBookings() 전체 재조회
+//   개선: payload를 직접 전달 → App에서 단건 패치 처리
+//   효과: 50명 동시 접속 시 1건 변경 → 기존 50회 전체 조회 → 개선 후 최대 1회 단건 조회
+//
+export type BookingRealtimeEvent = {
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE'
+  newRow?: Record<string, any>   // INSERT/UPDATE의 새 row
+  oldId?: string                 // UPDATE/DELETE의 기존 id (replica identity default면 id만)
+}
+
+export function subscribeBookings(onEvent: (event: BookingRealtimeEvent) => void) {
   if (!isSupabaseEnabled) return () => {}
   const channel = supabase
     .channel('bookings-realtime')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => onUpdate())
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, (payload) => {
+      onEvent({
+        eventType: payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE',
+        newRow:    payload.new as Record<string, any> | undefined,
+        oldId:     (payload.old as any)?.id,
+      })
+    })
     .subscribe()
   return () => { supabase.removeChannel(channel) }
+}
+
+// ── 단건 조회 (Realtime INSERT 수신 시 attendees 포함 fetch) ─────────────────
+export async function loadBookingById(id: string): Promise<Booking | null> {
+  if (!isSupabaseEnabled || !id) return null
+  try {
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('*, booking_attendees(email, name)')
+      .eq('id', id)
+      .single()
+    if (error || !data) return null
+    const booking = rowToBooking(data)
+    booking.attendees = (data.booking_attendees ?? [])
+      .map((a: any): AttendeeRef => ({ email: a.email ?? '', name: a.name ?? '' }))
+      .filter((a: AttendeeRef) => a.email || a.name)
+    return booking
+  } catch (e) {
+    console.error('[api] loadBookingById 실패:', e)
+    return null
+  }
 }
 
 // ── localStorage fallback ────────────────────────────────────────────────────
@@ -628,11 +667,16 @@ export async function insertNotification(params: {
   if (error) console.warn('[api] insertNotification 실패:', error.message)
 }
 
-/** 내 알림 목록 (최근 30건) */
-export async function loadNotifications(): Promise<AppNotification[]> {
+/** 내 알림 목록 (최근 30건)
+ * ⚠️ userId 를 명시적으로 전달해야 Postgres가 notifications(user_id, created_at) 인덱스를 사용함
+ *    RLS에만 의존하면 전체 테이블 스캔 후 필터 → 사용자 수 증가 시 성능 저하
+ */
+export async function loadNotifications(userId: string): Promise<AppNotification[]> {
+  if (!userId) return []
   const { data, error } = await supabase
     .from('notifications')
     .select('*')
+    .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(30)
   if (error) return []
@@ -644,10 +688,12 @@ export async function markNotificationRead(id: string): Promise<void> {
   await supabase.from('notifications').update({ is_read: true }).eq('id', id)
 }
 
-/** 전체 읽음 처리 */
-export async function markAllNotificationsRead(): Promise<void> {
+/** 전체 읽음 처리 — userId 필수: RLS 의존 없이 명시적 본인 범위만 업데이트 */
+export async function markAllNotificationsRead(userId: string): Promise<void> {
+  if (!userId) return
   await supabase.from('notifications')
     .update({ is_read: true })
+    .eq('user_id', userId)
     .eq('is_read', false)
 }
 
