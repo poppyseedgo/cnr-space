@@ -26,11 +26,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return {
       user_id:     p.id,
       employee_id: p.employee_id ?? '',
-      name:        p.name       ?? '사용자',
-      dept:        p.dept       ?? '',
-      role:        p.role       ?? 'USER',
-      email:       p.email      ?? '',
-      avatar_url:  p.avatar_url ?? null,
+      name:        p.name  ?? '사용자',
+      dept:        p.dept  ?? '',
+      role:        p.role  ?? 'USER',
+      email:       p.email ?? '',
     }
   }
 
@@ -125,8 +124,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setLoading(false)
 
             // DB 프로필은 백그라운드에서 조회 후 업데이트 (name/dept/role 보정)
-            loadProfile(uid, email).then(user => {
-              if (user) setCurrentUser(user)
+            loadProfile(uid, email).then(async user => {
+              if (!user) return
+              // DB dept가 비어있으면 Graph API로 보정 (sync로 인해 dept 유실된 경우 복구)
+              if (!user.dept && session.provider_token) {
+                const dept = await fetchAndSaveDept(uid, session.provider_token)
+                if (dept) user = { ...user, dept }
+              }
+              setCurrentUser(user)
             }).catch(() => {})
 
           } else {
@@ -156,8 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setCurrentUser(sessionToUser(session.user))
             setLoading(false)
 
-            // 백그라운드: DB 프로필 조회 + Graph API 부서 동기화 (첫 로그인 시)
-            // avatar 동기화는 sync-all-users Edge Function 이 담당
+            // 백그라운드: DB 프로필 조회 + Graph API 부서 동기화
             loadProfile(uid, email).then(async user => {
               if (!user) return
               if (!user.dept && session.provider_token) {
