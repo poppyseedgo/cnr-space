@@ -726,8 +726,14 @@ export interface SyncResult {
   error?:            string
 }
 
-export async function syncAllUsers(): Promise<SyncResult> {
-  const { data, error } = await supabase.functions.invoke('sync-all-users')
+export async function syncAllUsers(forceRefreshAvatars = false): Promise<SyncResult> {
+  const { data: { session } } = await supabase.auth.getSession()
+  const functionName = forceRefreshAvatars
+    ? 'sync-all-users?forceRefreshAvatars=true'
+    : 'sync-all-users'
+  const { data, error } = await supabase.functions.invoke(functionName, {
+    headers: { Authorization: `Bearer ${session?.access_token ?? ''}` },
+  })
   if (error) throw new Error(error.message ?? 'Azure AD 동기화 실패')
   if (!data?.success) throw new Error(data?.error ?? 'Azure AD 동기화 실패')
   return data as SyncResult
