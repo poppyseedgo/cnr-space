@@ -7,13 +7,14 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
 
 import { cancelBooking as apiCancelBooking, upsertBookingAttendees } from '../lib/api'
 import { WeeklyView } from '../components/layout/CalendarShell'
+import { BookingStatusBadge } from '../components/common/BookingStatusBadge'
 import { supabase } from '../lib/supabase'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../types'
 
 import { UserAvatar } from '../components/common/UserAvatar'
 
-export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail, rooms:rp=[], users:up=[], authUserId='', avatarUrl=null}) {
+export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail, onCheckIn, onEarlyEnd, onCancel, rooms:rp=[], users:up=[], authUserId='', avatarUrl=null}) {
   const [tab, setTab] = useState("upcoming");
   const [statYear, setStatYear] = useState(()=>new Date().getFullYear());
   const [statMonth, setStatMonth] = useState(()=>new Date().getMonth());
@@ -359,25 +360,26 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
             const minsUntil = tsMin(b.start_at) - now
             const isSoon    = minsUntil > 0 && minsUntil <= 10
             const cardState: string = b.cancelledBy === 'system' ? "noshow"
-              : b.autoCancelled ? "cancelled"
-              : b.earlyEnded    ? "earlyEnded"
-              : b.checkedIn && isActive ? "using"
-              : b.checkedIn     ? "done"
-              : isActive        ? "checkin"
-              : isPast          ? "cancelled"
-              : isSoon          ? "soon"
+              : b.autoCancelled              ? "cancelled"
+              : b.earlyEnded                ? "earlyEnded"
+              : b.checkedIn && isActive     ? "using"
+              : b.checkedIn                 ? "done"
+              : isActive                    ? "checkin"
+              : isPast                      ? "done"
+              : b.status === 'pending'      ? "pending"
+              : isSoon                      ? "soon"
               : "waiting"
             const S: any = {
-              pending:    {label:"승인 대기",  btnBg:"#FEF3C7", btnColor:"#92400E", disabled:true,  badge:"승인 대기"},
-              noshow:     {label:"노쇼",        btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  badge:"자동취소"},
-              soon:       {label:"체크인 대기", btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  badge:`${minsUntil}분 뒤`},
-              waiting:    {label:"체크인 대기", btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  badge:null},
-              checkin:    {label:"체크인",       btnBg:"#16A34A", btnColor:"#fff",    disabled:false, badge:null},
-              using:      {label:"사용 완료",    btnBg:"#111111", btnColor:"#fff",    disabled:false, badge:"사용중"},
-              done:       {label:"완료",         btnBg:"#DBEAFE", btnColor:"#2563EB", disabled:true,  badge:null},
-              earlyEnded: {label:"반납 완료",    btnBg:"#DBEAFE", btnColor:"#2563EB", disabled:true,  badge:"반납됨"},
-              cancelled:  {label:"자동취소",     btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  badge:null},
-            }[cardState]
+              waiting:    {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                    showBtn:true},
+              soon:       {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                    showBtn:true},
+              pending:    {label:"승인 대기",    btnBg:"#FEF3C7", btnColor:"#92400E", disabled:true,  action:null,                    showBtn:true},
+              checkin:    {label:"체크인",       btnBg:"#16A34A", btnColor:"#fff",    disabled:false, action:()=>onCheckIn(b.id),     showBtn:true},
+              using:      {label:"조기반납",     btnBg:"#111111", btnColor:"#fff",    disabled:false, action:()=>onEarlyEnd(b.id),    showBtn:true},
+              noshow:     {label:null,           btnBg:"",        btnColor:"",        disabled:true,  action:null,                    showBtn:false},
+              done:       {label:"종료",         btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                    showBtn:true},
+              earlyEnded: {label:"반납됨",       btnBg:"#DBEAFE", btnColor:"#2563EB", disabled:true,  action:null,                    showBtn:true},
+              cancelled:  {label:"취소됨",       btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                    showBtn:true},
+            }[cardState] ?? {label:"체크인 대기", btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true, action:null, showBtn:true}
             const isCancellable = cardState==="waiting" || cardState==="soon" || cardState==="pending"
             return (
               <div key={b.id}
@@ -388,28 +390,26 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
                   opacity:(cardState==="cancelled"||cardState==="noshow")?0.45:1,
                   border:cardState==="pending"?"1.5px solid #FCD34D":"none"}}>
                 <div>
-                  <div className="flex items-start justify-between gap-1 mb-1.5">
-                    <div className="text-xs font-semibold text-slate-900 dark:text-white leading-snug line-clamp-2" style={{flex:1}}>{b.title}</div>
-                    {S.badge && (
-                      <span className="flex-shrink-0 text-[9px] font-semibold rounded-full px-2 py-0.5 ml-1"
-                        style={{background:cardState==="soon"?"#FFF3E0":"#F3F4F8",
-                          color:cardState==="soon"?"#EA580C":undefined}}>{S.badge}</span>
-                    )}
+                  <div className="text-xs font-semibold text-slate-900 dark:text-white leading-snug line-clamp-2 mb-1.5">{b.title}</div>
+                  <div style={{marginBottom:4}}>
+                    <BookingStatusBadge booking={b} room={r} size="sm" />
                   </div>
                   <div className="text-[10px] text-slate-400">{r?.room_name ?? ''}</div>
                   <div className="text-[10px] text-slate-400 mt-0.5">{fmtTSRangeFull(b.start_at, b.end_at)}</div>
                 </div>
                 <div className="flex gap-1.5 mt-2">
-                  <button className="btn flex-1 text-[11px] font-semibold rounded-xl py-2"
-                    onClick={e=>{e.stopPropagation();}}
-                    disabled={S.disabled}
-                    style={{background:S.btnBg, color:S.btnColor, cursor:S.disabled?"default":"pointer",
-                      minHeight:32, display:"flex", alignItems:"center", justifyContent:"center"}}>
-                    {S.label}
-                  </button>
+                  {S.showBtn && (
+                    <button className="btn flex-1 text-[11px] font-semibold rounded-xl py-2"
+                      onClick={e=>{e.stopPropagation(); S.action?.();}}
+                      disabled={S.disabled}
+                      style={{background:S.btnBg, color:S.btnColor, cursor:S.disabled?"default":"pointer",
+                        minHeight:32, display:"flex", alignItems:"center", justifyContent:"center"}}>
+                      {S.label}
+                    </button>
+                  )}
                   {isCancellable && (
                     <button className="btn text-[11px] font-semibold rounded-xl py-2 px-2.5 text-slate-500" style={{background:"#F3F4F8"}}
-                      onClick={e=>{e.stopPropagation();}}>취소</button>
+                      onClick={e=>{e.stopPropagation(); onCancel(b.id);}}>취소</button>
                   )}
                 </div>
               </div>
