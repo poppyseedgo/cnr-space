@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { BookingStatusBadge } from '../common/BookingStatusBadge'
+import { SlotContent } from '../calendar/SlotContent'
+import { getSlotState, getSlotColors } from '../calendar/slotHelpers'
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
 import { Calendar, Inbox } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
@@ -258,7 +260,7 @@ export function MonthlyView({bookings,selectedDate,onDayClick,onBookingClick,roo
   );
 }
 
-export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmptyClick,onCheckIn,fillContainer=false,currentUser=""}) {
+export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmptyClick,onCheckIn,fillContainer=false,currentUser="",rooms:wvRooms=[]}) {
   const { isMobile } = useBreakpoint();
   const weekStart = getWeekStart(selectedDate);
   const days = Array.from({length:7}, (_,i) => addDays(weekStart,i));
@@ -358,12 +360,8 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
     dayLayouts[ds] = calcColumns(dbs);
   }
 
-  // 회의실별 색상 팔레트 (9개)
-  const ROOM_COLORS = [
-    "#111111","#2563EB","#16A34A","#D97706","#DC2626",
-    "#7C3AED","#0891B2","#DB2777","#65A30D",
-  ];
-  const roomColor = (roomId) => ROOM_COLORS[(roomId-1) % ROOM_COLORS.length];
+  // 회의실 색상 — rooms 객체의 color 직접 사용
+  const roomColor = (roomId: number) => (wvRooms as any[]).find(r => r.room_id === roomId)?.color ?? '#6366F1';
 
   return (
     <div style={{background:"#fff",borderRadius:16,border:"1px solid #E2E8F0",overflow:"hidden"}}>
@@ -517,10 +515,9 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
                 const colW = `calc((100% - ${GAP*(totalCols+1)}px) / ${totalCols})`;
                 const colL = `calc(${GAP}px + (${colIndex}) * ((100% - ${GAP*(totalCols+1)}px) / ${totalCols} + ${GAP}px))`;
 
-                const isMyBooking = currentUser && b.user === currentUser;
-                const titleColor  = isEnded ? "#94A3B8" : isAct ? "#fff" : color;
-                const subColor    = isEnded ? "#CBD5E1" : isAct ? "rgba(255,255,255,0.75)" : "#94A3B8";
-                const slotRoom    = { room_id: b.room_id, color } as any;
+                const slotRoom    = (wvRooms as any[]).find(r => r.room_id === b.room_id) ?? null;
+                const { isMyBooking } = getSlotState(b, now, isToday, currentUser);
+                const { titleColor, subColor } = getSlotColors({ variant:'weekly', isAct, isEnded, roomColor: color });
                 return(
                   <div key={b.id}
                     onClick={e=>{e.stopPropagation();onBlockClick(b);}}
@@ -542,20 +539,12 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
                     }}
                     onMouseEnter={e=>{if(!isEnded){e.currentTarget.style.zIndex="15";e.currentTarget.style.boxShadow=`0 4px 12px ${color}44`;}}}
                     onMouseLeave={e=>{if(!isEnded){e.currentTarget.style.zIndex=isAct?"8":"3";e.currentTarget.style.boxShadow=isAct?`0 2px 8px ${color}55`:"none";}}}>
-                    <div style={{display:"flex",flexDirection:"column",gap:1.5,overflow:"hidden",height:"100%"}}>
-                      <div style={{fontSize:10,fontWeight:600,color:titleColor,
-                        overflow:"hidden",display:"-webkit-box",
-                        WebkitLineClamp:2,WebkitBoxOrient:"vertical",lineHeight:1.3}}>
-                        {b.title}
-                      </div>
-                      <div style={{fontSize:9,color:subColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                        {fmtTSRange(b.start_at, b.end_at)}{isEnded?" (완료)":""}
-                      </div>
-                      <div style={{fontSize:9,color:subColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                        {b.user}
-                      </div>
-                      <BookingStatusBadge booking={b} room={slotRoom} size="xs" currentUser={currentUser} />
-                    </div>
+                    <SlotContent
+                      booking={b} room={slotRoom} currentUser={currentUser}
+                      titleColor={titleColor} subColor={subColor} gap={1.5}
+                      timeSuffix={isEnded?" (완료)":""}
+                      thirdLine={slotRoom?.room_name || b.user}
+                    />
                   </div>
                 );
               })}
@@ -714,9 +703,8 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
                     const isEnded=b.earlyEnded;
                     const isAct=isToday&&sm<=now&&now<em&&!isNoshow&&!isEnded;
                     const nci=isAct&&!b.checkedIn;
-                    const isMyBooking = currentUser && b.user === currentUser;
-                    const titleColor  = isNoshow||isEnded ? "#94A3B8" : "#fff";
-                    const subColor    = isNoshow||isEnded ? "#CBD5E1" : "#94A3B8";
+                    const { isMyBooking } = getSlotState(b, now, isToday, currentUser);
+                    const { titleColor, subColor } = getSlotColors({ variant:'daily', isAct, isEnded, isNoshow });
                     const slotRoom    = dvRooms.find(r=>r.room_id===b.room_id);
                     return(
                       <div key={b.id} onClick={e=>{e.stopPropagation();onBlockClick(b);}}
@@ -732,20 +720,12 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
                         }}
                         onMouseEnter={e=>{ if(!isNoshow&&!isEnded) e.currentTarget.style.filter="brightness(1.15)"; }}
                         onMouseLeave={e=>{ e.currentTarget.style.filter="none"; }}>
-                        <div style={{display:"flex",flexDirection:"column",gap:1.5,overflow:"hidden",height:"100%"}}>
-                          <div style={{fontSize:10,fontWeight:600,color:titleColor,
-                            overflow:"hidden",display:"-webkit-box",
-                            WebkitLineClamp:2,WebkitBoxOrient:"vertical",lineHeight:1.3}}>
-                            {b.title}
-                          </div>
-                          <div style={{fontSize:9,color:subColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                            {fmtTSRange(b.start_at, b.end_at)}{isEnded?" (완료)":isNoshow?" (노쇼)":""}
-                          </div>
-                          <div style={{fontSize:9,color:subColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                            {b.user}
-                          </div>
-                          <BookingStatusBadge booking={b} room={slotRoom} size="xs" currentUser={currentUser} />
-                        </div>
+                        <SlotContent
+                          booking={b} room={slotRoom} currentUser={currentUser}
+                          titleColor={titleColor} subColor={subColor} gap={1.5}
+                          timeSuffix={isEnded?" (완료)":isNoshow?" (노쇼)":""}
+                          thirdLine={b.user}
+                        />
                       </div>
                     );
                   })}
@@ -917,7 +897,8 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
                     const borderCol = isCan ? "#E2E8F0" : isAct ? "#16A34A" : "#3B82F6";
                     const titleColor= isCan ? "#94A3B8" : isAct ? "#15803D" : "#1D4ED8";
 
-                    const subColor = isCan ? "#94A3B8" : "#64748B";
+                    const { titleColor: tlTitle, subColor } = getSlotColors({ variant:'timeline', isAct, isEnded: b.earlyEnded, isCan, borderCol });
+                    const titleColor = tlTitle;
                     return (
                       <div key={b.id}
                         onClick={e=>{e.stopPropagation();onBlockClick(b);}}
@@ -933,20 +914,12 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
                         }}
                         onMouseEnter={e=>{if(!isCan)e.currentTarget.style.filter="brightness(0.97)";}}
                         onMouseLeave={e=>{e.currentTarget.style.filter="none";}}>
-                        <div style={{display:"flex",flexDirection:"column",gap:2,overflow:"hidden",height:"100%"}}>
-                          <div style={{fontSize:11,fontWeight:600,color:titleColor,
-                            overflow:"hidden",display:"-webkit-box",
-                            WebkitLineClamp:2,WebkitBoxOrient:"vertical",lineHeight:1.3}}>
-                            {b.title}
-                          </div>
-                          <div style={{fontSize:10,color:subColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                            {fmtTSRange(b.start_at, b.end_at)}{isCan?" (노쇼)":""}
-                          </div>
-                          <div style={{fontSize:10,color:subColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                            {b.user}
-                          </div>
-                          <BookingStatusBadge booking={b} room={room} size="xs" currentUser={currentUser} />
-                        </div>
+                        <SlotContent
+                          booking={b} room={room} currentUser={currentUser}
+                          titleColor={titleColor} subColor={subColor} gap={2}
+                          timeSuffix={isCan?" (노쇼)":""}
+                          thirdLine={b.user}
+                        />
                       </div>
                     );
                   })}
