@@ -1171,7 +1171,7 @@ function AppContent() {
               const e = `${fmt2(Math.floor(clampedEnd/60))}:${fmt2(clampedEnd%60)}`;
               setModal({type:"new", prefill:{room_id:r.room_id, start:s, end:e}});
             }} onDetail={(r)=>setModal({type:"roomDetail",data:r})} onBookingDetail={(b)=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={cancelBooking} currentUser={currentUser} dark={dark} />}
-          {view==="calendar" && <CalendarShell bookings={bookings} rooms={rooms} selectedDate={selectedDate} setSelectedDate={setSelectedDate} calView={calView} setCalView={setCalView} onBookingClick={b=>setModal({type:"detail",data:b})} onNewBooking={(d,h,rid)=>setModal({type:"new",prefill:{room_id:rid,start:h!=null?`${fmt2(h)}:00`:undefined,end:h!=null?`${fmt2(h+1)}:00`:undefined},date:d}) } onCheckIn={checkIn} filterFloor={calFilterFloor} setFilterFloor={setCalFilterFloor} />}
+          {view==="calendar" && <CalendarShell bookings={bookings} rooms={rooms} selectedDate={selectedDate} setSelectedDate={setSelectedDate} calView={calView} setCalView={setCalView} onBookingClick={b=>setModal({type:"detail",data:b})} onNewBooking={(d,h,rid)=>setModal({type:"new",prefill:{room_id:rid,start:h!=null?`${fmt2(h)}:00`:undefined,end:h!=null?`${fmt2(h+1)}:00`:undefined},date:d}) } onCheckIn={checkIn} filterFloor={calFilterFloor} setFilterFloor={setCalFilterFloor} currentUser={currentUser} />}
         </div>
       )}
       {view==="mybookings" && <Suspense fallback={null}><MyBookingWeeklyView
