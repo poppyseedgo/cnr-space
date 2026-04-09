@@ -46,6 +46,21 @@ export function BookingStatusBadge({
 
   const ico = size === 'sm' ? 9 : 11
 
+  // 칩이 하나도 없으면 null 반환 (빈 영역 방지)
+  const hasAny =
+    (isOwner && !b.autoCancelled) ||
+    b.cancelledBy === 'admin' ||
+    (b.autoCancelled && b.cancelledBy === 'system') ||
+    (b.status === 'pending' && !b.autoCancelled) ||
+    (isAct && !b.autoCancelled && !!r) ||
+    nci ||
+    (b.checkedIn && isAct) ||
+    isPast ||
+    b.earlyEnded ||
+    (!isAct && !b.autoCancelled && isToday && tl > 0 && tl <= 10)
+
+  if (!hasAny) return null
+
   return (
     <div style={{ display: 'inline-flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
 
