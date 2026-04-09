@@ -7,7 +7,6 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
 import { getFloor } from '../../data/floors'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
-import { UserAvatar } from '../common/UserAvatar'
 import { AttendeeChip } from '../common/AttendeeChip'
 
 export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser, rooms:rp=[], users:up=[]}) {
@@ -38,7 +37,9 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
           <div style={{flex:1,minWidth:0,marginRight:12}}>
             <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
-              {/* ★ 관리자 강제취소 — 최우선 표시 */}
+              {/* ★ 내 예약 — 최우선 표시 */}
+              {isOwner&&<span className="chip" style={{background:"#FFFBEB",color:"#D97706",display:"inline-flex",alignItems:"center",gap:4}}><User size={10} strokeWidth={2}/> 내 예약</span>}
+              {/* ★ 관리자 강제취소 */}
               {b.cancelledBy==='admin'&&<span className="chip" style={{background:"#111",color:"#fff",display:"inline-flex",alignItems:"center",gap:4}}><AlertTriangle size={11} strokeWidth={1.8}/> 관리자 강제취소</span>}
               {b.autoCancelled&&b.cancelledBy!=='admin'&&<span className="chip" style={{background:"#F1F5F9",color:"#94A3B8",display:"inline-flex",alignItems:"center",gap:4}}><XCircle size={11} strokeWidth={1.8}/> 자동취소</span>}
               {b.checkedIn&&<span className="chip" style={{background:"#DCFCE7",color:"#16A34A",display:"inline-flex",alignItems:"center",gap:4}}><CheckCircle2 size={11} strokeWidth={1.8}/> 체크인 완료</span>}
@@ -80,7 +81,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
             </div>
           ))}
 
-          {/* 예약자 — user_id로 users에서 avatar_url 역조회 (패턴 C) */}
+          {/* 예약자 — AttendeeChip 통일 */}
           {(()=>{
             const owner = (up as any[]).find(u => u.user_id === b.user_id)
             return (
@@ -88,12 +89,12 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
                 <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0,display:"flex",alignItems:"center",gap:4}}>
                   <User size={11} strokeWidth={1.8}/>예약자
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <UserAvatar name={b.user} avatarUrl={owner?.avatar_url ?? null} size={24} />
-                  <div>
-                    <div style={{fontSize:13,color:"#111111",fontWeight:600}}>{b.user}</div>
-                    <div style={{fontSize:11,color:"#94A3B8",marginTop:1}}>{b.dept}</div>
-                  </div>
+                <div style={{display:"flex",alignItems:"center"}}>
+                  <AttendeeChip
+                    name={b.user}
+                    avatarUrl={owner?.avatar_url ?? null}
+                    userInfo={owner}
+                  />
                 </div>
               </div>
             )
