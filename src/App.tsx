@@ -8,7 +8,8 @@ import { getFloor } from './data/floors'
 import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking, upsertBookingAttendees, getBookingAttendees, insertNotification, loadNotifications, markNotificationRead, markAllNotificationsRead, subscribeNotifications, expirePendingBooking, adminForceCancel, type AppNotification } from './lib/api'
 import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
-import { HomeView, RoomDetailModal } from './components/room/HomeView'
+import { HomeView } from './components/room/HomeView'
+import { RoomDetailModal } from './components/room/RoomDetailModal'
 import { HomeSkeleton, CalendarSkeleton, MyPageSkeleton } from './components/skeleton'
 import { initGlobalRipple } from './hooks/useGlobalRipple'
 import { CalendarShell } from './components/layout/CalendarShell'
@@ -164,8 +165,16 @@ function AppContent() {
 
     // ② Realtime 구독 → 다른 사람 예약/취소/체크인 시 즉시 반영
     const unsubscribe = subscribeBookings(() => {
-      loadBookings().then(b => setBookings(b))
+      loadBookings().then(fresh => {
+        setBookings(fresh)
+        setModal(prev => {
+          if (prev?.type !== 'detail') return prev
+          const updated = fresh.find((b: any) => b.id === (prev.data as any)?.id)
+          return updated ? { ...prev, data: updated } : prev
+        })
+      })
     });
+
 
     // ③ Page Visibility API → 탭 복귀 시 데이터 강제 새로고침
     // (자리 비운 사이 바뀐 예약 상태를 즉시 반영)
@@ -207,10 +216,10 @@ function AppContent() {
   const sendNotification = useCallback(async (
     type: 'created' | 'updated' | 'cancelled' | 'noshow' | 'pending' | 'approved' | 'rejected' | 'attendee_removed',
     booking: any,
-    attendeeEmails: string[] = []
   ) => {
     try {
       // anon key로 호출 (Edge Function JWT 검증 비활성화)
+      // 수신자(예약자·참석자) 이메일은 Edge Function이 DB에서 직접 조회
       const supabaseUrl  = import.meta.env.VITE_SUPABASE_URL
       const supabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY
       await fetch(`${supabaseUrl}/functions/v1/send-notification`, {
@@ -220,7 +229,7 @@ function AppContent() {
           'Authorization': `Bearer ${supabaseAnon}`,
           'apikey':        supabaseAnon,
         },
-        body: JSON.stringify({ type, booking, attendeeEmails }),
+        body: JSON.stringify({ type, booking }),
       })
     } catch (e) {
       console.warn('[notify] 알림 발송 실패 (예약은 정상 처리됨):', e)
@@ -349,15 +358,13 @@ function AppContent() {
         const notifType = isAdminOnlyRoom ? 'pending' : 'created'
         const notifPayload = {
           ...newBookings[0],
-          user_email:   authUser?.email,
-          user_name:    currentUser,
-          user_dept:    currentDept,
-          room_name:    createdRoom?.room_name_ko ?? createdRoom?.room_name ?? String(newBookings[0].room_id) + 'F',
+          user_name: currentUser,
+          user_dept: currentDept,
+          room_name: createdRoom?.room_name_ko ?? createdRoom?.room_name ?? String(newBookings[0].room_id) + 'F',
         }
         if (isAdminOnlyRoom) {
-          // 승인 요청 — Admin 전원에게 알림
-          const adminEmails = users.filter(u => u.role === 'ADMIN').map(u => u.email).filter(Boolean)
-          sendNotification('pending', { ...notifPayload, admin_emails: adminEmails }, adminEmails)
+          // 승인 요청 — admin emails는 Edge Fn이 DB에서 직접 조회
+          sendNotification('pending', notifPayload)
         } else {
           sendNotification('created', notifPayload)
         }
@@ -387,6 +394,19 @@ function AppContent() {
             body: `${bk.title} · ${room?.room_name ?? ''} · ${fmtTSDateFull(bk.start_at)} ${fmtTSFull(bk.start_at)}`,
             bookingId: bk.id,
           }).catch(() => {})
+        }
+        // 참석자 인앱 알림 (user_id 있는 내부 직원만)
+        for (const att of (form.attendees ?? [])) {
+          if ((att as any).user_id && (att as any).user_id !== authUser?.user_id) {
+            const room = rooms.find(r => r.room_id === bk.room_id)
+            insertNotification({
+              userId: (att as any).user_id,
+              type: 'booking_attendee_added',
+              title: '회의 참석자로 초대되었습니다',
+              body: `${bk.title} · ${room?.room_name ?? ''} · ${fmtTSDateFull(bk.start_at)} ${fmtTSFull(bk.start_at)}`,
+              bookingId: bk.id,
+            }).catch(() => {})
+          }
         }
       }
       return true;
@@ -490,8 +510,7 @@ function AppContent() {
         const cancelledRoom = rooms.find(r => r.room_id === targetBooking.room_id)
         sendNotification('cancelled', {
           ...targetBooking,
-          user_email: authUser?.email,
-          room_name:  cancelledRoom?.room_name_ko ?? cancelledRoom?.room_name ?? String(targetBooking.room_id) + 'F',
+          room_name: cancelledRoom?.room_name_ko ?? cancelledRoom?.room_name ?? String(targetBooking.room_id) + 'F',
         });
       }
     } catch (err: any) {
@@ -506,21 +525,17 @@ function AppContent() {
       await approveBooking(id)
       const target = bookings.find(b => b.id === id)
       setBookings(prev => prev.map(b => b.id===id ? {...b, status:'confirmed'} : b))
-      // 신청자에게 승인 이메일
+      // 승인 이메일 — 예약자·참석자 수신자는 Edge Fn이 DB에서 조회
       if (target) {
         const approvedRoom = rooms.find(r => r.room_id === target.room_id)
-        const userProfile  = users.find(u => u.name === target.user)
-        if (userProfile?.email) {
-          sendNotification('approved', {
-            ...target,
-            user_email: userProfile.email,
-            user_name:  target.user,
-            user_dept:  target.dept,
-            room_name:  approvedRoom?.room_name_ko ?? approvedRoom?.room_name ?? '',
-          })
-        }
+        sendNotification('approved', {
+          ...target,
+          user_name: target.user,
+          user_dept: target.dept,
+          room_name: approvedRoom?.room_name_ko ?? approvedRoom?.room_name ?? '',
+        })
       }
-      // 신청자 인앱 알림
+      // 예약자 인앱 알림
       if (target) {
         const userProfile = users.find(u => u.name === target.user)
         if (userProfile?.user_id) {
@@ -531,6 +546,17 @@ function AppContent() {
             body: `${target.title} · ${rApprove?.room_name ?? ''} · ${fmtTSDateFull(target.start_at)} ${fmtTSFull(target.start_at)}`,
             bookingId: id,
           }).catch(() => {})
+          // 참석자 인앱 알림
+          for (const att of (target.attendees ?? [])) {
+            if (att.user_id && att.user_id !== userProfile.user_id) {
+              insertNotification({
+                userId: att.user_id, type: 'booking_approved',
+                title: '참석 예약이 승인되었습니다',
+                body: `${target.title} · ${rApprove?.room_name ?? ''} · ${fmtTSDateFull(target.start_at)} ${fmtTSFull(target.start_at)}`,
+                bookingId: id,
+              }).catch(() => {})
+            }
+          }
         }
       }
       showToast('예약이 승인되었습니다.')
@@ -542,22 +568,18 @@ function AppContent() {
       await rejectBooking(id, reason)
       const target = bookings.find(b => b.id === id)
       setBookings(prev => prev.map(b => b.id===id ? {...b, status:'rejected', autoCancelled:true, cancelledBy:'system'} : b))
-      // 신청자에게 거절 이메일
+      // 거절 이메일 — 예약자·참석자 수신자는 Edge Fn이 DB에서 조회
       if (target) {
         const rejectedRoom = rooms.find(r => r.room_id === target.room_id)
-        const userProfile  = users.find(u => u.name === target.user)
-        if (userProfile?.email) {
-          sendNotification('rejected', {
-            ...target,
-            user_email:    userProfile.email,
-            user_name:     target.user,
-            user_dept:     target.dept,
-            room_name:     rejectedRoom?.room_name_ko ?? rejectedRoom?.room_name ?? '',
-            reject_reason: reason || '관리자 거절',
-          })
-        }
+        sendNotification('rejected', {
+          ...target,
+          user_name:     target.user,
+          user_dept:     target.dept,
+          room_name:     rejectedRoom?.room_name_ko ?? rejectedRoom?.room_name ?? '',
+          reject_reason: reason || '관리자 거절',
+        })
       }
-      // 신청자 인앱 알림
+      // 예약자 인앱 알림
       if (target) {
         const userProfile = users.find(u => u.name === target.user)
         if (userProfile?.user_id) {
@@ -570,6 +592,19 @@ function AppContent() {
               : `${target.title} · ${rReject?.room_name ?? ''}`,
             bookingId: id,
           }).catch(() => {})
+          // 참석자 인앱 알림
+          for (const att of (target.attendees ?? [])) {
+            if (att.user_id && att.user_id !== userProfile.user_id) {
+              insertNotification({
+                userId: att.user_id, type: 'booking_rejected',
+                title: '참석 예약 요청이 거절되었습니다',
+                body: reason
+                  ? `${target.title} · ${rReject?.room_name ?? ''} · 거절 사유: ${reason}`
+                  : `${target.title} · ${rReject?.room_name ?? ''}`,
+                bookingId: id,
+              }).catch(() => {})
+            }
+          }
         }
       }
       showToast('예약이 거절되었습니다.', 'info')
@@ -606,12 +641,11 @@ function AppContent() {
         }).catch(() => {})
       }
 
-      // 이메일 알림 (기존 cancelled 타입 재사용)
-      if (targetB && userProfile?.email) {
+      // 이메일 알림 — 예약자·참석자 수신자는 Edge Fn이 DB에서 조회
+      if (targetB) {
         const cancelledRoom = rooms.find(r => r.room_id === targetB.room_id)
         sendNotification('cancelled', {
           ...targetB,
-          user_email: userProfile.email,
           room_name: cancelledRoom?.room_name_ko ?? cancelledRoom?.room_name ?? '',
           admin_force: true,
           cancel_reason: reason || '관리자 강제 취소',
@@ -660,7 +694,7 @@ function AppContent() {
         await upsertBookingAttendees(originalId, changes.attendees)
       }
 
-      // 예약 변경 인앱 알림
+      // 예약 변경 인앱 알림 — 예약자
       if (authUser?.user_id && prevBooking) {
         const r = rooms.find(rm => rm.room_id === prevBooking.room_id)
         insertNotification({
@@ -669,6 +703,18 @@ function AppContent() {
           body: `${prevBooking.title} · ${r?.room_name ?? ''} · ${fmtTSDateFull(changes.start_at ?? prevBooking.start_at)} ${fmtTSFull(changes.start_at ?? prevBooking.start_at)}`,
           bookingId: originalId,
         }).catch(() => {})
+        // 참석자 인앱 알림 (유지된 참석자 대상)
+        const r2 = rooms.find(rm => rm.room_id === prevBooking.room_id)
+        for (const att of (prevBooking.attendees ?? [])) {
+          if (att.user_id && att.user_id !== authUser.user_id) {
+            insertNotification({
+              userId: att.user_id, type: 'booking_updated',
+              title: '참석 예약이 변경되었습니다',
+              body: `${prevBooking.title} · ${r2?.room_name ?? ''} · ${fmtTSDateFull(changes.start_at ?? prevBooking.start_at)} ${fmtTSFull(changes.start_at ?? prevBooking.start_at)}`,
+              bookingId: originalId,
+            }).catch(() => {})
+          }
+        }
       }
       // Audit log
       insertAuditLog({
@@ -685,11 +731,10 @@ function AppContent() {
         const updatedRoom = rooms.find(r => r.room_id === (changes.room_id ?? updatedB.room_id))
         const basePayload = {
           ...updatedB, ...changes,
-          user_email: authUser?.email,
-          room_name:  updatedRoom?.room_name_ko ?? updatedRoom?.room_name ?? String(updatedB.room_id) + 'F',
+          room_name: updatedRoom?.room_name_ko ?? updatedRoom?.room_name ?? String(updatedB.room_id) + 'F',
         }
 
-        // 변경 알림 (예약자 + 유지/신규 참석자)
+        // 변경 알림 — 예약자·참석자 수신자는 Edge Fn이 DB에서 조회
         sendNotification('updated', basePayload)
 
         // 제거된 참석자 별도 알림
@@ -701,7 +746,6 @@ function AppContent() {
           if (removedEmails.length > 0) {
             sendNotification('attendee_removed', {
               ...basePayload,
-              user_email:     null,           // 예약자에게는 발송 안 함
               removed_emails: removedEmails,  // Edge Function에서 직접 사용
             })
           }
