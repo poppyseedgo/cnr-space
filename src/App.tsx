@@ -1177,7 +1177,8 @@ function AppContent() {
       {view==="mybookings" && <Suspense fallback={null}><MyBookingWeeklyView
           bookings={bookings} currentUser={currentUser} rooms={rooms}
           onDetail={b=>setModal({type:"detail",data:b})}
-          onCheckIn={checkIn} onNewBooking={()=>setModal({type:"new",prefill:{}})}
+          onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={cancelBooking}
+          onNewBooking={()=>setModal({type:"new",prefill:{}})}
           authUser={authUser}
         /></Suspense>}
       {view==="mypage" && <Suspense fallback={null}><MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={cancelBooking} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} avatarUrl={authUser?.avatar_url ?? null} /></Suspense>}

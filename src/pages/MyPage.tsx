@@ -297,7 +297,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── My Booking Weekly View ────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
-export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, onCheckIn, onNewBooking, authUser}) {
+export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, onCheckIn, onEarlyEnd=(id:string)=>{}, onCancel=(id:string)=>{}, onNewBooking, authUser}) {
   const today = todayStr()
   const now   = nowMinutes()
   const [selectedDate, setSelectedDate] = useState(today)
