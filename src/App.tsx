@@ -1180,7 +1180,7 @@ function AppContent() {
           onCheckIn={checkIn} onNewBooking={()=>setModal({type:"new",prefill:{}})}
           authUser={authUser}
         /></Suspense>}
-      {view==="mypage" && <Suspense fallback={null}><MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} avatarUrl={authUser?.avatar_url ?? null} /></Suspense>}
+      {view==="mypage" && <Suspense fallback={null}><MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={cancelBooking} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} avatarUrl={authUser?.avatar_url ?? null} /></Suspense>}
       {view==="admin" && <Suspense fallback={null}><AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={adminForceCancelBooking} onDetail={b=>setModal({type:'detail',data:b})} /></Suspense>}
 
       {/* ── Modals ── */}
