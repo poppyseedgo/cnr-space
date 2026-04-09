@@ -114,6 +114,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
                       name={a.name || a.email}
                       avatarUrl={u?.avatar_url ?? null}
                       dept={u?.dept}
+                      userInfo={u}
                     />
                   )
                 })}

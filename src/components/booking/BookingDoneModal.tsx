@@ -89,6 +89,7 @@ export function BookingDoneModal({booking:b, onClose, rooms:rp=[], users:up=[]})
                     name={a.name || a.email}
                     avatarUrl={u?.avatar_url ?? null}
                     dept={u?.dept}
+                    userInfo={u}
                   />
                 )
               })}
