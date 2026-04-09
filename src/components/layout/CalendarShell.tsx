@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { BookingStatusBadge } from '../common/BookingStatusBadge'
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
-import { Layers, Users, UsersRound, Building2, Clock, User, Monitor, FileText, XCircle, AlertTriangle, CheckCircle2, Circle, X, Calendar, Home, LayoutGrid, LogOut, Settings, Search, BarChart2, ClipboardList, Inbox, ChevronDown, ChevronUp, AlertCircle, CheckCheck, Ban, Check } from 'lucide-react'
+import { Calendar, Inbox } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtTSRangeFull, fmtRangeFull, fmtTSFull, fmtTimeFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
@@ -518,6 +518,9 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
                 const colL = `calc(${GAP}px + (${colIndex}) * ((100% - ${GAP*(totalCols+1)}px) / ${totalCols} + ${GAP}px))`;
 
                 const isMyBooking = currentUser && b.user === currentUser;
+                const titleColor  = isEnded ? "#94A3B8" : isAct ? "#fff" : color;
+                const subColor    = isEnded ? "#CBD5E1" : isAct ? "rgba(255,255,255,0.75)" : "#94A3B8";
+                const slotRoom    = { room_id: b.room_id, color } as any;
                 return(
                   <div key={b.id}
                     onClick={e=>{e.stopPropagation();onBlockClick(b);}}
@@ -539,37 +542,20 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
                     }}
                     onMouseEnter={e=>{if(!isEnded){e.currentTarget.style.zIndex="15";e.currentTarget.style.boxShadow=`0 4px 12px ${color}44`;}}}
                     onMouseLeave={e=>{if(!isEnded){e.currentTarget.style.zIndex=isAct?"8":"3";e.currentTarget.style.boxShadow=isAct?`0 2px 8px ${color}55`:"none";}}}>
-                    <div style={{fontSize:10,fontWeight:700,
-                      color:isEnded?"#94A3B8":isAct?"#fff":color,
-                      overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",
-                      lineHeight:1.2}}>
-                      {isEnded&&<CheckCircle2 size={10} strokeWidth={2} style={{marginRight:2,flexShrink:0}}/>}
-                      {isAct&&!isEnded&&<Circle size={7} fill="#4ADE80" strokeWidth={0} style={{marginRight:2,flexShrink:0}}/>}
-                      {b.checkedIn&&!isEnded&&!isAct&&<CheckCircle2 size={10} strokeWidth={2} style={{marginRight:2,flexShrink:0}}/>}
-                      {b.title}
-                    </div>
-                    {blockH>26&&(
-                      <div style={{fontSize:9,color:isEnded?"#CBD5E1":isAct?"rgba(255,255,255,0.8)":"#94A3B8",
-                        marginTop:1,whiteSpace:"nowrap"}}>
+                    <div style={{display:"flex",flexDirection:"column",gap:1.5,overflow:"hidden",height:"100%"}}>
+                      <div style={{fontSize:10,fontWeight:600,color:titleColor,
+                        overflow:"hidden",display:"-webkit-box",
+                        WebkitLineClamp:2,WebkitBoxOrient:"vertical",lineHeight:1.3}}>
+                        {b.title}
+                      </div>
+                      <div style={{fontSize:9,color:subColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                         {fmtTSRange(b.start_at, b.end_at)}{isEnded?" (완료)":""}
                       </div>
-                    )}
-                    {blockH>42&&(
-                      <div style={{fontSize:9,color:isEnded?"#CBD5E1":isAct?"rgba(255,255,255,0.7)":"#94A3B8",
-                        whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                        {b.user}{b.checkedIn&&!isEnded&&<CheckCircle2 size={9} strokeWidth={2} style={{marginLeft:3,verticalAlign:"middle",flexShrink:0}}/>}
+                      <div style={{fontSize:9,color:subColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                        {b.user}
                       </div>
-                    )}
-                    {blockH>54&&isToday&&!b.checkedIn&&!isEnded&&(
-                      <button className="btn"
-                        onClick={e=>{e.stopPropagation();if(nci)onCheckIn(b.id);}}
-                        disabled={!nci}
-                        style={{marginTop:3,background:nci?"#16A34A":"rgba(255,255,255,0.2)",
-                          color:"#fff",padding:"1px 6px",fontSize:9,borderRadius:4,
-                          display:"block",cursor:nci?"pointer":"not-allowed"}}>
-                        체크인
-                      </button>
-                    )}
+                      <BookingStatusBadge booking={b} room={slotRoom} size="sm" currentUser={currentUser} />
+                    </div>
                   </div>
                 );
               })}
@@ -729,6 +715,9 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
                     const isAct=isToday&&sm<=now&&now<em&&!isNoshow&&!isEnded;
                     const nci=isAct&&!b.checkedIn;
                     const isMyBooking = currentUser && b.user === currentUser;
+                    const titleColor  = isNoshow||isEnded ? "#94A3B8" : "#fff";
+                    const subColor    = isNoshow||isEnded ? "#CBD5E1" : "#94A3B8";
+                    const slotRoom    = dvRooms.find(r=>r.room_id===b.room_id);
                     return(
                       <div key={b.id} onClick={e=>{e.stopPropagation();onBlockClick(b);}}
                         style={{
@@ -736,33 +725,27 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
                           background:isNoshow?"#F1F5F9":isEnded?"#E2E8F0":"#111111",
                           border:`1.5px solid ${isNoshow?"#E2E8F0":isEnded?"#CBD5E1":isAct?"#000":"#334155"}`,
                           borderRadius:8,padding:"5px 8px",cursor:"pointer",
-                          zIndex:isNoshow?1:isAct?5:3,  /* 노쇼 맨 아래, 진행중 맨 위 */
+                          zIndex:isNoshow?1:isAct?5:3,
                           overflow:"hidden",
                           boxShadow:isMyBooking&&!isNoshow&&!isEnded?"0 0 0 2px #fff, 0 0 0 3.5px #111, 0 2px 8px rgba(0,0,0,0.15)":isAct?"0 0 0 2px #EF4444, 0 2px 8px rgba(0,0,0,0.2)":isNoshow||isEnded?"none":"0 1px 4px rgba(0,0,0,0.15)",
                           opacity:isNoshow?0.45:isEnded?0.55:1,transition:"all 0.12s"
                         }}
                         onMouseEnter={e=>{ if(!isNoshow&&!isEnded) e.currentTarget.style.filter="brightness(1.15)"; }}
                         onMouseLeave={e=>{ e.currentTarget.style.filter="none"; }}>
-                        {/* 노쇼 칩 */}
-                        {isNoshow && width>40 && (
-                          <span style={{display:"inline-block",background:"#FEF3C7",color:"#92400E",
-                            fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:3,marginBottom:2}}>
-                            노쇼
-                          </span>
-                        )}
-                        <div style={{fontSize:11,fontWeight:700,color:isNoshow||isEnded?"#94A3B8":"#fff",
-                          whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                          {isEnded&&<CheckCircle2 size={10} strokeWidth={2} style={{marginRight:3,flexShrink:0}}/>}
-                          {isAct&&!isEnded&&<Circle size={7} fill="#86EFAC" strokeWidth={0} style={{marginRight:3,flexShrink:0}}/>}
-                          {b.checkedIn&&!isEnded&&!isAct&&<CheckCircle2 size={10} strokeWidth={2} style={{marginRight:3,flexShrink:0}}/>}
-                          {b.title}
+                        <div style={{display:"flex",flexDirection:"column",gap:1.5,overflow:"hidden",height:"100%"}}>
+                          <div style={{fontSize:10,fontWeight:600,color:titleColor,
+                            overflow:"hidden",display:"-webkit-box",
+                            WebkitLineClamp:2,WebkitBoxOrient:"vertical",lineHeight:1.3}}>
+                            {b.title}
+                          </div>
+                          <div style={{fontSize:9,color:subColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                            {fmtTSRange(b.start_at, b.end_at)}{isEnded?" (완료)":isNoshow?" (노쇼)":""}
+                          </div>
+                          <div style={{fontSize:9,color:subColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                            {b.user}
+                          </div>
+                          <BookingStatusBadge booking={b} room={slotRoom} size="sm" currentUser={currentUser} />
                         </div>
-                        {width>80&&<div style={{fontSize:10,color:isEnded?"#CBD5E1":"#94A3B8",marginTop:1,whiteSpace:"nowrap"}}>{fmtTSRange(b.start_at, b.end_at)}{isEnded?" (완료)":isNoshow?" (노쇼)":""}</div>}
-                        {width>120&&!isNoshow&&<div style={{fontSize:10,color:isEnded?"#CBD5E1":"#64748B",whiteSpace:"nowrap"}}>{b.user}{b.checkedIn&&!isEnded&&<CheckCircle2 size={9} strokeWidth={2} style={{marginLeft:3,verticalAlign:"middle",flexShrink:0}}/>}</div>}
-                        {isToday&&!isNoshow&&!isEnded&&!b.checkedIn&&width>90&&(
-                          <button className="btn" onClick={e=>{e.stopPropagation();if(nci)onCheckIn(b.id);}} disabled={!nci}
-                            style={{marginTop:3,background:nci?"#16A34A":"#CBD5E1",color:nci?"#fff":"#94A3B8",padding:"2px 7px",fontSize:9,borderRadius:4,display:"block",cursor:nci?"pointer":"not-allowed",alignItems:"center",gap:3}}><CheckCircle2 size={9} strokeWidth={2}/>체크인</button>
-                        )}
                       </div>
                     );
                   })}
@@ -934,6 +917,7 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
                     const borderCol = isCan ? "#E2E8F0" : isAct ? "#16A34A" : "#3B82F6";
                     const titleColor= isCan ? "#94A3B8" : isAct ? "#15803D" : "#1D4ED8";
 
+                    const subColor = isCan ? "#94A3B8" : "#64748B";
                     return (
                       <div key={b.id}
                         onClick={e=>{e.stopPropagation();onBlockClick(b);}}
@@ -942,35 +926,27 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
                           background:cardBg, border:`1.5px solid ${borderCol}`,
                           borderLeft:isMyBooking&&!isCan?`4px solid #111`:`1.5px solid ${borderCol}`,
                           borderRadius:10, padding:"8px 10px", cursor:"pointer",
-                          zIndex: isCan ? 1 : isAct ? 5 : 3,  /* 노쇼 맨 아래, 진행중 맨 위 */
+                          zIndex: isCan ? 1 : isAct ? 5 : 3,
                           overflow:"hidden", transition:"all 0.12s",
                           opacity: isCan ? 0.5 : 1,
                           boxShadow: isAct?`0 0 12px ${borderCol}44`:isCan?"none":"0 1px 4px rgba(0,0,0,0.06)"
                         }}
                         onMouseEnter={e=>{if(!isCan)e.currentTarget.style.filter="brightness(0.97)";}}
                         onMouseLeave={e=>{e.currentTarget.style.filter="none";}}>
-                        {/* 노쇼 칩 */}
-                        {isCan && h>28 && (
-                          <span style={{display:"inline-block",background:"#FEF3C7",color:"#92400E",
-                            fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:3,marginBottom:3}}>
-                            노쇼
-                          </span>
-                        )}
-                        <div style={{fontSize:12,fontWeight:700,color:titleColor,
-                          whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginBottom:2}}>
-                          {b.title}
+                        <div style={{display:"flex",flexDirection:"column",gap:2,overflow:"hidden",height:"100%"}}>
+                          <div style={{fontSize:11,fontWeight:600,color:titleColor,
+                            overflow:"hidden",display:"-webkit-box",
+                            WebkitLineClamp:2,WebkitBoxOrient:"vertical",lineHeight:1.3}}>
+                            {b.title}
+                          </div>
+                          <div style={{fontSize:10,color:subColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                            {fmtTSRange(b.start_at, b.end_at)}{isCan?" (노쇼)":""}
+                          </div>
+                          <div style={{fontSize:10,color:subColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                            {b.user}
+                          </div>
+                          <BookingStatusBadge booking={b} room={room} size="sm" currentUser={currentUser} />
                         </div>
-                        {h>36&&<div style={{fontSize:10,color:"#64748B",whiteSpace:"nowrap"}}>
-                          {fmtTSRange(b.start_at, b.end_at)}{isCan ? " (노쇼)" : ` · ${b.user}`}
-                        </div>}
-                        {isToday&&!isCan&&!b.checkedIn&&h>48&&(
-                          <button className="btn"
-                            onClick={e=>{e.stopPropagation();if(nci)onCheckIn(b.id);}} disabled={!nci}
-                            style={{marginTop:5,background:nci?"#16A34A":"#E2E8F0",color:nci?"#fff":"#94A3B8",
-                              padding:"3px 9px",fontSize:10,borderRadius:6,display:"block",cursor:nci?"pointer":"not-allowed"}}>
-                            {nci?<span style={{display:"inline-flex",alignItems:"center",gap:4}}><CheckCircle2 size={12} strokeWidth={2}/>체크인</span>:"체크인 대기중"}
-                          </button>
-                        )}
                       </div>
                     );
                   })}
@@ -1021,7 +997,7 @@ export function ListView({bookings,selectedDate,setSelectedDate,onItemClick,onCh
                     </div>
                     <div style={{fontSize:12,color:"#94A3B8"}}><span style={{color:r.color,fontWeight:600}}>{r.room_name}</span> · {fl?.floor_name} · {b.user} · {b.dept}</div>
                   </div>
-                  {isToday&&!b.autoCancelled&&!b.checkedIn&&<button className="btn" onClick={e=>{e.stopPropagation();if(nci)onCheckIn(b.id);}} disabled={!nci} style={{background:nci?"#16A34A":"#E2E8F0",color:nci?"#fff":"#94A3B8",padding:"7px 14px",fontSize:12,borderRadius:10,cursor:nci?"pointer":"not-allowed",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4}}>{nci?<><CheckCircle2 size={11} strokeWidth={2}/>체크인</>:"체크인 대기"}</button>}
+
                 </div>
               );
             })}

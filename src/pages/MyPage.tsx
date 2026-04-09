@@ -232,13 +232,8 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
                       <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap",fontSize:12}}>{fmtTSDateFull(b.start_at)}<br/>{fmtTSRangeFull(b.start_at,b.end_at)}</td>
                       <td style={{padding:"10px 14px",fontWeight:600,color:"#111",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.title}</td>
                       <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{r?.room_name ?? '?'}</td>
-                      <td style={{padding:"10px 14px",whiteSpace:"nowrap"}}>
-                        {/* ★ 관리자 강제취소 — 최우선 표시 */}
-                        {isAdminCancel && <span style={{background:"#111",color:"#fff",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:999}}>관리자 강제취소</span>}
-                        {!isAdminCancel && isDone && <span style={{background:"#DCFCE7",color:"#16A34A",fontSize:11,fontWeight:700,display:"inline-flex",alignItems:"center",gap:3,padding:"3px 10px",borderRadius:999}}>완료</span>}
-                        {!isAdminCancel && isUp && !isDone && <span style={{background:"#EFF6FF",color:"#3B82F6",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:999}}>예정</span>}
-                        {!isAdminCancel && isNoshow && <span style={{background:"#FEF3C7",color:"#D97706",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:999}}>노쇼</span>}
-                        {!isAdminCancel && isCan && !isNoshow && !isDone && <span style={{background:"#F1F5F9",color:"#94A3B8",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:999}}>취소</span>}
+                      <td style={{padding:"10px 14px"}}>
+                        <BookingStatusBadge booking={b} room={r} currentUser={currentUser} />
                       </td>
                       <td style={{padding:"10px 14px"}}>
                         <button className="btn" onClick={()=>onDetail(b)}
