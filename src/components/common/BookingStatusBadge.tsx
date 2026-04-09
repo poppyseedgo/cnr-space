@@ -5,8 +5,16 @@ interface BookingStatusBadgeProps {
   booking:      Booking
   room?:        Room
   currentUser?: string
-  size?:        'sm' | 'md'
+  /** md = DetailModal·ListView / sm = 소형카드 / xs = 캘린더 슬롯 */
+  size?:        'md' | 'sm' | 'xs'
 }
+
+/** size별 chip 크기 override — 색상은 chip-* 클래스가 담당 */
+const CHIP_SIZE = {
+  md: {},
+  sm: { fontSize: 9,  padding: '2px 7px'  },
+  xs: { fontSize: 8,  padding: '1px 4px', borderRadius: 3 },
+} as const
 
 export function BookingStatusBadge({
   booking: b,
@@ -40,59 +48,50 @@ export function BookingStatusBadge({
 
   if (!hasAny) return null
 
+  const cs = CHIP_SIZE[size]
+  const gap = size === 'xs' ? 3 : 5
+
+  const C = ({ cls, children, extraStyle }: { cls: string, children: React.ReactNode, extraStyle?: React.CSSProperties }) => (
+    <span className={`chip ${cls}`} style={{ ...cs, ...extraStyle }}>{children}</span>
+  )
+
   return (
-    <div style={{ display: 'inline-flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+    <div style={{ display: 'inline-flex', gap, flexWrap: 'wrap', alignItems: 'center' }}>
 
       {/* 1. 내 예약 */}
-      {isOwner && !b.autoCancelled && (
-        <span className="chip chip-mine">내 예약</span>
-      )}
+      {isOwner && !b.autoCancelled && <C cls="chip-mine">내 예약</C>}
 
       {/* 2. 관리자 강제취소 */}
-      {b.cancelledBy === 'admin' && (
-        <span className="chip chip-admin">관리자 강제취소</span>
-      )}
+      {b.cancelledBy === 'admin' && <C cls="chip-admin">관리자 강제취소</C>}
 
       {/* 3. 노쇼 */}
-      {b.autoCancelled && b.cancelledBy === 'system' && (
-        <span className="chip chip-noshow">노쇼</span>
-      )}
+      {b.autoCancelled && b.cancelledBy === 'system' && <C cls="chip-noshow">노쇼</C>}
 
       {/* 4. 승인 대기 */}
-      {b.status === 'pending' && !b.autoCancelled && (
-        <span className="chip chip-pending">승인 대기</span>
-      )}
+      {b.status === 'pending' && !b.autoCancelled && <C cls="chip-pending">승인 대기</C>}
 
-      {/* 5. 진행 중 */}
+      {/* 5. 진행 중 — room.color 기반 */}
       {isAct && !b.autoCancelled && r && (
-        <span className="chip" style={{ background: r.color + '18', color: r.color }}>
+        <span className="chip" style={{ ...cs, background: r.color + '18', color: r.color }}>
           진행 중
         </span>
       )}
 
       {/* 6. 체크인 대기 */}
-      {nci && (
-        <span className="chip chip-checkin-wait">체크인 대기</span>
-      )}
+      {nci && <C cls="chip-checkin-wait">체크인 대기</C>}
 
       {/* 7. 체크인 완료 */}
-      {b.checkedIn && isAct && (
-        <span className="chip chip-success">체크인 완료</span>
-      )}
+      {b.checkedIn && isAct && <C cls="chip-success">체크인 완료</C>}
 
       {/* 8. 종료 */}
-      {isPast && (
-        <span className="chip chip-done">종료</span>
-      )}
+      {isPast && <C cls="chip-done">종료</C>}
 
       {/* 9. 조기반납 */}
-      {b.earlyEnded && (
-        <span className="chip chip-earlyend">조기반납</span>
-      )}
+      {b.earlyEnded && <C cls="chip-earlyend">조기반납</C>}
 
       {/* 10. N분 후 */}
       {!isAct && !b.autoCancelled && isToday && tl > 0 && tl <= 10 && (
-        <span className="chip chip-countdown">{tl}분 후</span>
+        <C cls="chip-countdown">{tl}분 후</C>
       )}
 
     </div>

@@ -554,7 +554,7 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
                       <div style={{fontSize:9,color:subColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                         {b.user}
                       </div>
-                      <BookingStatusBadge booking={b} room={slotRoom} size="sm" currentUser={currentUser} />
+                      <BookingStatusBadge booking={b} room={slotRoom} size="xs" currentUser={currentUser} />
                     </div>
                   </div>
                 );
@@ -744,7 +744,7 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
                           <div style={{fontSize:9,color:subColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                             {b.user}
                           </div>
-                          <BookingStatusBadge booking={b} room={slotRoom} size="sm" currentUser={currentUser} />
+                          <BookingStatusBadge booking={b} room={slotRoom} size="xs" currentUser={currentUser} />
                         </div>
                       </div>
                     );
@@ -945,7 +945,7 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
                           <div style={{fontSize:10,color:subColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                             {b.user}
                           </div>
-                          <BookingStatusBadge booking={b} room={room} size="sm" currentUser={currentUser} />
+                          <BookingStatusBadge booking={b} room={room} size="xs" currentUser={currentUser} />
                         </div>
                       </div>
                     );
