@@ -542,7 +542,6 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
                     <SlotContent
                       booking={b} room={slotRoom} currentUser={currentUser}
                       titleColor={titleColor} subColor={subColor} gap={1.5}
-                      timeSuffix={isEnded?" (완료)":""}
                       thirdLine={slotRoom?.room_name || b.user}
                     />
                   </div>
@@ -723,7 +722,6 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
                         <SlotContent
                           booking={b} room={slotRoom} currentUser={currentUser}
                           titleColor={titleColor} subColor={subColor} gap={1.5}
-                          timeSuffix={isEnded?" (완료)":isNoshow?" (노쇼)":""}
                           thirdLine={b.user}
                         />
                       </div>
@@ -895,10 +893,7 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
 
                     const cardBg    = isCan ? "#F8FAFC" : isAct ? "#F0FDF4" : "#EFF6FF";
                     const borderCol = isCan ? "#E2E8F0" : isAct ? "#16A34A" : "#3B82F6";
-                    const titleColor= isCan ? "#94A3B8" : isAct ? "#15803D" : "#1D4ED8";
-
-                    const { titleColor: tlTitle, subColor } = getSlotColors({ variant:'timeline', isAct, isEnded: b.earlyEnded, isCan, borderCol });
-                    const titleColor = tlTitle;
+                    const { titleColor, subColor } = getSlotColors({ variant:'timeline', isAct, isEnded: b.earlyEnded, isCan, borderCol });
                     return (
                       <div key={b.id}
                         onClick={e=>{e.stopPropagation();onBlockClick(b);}}
@@ -917,7 +912,6 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
                         <SlotContent
                           booking={b} room={room} currentUser={currentUser}
                           titleColor={titleColor} subColor={subColor} gap={2}
-                          timeSuffix={isCan?" (노쇼)":""}
                           thirdLine={b.user}
                         />
                       </div>

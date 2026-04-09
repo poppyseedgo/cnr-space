@@ -10,8 +10,6 @@ interface SlotContentProps {
   subColor:    string
   /** flex gap (px). Weekly=1.5, Daily=1.5, Timeline=2 */
   gap?:        number
-  /** 시간 라벨 suffix (예: " (완료)", " (노쇼)") */
-  timeSuffix?: string
   /** 3번째 줄 표시 텍스트. Weekly=room_name, Daily/Timeline=b.user */
   thirdLine?:  string
 }
@@ -34,7 +32,6 @@ export function SlotContent({
   titleColor,
   subColor,
   gap = 1.5,
-  timeSuffix = '',
   thirdLine,
 }: SlotContentProps) {
   return (
@@ -52,7 +49,7 @@ export function SlotContent({
 
       {/* 시간 */}
       <div style={{ fontSize: 9, color: subColor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        {fmtTSRange(b.start_at, b.end_at)}{timeSuffix}
+        {fmtTSRange(b.start_at, b.end_at)}
       </div>
 
       {/* 예약자 or 회의실명 */}
