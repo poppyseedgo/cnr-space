@@ -159,7 +159,7 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
               )}
             </div>
           ) : (
-            <span className="font-bold text-slate-900 dark:text-white whitespace-nowrap"
+            <span className="font-semibold text-slate-900 dark:text-white whitespace-nowrap"
               style={{fontSize: isMobile ? 14 : 16, flex:1, textAlign:"center"}}>
               {navLabel()}
             </span>

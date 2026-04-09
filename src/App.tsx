@@ -940,7 +940,7 @@ function AppContent() {
                   ["mybookings", <ClipboardList size={14} strokeWidth={1.8}/>, "나의 예약", "나의 예약"] as const,
                 ] as [string, React.ReactElement, string, string][]).map(([v,icon,label,mLabel])=>(
                   <button key={v} onClick={()=>setView(v)}
-                    className="btn flex items-center gap-1.5 rounded-full font-bold transition-all whitespace-nowrap"
+                    className="btn flex items-center gap-1.5 rounded-full font-semibold transition-all whitespace-nowrap"
                     style={{
                       padding: isMobile?"7px 10px":"8px 18px",
                       fontSize: isMobile?11:13,

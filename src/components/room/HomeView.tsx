@@ -74,7 +74,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
       <div className="mb-6">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-baseline gap-2">
-            <span className="text-sm font-bold text-slate-700 dark:text-slate-200">오늘 내 예약</span>
+            <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">오늘 내 예약</span>
             <span className="text-xs text-slate-400 font-medium">{myBookings.length}건</span>
           </div>
           {/* 정렬 토글 */}
@@ -107,7 +107,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
 
           {/* + 예약하기 첫 카드 */}
           <button onClick={()=>{/* onBook 없이 새 예약 모달 */document.dispatchEvent(new CustomEvent("openNewBooking"))}}
-            className="btn flex-none flex flex-col items-center justify-center rounded-2xl text-white font-bold"
+            className="btn flex-none flex flex-col items-center justify-center rounded-2xl text-white font-semibold"
             style={{width:isMobile?"42vw":160, minWidth:140, minHeight:isMobile?120:140,
               background:"#111111", flexShrink:0, gap:8}}>
             <span style={{fontSize:24, lineHeight:1}}>＋</span>
@@ -159,9 +159,9 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
                 {/* 상단 */}
                 <div>
                   <div className="flex items-start justify-between gap-1 mb-1.5">
-                    <div className="text-xs font-bold text-slate-900 dark:text-white leading-snug line-clamp-2" style={{flex:1}}>{b.title}</div>
+                    <div className="text-xs font-semibold text-slate-900 dark:text-white leading-snug line-clamp-2" style={{flex:1}}>{b.title}</div>
                     {S.badge && (
-                      <span className="flex-shrink-0 text-[9px] font-bold rounded-full px-2 py-0.5 ml-1"
+                      <span className="flex-shrink-0 text-[9px] font-semibold rounded-full px-2 py-0.5 ml-1"
                         style={{
                           background: cardState==="soon" ? "#FFF3E0" : "#F3F4F8",
                           color:      cardState==="soon" ? "#EA580C" : undefined,
@@ -175,7 +175,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
                 </div>
                 {/* 버튼 영역 */}
                 <div className="flex gap-1.5 mt-2">
-                  <button className="btn flex-1 text-[11px] font-bold rounded-xl py-2"
+                  <button className="btn flex-1 text-[11px] font-semibold rounded-xl py-2"
                     onClick={e=>{e.stopPropagation(); S.action?.();}}
                     disabled={S.disabled}
                     style={{background:S.btnBg, color:S.btnColor, cursor:S.disabled?"default":"pointer",
@@ -183,7 +183,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
                     {S.label}
                   </button>
                   {isCancellable && (
-                    <button className="btn text-[11px] font-bold rounded-xl py-2 px-2.5 dark:bg-slate-700 text-slate-500 dark:text-slate-400" style={{background:"#F3F4F8"}}
+                    <button className="btn text-[11px] font-semibold rounded-xl py-2 px-2.5 dark:bg-slate-700 text-slate-500 dark:text-slate-400" style={{background:"#F3F4F8"}}
                       onClick={e=>{e.stopPropagation(); onCancel(b.id);}}>취소</button>
                   )}
                 </div>
@@ -201,7 +201,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
           {id:"AVAILABLE",label:"예약가능",count:availCount,badgeBg:"#CBECFF",badgeColor:"#000"},
           {id:"BUSY",label:"사용중",count:busyCount,badgeBg:"#ffdaed",badgeColor:"#000"},
         ].map(s=>(
-          <button key={s.id} className="btn flex-shrink-0 font-bold rounded-full"
+          <button key={s.id} className="btn flex-shrink-0 font-semibold rounded-full"
             onClick={()=>setFilterStatus(s.id)}
             style={{
               padding:"7px 14px", fontSize:13,
@@ -224,7 +224,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
 
         {/* 층 필터 */}
         {[{id:"ALL",label:"전체층"}, ...FLOORS.map(f=>({id:f.floor_id,label:f?.floor_name}))].map(f=>(
-          <button key={f.id} className="btn flex-shrink-0 font-bold rounded-full"
+          <button key={f.id} className="btn flex-shrink-0 font-semibold rounded-full"
             onClick={()=>setFilterFloor(f.id==="ALL"?"ALL":f.id)}
             style={{
               padding:"7px 14px", fontSize:13,
@@ -271,7 +271,7 @@ export function Section({title, count, accent, children}) {
     <div className="mb-9">
       <div className="flex items-center gap-2.5 mb-4">
         <div style={{width:4,height:20,background:accent,borderRadius:2}} />
-        <h2 className="text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">{title}</h2>
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-white tracking-tight">{title}</h2>
         <span style={{background:accent+"18",color:accent,fontSize:12,fontWeight:700,padding:"2px 9px",borderRadius:20}}>{count}</span>
       </div>
       {children}

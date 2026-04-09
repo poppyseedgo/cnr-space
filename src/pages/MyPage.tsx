@@ -340,7 +340,7 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
 
           {/* + 예약하기 첫 카드 */}
           <button onClick={()=>document.dispatchEvent(new CustomEvent("openNewBooking"))}
-            className="btn flex-none flex flex-col items-center justify-center rounded-2xl text-white font-bold"
+            className="btn flex-none flex flex-col items-center justify-center rounded-2xl text-white font-semibold"
             style={{width:isMobile?"42vw":160, minWidth:140, minHeight:isMobile?120:140,
               background:"#111111", flexShrink:0, gap:8}}>
             <span style={{fontSize:24, lineHeight:1}}>＋</span>
@@ -389,9 +389,9 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
                   border:cardState==="pending"?"1.5px solid #FCD34D":"none"}}>
                 <div>
                   <div className="flex items-start justify-between gap-1 mb-1.5">
-                    <div className="text-xs font-bold text-slate-900 dark:text-white leading-snug line-clamp-2" style={{flex:1}}>{b.title}</div>
+                    <div className="text-xs font-semibold text-slate-900 dark:text-white leading-snug line-clamp-2" style={{flex:1}}>{b.title}</div>
                     {S.badge && (
-                      <span className="flex-shrink-0 text-[9px] font-bold rounded-full px-2 py-0.5 ml-1"
+                      <span className="flex-shrink-0 text-[9px] font-semibold rounded-full px-2 py-0.5 ml-1"
                         style={{background:cardState==="soon"?"#FFF3E0":"#F3F4F8",
                           color:cardState==="soon"?"#EA580C":undefined}}>{S.badge}</span>
                     )}
@@ -400,7 +400,7 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
                   <div className="text-[10px] text-slate-400 mt-0.5">{fmtTSRangeFull(b.start_at, b.end_at)}</div>
                 </div>
                 <div className="flex gap-1.5 mt-2">
-                  <button className="btn flex-1 text-[11px] font-bold rounded-xl py-2"
+                  <button className="btn flex-1 text-[11px] font-semibold rounded-xl py-2"
                     onClick={e=>{e.stopPropagation();}}
                     disabled={S.disabled}
                     style={{background:S.btnBg, color:S.btnColor, cursor:S.disabled?"default":"pointer",
@@ -408,7 +408,7 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
                     {S.label}
                   </button>
                   {isCancellable && (
-                    <button className="btn text-[11px] font-bold rounded-xl py-2 px-2.5 text-slate-500" style={{background:"#F3F4F8"}}
+                    <button className="btn text-[11px] font-semibold rounded-xl py-2 px-2.5 text-slate-500" style={{background:"#F3F4F8"}}
                       onClick={e=>{e.stopPropagation();}}>취소</button>
                   )}
                 </div>

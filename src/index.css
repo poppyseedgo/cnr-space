@@ -223,7 +223,7 @@
   .chip {
     display: inline-flex; align-items: center; gap: 4px;
     padding: 3px 10px; border-radius: var(--radius-full);
-    font-size: 11px; font-weight: 700; letter-spacing: 0.2px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.2px;
     white-space: nowrap;
   }
   .chip-available { background: var(--color-available-bg);  color: var(--color-available-text); }
@@ -284,7 +284,7 @@
   /* ── 텍스트 스타일 ── */
   .text-label {
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-hint);
     letter-spacing: 0.3px;
     text-transform: uppercase;
@@ -308,7 +308,7 @@
   .nav-pill {
     display: flex; align-items: center; gap: 6px;
     padding: 8px 18px; border-radius: var(--radius-full);
-    font-size: 13px; font-weight: 700;
+    font-size: 13px; font-weight: 600;
     transition: background 0.15s, color 0.15s, box-shadow 0.15s;
     white-space: nowrap;
     -webkit-tap-highlight-color: transparent;
@@ -355,7 +355,7 @@
     margin-bottom: 12px;
   }
   .section-title {
-    font-size: 15px; font-weight: 800; color: var(--color-text);
+    font-size: 15px; font-weight: 600; color: var(--color-text);
   }
 
   /* ── 빈 상태 ── */
