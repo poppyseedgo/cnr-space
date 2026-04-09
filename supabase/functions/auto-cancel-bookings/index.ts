@@ -6,11 +6,14 @@
  *
  * [수정]
  * - bookings.room_name 컬럼 없음 → rooms 테이블 별도 조회 후 room_id로 매핑
+ * - 운영 시간(KST 06:00~20:00) 외에는 즉시 종료
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const CHECKIN_GRACE_MINUTES = 10
+const OPERATING_START_KST   = 6   // 06:00 KST
+const OPERATING_END_KST     = 20  // 20:00 KST
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -22,13 +25,22 @@ Deno.serve(async (req) => {
     })
   }
 
+  // ── 운영 시간 체크 (KST 06:00 ~ 20:00) ──────────────────────────────────
+  const nowUTC = new Date()
+  const hourKST = (nowUTC.getUTCHours() + 9) % 24
+  if (hourKST < OPERATING_START_KST || hourKST >= OPERATING_END_KST) {
+    return new Response(
+      JSON.stringify({ message: `운영 시간 외 (현재 KST ${hourKST}시) — 스킵`, timestamp: nowUTC.toISOString() }),
+      { headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
 
-    const nowUTC      = new Date()
     const nowKST      = new Date(nowUTC.getTime() + 9 * 60 * 60 * 1000)
     const graceCutoff = new Date(nowUTC.getTime() - CHECKIN_GRACE_MINUTES * 60 * 1000)
 
