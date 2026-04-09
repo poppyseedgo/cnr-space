@@ -121,44 +121,51 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         </div>}
       </div>
       {/* 버튼 영역 - 항상 하단 고정 */}
-      <div style={{padding: isMobile ? "12px 20px 24px" : "12px 24px 20px", display:"flex", gap:8, flexShrink:0,
-        borderTop: "1px solid #F1F5F9"}}>
-        {isToday&&!b.autoCancelled&&!b.checkedIn&&(
-          <button className="btn" onClick={()=>{if(nci){onCheckIn(b.id);onClose();}}} disabled={!nci}
-            style={{flex:2, background:nci?"#16A34A":"#E2E8F0", color:nci?"#fff":"#94A3B8",
-              padding:"13px 8px", fontSize: isMobile ? 13 : 14, fontWeight:700, borderRadius:12,
-              cursor:nci?"pointer":"not-allowed"}}>
-            {nci?<span style={{display:"inline-flex",alignItems:"center",gap:5}}><CheckCircle2 size={14} strokeWidth={2}/>체크인하기</span>:"체크인 대기중"}
-          </button>
-        )}
-        {canEdit&&(
-          <button className="btn" onClick={()=>{ onClose(); onEdit(b); }}
-            style={{flex:1, background:"#EFF6FF", border:"1px solid #BFDBFE", color:"#1D4ED8",
-              padding:"13px 8px", fontSize: isMobile ? 12 : 13, fontWeight:600, borderRadius:12}}>
-            예약 변경
-          </button>
-        )}
-        {canEdit&&(
-          <button className="btn" onClick={()=>onCancel(b.id)}
-            style={{flex:1, background:"#FEF2F2", border:"1px solid #FCA5A5", color:"#DC2626",
-              padding:"13px 8px", fontSize: isMobile ? 12 : 13, borderRadius:12}}>
-            예약 취소
-          </button>
-        )}
-        {!canEdit&&isOwner&&!b.autoCancelled&&!b.checkedIn&&!isFuture&&(
-          <button className="btn" onClick={()=>onCancel(b.id)}
-            style={{flex:1, background:"#FEF2F2", border:"1px solid #FCA5A5", color:"#DC2626",
-              padding:"13px 8px", fontSize: isMobile ? 12 : 13, borderRadius:12}}>
-            예약 취소
-          </button>
-        )}
-        {((!isOwner||b.autoCancelled||b.checkedIn)&&!nci&&!canEdit)&&(
-          <button className="btn" onClick={onClose}
-            style={{flex:1, background:"#F1F5F9", color:"#64748B", padding:"13px 8px", borderRadius:12}}>
-            닫기
-          </button>
-        )}
-      </div>
+      {(()=>{
+        // ── 버튼 표시 조건 (매트릭스 기준) ─────────────────────────
+        // 체크인: 진행중 + 본인 + 미체크인
+        const showCheckin = isAct && isOwner && !b.checkedIn
+        // 예약변경: 미래 + 본인 + confirmed (pending 제외)
+        const showEdit    = isOwner && isFuture && !b.autoCancelled && !b.checkedIn && b.status === 'confirmed'
+        // 예약취소: 미래 + 본인 (confirmed + pending 모두 가능)
+        const showCancel  = isOwner && isFuture && !b.autoCancelled
+        // 닫기: 위 버튼 하나도 없을 때
+        const showClose   = !showCheckin && !showEdit && !showCancel
+        return (
+          <div style={{padding: isMobile ? "12px 20px 24px" : "12px 24px 20px", display:"flex", gap:8, flexShrink:0,
+            borderTop: "1px solid #F1F5F9"}}>
+            {showCheckin && (
+              <button className="btn" onClick={()=>{onCheckIn(b.id);onClose();}}
+                style={{flex:2, background:"#16A34A", color:"#fff",
+                  padding:"13px 8px", fontSize: isMobile ? 13 : 14, fontWeight:600, borderRadius:12}}>
+                <span style={{display:"inline-flex",alignItems:"center",gap:5}}>
+                  <CheckCircle2 size={14} strokeWidth={2}/>체크인하기
+                </span>
+              </button>
+            )}
+            {showEdit && (
+              <button className="btn" onClick={()=>{ onClose(); onEdit(b); }}
+                style={{flex:1, background:"#EFF6FF", border:"1px solid #BFDBFE", color:"#1D4ED8",
+                  padding:"13px 8px", fontSize: isMobile ? 12 : 13, fontWeight:600, borderRadius:12}}>
+                예약 변경
+              </button>
+            )}
+            {showCancel && (
+              <button className="btn" onClick={()=>onCancel(b.id)}
+                style={{flex:1, background:"#FEF2F2", border:"1px solid #FCA5A5", color:"#DC2626",
+                  padding:"13px 8px", fontSize: isMobile ? 12 : 13, borderRadius:12}}>
+                예약 취소
+              </button>
+            )}
+            {showClose && (
+              <button className="btn" onClick={onClose}
+                style={{flex:1, background:"#F1F5F9", color:"#64748B", padding:"13px 8px", borderRadius:12}}>
+                닫기
+              </button>
+            )}
+          </div>
+        )
+      })()}
     </div>
   );
 }

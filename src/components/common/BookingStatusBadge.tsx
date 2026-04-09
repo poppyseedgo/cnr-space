@@ -1,29 +1,29 @@
-import { AlertTriangle, CheckCircle2, Circle, Clock, User, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Circle, Clock, User } from 'lucide-react'
 import type { Booking, Room } from '../../types'
 import { tsDate, tsMin, todayStr, nowMinutes } from '../../utils/time'
 
 interface BookingStatusBadgeProps {
   booking:      Booking
-  room?:        Room        // 진행 중 뱃지에 room.color 사용
-  currentUser?: string      // 내 예약 뱃지 표시 여부
-  /** 'md' = DetailModal 칩 크기(default) / 'sm' = MyPage 카드 소형 */
+  room?:        Room
+  currentUser?: string
   size?:        'sm' | 'md'
 }
 
 /**
  * BookingStatusBadge
- * 예약 상태 뱃지 공통 컴포넌트.
+ * 확정 매트릭스 기준 예약 상태 칩 컴포넌트
  *
- * 표시 우선순위:
- *   1. 내 예약 (amber)
- *   2. 관리자 강제취소 (black)
- *   3. 자동취소 (neutral)
- *   4. 체크인 완료 (green)
- *   5. 조기 반납 (purple)
- *   6. 진행 중 (room.color)
- *   7. 승인 대기 (yellow)
- *   8. 거절됨 (red)
- *   9. N분 후 — 10분 이내만 표시 (indigo)
+ * 칩 표시 순서:
+ *   1. 내 예약        — isOwner && !autoCancelled
+ *   2. 관리자 강제취소 — cancelledBy === 'admin'
+ *   3. 노쇼           — autoCancelled && cancelledBy === 'system'
+ *   4. 승인 대기      — status === 'pending' && !autoCancelled
+ *   5. 진행 중        — isAct (room.color 기반)
+ *   6. 체크인 대기    — nci (isAct && !checkedIn)
+ *   7. 체크인 완료   — checkedIn && isAct (진행중에만)
+ *   8. 종료           — isPast && !autoCancelled
+ *   9. 조기반납       — earlyEnded
+ *  10. N분 후         — isToday && tl > 0 && tl ≤ 10 (알림 기준)
  */
 export function BookingStatusBadge({
   booking: b,
@@ -35,17 +35,22 @@ export function BookingStatusBadge({
   const isToday = tsDate(b.start_at) === todayStr()
   const sm      = tsMin(b.start_at)
   const em      = tsMin(b.end_at)
-  const isAct   = isToday && sm <= now && now < em && !b.autoCancelled && !b.earlyEnded
-  const tl      = sm - now   // 시작까지 남은 분
-  const isOwner = !!currentUser && b.user === currentUser
+
+  // ── 상태 파생 ──────────────────────────────────────────────────
+  const isAct    = isToday && sm <= now && now < em && !b.autoCancelled && !b.earlyEnded
+  const nci      = isAct && !b.checkedIn
+  const isFuture = tsDate(b.start_at) > todayStr() || (isToday && sm > now)
+  const isPast   = !isAct && !isFuture && !b.autoCancelled
+  const tl       = sm - now
+  const isOwner  = !!currentUser && b.user === currentUser
 
   const ico = size === 'sm' ? 9 : 11
 
   return (
     <div style={{ display: 'inline-flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
 
-      {/* 1. 내 예약 */}
-      {isOwner && (
+      {/* 1. 내 예약 — 취소/노쇼 상태에서는 숨김 */}
+      {isOwner && !b.autoCancelled && (
         <span className="chip chip-mine">
           <User size={ico} strokeWidth={2} />
           내 예약
@@ -60,31 +65,22 @@ export function BookingStatusBadge({
         </span>
       )}
 
-      {/* 3. 자동취소 (노쇼 포함) */}
-      {b.autoCancelled && b.cancelledBy !== 'admin' && (
-        <span className="chip chip-neutral">
-          <XCircle size={ico} strokeWidth={1.8} />
-          자동취소
+      {/* 3. 노쇼 — system 자동취소만 */}
+      {b.autoCancelled && b.cancelledBy === 'system' && (
+        <span className="chip chip-noshow">
+          <AlertTriangle size={ico} strokeWidth={1.8} />
+          노쇼
         </span>
       )}
 
-      {/* 4. 체크인 완료 */}
-      {b.checkedIn && (
-        <span className="chip chip-success">
-          <CheckCircle2 size={ico} strokeWidth={1.8} />
-          체크인 완료
+      {/* 4. 승인 대기 */}
+      {b.status === 'pending' && !b.autoCancelled && (
+        <span className="chip chip-pending">
+          승인 대기
         </span>
       )}
 
-      {/* 5. 조기 반납 */}
-      {b.earlyEnded && (
-        <span className="chip chip-earlyend">
-          <CheckCircle2 size={ico} strokeWidth={1.8} />
-          조기 반납
-        </span>
-      )}
-
-      {/* 6. 진행 중 */}
+      {/* 5. 진행 중 — room.color 기반 */}
       {isAct && !b.autoCancelled && r && (
         <span className="chip" style={{ background: r.color + '18', color: r.color }}>
           <Circle size={size === 'sm' ? 6 : 7} fill={r.color} strokeWidth={0} />
@@ -92,21 +88,38 @@ export function BookingStatusBadge({
         </span>
       )}
 
-      {/* 7. 승인 대기 */}
-      {b.status === 'pending' && !b.autoCancelled && (
-        <span className="chip chip-pending">
-          승인 대기
+      {/* 6. 체크인 대기 — nci (진행중 + 미체크인) */}
+      {nci && (
+        <span className="chip chip-checkin-wait">
+          <Clock size={ico} strokeWidth={1.8} />
+          체크인 대기
         </span>
       )}
 
-      {/* 8. 거절됨 */}
-      {b.status === 'rejected' && (
-        <span className="chip chip-danger">
-          거절됨
+      {/* 7. 체크인 완료 — 진행중에만 표시 (종료 후에는 종료 칩으로 대체) */}
+      {b.checkedIn && isAct && (
+        <span className="chip chip-success">
+          <CheckCircle2 size={ico} strokeWidth={1.8} />
+          체크인 완료
         </span>
       )}
 
-      {/* 9. N분 후 — 오늘, 시작 전, 10분 이내만 표시 */}
+      {/* 8. 종료 — 정상완료 + 조기반납 공통 */}
+      {isPast && (
+        <span className="chip chip-done">
+          종료
+        </span>
+      )}
+
+      {/* 9. 조기반납 */}
+      {b.earlyEnded && (
+        <span className="chip chip-earlyend">
+          <CheckCircle2 size={ico} strokeWidth={1.8} />
+          조기반납
+        </span>
+      )}
+
+      {/* 10. N분 후 — 오늘, 시작 전, 10분 이내만 */}
       {!isAct && !b.autoCancelled && isToday && tl > 0 && tl <= 10 && (
         <span className="chip chip-countdown">
           <Clock size={ico} strokeWidth={1.8} />

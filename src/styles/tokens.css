@@ -18,6 +18,9 @@
   --color-earlyend-bg:    #EDE9FE;  --color-earlyend-text:  #7C3AED;
   --color-countdown-bg:   #EEF2FF;  --color-countdown-text: #6366F1;
   --color-neutral-bg:     #F1F5F9;  --color-neutral-text:   #64748B;
+  --color-checkin-wait-bg: #FFF7ED; --color-checkin-wait-text: #C2410C;
+  --color-done-bg:         #F1F5F9; --color-done-text:         #64748B;
+  --color-noshow-bg:       #FEF3C7; --color-noshow-text:       #92400E;
 
   --shadow-card:     0 2px 8px rgba(0,0,0,0.06);
   --shadow-card-lg:  0 8px 32px rgba(0,0,0,0.10);
@@ -35,8 +38,11 @@
 .chip-neutral    { background: var(--color-neutral-bg);    color: var(--color-neutral-text); }
 .chip-mine       { background: var(--color-mine-bg);       color: var(--color-mine-text); }
 .chip-admin      { background: var(--color-admin-bg);      color: var(--color-admin-text); }
-.chip-earlyend   { background: var(--color-earlyend-bg);   color: var(--color-earlyend-text); }
-.chip-countdown  { background: var(--color-countdown-bg);  color: var(--color-countdown-text); }
+.chip-earlyend      { background: var(--color-earlyend-bg);      color: var(--color-earlyend-text); }
+.chip-countdown     { background: var(--color-countdown-bg);     color: var(--color-countdown-text); }
+.chip-checkin-wait  { background: var(--color-checkin-wait-bg);  color: var(--color-checkin-wait-text); }
+.chip-done          { background: var(--color-done-bg);          color: var(--color-done-text); }
+.chip-noshow        { background: var(--color-noshow-bg);        color: var(--color-noshow-text); }
 
 /* 카드 호버 */
 .card-hover { transition: box-shadow 0.22s, transform 0.22s; }
