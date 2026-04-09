@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { BookingStatusBadge } from '../common/BookingStatusBadge'
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
 import { Layers, Users, UsersRound, Building2, Clock, User, Monitor, FileText, XCircle, AlertTriangle, CheckCircle2, Circle, X, Calendar, Home, LayoutGrid, LogOut, Settings, Search, BarChart2, ClipboardList, Inbox, ChevronDown, ChevronUp, AlertCircle, CheckCheck, Ban, Check } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
@@ -8,7 +9,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
 import { FLOORS, getFloor } from '../../data/floors'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
-export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setSelectedDate, calView, setCalView, onBookingClick, onNewBooking, onCheckIn, filterFloor, setFilterFloor}) {
+export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setSelectedDate, calView, setCalView, onBookingClick, onNewBooking, onCheckIn, filterFloor, setFilterFloor, currentUser=""}) {
   const { isMobile, isTablet } = useBreakpoint();
   const VIEWS=[{id:"timeline",label:"타임라인"},{id:"monthly",label:"월"},{id:"daily",label:"일"}];
   const navLabel=()=>{
@@ -200,15 +201,15 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
         </div>  {/* flex 행 닫기 */}
       </div>
 
-      {calView==="monthly"  && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d=>{setSelectedDate(d);setCalView("daily");}} onBookingClick={onBookingClick} rooms={allRooms} />}
-      {calView==="daily"    && <DailyView   bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate&&!(b.autoCancelled&&b.cancelledBy==='user'))} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} rooms={allRooms} />}
-      {calView==="timeline" && <TimelineView bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate&&!(b.autoCancelled&&b.cancelledBy==='user'))} rooms={filteredRooms} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} />}
+      {calView==="monthly"  && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d=>{setSelectedDate(d);setCalView("daily");}} onBookingClick={onBookingClick} rooms={allRooms} currentUser={currentUser} />}
+      {calView==="daily"    && <DailyView   bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate&&!(b.autoCancelled&&b.cancelledBy==='user'))} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} rooms={allRooms} currentUser={currentUser} />}
+      {calView==="timeline" && <TimelineView bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate&&!(b.autoCancelled&&b.cancelledBy==='user'))} rooms={filteredRooms} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} currentUser={currentUser} />}
     </div>
   );
 }
 
 // ─── Calendar Sub-Views ───────────────────────────────────────────────────────
-export function MonthlyView({bookings,selectedDate,onDayClick,onBookingClick,rooms:mvRooms=[]}) {
+export function MonthlyView({bookings,selectedDate,onDayClick,onBookingClick,rooms:mvRooms=[],currentUser=""}) {
   const d=dateToObj(selectedDate),year=d.getFullYear(),month=d.getMonth();
   const firstDay=new Date(year,month,1).getDay();
   const dim=new Date(year,month+1,0).getDate();
@@ -244,7 +245,8 @@ export function MonthlyView({bookings,selectedDate,onDayClick,onBookingClick,roo
                   const allRooms = mvRooms;
                   const r = allRooms.find(r=>r.room_id===b.room_id);
                   if (!r) return null;  /* 층 필터로 숨겨진 회의실 예약 → 렌더 스킵 */
-                  return <div key={b.id} onClick={e=>{e.stopPropagation();onBookingClick(b);}} style={{background:r.color+"18",borderLeft:`2px solid ${r.color}`,borderRadius:3,padding:"2px 5px",fontSize:10,color:r.color,fontWeight:600,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",cursor:"pointer"}}>{fmtTS(b.start_at)} {b.title}</div>;
+                  const isMyBk = currentUser && b.user === currentUser;
+                  return <div key={b.id} onClick={e=>{e.stopPropagation();onBookingClick(b);}} style={{background:isMyBk?r.color+"30":r.color+"18",borderLeft:isMyBk?`3px solid #111`:`2px solid ${r.color}`,borderRadius:3,padding:"2px 5px",fontSize:10,color:r.color,fontWeight:600,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",cursor:"pointer"}}>{fmtTS(b.start_at)} {b.title}</div>;
                 })}
                 {dbs.length>3&&<div style={{fontSize:9,color:"#94A3B8",paddingLeft:3}}>+{dbs.length-3}개</div>}
               </div>
@@ -256,7 +258,7 @@ export function MonthlyView({bookings,selectedDate,onDayClick,onBookingClick,roo
   );
 }
 
-export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmptyClick,onCheckIn,fillContainer=false}) {
+export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmptyClick,onCheckIn,fillContainer=false,currentUser=""}) {
   const { isMobile } = useBreakpoint();
   const weekStart = getWeekStart(selectedDate);
   const days = Array.from({length:7}, (_,i) => addDays(weekStart,i));
@@ -515,6 +517,7 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
                 const colW = `calc((100% - ${GAP*(totalCols+1)}px) / ${totalCols})`;
                 const colL = `calc(${GAP}px + (${colIndex}) * ((100% - ${GAP*(totalCols+1)}px) / ${totalCols} + ${GAP}px))`;
 
+                const isMyBooking = currentUser && b.user === currentUser;
                 return(
                   <div key={b.id}
                     onClick={e=>{e.stopPropagation();onBlockClick(b);}}
@@ -524,7 +527,7 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
                       left:colL, width:colW,
                       background:isEnded?"#F1F5F9":isAct?color:`${color}18`,
                       border:`1.5px solid ${isEnded?"#E2E8F0":color}${isAct||isEnded?"":"99"}`,
-                      borderLeft:`3px solid ${color}`,
+                      borderLeft:isMyBooking?`4px solid #111`:`3px solid ${color}`,
                       borderRadius:5,
                       padding:"3px 5px",
                       cursor:"pointer",
@@ -598,7 +601,7 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
 }
 
 
-export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onCheckIn,rooms:dvRooms=[]}) {
+export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onCheckIn,rooms:dvRooms=[],currentUser=""}) {
   const isToday = selectedDate===todayStr(), now=nowMinutes();
   // X=시간(가로), Y=회의실(세로)
   const CW=160, // 시간 1칸 너비(px) — 15분=40px
@@ -725,6 +728,7 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
                     const isEnded=b.earlyEnded;
                     const isAct=isToday&&sm<=now&&now<em&&!isNoshow&&!isEnded;
                     const nci=isAct&&!b.checkedIn;
+                    const isMyBooking = currentUser && b.user === currentUser;
                     return(
                       <div key={b.id} onClick={e=>{e.stopPropagation();onBlockClick(b);}}
                         style={{
@@ -734,7 +738,7 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
                           borderRadius:8,padding:"5px 8px",cursor:"pointer",
                           zIndex:isNoshow?1:isAct?5:3,  /* 노쇼 맨 아래, 진행중 맨 위 */
                           overflow:"hidden",
-                          boxShadow:isAct?"0 0 0 2px #EF4444, 0 2px 8px rgba(0,0,0,0.2)":isNoshow||isEnded?"none":"0 1px 4px rgba(0,0,0,0.15)",
+                          boxShadow:isMyBooking&&!isNoshow&&!isEnded?"0 0 0 2px #fff, 0 0 0 3.5px #111, 0 2px 8px rgba(0,0,0,0.15)":isAct?"0 0 0 2px #EF4444, 0 2px 8px rgba(0,0,0,0.2)":isNoshow||isEnded?"none":"0 1px 4px rgba(0,0,0,0.15)",
                           opacity:isNoshow?0.45:isEnded?0.55:1,transition:"all 0.12s"
                         }}
                         onMouseEnter={e=>{ if(!isNoshow&&!isEnded) e.currentTarget.style.filter="brightness(1.15)"; }}
@@ -771,7 +775,7 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
   );
 }
 
-export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyClick,onCheckIn}) {
+export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyClick,onCheckIn,currentUser=""}) {
   const isToday = selectedDate===todayStr(), now=nowMinutes();
 
   const HH   = 160;  // 1시간 높이(px) — 15분=40px로 여유있게
@@ -924,6 +928,7 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
                     const isCan  = b.autoCancelled && b.cancelledBy!=='user'; // 유저 취소는 이미 필터됨
                     const isAct  = isToday && sm<=now && now<em && !isCan;
                     const nci    = isAct && !b.checkedIn;
+                    const isMyBooking = currentUser && b.user === currentUser;
 
                     const cardBg    = isCan ? "#F8FAFC" : isAct ? "#F0FDF4" : "#EFF6FF";
                     const borderCol = isCan ? "#E2E8F0" : isAct ? "#16A34A" : "#3B82F6";
@@ -935,6 +940,7 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
                         style={{
                           position:"absolute", top:top+2, left:6, right:6, height:h,
                           background:cardBg, border:`1.5px solid ${borderCol}`,
+                          borderLeft:isMyBooking&&!isCan?`4px solid #111`:`1.5px solid ${borderCol}`,
                           borderRadius:10, padding:"8px 10px", cursor:"pointer",
                           zIndex: isCan ? 1 : isAct ? 5 : 3,  /* 노쇼 맨 아래, 진행중 맨 위 */
                           overflow:"hidden", transition:"all 0.12s",
@@ -1010,9 +1016,8 @@ export function ListView({bookings,selectedDate,setSelectedDate,onItemClick,onCh
                   </div>
                   <div style={{flex:1}}>
                     <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:3,flexWrap:"wrap"}}>
-                      {isAct&&<span className="chip" style={{background:r.color+"18",color:r.color}}><Circle size={7} fill={r.color} strokeWidth={0} style={{marginRight:3}}/>진행중</span>}
-                      {b.checkedIn&&<span className="chip" style={{background:"#DCFCE7",color:"#16A34A",display:"inline-flex",alignItems:"center",gap:3}}><CheckCircle2 size={10} strokeWidth={2}/>체크인</span>}
-                      <span style={{fontSize:15,fontWeight:700,color:"#111111"}}>{b.title}</span>
+                      <BookingStatusBadge booking={b} room={r} />
+                      <span style={{fontSize:15,fontWeight:600,color:"#111111"}}>{b.title}</span>
                     </div>
                     <div style={{fontSize:12,color:"#94A3B8"}}><span style={{color:r.color,fontWeight:600}}>{r.room_name}</span> · {fl?.floor_name} · {b.user} · {b.dept}</div>
                   </div>

@@ -4,18 +4,20 @@
 ─────────────────────────────────────────────────────────────────────────── */
 
 :root {
-  --color-available-bg:   #CBECFF;
-  --color-available-text: #0369A1;
-  --color-busy-bg:        #FEE2E2;
-  --color-busy-text:      #DC2626;
-  --color-soon-bg:        #FEF3C7;
-  --color-soon-text:      #D97706;
-  --color-pending-bg:     #FEF3C7;
-  --color-pending-text:   #92400E;
-  --color-success-bg:     #DCFCE7;
-  --color-success-text:   #16A34A;
-  --color-danger-bg:      #FEE2E2;
-  --color-danger-text:    #DC2626;
+  /* ── 룸/예약 공통 상태 뱃지 토큰 ── */
+  --color-available-bg:   #CBECFF;  --color-available-text: #0369A1;
+  --color-busy-bg:        #FCE7F3;  --color-busy-text:      #BE185D;
+  --color-soon-bg:        #FFF7ED;  --color-soon-text:      #C2410C;
+  --color-pending-bg:     #FEF3C7;  --color-pending-text:   #92400E;
+  --color-success-bg:     #DCFCE7;  --color-success-text:   #16A34A;
+  --color-danger-bg:      #FEE2E2;  --color-danger-text:    #DC2626;
+
+  /* ── 예약 전용 상태 뱃지 토큰 ── */
+  --color-mine-bg:        #FFFBEB;  --color-mine-text:      #D97706;
+  --color-admin-bg:       #111111;  --color-admin-text:     #ffffff;
+  --color-earlyend-bg:    #EDE9FE;  --color-earlyend-text:  #7C3AED;
+  --color-countdown-bg:   #EEF2FF;  --color-countdown-text: #6366F1;
+  --color-neutral-bg:     #F1F5F9;  --color-neutral-text:   #64748B;
 
   --shadow-card:     0 2px 8px rgba(0,0,0,0.06);
   --shadow-card-lg:  0 8px 32px rgba(0,0,0,0.10);
@@ -23,14 +25,18 @@
   --sab: env(safe-area-inset-bottom, 0px);
 }
 
-/* 상태 칩 */
-.chip-available { background: var(--color-available-bg);  color: var(--color-available-text); }
-.chip-busy      { background: var(--color-busy-bg);       color: var(--color-busy-text); }
-.chip-soon      { background: var(--color-soon-bg);       color: var(--color-soon-text); }
-.chip-pending   { background: var(--color-pending-bg);    color: var(--color-pending-text); }
-.chip-success   { background: var(--color-success-bg);    color: var(--color-success-text); }
-.chip-danger    { background: var(--color-danger-bg);     color: var(--color-danger-text); }
-.chip-neutral   { background: #F1F5F9; color: #64748B; }
+/* ── 상태 칩 클래스 ── */
+.chip-available  { background: var(--color-available-bg);  color: var(--color-available-text); }
+.chip-busy       { background: var(--color-busy-bg);       color: var(--color-busy-text); }
+.chip-soon       { background: var(--color-soon-bg);       color: var(--color-soon-text); }
+.chip-pending    { background: var(--color-pending-bg);    color: var(--color-pending-text); }
+.chip-success    { background: var(--color-success-bg);    color: var(--color-success-text); }
+.chip-danger     { background: var(--color-danger-bg);     color: var(--color-danger-text); }
+.chip-neutral    { background: var(--color-neutral-bg);    color: var(--color-neutral-text); }
+.chip-mine       { background: var(--color-mine-bg);       color: var(--color-mine-text); }
+.chip-admin      { background: var(--color-admin-bg);      color: var(--color-admin-text); }
+.chip-earlyend   { background: var(--color-earlyend-bg);   color: var(--color-earlyend-text); }
+.chip-countdown  { background: var(--color-countdown-bg);  color: var(--color-countdown-text); }
 
 /* 카드 호버 */
 .card-hover { transition: box-shadow 0.22s, transform 0.22s; }
