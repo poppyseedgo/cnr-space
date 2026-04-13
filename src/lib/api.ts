@@ -41,6 +41,7 @@ function rowToBooking(row: Record<string, any>): Booking {
     originalEndAt: row.original_end_at ?? null,
     recurGroupId:  row.recur_group_id ?? null,
     createdAt:     new Date(row.created_at).getTime(),
+    reject_reason: row.reject_reason ?? null,
   }
 }
 
@@ -586,7 +587,7 @@ export async function approveBooking(id: string): Promise<void> {
 export async function rejectBooking(id: string, reason: string): Promise<void> {
   const { error } = await supabase
     .from('bookings')
-    .update({ status: 'rejected', auto_cancelled: true, cancelled_by: 'system' })
+    .update({ status: 'rejected', auto_cancelled: true, cancelled_by: 'admin', reject_reason: reason || null })
     .eq('id', id)
   if (error) throw new Error(`거절 실패: ${error.message}`)
   await insertAuditLog({
