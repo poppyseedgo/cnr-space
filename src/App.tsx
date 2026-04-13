@@ -357,9 +357,10 @@ function AppContent() {
         const notifType = isAdminOnlyRoom ? 'pending' : 'created'
         const notifPayload = {
           ...newBookings[0],
-          user_name: currentUser,
-          user_dept: currentDept,
-          room_name: createdRoom?.room_name_ko ?? createdRoom?.room_name ?? String(newBookings[0].room_id) + 'F',
+          user_name:  currentUser,
+          user_email: authUser?.email ?? '',
+          user_dept:  currentDept,
+          room_name:  createdRoom?.room_name_ko ?? createdRoom?.room_name ?? String(newBookings[0].room_id) + 'F',
         }
         if (isAdminOnlyRoom) {
           // 승인 요청 — admin emails는 Edge Fn이 DB에서 직접 조회
@@ -524,7 +525,8 @@ function AppContent() {
         const cancelledRoom = rooms.find(r => r.room_id === targetBooking.room_id)
         sendNotification('cancelled', {
           ...targetBooking,
-          room_name: cancelledRoom?.room_name_ko ?? cancelledRoom?.room_name ?? String(targetBooking.room_id) + 'F',
+          user_email: authUser?.email ?? '',
+          room_name:  cancelledRoom?.room_name_ko ?? cancelledRoom?.room_name ?? String(targetBooking.room_id) + 'F',
         });
       }
     } catch (err: any) {
@@ -745,7 +747,8 @@ function AppContent() {
         const updatedRoom = rooms.find(r => r.room_id === (changes.room_id ?? updatedB.room_id))
         const basePayload = {
           ...updatedB, ...changes,
-          room_name: updatedRoom?.room_name_ko ?? updatedRoom?.room_name ?? String(updatedB.room_id) + 'F',
+          user_email: authUser?.email ?? '',
+          room_name:  updatedRoom?.room_name_ko ?? updatedRoom?.room_name ?? String(updatedB.room_id) + 'F',
         }
 
         // 변경 알림 — 예약자·참석자 수신자는 Edge Fn이 DB에서 조회
