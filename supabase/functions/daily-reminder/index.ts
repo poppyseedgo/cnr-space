@@ -3,16 +3,20 @@
  * daily-reminder Edge Function
  * 매일 아침 07:00 KST에 당일 예약자 + 참석자에게 리마인더 발송
  *
+ * ✅ 수정 내역 (2025-04-13):
+ *   - APP_URL 기본값 cnr-space.pages.dev로 수정
+ *   - booking_attendees 조인 추가 → 참석자에게도 리마인더 발송
+ *
  * Cron: '0 22 * * *'  (UTC 22:00 = KST 07:00)
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
-const FROM_EMAIL     = 'C&R SPACE <onboarding@resend.dev>'
-const APP_URL        = Deno.env.get('APP_URL') ?? 'https://cnr-booking.vercel.app'
+const FROM_EMAIL     = Deno.env.get('FROM_EMAIL') ?? 'C&R SPACE <onboarding@resend.dev>'
+const APP_URL        = Deno.env.get('APP_URL') ?? 'https://cnr-space.pages.dev'
 
-function utcToKST(ts: string): string {
+function fmtTime(ts: string): string {
   const d = new Date(ts)
   const k = new Date(d.getTime() + 9 * 60 * 60 * 1000)
   const p = (n: number) => String(n).padStart(2, '0')
@@ -33,43 +37,10 @@ async function sendEmail(to: string[], subject: string, html: string) {
   return res.json()
 }
 
-Deno.serve(async (_req: Request) => {
-  try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    )
-
-    // 오늘 날짜 (KST)
-    const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000)
-    const p = (n: number) => String(n).padStart(2, '0')
-    const todayKST = `${nowKST.getUTCFullYear()}-${p(nowKST.getUTCMonth()+1)}-${p(nowKST.getUTCDate())}`
-
-    // 오늘 예약 전체 조회
-    const { data: bookings, error } = await supabase
-      .from('bookings')
-      .select('*, profiles!bookings_user_id_fkey(email, name)')
-      .gte('start_at', `${todayKST}T00:00:00+09:00`)
-      .lte('start_at', `${todayKST}T23:59:59+09:00`)
-      .eq('auto_cancelled', false)
-      .eq('early_ended', false)
-      .order('start_at', { ascending: true })
-
-    if (error) throw error
-    if (!bookings || bookings.length === 0) {
-      return new Response(JSON.stringify({ message: '오늘 예약 없음' }), { headers: { 'Content-Type': 'application/json' } })
-    }
-
-    let sentCount = 0
-    for (const b of bookings) {
-      const userEmail = b.profiles?.email
-      if (!userEmail) continue
-
-      const subject = `[C&R SPACE] 📅 오늘 예약 리마인더 — ${b.title}`
-      const startStr = utcToKST(b.start_at)
-      const endStr   = utcToKST(b.end_at)
-
-      const html = `<!DOCTYPE html>
+function makeReminderHtml(b: any, recipientName: string, isAttendee: boolean): string {
+  const startStr = fmtTime(b.start_at)
+  const endStr   = fmtTime(b.end_at)
+  return `<!DOCTYPE html>
 <html lang="ko"><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#F8FAFC;font-family:'Apple SD Gothic Neo',sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC;padding:32px 16px;">
@@ -80,8 +51,8 @@ Deno.serve(async (_req: Request) => {
           <p style="margin:8px 0 0;font-size:18px;font-weight:700;color:#fff;">C&amp;R SPACE</p>
         </td></tr>
         <tr><td style="padding:24px 32px;">
-          <p style="margin:0 0 4px;font-size:14px;color:#6B7280;">안녕하세요, ${b.profiles?.name ?? b.user_name}님 👋</p>
-          <p style="margin:0 0 20px;font-size:14px;color:#374151;">오늘 예약된 회의가 있습니다.</p>
+          <p style="margin:0 0 4px;font-size:14px;color:#6B7280;">안녕하세요, ${recipientName}님${isAttendee ? ' (참석자)' : ''} 👋</p>
+          <p style="margin:0 0 20px;font-size:14px;color:#374151;">오늘 ${isAttendee ? '참석 예정인' : '예약된'} 회의가 있습니다.</p>
           <table width="100%" style="background:#F8FAFC;border-radius:12px;padding:16px 20px;">
             <tr><td style="padding:5px 0;">
               <span style="display:inline-block;width:64px;font-size:12px;color:#6B7280;font-weight:600;">회의명</span>
@@ -94,6 +65,10 @@ Deno.serve(async (_req: Request) => {
             <tr><td style="padding:5px 0;">
               <span style="display:inline-block;width:64px;font-size:12px;color:#6B7280;font-weight:600;">회의실</span>
               <span style="font-size:13px;color:#111;">${b.room_name ?? b.room_id + 'F'}</span>
+            </td></tr>
+            <tr><td style="padding:5px 0;">
+              <span style="display:inline-block;width:64px;font-size:12px;color:#6B7280;font-weight:600;">예약자</span>
+              <span style="font-size:13px;color:#111;">${b.user_name}</span>
             </td></tr>
           </table>
           <div style="margin:20px 0 0;padding:12px 16px;background:#EEF2FF;border-radius:10px;">
@@ -113,9 +88,63 @@ Deno.serve(async (_req: Request) => {
     </td></tr>
   </table>
 </body></html>`
+}
 
-      await sendEmail([userEmail], subject, html)
+Deno.serve(async (_req: Request) => {
+  try {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    )
+
+    // 오늘 날짜 (KST)
+    const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000)
+    const p = (n: number) => String(n).padStart(2, '0')
+    const todayKST = `${nowKST.getUTCFullYear()}-${p(nowKST.getUTCMonth()+1)}-${p(nowKST.getUTCDate())}`
+
+    // 오늘 예약 전체 조회 + 참석자 조인
+    const { data: bookings, error } = await supabase
+      .from('bookings')
+      .select('*, profiles!bookings_user_id_fkey(email, name), booking_attendees(email, name)')
+      .gte('start_at', `${todayKST}T00:00:00+09:00`)
+      .lte('start_at', `${todayKST}T23:59:59+09:00`)
+      .eq('auto_cancelled', false)
+      .eq('early_ended', false)
+      .order('start_at', { ascending: true })
+
+    if (error) throw error
+    if (!bookings || bookings.length === 0) {
+      return new Response(JSON.stringify({ message: '오늘 예약 없음', date: todayKST }), {
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    let sentCount = 0
+    for (const b of bookings) {
+      const userEmail = b.profiles?.email
+      const userName  = b.profiles?.name ?? b.user_name
+      if (!userEmail) continue
+
+      const subject = `[C&R SPACE] 📅 오늘 예약 리마인더 — ${b.title}`
+
+      // 예약자에게 발송
+      await sendEmail([userEmail], subject, makeReminderHtml(b, userName, false))
       sentCount++
+
+      // 참석자에게 발송 (booking_attendees 테이블)
+      const attendeeEmails = (b.booking_attendees ?? [])
+        .map((a: any) => a.email)
+        .filter((e: string) => e && e !== userEmail)
+
+      if (attendeeEmails.length > 0) {
+        // 참석자는 이름 대신 "참석자"로 표시 (개인화 발송은 별도 루프)
+        for (const att of b.booking_attendees ?? []) {
+          if (!att.email || att.email === userEmail) continue
+          const attName = att.name ?? '참석자'
+          await sendEmail([att.email], subject, makeReminderHtml(b, attName, true))
+          sentCount++
+        }
+      }
     }
 
     return new Response(

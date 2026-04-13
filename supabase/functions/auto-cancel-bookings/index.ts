@@ -4,9 +4,10 @@
  * Cron: 매 5분
  * 역할: 예약 시작 후 10분 경과, 체크인 없는 예약 자동 취소 (노쇼)
  *
- * [수정]
- * - bookings.room_name 컬럼 없음 → rooms 테이블 별도 조회 후 room_id로 매핑
- * - 운영 시간(KST 06:00~20:00) 외에는 즉시 종료
+ * ✅ 수정 내역 (2025-04-13):
+ *   - profiles batch 조회 추가 → user_email을 직접 페이로드에 포함
+ *   - send-notification 응답 status 체크 추가 (에러 은폐 방지)
+ *   - Edge Fn → Edge Fn 간 user_email fallback 의존성 제거
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -63,7 +64,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    // ── rooms 테이블에서 room_name 별도 조회 후 매핑 ─────────────────────────
+    // ── rooms 테이블에서 room_name batch 조회 ────────────────────────────────
     const roomIds = [...new Set(toCancel.map(b => b.room_id).filter(Boolean))]
     const { data: roomRows } = await supabase
       .from('rooms')
@@ -74,6 +75,20 @@ Deno.serve(async (req) => {
     for (const r of roomRows ?? []) {
       roomMap.set(r.room_id, r.room_name ?? '')
     }
+
+    // ── profiles 테이블에서 user_email batch 조회 ────────────────────────────
+    // send-notification에 user_email 직접 전달 → 중간 lookup 실패 리스크 제거
+    const userIds = [...new Set(toCancel.map(b => b.user_id).filter(Boolean))]
+    const { data: profileRows } = await supabase
+      .from('profiles')
+      .select('id, email')
+      .in('id', userIds)
+
+    const emailMap = new Map()
+    for (const p of profileRows ?? []) {
+      emailMap.set(p.id, p.email ?? '')
+    }
+    console.log(`[auto-cancel] profiles 조회: ${profileRows?.length ?? 0}명`)
 
     // ── 일괄 취소 ────────────────────────────────────────────────────────────
     const ids = toCancel.map(b => b.id)
@@ -87,7 +102,8 @@ Deno.serve(async (req) => {
 
     // ── 각 건별 후처리 ────────────────────────────────────────────────────────
     for (const b of toCancel) {
-      const roomName = roomMap.get(b.room_id) ?? ''
+      const roomName  = roomMap.get(b.room_id) ?? ''
+      const userEmail = emailMap.get(b.user_id) ?? ''
 
       // KST 시간 포맷
       const d = new Date(b.start_at)
@@ -151,9 +167,9 @@ Deno.serve(async (req) => {
         console.warn('[auto-cancel] 참석자 인앱 알림 실패 (취소는 정상):', e)
       }
 
-      // 이메일 알림 — send-notification Edge Fn 호출
+      // 이메일 알림 — send-notification 호출 (user_email 직접 포함)
       try {
-        await fetch(
+        const notifRes = await fetch(
           `${Deno.env.get('SUPABASE_URL')}/functions/v1/send-notification`,
           {
             method: 'POST',
@@ -164,20 +180,28 @@ Deno.serve(async (req) => {
             body: JSON.stringify({
               type: 'noshow',
               booking: {
-                id:        b.id,
-                user_id:   b.user_id,
-                title:     b.title,
-                user_name: b.user_name,
-                user_dept: b.user_dept ?? '',
-                room_name: roomName,
-                start_at:  b.start_at,
-                end_at:    b.end_at,
+                id:         b.id,
+                user_id:    b.user_id,
+                user_email: userEmail,        // ← profiles에서 직접 조회한 이메일
+                title:      b.title,
+                user_name:  b.user_name,
+                user_dept:  b.user_dept ?? '',
+                room_name:  roomName,
+                start_at:   b.start_at,
+                end_at:     b.end_at,
               },
             }),
           }
         )
+        if (!notifRes.ok) {
+          const errBody = await notifRes.text()
+          console.error(`[auto-cancel] 노쇼 이메일 발송 실패 (HTTP ${notifRes.status}):`, errBody)
+        } else {
+          const result = await notifRes.json()
+          console.log(`[auto-cancel] 노쇼 이메일 발송 완료 (${b.id}):`, JSON.stringify(result))
+        }
       } catch (e) {
-        console.warn('[auto-cancel] 노쇼 이메일 알림 실패 (취소는 정상):', e)
+        console.error('[auto-cancel] 노쇼 이메일 알림 네트워크 오류:', e)
       }
     }
 

@@ -1,28 +1,25 @@
 // @ts-nocheck
 /**
  * send-notification Edge Function
- * 예약 생성 / 변경 / 취소 / 노쇼 시 생성자 + 참석자에게 이메일 발송
+ * 예약 생성 / 변경 / 취소 / 노쇼 / 승인 / 거절 시 생성자 + 참석자에게 이메일 발송
  *
- * 호출 방법 (App.tsx에서):
- *   await supabase.functions.invoke('send-notification', {
- *     body: { type: 'created' | 'updated' | 'cancelled' | 'noshow', booking: {...} }
- *   })
+ * ✅ 수정 내역 (2025-04-13):
+ *   1. pending 타입 — profiles 테이블에서 admin 이메일 직접 조회 (프론트 의존 제거)
+ *   2. user_email 누락 시 user_id → profiles 테이블에서 이메일 자동 조회
+ *   3. FROM_EMAIL 환경변수화 (커스텀 도메인 지원)
+ *   4. APP_URL 기본값 cnr-space.pages.dev로 수정
  */
 
-const RESEND_API_KEY   = Deno.env.get('RESEND_API_KEY') ?? ''
-const FROM_EMAIL       = 'C&R SPACE <onboarding@resend.dev>'
-const APP_URL          = Deno.env.get('APP_URL') ?? 'https://cnr-space.vercel.app'
+const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
+const FROM_EMAIL     = Deno.env.get('FROM_EMAIL') ?? 'C&R SPACE <onboarding@resend.dev>'
+const APP_URL        = Deno.env.get('APP_URL') ?? 'https://cnr-space.pages.dev'
 const TEAMS_WEBHOOK_URL = Deno.env.get('TEAMS_WEBHOOK_URL') ?? ''
 
+// ── Supabase 환경변수 ────────────────────────────────────────────────────────
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
+const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+
 // ── KST 시간 포맷 유틸 ─────────────────────────────────────────────────────
-function utcToKST(ts: string): string {
-  if (!ts) return ''
-  const d   = new Date(ts)
-  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${kst.getUTCFullYear()}.${pad(kst.getUTCMonth()+1)}.${pad(kst.getUTCDate())} ` +
-         `${pad(kst.getUTCHours())}:${pad(kst.getUTCMinutes())}`
-}
 function fmtDate(ts: string): string {
   if (!ts) return ''
   const d   = new Date(ts)
@@ -45,6 +42,80 @@ function fmtTime(ts: string | undefined | null): string {
   } catch { return '—' }
 }
 
+// ── DB 조회 유틸 ─────────────────────────────────────────────────────────────
+
+/** user_email 없을 때 user_id → profiles 테이블에서 이메일 조회 */
+async function fetchUserEmail(userId: string): Promise<string | null> {
+  if (!userId || !SUPABASE_URL) return null
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=email&limit=1`,
+      {
+        headers: {
+          'apikey':        SERVICE_KEY,
+          'Authorization': `Bearer ${SERVICE_KEY}`,
+          'Content-Type':  'application/json',
+        },
+      }
+    )
+    if (!res.ok) return null
+    const rows: { email: string }[] = await res.json()
+    return rows[0]?.email ?? null
+  } catch (e) {
+    console.warn('[notify] fetchUserEmail 실패:', e)
+    return null
+  }
+}
+
+/** pending 타입 전용 — Admin 전원 이메일 조회 */
+async function fetchAdminEmails(): Promise<string[]> {
+  if (!SUPABASE_URL) return []
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?role=eq.ADMIN&is_active=eq.true&select=email`,
+      {
+        headers: {
+          'apikey':        SERVICE_KEY,
+          'Authorization': `Bearer ${SERVICE_KEY}`,
+          'Content-Type':  'application/json',
+        },
+      }
+    )
+    if (!res.ok) {
+      console.warn('[notify] fetchAdminEmails HTTP 오류:', res.status)
+      return []
+    }
+    const rows: { email: string }[] = await res.json()
+    return rows.map(r => r.email).filter(Boolean)
+  } catch (e) {
+    console.warn('[notify] fetchAdminEmails 실패:', e)
+    return []
+  }
+}
+
+/** booking_attendees 테이블에서 참석자 이메일 조회 (생성자 제외) */
+async function fetchAttendeeEmails(bookingId: string, creatorEmail: string): Promise<string[]> {
+  if (!bookingId || !SUPABASE_URL) return []
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/booking_attendees?booking_id=eq.${bookingId}&select=email`,
+      {
+        headers: {
+          'apikey':        SERVICE_KEY,
+          'Authorization': `Bearer ${SERVICE_KEY}`,
+          'Content-Type':  'application/json',
+        },
+      }
+    )
+    if (!res.ok) return []
+    const rows: { email: string }[] = await res.json()
+    return rows.map(r => r.email).filter(e => e && e !== creatorEmail)
+  } catch (e) {
+    console.warn('[notify] booking_attendees 조회 실패:', e)
+    return []
+  }
+}
+
 // ── 이메일 템플릿 ────────────────────────────────────────────────────────────
 function getSubject(type: string, booking: any): string {
   const title = booking.title
@@ -62,7 +133,6 @@ function getSubject(type: string, booking: any): string {
 }
 
 function getEmailHtml(type: string, booking: any, isAttendee = false): string {
-  // end_at 디버그 (배포 후 로그에서 확인)
   console.log('[notify] booking.end_at:', booking.end_at, 'room_name:', booking.room_name)
   const dateStr  = fmtDate(booking.start_at)
   const startStr = fmtTime(booking.start_at)
@@ -205,12 +275,11 @@ function getEmailHtml(type: string, booking: any, isAttendee = false): string {
 async function sendTeamsCard(type: string, booking: any): Promise<void> {
   if (!TEAMS_WEBHOOK_URL) return
 
-  // 타입별 색상 + 제목
   const colorMap: Record<string, string> = {
-    created:   'Good',    // 초록
-    pending:   'Warning', // 주황
+    created:   'Good',
+    pending:   'Warning',
     approved:  'Good',
-    rejected:  'Attention', // 빨강
+    rejected:  'Attention',
     cancelled: 'Default',
     noshow:    'Warning',
     updated:   'Default',
@@ -228,7 +297,6 @@ async function sendTeamsCard(type: string, booking: any): Promise<void> {
   }
   const cardTitle = titleMap[type] ?? '예약 알림'
 
-  // Adaptive Card (Teams 표준 형식)
   const card = {
     type: 'message',
     attachments: [{
@@ -307,6 +375,8 @@ async function sendEmail(to: string[], subject: string, html: string) {
     console.warn('[notify] RESEND_API_KEY 없음 — 발송 스킵')
     return
   }
+  if (to.length === 0) return
+
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -325,34 +395,6 @@ async function sendEmail(to: string[], subject: string, html: string) {
   return data
 }
 
-// ── Supabase 환경변수 (booking_attendees 조회용) ────────────────────────────
-const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')              ?? ''
-const SERVICE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-
-// ── booking_attendees 테이블에서 참석자 이메일 조회 ─────────────────────────
-async function fetchAttendeeEmails(bookingId: string, creatorEmail: string): Promise<string[]> {
-  if (!bookingId || !SUPABASE_URL) return []
-  try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/booking_attendees?booking_id=eq.${bookingId}&select=email`,
-      {
-        headers: {
-          'apikey':         SERVICE_KEY,
-          'Authorization': `Bearer ${SERVICE_KEY}`,
-          'Content-Type':  'application/json',
-        },
-      }
-    )
-    if (!res.ok) return []
-    const rows: { email: string }[] = await res.json()
-    // 생성자 제외, 빈 이메일 제외
-    return rows.map(r => r.email).filter(e => e && e !== creatorEmail)
-  } catch (e) {
-    console.warn('[notify] booking_attendees 조회 실패:', e)
-    return []
-  }
-}
-
 // ── 메인 핸들러 ────────────────────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
   const corsHeaders = {
@@ -365,8 +407,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    // attendeeEmails: pending(Admin 알림) 전용으로만 사용
-    const { type, booking, attendeeEmails = [] } = await req.json()
+    const { type, booking } = await req.json()
 
     if (!type || !booking) {
       return new Response(JSON.stringify({ error: 'type, booking 필수' }), { status: 400, headers: corsHeaders })
@@ -375,24 +416,26 @@ Deno.serve(async (req: Request) => {
     const subject = getSubject(type, booking)
     const results = []
 
-    // ── pending: Admin 전원에게 발송 ────────────────────────────────────────
+    // ── Teams 알림 (비동기, 실패해도 이메일에 영향 없음) ────────────────────
+    if (['created', 'approved', 'rejected', 'cancelled', 'noshow', 'updated', 'pending'].includes(type)) {
+      sendTeamsCard(type, booking).catch(() => {})
+    }
+
+    // ── pending: Admin 전원에게 발송 (DB에서 직접 조회) ─────────────────────
     if (type === 'pending') {
-      const adminEmails = attendeeEmails.filter((e: string) => !!e)
+      const adminEmails = await fetchAdminEmails()
+      console.log('[notify] pending → admin 이메일:', adminEmails.length, '명')
       if (adminEmails.length > 0) {
         const html = getEmailHtml(type, booking, false)
         await sendEmail(adminEmails, subject, html)
         results.push({ to: adminEmails, role: 'admins' })
+      } else {
+        console.warn('[notify] pending: admin 이메일 없음 — profiles.role=ADMIN 확인 필요')
       }
-      await sendTeamsCard('pending', booking)
       return new Response(
         JSON.stringify({ success: true, sent: results.length, results }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
-    }
-
-    // ── Teams 알림 (비동기, 실패해도 이메일에 영향 없음) ────────────────────
-    if (['created', 'approved', 'rejected', 'cancelled', 'noshow', 'updated'].includes(type)) {
-      sendTeamsCard(type, booking).catch(() => {})
     }
 
     // ── attendee_removed: 제거된 참석자에게만 발송 ────────────────────────
@@ -413,16 +456,26 @@ Deno.serve(async (req: Request) => {
       )
     }
 
+    // ── user_email 확보: 없으면 user_id → profiles 조회 ────────────────────
+    let creatorEmail = booking.user_email ?? ''
+    if (!creatorEmail && booking.user_id) {
+      console.log('[notify] user_email 없음 → user_id로 profiles 조회:', booking.user_id)
+      creatorEmail = await fetchUserEmail(booking.user_id) ?? ''
+    }
+    if (!creatorEmail) {
+      console.warn('[notify] 예약자 이메일 확인 불가 — user_email, user_id 모두 없거나 profiles 조회 실패')
+    }
+
     // ── booking_attendees 테이블에서 참석자 조회 ────────────────────────────
     const attendeeEmailList = booking.id
-      ? await fetchAttendeeEmails(booking.id, booking.user_email ?? '')
+      ? await fetchAttendeeEmails(booking.id, creatorEmail)
       : []
 
     // ── 1. 예약 생성자에게 발송 ─────────────────────────────────────────────
-    if (booking.user_email) {
+    if (creatorEmail) {
       const html = getEmailHtml(type, booking, false)
-      await sendEmail([booking.user_email], subject, html)
-      results.push({ to: booking.user_email, role: 'creator' })
+      await sendEmail([creatorEmail], subject, html)
+      results.push({ to: creatorEmail, role: 'creator' })
     }
 
     // ── 2. 참석자에게 발송 (50명씩 배치) ───────────────────────────────────
@@ -435,7 +488,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    console.log(`[notify] ${type} 발송 완료 — 예약자 1명 + 참석자 ${attendeeEmailList.length}명`)
+    console.log(`[notify] ${type} 발송 완료 — 예약자(${creatorEmail || '없음'}) + 참석자 ${attendeeEmailList.length}명`)
 
     return new Response(
       JSON.stringify({ success: true, sent: results.length, results }),

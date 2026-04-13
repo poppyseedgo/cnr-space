@@ -7,14 +7,18 @@
  *   ② 예약 시작 시각     → "체크인 하러가기" 버튼 포함 알림
  *   ③ 예약 시작 후 5분   → "5분 후 자동취소" 경고
  *
+ * ✅ 수정 내역 (2025-04-13):
+ *   - booking_attendees 조인 추가 (b.attendees 구 포맷 → b.booking_attendees 신 포맷)
+ *   - 참석자 이메일 발송 로직 수정
+ *
  * Cron: '* * * * *' (매 분)
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
-const FROM_EMAIL     = 'C&R SPACE <onboarding@resend.dev>'
-const APP_URL        = Deno.env.get('APP_URL') ?? 'https://cnr-space.vercel.app'
+const FROM_EMAIL     = Deno.env.get('FROM_EMAIL') ?? 'C&R SPACE <onboarding@resend.dev>'
+const APP_URL        = Deno.env.get('APP_URL') ?? 'https://cnr-space.pages.dev'
 
 /** notifications 테이블에 인앱 알림 insert */
 async function insertNotification(supabase: any, params: {
@@ -202,11 +206,11 @@ Deno.serve(async (req: Request) => {
     const now = new Date()
     let totalSent = 0
 
-    // ── ① 예약 시작 10분 전 알림 (버튼 없음) ───────────────────────────
+    // ── ① 예약 시작 10분 전 알림 ─────────────────────────────────────────
     const before10 = new Date(now.getTime() + 10 * 60 * 1000)
     const { data: upcoming } = await supabase
       .from('bookings')
-      .select('*, profiles!bookings_user_id_fkey(email, name)')
+      .select('*, profiles!bookings_user_id_fkey(email, name), booking_attendees(email, name)')
       .gte('start_at', new Date(before10.getTime() - 30000).toISOString())
       .lte('start_at', new Date(before10.getTime() + 30000).toISOString())
       .eq('auto_cancelled', false)
@@ -228,19 +232,20 @@ Deno.serve(async (req: Request) => {
           bookingId: b.id,
         })
       }
-      if (b.attendees?.length > 0) {
-        const attendeeEmails = b.attendees.filter((e: string) => e !== userEmail)
-        if (attendeeEmails.length > 0) {
-          await sendEmail(attendeeEmails, `[C&R SPACE] ⏰ 10분 후 시작 — ${b.title}`, makeBefore10Html(b, '참석자', true))
-          totalSent++
-        }
+      // 참석자 이메일 — booking_attendees 테이블에서 조회
+      const attendeeEmails = (b.booking_attendees ?? [])
+        .map((a: any) => a.email)
+        .filter((e: string) => e && e !== userEmail)
+      if (attendeeEmails.length > 0) {
+        await sendEmail(attendeeEmails, `[C&R SPACE] ⏰ 10분 후 시작 — ${b.title}`, makeBefore10Html(b, '참석자', true))
+        totalSent++
       }
     }
 
-    // ── ② 예약 시작 시각 알림 (체크인 버튼 포함) ───────────────────────
+    // ── ② 예약 시작 시각 알림 (체크인 버튼 포함) ────────────────────────
     const { data: justStarted } = await supabase
       .from('bookings')
-      .select('*, profiles!bookings_user_id_fkey(email, name)')
+      .select('*, profiles!bookings_user_id_fkey(email, name), booking_attendees(email, name)')
       .gte('start_at', new Date(now.getTime() - 30000).toISOString())
       .lte('start_at', new Date(now.getTime() + 30000).toISOString())
       .eq('auto_cancelled', false)
@@ -262,20 +267,21 @@ Deno.serve(async (req: Request) => {
           bookingId: b.id,
         })
       }
-      if (b.attendees?.length > 0) {
-        const attendeeEmails = b.attendees.filter((e: string) => e !== userEmail)
-        if (attendeeEmails.length > 0) {
-          await sendEmail(attendeeEmails, `[C&R SPACE] 🟢 회의 시작! 체크인해 주세요 — ${b.title}`, makeStartHtml(b, '참석자', true))
-          totalSent++
-        }
+      // 참석자 이메일 — booking_attendees 테이블에서 조회
+      const attendeeEmails = (b.booking_attendees ?? [])
+        .map((a: any) => a.email)
+        .filter((e: string) => e && e !== userEmail)
+      if (attendeeEmails.length > 0) {
+        await sendEmail(attendeeEmails, `[C&R SPACE] 🟢 회의 시작! 체크인해 주세요 — ${b.title}`, makeStartHtml(b, '참석자', true))
+        totalSent++
       }
     }
 
-    // ── ③ 예약 시작 후 5분 경과 → 자동취소 5분 전 경고 ────────────────
+    // ── ③ 예약 시작 후 5분 경과 → 자동취소 5분 전 경고 ──────────────────
     const after5 = new Date(now.getTime() - 5 * 60 * 1000)
     const { data: started } = await supabase
       .from('bookings')
-      .select('*, profiles!bookings_user_id_fkey(email, name)')
+      .select('*, profiles!bookings_user_id_fkey(email, name), booking_attendees(email, name)')
       .gte('start_at', new Date(after5.getTime() - 30000).toISOString())
       .lte('start_at', new Date(after5.getTime() + 30000).toISOString())
       .eq('auto_cancelled', false)
@@ -298,12 +304,13 @@ Deno.serve(async (req: Request) => {
           bookingId: b.id,
         })
       }
-      if (b.attendees?.length > 0) {
-        const attendeeEmails = b.attendees.filter((e: string) => e !== userEmail)
-        if (attendeeEmails.length > 0) {
-          await sendEmail(attendeeEmails, `[C&R SPACE] ⚠️ 5분 후 자동취소 — ${b.title}`, makeAfter5Html(b, '참석자', true))
-          totalSent++
-        }
+      // 참석자 이메일 — booking_attendees 테이블에서 조회
+      const attendeeEmails = (b.booking_attendees ?? [])
+        .map((a: any) => a.email)
+        .filter((e: string) => e && e !== userEmail)
+      if (attendeeEmails.length > 0) {
+        await sendEmail(attendeeEmails, `[C&R SPACE] ⚠️ 5분 후 자동취소 — ${b.title}`, makeAfter5Html(b, '참석자', true))
+        totalSent++
       }
     }
 
