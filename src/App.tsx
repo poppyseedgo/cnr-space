@@ -764,6 +764,43 @@ function AppContent() {
       }).catch(() => {})
       showToast(newStatus === 'pending' ? "예약이 변경되었습니다. 관리자 승인 후 확정됩니다." : "예약이 변경되었습니다.");
 
+      // ── 일반 → 에메랄드룸 변경으로 pending이 된 경우 → Admin 알림 ──
+      if (newStatus === 'pending') {
+        const pendingRoom = rooms.find(r => r.room_id === changes.room_id)
+        // 예약자 인앱 알림
+        if (authUser?.user_id) {
+          insertNotification({
+            userId: authUser.user_id,
+            type: 'booking_pending',
+            title: '승인 요청이 접수되었습니다',
+            body: `${changes.title} · ${pendingRoom?.room_name ?? ''} · ${fmtTSDateFull(changes.start_at ?? '')} ${fmtTSFull(changes.start_at ?? '')}`,
+            bookingId: originalId,
+          }).catch(() => {})
+        }
+        // Admin 전원 인앱 알림 (본인 제외)
+        users.filter(u => u.role === 'ADMIN').forEach(admin => {
+          if (admin.user_id && admin.user_id !== authUser?.user_id) {
+            insertNotification({
+              userId: admin.user_id,
+              type: 'booking_pending',
+              title: '예약 변경 승인 요청이 접수되었습니다',
+              body: `${changes.title} · ${pendingRoom?.room_name ?? ''} · 신청자: ${currentUser} · ${fmtTSDateFull(changes.start_at ?? '')} ${fmtTSFull(changes.start_at ?? '')}`,
+              bookingId: originalId,
+            }).catch(() => {})
+          }
+        })
+        // Admin 이메일 알림
+        if (prevBooking) {
+          sendNotification('pending', {
+            ...prevBooking, ...changes,
+            user_name:  prevBooking.user,
+            user_dept:  prevBooking.dept,
+            user_email: authUser?.email ?? '',
+            room_name:  pendingRoom?.room_name_ko ?? pendingRoom?.room_name ?? '',
+          })
+        }
+      }
+
       // 이메일 알림 발송
       const updatedB = bookings.find(b => b.id === originalId);
       if (updatedB) {
