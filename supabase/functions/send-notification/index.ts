@@ -232,10 +232,20 @@ function getEmailHtml(type: string, booking: any, isAttendee = false): string {
               <p style="margin:0;font-size:13px;color:#92400E;font-weight:600;">📋 AdminPage → 승인 관리 탭에서 승인 또는 거절해 주세요.</p>
               <p style="margin:6px 0 0;font-size:12px;color:#B45309;">승인/거절 시 신청자에게 자동으로 결과가 통보됩니다.</p>
             </div>` : ''}
-            ${type === 'rejected' && booking.reject_reason ? `
+            ${type === 'rejected' ? `
+            ${booking.reject_reason ? `
             <div style="margin:20px 0 0;padding:14px 16px;background:#FEF2F2;border-radius:10px;border-left:4px solid #DC2626;">
               <p style="margin:0;font-size:13px;color:#991B1B;font-weight:600;">거절 사유</p>
               <p style="margin:6px 0 0;font-size:13px;color:#DC2626;">${booking.reject_reason}</p>
+            </div>` : ''}
+            <div style="margin:16px 0 0;padding:14px 16px;background:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0;">
+              <p style="margin:0;font-size:13px;color:#475569;font-weight:600;">📌 안내</p>
+              <p style="margin:6px 0 0;font-size:12px;color:#64748B;line-height:1.6;">반려된 예약은 자동으로 취소 처리됩니다.<br>새로운 예약을 생성하여 다시 승인 요청해 주세요.</p>
+            </div>
+            <div style="margin:16px 0 0;text-align:center;">
+              <a href="${APP_URL}" style="display:inline-block;background:#4F46E5;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;">
+                새 예약 만들기 →
+              </a>
             </div>` : ''}
 
             ${(type === 'created' || type === 'updated' || type === 'approved' || type === 'pending') ? `
