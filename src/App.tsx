@@ -394,6 +394,21 @@ function AppContent() {
             bookingId: bk.id,
           }).catch(() => {})
         }
+        // 관리자 전원 인앱 알림 — pending(admin_only 룸) 예약 시
+        if (isAdminOnlyRoom) {
+          const pendingRoom = rooms.find(r => r.room_id === bk.room_id)
+          users.filter(u => u.role === 'ADMIN').forEach(admin => {
+            if (admin.user_id && admin.user_id !== authUser?.user_id) {
+              insertNotification({
+                userId: admin.user_id,
+                type: 'booking_pending',
+                title: '새 예약 승인 요청이 접수되었습니다',
+                body: `${bk.title} · ${pendingRoom?.room_name ?? ''} · 신청자: ${currentUser} · ${fmtTSDateFull(bk.start_at)} ${fmtTSFull(bk.start_at)}`,
+                bookingId: bk.id,
+              }).catch(() => {})
+            }
+          })
+        }
         // 참석자 인앱 알림 (user_id 있는 내부 직원만)
         for (const att of (form.attendees ?? [])) {
           if ((att as any).user_id && (att as any).user_id !== authUser?.user_id) {
@@ -767,7 +782,7 @@ function AppContent() {
     const toCancel=bookings.filter(b=>
       tsDate(b.start_at)===today &&
       !b.checkedIn && !b.autoCancelled && !b.earlyEnded &&
-      b.status !== 'pending' &&   // pending은 별도 처리
+      b.status !== 'pending' && b.status !== 'rejected' &&   // pending·rejected는 별도 처리
       now > tsMin(b.start_at)+CHECKIN_WINDOW_MIN
     );
     if(toCancel.length>0){

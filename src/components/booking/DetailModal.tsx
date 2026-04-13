@@ -1,4 +1,5 @@
 import { useBreakpoint } from '../../hooks/useBreakpoint'
+import { useState } from 'react'
 import { AlertTriangle, CheckCircle2, X, Building2, Clock, User, Monitor, FileText, Users, ShieldCheck, ShieldX } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtTimeFull, fmtTSFull, fmtTSRangeFull, fmtDateFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
@@ -27,6 +28,9 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
   const startMs = new Date(b.start_at).getTime();
   const adminCanApprove = isAdmin && b.status === 'pending' && !b.autoCancelled && nowMs < startMs - 60_000;
   const isExpiredPending = b.status === 'pending' && b.autoCancelled;
+  // 관리자 거절 인라인 flow 상태
+  const [showRejectInput, setShowRejectInput] = useState(false);
+  const [rejectReasonInput, setRejectReasonInput] = useState('');
   return(
     <div className="anm" style={{
       background:"#fff",
@@ -43,7 +47,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
           <div style={{flex:1,minWidth:0,marginRight:12}}>
             <div style={{marginBottom:8}}>
-              <BookingStatusBadge booking={b} room={r} currentUser={currentUser} />
+              <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} currentUser={currentUser} />
             </div>
             <div style={{fontSize: isMobile ? 17 : 20, fontWeight:800, color:"#111111", wordBreak:"break-word"}}>{b.title}</div>
           </div>
@@ -99,6 +103,15 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
           })()}
 
           {/* 참석자 — email로 users에서 avatar_url·dept 역조회 (패턴 B) */}
+          {(b as any).reject_reason && (
+            <div style={{background:"#FEF2F2",border:"1px solid #FCA5A5",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
+              <div style={{fontSize:11,color:"#DC2626",minWidth:60,fontWeight:600,flexShrink:0,display:"flex",alignItems:"center",gap:4}}>
+                거절 사유
+              </div>
+              <div style={{fontSize:13,color:"#DC2626",wordBreak:"break-word"}}>{(b as any).reject_reason}</div>
+            </div>
+          )}
+
           {b.attendees && b.attendees.length > 0 && (
             <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
               <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0,paddingTop:2,display:"flex",alignItems:"center",gap:4}}>
@@ -135,36 +148,66 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         if (isAdmin) {
           const adminCanForceCancel = b.status === 'confirmed' && isFuture && !b.autoCancelled
           return (
-            <div style={{padding: isMobile ? "12px 20px 24px" : "12px 24px 20px", display:"flex", gap:8, flexShrink:0,
-              borderTop: "1px solid #F1F5F9"}}>
-              <button className="btn" onClick={onClose}
-                style={{flex:1, background:"#F1F5F9", color:"#64748B", padding:"13px 8px", borderRadius:12}}>
-                닫기
-              </button>
-              {adminCanApprove && onReject && (
-                <button className="btn" onClick={()=>{onReject(b.id,'');onClose();}}
-                  style={{flex:1, background:"#FEF2F2", border:"1px solid #FCA5A5", color:"#DC2626",
-                    padding:"13px 8px", fontSize: isMobile ? 12 : 13, borderRadius:12}}>
-                  <span style={{display:"inline-flex",alignItems:"center",gap:5}}>
-                    <ShieldX size={13} strokeWidth={2}/>거절
-                  </span>
-                </button>
+            <div style={{flexShrink:0, borderTop:"1px solid #F1F5F9"}}>
+              {/* 거절 사유 인라인 입력 영역 */}
+              {showRejectInput && (
+                <div style={{padding: isMobile?"12px 20px 0":"12px 24px 0"}}>
+                  <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"12px 14px",marginBottom:8}}>
+                    <div style={{fontSize:11,color:"#92400E",marginBottom:8,fontWeight:600}}>⚠️ 거절 시 예약이 즉시 취소되며 신청자에게 알림이 발송됩니다</div>
+                    <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:6}}>거절 사유 (신청자에게 전달됩니다)</label>
+                    <textarea
+                      value={rejectReasonInput}
+                      onChange={e=>setRejectReasonInput(e.target.value)}
+                      rows={2}
+                      placeholder="거절 사유를 입력하세요 (선택)"
+                      style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #E2E8F0",fontSize:12,outline:"none",resize:"none",background:"#fff",boxSizing:"border-box" as const}}
+                    />
+                  </div>
+                  <div style={{display:"flex",gap:8,marginBottom:8}}>
+                    <button className="btn" onClick={()=>{setShowRejectInput(false);setRejectReasonInput('');}}
+                      style={{flex:1,background:"#F1F5F9",color:"#64748B",padding:"10px 8px",borderRadius:10,fontSize:12}}>
+                      취소
+                    </button>
+                    <button className="btn" onClick={()=>{onReject(b.id, rejectReasonInput||'');setShowRejectInput(false);setRejectReasonInput('');onClose();}}
+                      style={{flex:2,background:"#DC2626",color:"#fff",padding:"10px 8px",borderRadius:10,fontSize:12,fontWeight:600}}>
+                      거절 확정
+                    </button>
+                  </div>
+                </div>
               )}
-              {adminCanApprove && onApprove && (
-                <button className="btn" onClick={()=>{onApprove(b.id);onClose();}}
-                  style={{flex:2, background:"#16A34A", color:"#fff",
-                    padding:"13px 8px", fontSize: isMobile ? 13 : 14, fontWeight:600, borderRadius:12}}>
-                  <span style={{display:"inline-flex",alignItems:"center",gap:5}}>
-                    <ShieldCheck size={14} strokeWidth={2}/>승인
-                  </span>
-                </button>
-              )}
-              {adminCanForceCancel && onForceCancel && (
-                <button className="btn" onClick={()=>{onForceCancel(b.id,'관리자 강제취소');onClose();}}
-                  style={{flex:1, background:"#FEF2F2", border:"1px solid #FCA5A5", color:"#DC2626",
-                    padding:"13px 8px", fontSize: isMobile ? 12 : 13, borderRadius:12}}>
-                  강제취소
-                </button>
+              {/* 기본 버튼 행 */}
+              {!showRejectInput && (
+                <div style={{padding: isMobile?"12px 20px 24px":"12px 24px 20px", display:"flex", gap:8}}>
+                  <button className="btn" onClick={onClose}
+                    style={{flex:1, background:"#F1F5F9", color:"#64748B", padding:"13px 8px", borderRadius:12}}>
+                    닫기
+                  </button>
+                  {adminCanApprove && onReject && (
+                    <button className="btn" onClick={()=>setShowRejectInput(true)}
+                      style={{flex:1, background:"#FEF2F2", border:"1px solid #FCA5A5", color:"#DC2626",
+                        padding:"13px 8px", fontSize: isMobile?12:13, borderRadius:12}}>
+                      <span style={{display:"inline-flex",alignItems:"center",gap:5}}>
+                        <ShieldX size={13} strokeWidth={2}/>거절
+                      </span>
+                    </button>
+                  )}
+                  {adminCanApprove && onApprove && (
+                    <button className="btn" onClick={()=>{onApprove(b.id);onClose();}}
+                      style={{flex:2, background:"#16A34A", color:"#fff",
+                        padding:"13px 8px", fontSize: isMobile?13:14, fontWeight:600, borderRadius:12}}>
+                      <span style={{display:"inline-flex",alignItems:"center",gap:5}}>
+                        <ShieldCheck size={14} strokeWidth={2}/>승인
+                      </span>
+                    </button>
+                  )}
+                  {adminCanForceCancel && onForceCancel && (
+                    <button className="btn" onClick={()=>{onForceCancel(b.id,'관리자 강제취소');onClose();}}
+                      style={{flex:1, background:"#FEF2F2", border:"1px solid #FCA5A5", color:"#DC2626",
+                        padding:"13px 8px", fontSize: isMobile?12:13, borderRadius:12}}>
+                      강제취소
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           )

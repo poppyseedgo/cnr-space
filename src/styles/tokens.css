@@ -23,6 +23,7 @@
   --color-noshow-bg:       #FEF3C7; --color-noshow-text:       #92400E;
   --color-approved-bg:     #DCFCE7; --color-approved-text:     #166534;
   --color-expired-bg:      #F8FAFC; --color-expired-text:      #94A3B8;
+  --color-rejected-bg:     #FEE2E2; --color-rejected-text:     #991B1B;
 
   --shadow-card:     0 2px 8px rgba(0,0,0,0.06);
   --shadow-card-lg:  0 8px 32px rgba(0,0,0,0.10);
@@ -47,6 +48,7 @@
 .chip-noshow        { background: var(--color-noshow-bg);        color: var(--color-noshow-text); }
 .chip-approved      { background: var(--color-approved-bg);      color: var(--color-approved-text); }
 .chip-expired       { background: var(--color-expired-bg);        color: var(--color-expired-text); }
+.chip-rejected      { background: var(--color-rejected-bg);       color: var(--color-rejected-text); }
 
 /* 카드 호버 */
 .card-hover { transition: box-shadow 0.22s, transform 0.22s; }

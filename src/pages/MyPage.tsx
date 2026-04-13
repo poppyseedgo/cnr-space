@@ -233,7 +233,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
                       <td style={{padding:"10px 14px",fontWeight:600,color:"#111",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.title}</td>
                       <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{r?.room_name ?? '?'}</td>
                       <td style={{padding:"10px 14px"}}>
-                        <BookingStatusBadge booking={b} room={r} currentUser={currentUser} />
+                        <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} currentUser={currentUser} />
                       </td>
                       <td style={{padding:"10px 14px"}}>
                         <button className="btn" onClick={()=>onDetail(b)}
@@ -391,7 +391,7 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
                 <div>
                   <div className="text-xs font-semibold text-slate-900 dark:text-white leading-snug line-clamp-2 mb-1.5">{b.title}</div>
                   <div style={{marginBottom:4}}>
-                    <BookingStatusBadge booking={b} room={r} size="sm" currentUser={currentUser} />
+                    <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} size="sm" currentUser={currentUser} />
                   </div>
                   <div className="text-[10px] text-slate-400">{r?.room_name ?? ''}</div>
                   <div className="text-[10px] text-slate-400 mt-0.5">{fmtTSRangeFull(b.start_at, b.end_at)}</div>

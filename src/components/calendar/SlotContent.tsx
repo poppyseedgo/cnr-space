@@ -5,6 +5,7 @@ import { BookingStatusBadge } from '../common/BookingStatusBadge'
 interface SlotContentProps {
   booking:     Booking
   room?:       Room | null
+  isAdminRoom?: boolean
   currentUser?: string
   titleColor:  string
   subColor:    string
@@ -28,6 +29,7 @@ interface SlotContentProps {
 export function SlotContent({
   booking: b,
   room,
+  isAdminRoom,
   currentUser = '',
   titleColor,
   subColor,
@@ -60,7 +62,7 @@ export function SlotContent({
       )}
 
       {/* 상태 뱃지 */}
-      <BookingStatusBadge booking={b} room={room ?? undefined} size="xs" currentUser={currentUser} />
+      <BookingStatusBadge booking={b} room={room ?? undefined} isAdminRoom={isAdminRoom} size="xs" currentUser={currentUser} />
 
     </div>
   )

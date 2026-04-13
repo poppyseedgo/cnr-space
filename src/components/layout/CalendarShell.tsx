@@ -252,8 +252,8 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
       </div>
 
       {calView==="monthly"  && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d=>{setSelectedDate(d);setCalView("daily");}} onBookingClick={onBookingClick} rooms={allRooms} currentUser={currentUser} />}
-      {calView==="daily"    && <DailyView   bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate&&!(b.autoCancelled&&b.cancelledBy==='user'))} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} rooms={allRooms} currentUser={currentUser} />}
-      {calView==="timeline" && <TimelineView bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate&&!(b.autoCancelled&&b.cancelledBy==='user'))} rooms={filteredRooms} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} currentUser={currentUser} />}
+      {calView==="daily"    && <DailyView   bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate&&(!b.autoCancelled||b.cancelledBy==='system'))} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} rooms={allRooms} currentUser={currentUser} />}
+      {calView==="timeline" && <TimelineView bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate&&(!b.autoCancelled||b.cancelledBy==='system'))} rooms={filteredRooms} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} currentUser={currentUser} />}
     </div>
   );
 }
@@ -278,7 +278,7 @@ export function MonthlyView({bookings,selectedDate,onDayClick,onBookingClick,roo
         {cells.map((day,idx)=>{
           if(!day) return <div key={`e${idx}`} style={{minHeight:110,borderRight:"1px solid #F1F5F9",borderBottom:"1px solid #F1F5F9",background:"#FAFAFA",overflow:"hidden"}}/>;
           const ds=`${year}-${fmt2(month+1)}-${fmt2(day)}`;
-          const dbs=bookings.filter(b=>tsDate(b.start_at)===ds&&!(b.autoCancelled&&b.cancelledBy==='user'));
+          const dbs=bookings.filter(b=>tsDate(b.start_at)===ds&&!b.autoCancelled);
           const isToday=ds===today,isSel=ds===selectedDate;
           const dow=(firstDay+day-1)%7;
           return(
@@ -424,7 +424,7 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
         {days.map(ds=>{
           const d=dateToObj(ds), dow=d.getDay();
           const isToday=ds===today, isSel=ds===selectedDate;
-          const dayBks = bookings.filter(b=>tsDate(b.start_at)===ds&&!(b.autoCancelled&&b.cancelledBy==='user'));
+          const dayBks = bookings.filter(b=>tsDate(b.start_at)===ds&&!b.autoCancelled);
           const cw = colWidths[ds];
           return(
             <div key={ds}
@@ -495,8 +495,8 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
 
         {/* 요일 컬럼 */}
         {days.map(ds=>{
-          const dbs    = bookings.filter(b=>tsDate(b.start_at)===ds&&!(b.autoCancelled&&b.cancelledBy==='user'));
-          const dbsCan = bookings.filter(b=>tsDate(b.start_at)===ds&&b.autoCancelled&&b.cancelledBy!=='user');
+          const dbs    = bookings.filter(b=>tsDate(b.start_at)===ds&&(!b.autoCancelled||b.cancelledBy==='system'));
+          const dbsCan = bookings.filter(b=>tsDate(b.start_at)===ds&&b.autoCancelled&&b.cancelledBy==='system');
           const isToday = ds===today;
           const layout  = dayLayouts[ds];
           const cw = colWidths[ds];
@@ -588,7 +588,7 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
                     onMouseEnter={e=>{if(!isEnded){e.currentTarget.style.zIndex="15";e.currentTarget.style.boxShadow=`0 4px 12px ${color}44`;}}}
                     onMouseLeave={e=>{if(!isEnded){e.currentTarget.style.zIndex=isAct?"8":"3";e.currentTarget.style.boxShadow=isAct?`0 2px 8px ${color}55`:"none";}}}>
                     <SlotContent
-                      booking={b} room={slotRoom} currentUser={currentUser}
+                      booking={b} room={slotRoom} isAdminRoom={!!slotRoom?.is_admin_only} currentUser={currentUser}
                       titleColor={titleColor} subColor={subColor} gap={1.5}
                       thirdLine={slotRoom?.room_name || b.user}
                     />
@@ -696,7 +696,7 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
             const floor = getFloor(room.floor_id);
             const rBks  = bookings.filter(b=>b.room_id===room.room_id&&!b.autoCancelled);
             // 노쇼(시스템 취소)만 희미하게 표시 — 유저 취소는 숨김
-            const rBksCancelled = bookings.filter(b=>b.room_id===room.room_id&&b.autoCancelled&&b.cancelledBy!=='user');
+            const rBksCancelled = bookings.filter(b=>b.room_id===room.room_id&&b.autoCancelled&&b.cancelledBy==='system');
             return(
               <div key={room.room_id}
                 style={{display:"flex",borderBottom:ri<rooms.length-1?"1px solid #F1F5F9":"none",
@@ -746,7 +746,7 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
                     const sm=tsMin(b.start_at),em=tsMin(b.end_at);
                     const left=((sm-7*60)/60)*CW+2;
                     const width=Math.max(((em-sm)/60)*CW-4,20);
-                    const isNoshow = b.autoCancelled && b.cancelledBy!=='user';
+                    const isNoshow = b.autoCancelled && b.cancelledBy==='system';
                     const isEnded=b.earlyEnded;
                     const isAct=isToday&&sm<=now&&now<em&&!isNoshow&&!isEnded;
                     const nci=isAct&&!b.checkedIn;
@@ -768,7 +768,7 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
                         onMouseEnter={e=>{ if(!isNoshow&&!isEnded) e.currentTarget.style.filter="brightness(1.15)"; }}
                         onMouseLeave={e=>{ e.currentTarget.style.filter="none"; }}>
                         <SlotContent
-                          booking={b} room={slotRoom} currentUser={currentUser}
+                          booking={b} room={slotRoom} isAdminRoom={!!slotRoom?.is_admin_only} currentUser={currentUser}
                           titleColor={titleColor} subColor={subColor} gap={1.5}
                           thirdLine={b.user}
                         />
@@ -934,7 +934,7 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
                     const sm  = tsMin(b.start_at), em = tsMin(b.end_at);
                     const top = minToPx(sm);
                     const h   = Math.max(minToPx(em) - top - 4, 24);
-                    const isCan  = b.autoCancelled && b.cancelledBy!=='user'; // 유저 취소는 이미 필터됨
+                    const isCan  = b.autoCancelled && b.cancelledBy==='system'; // 유저 취소는 이미 필터됨
                     const isAct  = isToday && sm<=now && now<em && !isCan;
                     const nci    = isAct && !b.checkedIn;
                     const isMyBooking = currentUser && b.user === currentUser;
@@ -958,7 +958,7 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
                         onMouseEnter={e=>{if(!isCan)e.currentTarget.style.filter="brightness(0.97)";}}
                         onMouseLeave={e=>{e.currentTarget.style.filter="none";}}>
                         <SlotContent
-                          booking={b} room={room} currentUser={currentUser}
+                          booking={b} room={room} isAdminRoom={!!room?.is_admin_only} currentUser={currentUser}
                           titleColor={titleColor} subColor={subColor} gap={2}
                           thirdLine={b.user}
                         />
