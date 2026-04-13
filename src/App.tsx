@@ -525,6 +525,8 @@ function AppContent() {
         const cancelledRoom = rooms.find(r => r.room_id === targetBooking.room_id)
         sendNotification('cancelled', {
           ...targetBooking,
+          user_name:  targetBooking.user,
+          user_dept:  targetBooking.dept,
           user_email: authUser?.email ?? '',
           room_name:  cancelledRoom?.room_name_ko ?? cancelledRoom?.room_name ?? String(targetBooking.room_id) + 'F',
         });
@@ -662,8 +664,10 @@ function AppContent() {
         const cancelledRoom = rooms.find(r => r.room_id === targetB.room_id)
         sendNotification('cancelled', {
           ...targetB,
-          room_name: cancelledRoom?.room_name_ko ?? cancelledRoom?.room_name ?? '',
-          admin_force: true,
+          user_name:     targetB.user,
+          user_dept:     targetB.dept,
+          room_name:     cancelledRoom?.room_name_ko ?? cancelledRoom?.room_name ?? '',
+          admin_force:   true,
           cancel_reason: reason || '관리자 강제 취소',
         })
       }
@@ -747,6 +751,8 @@ function AppContent() {
         const updatedRoom = rooms.find(r => r.room_id === (changes.room_id ?? updatedB.room_id))
         const basePayload = {
           ...updatedB, ...changes,
+          user_name:  updatedB.user,
+          user_dept:  updatedB.dept,
           user_email: authUser?.email ?? '',
           room_name:  updatedRoom?.room_name_ko ?? updatedRoom?.room_name ?? String(updatedB.room_id) + 'F',
         }
