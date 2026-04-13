@@ -297,7 +297,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── My Booking Weekly View ────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
-export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, onCheckIn, onEarlyEnd=(id:string)=>{}, onCancel=(id:string)=>{}, onNewBooking, authUser}) {
+export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, onCheckIn, onEarlyEnd, onCancel, onNewBooking, authUser}: {bookings:any[], currentUser:string, rooms?:any[], onDetail:(b:any)=>void, onCheckIn:(id:string)=>void, onEarlyEnd:(id:string)=>void, onCancel:(id:string)=>void, onNewBooking:()=>void, authUser:any}) {
   const today = todayStr()
   const now   = nowMinutes()
   const [selectedDate, setSelectedDate] = useState(today)
@@ -387,7 +387,7 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
                 <div>
                   <div className="text-xs font-semibold text-slate-900 dark:text-white leading-snug line-clamp-2 mb-1.5">{b.title}</div>
                   <div style={{marginBottom:4}}>
-                    <BookingStatusBadge booking={b} room={r} size="sm" />
+                    <BookingStatusBadge booking={b} room={r} size="sm" currentUser={currentUser} />
                   </div>
                   <div className="text-[10px] text-slate-400">{r?.room_name ?? ''}</div>
                   <div className="text-[10px] text-slate-400 mt-0.5">{fmtTSRangeFull(b.start_at, b.end_at)}</div>
@@ -442,6 +442,7 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
           onEmptyClick={()=>{}}
           onCheckIn={onCheckIn}
           fillContainer={true}
+          rooms={rooms}
         />
       </div>
     </div>

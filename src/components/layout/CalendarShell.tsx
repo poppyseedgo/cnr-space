@@ -928,7 +928,7 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
 }
 
 // ─── List View ────────────────────────────────────────────────────────────────
-export function ListView({bookings,selectedDate,setSelectedDate,onItemClick,onCheckIn,rooms:lvRooms=[]}) {
+export function ListView({bookings,selectedDate,setSelectedDate,onItemClick,onCheckIn,rooms:lvRooms=[],currentUser=""}) {
   const { isMobile } = useBreakpoint();
   const isToday=selectedDate===todayStr(),now=nowMinutes();
   const sorted=[...bookings].filter(b=>!b.autoCancelled).sort((a,b)=>a.start_at.localeCompare(b.start_at));
@@ -959,7 +959,7 @@ export function ListView({bookings,selectedDate,setSelectedDate,onItemClick,onCh
                   </div>
                   <div style={{flex:1}}>
                     <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:3,flexWrap:"wrap"}}>
-                      <BookingStatusBadge booking={b} room={r} />
+                      <BookingStatusBadge booking={b} room={r} currentUser={currentUser} />
                       <span style={{fontSize:15,fontWeight:600,color:"#111111"}}>{b.title}</span>
                     </div>
                     <div style={{fontSize:12,color:"#94A3B8"}}><span style={{color:r.color,fontWeight:600}}>{r.room_name}</span> · {fl?.floor_name} · {b.user} · {b.dept}</div>

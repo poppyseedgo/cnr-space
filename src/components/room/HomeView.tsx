@@ -163,7 +163,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
                 <div>
                   <div className="text-xs font-semibold text-slate-900 dark:text-white leading-snug line-clamp-2 mb-1.5">{b.title}</div>
                   <div style={{marginBottom:4}}>
-                    <BookingStatusBadge booking={b} room={r} size="sm" />
+                    <BookingStatusBadge booking={b} room={r} size="sm" currentUser={currentUser} />
                   </div>
                   <div className="text-[10px] text-slate-400">{r?.room_name ?? ''}</div>
                   <div className="text-[10px] text-slate-400 mt-0.5">{fmtTSRangeFull(b.start_at, b.end_at)}</div>
