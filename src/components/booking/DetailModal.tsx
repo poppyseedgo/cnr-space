@@ -145,8 +145,14 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         // 2. pending + 기한만료  → 닫기
         // 3. confirmed + 미래(1분 전까지) → 닫기 + 강제취소
         // 4. confirmed + 시작 이후 → 닫기
-        if (isAdmin) {
-          const adminCanForceCancel = b.status === 'confirmed' && isFuture && !b.autoCancelled
+        // ── Admin · 타인 예약 매트릭스 ──────────────────────────────
+        // 체크인: 예약자 본인만 (Admin도 타인 대신 안 함)
+        // 변경:   Admin도 가능 (confirmed, 시작 전, 미취소)
+        // 취소:   본인만 직접 취소 / Admin은 "강제취소"로 구분
+        // 승인/거절: Admin 전용, pending 상태만
+        if (isAdmin && !isOwner) {
+          const adminCanEdit        = isFuture && !b.autoCancelled && !b.checkedIn && b.status === 'confirmed'
+          const adminCanForceCancel = isFuture && !b.autoCancelled && b.status === 'confirmed'
           return (
             <div style={{flexShrink:0, borderTop:"1px solid #F1F5F9"}}>
               {/* 거절 사유 인라인 입력 영역 */}
@@ -182,6 +188,13 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
                     style={{flex:1, background:"#F1F5F9", color:"#64748B", padding:"13px 8px", borderRadius:12}}>
                     닫기
                   </button>
+                  {adminCanEdit && onEdit && (
+                    <button className="btn" onClick={()=>{ onClose(); onEdit(b); }}
+                      style={{flex:1, background:"#EFF6FF", border:"1px solid #BFDBFE", color:"#1D4ED8",
+                        padding:"13px 8px", fontSize: isMobile?12:13, fontWeight:600, borderRadius:12}}>
+                      예약 변경
+                    </button>
+                  )}
                   {adminCanApprove && onReject && (
                     <button className="btn" onClick={()=>setShowRejectInput(true)}
                       style={{flex:1, background:"#FEF2F2", border:"1px solid #FCA5A5", color:"#DC2626",
@@ -213,10 +226,13 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
           )
         }
 
-        // ── 일반 사용자 버튼 매트릭스 ───────────────────────────────
-        const showCheckin = isAct && isOwner && !b.checkedIn
-        const showEdit    = isOwner && isFuture && !b.autoCancelled && !b.checkedIn && b.status === 'confirmed'
-        const showCancel  = isOwner && isFuture && !b.autoCancelled
+        // ── 사용자 매트릭스 (본인 예약 — Admin 포함) ────────────────
+        // 체크인: 진행 중 + 미체크인
+        // 변경:   confirmed + 시작 전 + 미취소 + 미체크인
+        // 취소:   시작 전 + 미취소
+        const showCheckin = isAct && !b.checkedIn
+        const showEdit    = isFuture && !b.autoCancelled && !b.checkedIn && b.status === 'confirmed'
+        const showCancel  = isFuture && !b.autoCancelled
         const showClose   = !showCheckin && !showEdit && !showCancel
         return (
           <div style={{padding: isMobile ? "12px 20px 24px" : "12px 24px 20px", display:"flex", gap:8, flexShrink:0,
