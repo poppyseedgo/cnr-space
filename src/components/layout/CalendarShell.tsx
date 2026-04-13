@@ -27,7 +27,6 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
   const allRooms = roomsProp;
   const filteredRooms = filterFloor==="ALL" ? allRooms.filter(r=>r.is_active) : allRooms.filter(r=>r.is_active&&r.floor_id===parseInt(filterFloor));
   const floorFilteredBks = filterFloor==="ALL" ? bookings : bookings.filter(b=>filteredRooms.some(r=>r.room_id===b.room_id));
-  const filteredBks = filterMine ? floorFilteredBks.filter(b=>b.user===currentUser) : floorFilteredBks;
 
   // ── 커스텀 날짜 피커 state ──
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -67,6 +66,7 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
 
   // 내 예약 필터 적용
   const currentFloorLabel = filterFloor==="ALL" ? "전체 층" : (FLOORS.find(f=>f.floor_id===parseInt(filterFloor))?.floor_name ?? "전체 층");
+  const filteredBks = filterMine ? floorFilteredBks.filter(b=>b.user===currentUser) : floorFilteredBks;
   const dpDaysInMonth = new Date(dpYear, dpMonth+1, 0).getDate();
   const dpCells       = [];
   for(let i=0; i<dpFirstDay; i++) dpCells.push(null);
