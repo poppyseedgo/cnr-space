@@ -13,7 +13,7 @@ export function getSlotState(
 ) {
   const sm = tsMin(b.start_at)
   const em = tsMin(b.end_at)
-  const isNoshow    = b.autoCancelled && b.cancelledBy === 'system'
+  const isNoshow    = b.autoCancelled && b.cancelledBy === 'system' && b.status !== 'rejected'
   const isEnded     = b.earlyEnded
   const isAct       = isToday && sm <= now && now < em && !isNoshow && !isEnded
   const nci         = isAct && !b.checkedIn

@@ -252,8 +252,8 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
       </div>
 
       {calView==="monthly"  && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d=>{setSelectedDate(d);setCalView("daily");}} onBookingClick={onBookingClick} rooms={allRooms} currentUser={currentUser} />}
-      {calView==="daily"    && <DailyView   bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate&&(!b.autoCancelled||b.cancelledBy==='system'))} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} rooms={allRooms} currentUser={currentUser} />}
-      {calView==="timeline" && <TimelineView bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate&&(!b.autoCancelled||b.cancelledBy==='system'))} rooms={filteredRooms} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} currentUser={currentUser} />}
+      {calView==="daily"    && <DailyView   bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate&&(!b.autoCancelled||(b.cancelledBy==='system'&&b.status!=='rejected')))} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} rooms={allRooms} currentUser={currentUser} />}
+      {calView==="timeline" && <TimelineView bookings={filteredBks.filter(b=>tsDate(b.start_at)===selectedDate&&(!b.autoCancelled||(b.cancelledBy==='system'&&b.status!=='rejected')))} rooms={filteredRooms} selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid,h)=>onNewBooking(selectedDate,h,rid)} onCheckIn={onCheckIn} currentUser={currentUser} />}
     </div>
   );
 }
@@ -495,8 +495,8 @@ export function WeeklyView({bookings,selectedDate,onDateClick,onBlockClick,onEmp
 
         {/* 요일 컬럼 */}
         {days.map(ds=>{
-          const dbs    = bookings.filter(b=>tsDate(b.start_at)===ds&&(!b.autoCancelled||b.cancelledBy==='system'));
-          const dbsCan = bookings.filter(b=>tsDate(b.start_at)===ds&&b.autoCancelled&&b.cancelledBy==='system');
+          const dbs    = bookings.filter(b=>tsDate(b.start_at)===ds&&(!b.autoCancelled||(b.cancelledBy==='system'&&b.status!=='rejected')));
+          const dbsCan = bookings.filter(b=>tsDate(b.start_at)===ds&&b.autoCancelled&&b.cancelledBy==='system'&&b.status!=='rejected');
           const isToday = ds===today;
           const layout  = dayLayouts[ds];
           const cw = colWidths[ds];
@@ -696,7 +696,7 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
             const floor = getFloor(room.floor_id);
             const rBks  = bookings.filter(b=>b.room_id===room.room_id&&!b.autoCancelled);
             // 노쇼(시스템 취소)만 희미하게 표시 — 유저 취소는 숨김
-            const rBksCancelled = bookings.filter(b=>b.room_id===room.room_id&&b.autoCancelled&&b.cancelledBy==='system');
+            const rBksCancelled = bookings.filter(b=>b.room_id===room.room_id&&b.autoCancelled&&b.cancelledBy==='system'&&b.status!=='rejected');
             return(
               <div key={room.room_id}
                 style={{display:"flex",borderBottom:ri<rooms.length-1?"1px solid #F1F5F9":"none",
@@ -746,7 +746,7 @@ export function DailyView({bookings,selectedDate,onBlockClick,onEmptyClick,onChe
                     const sm=tsMin(b.start_at),em=tsMin(b.end_at);
                     const left=((sm-7*60)/60)*CW+2;
                     const width=Math.max(((em-sm)/60)*CW-4,20);
-                    const isNoshow = b.autoCancelled && b.cancelledBy==='system';
+                    const isNoshow = b.autoCancelled && b.cancelledBy==='system' && b.status!=='rejected';
                     const isEnded=b.earlyEnded;
                     const isAct=isToday&&sm<=now&&now<em&&!isNoshow&&!isEnded;
                     const nci=isAct&&!b.checkedIn;
@@ -934,7 +934,7 @@ export function TimelineView({bookings,rooms,selectedDate,onBlockClick,onEmptyCl
                     const sm  = tsMin(b.start_at), em = tsMin(b.end_at);
                     const top = minToPx(sm);
                     const h   = Math.max(minToPx(em) - top - 4, 24);
-                    const isCan  = b.autoCancelled && b.cancelledBy==='system'; // 유저 취소는 이미 필터됨
+                    const isCan  = b.autoCancelled && b.cancelledBy==='system' && b.status!=='rejected'; // 유저·거절 취소는 이미 필터됨
                     const isAct  = isToday && sm<=now && now<em && !isCan;
                     const nci    = isAct && !b.checkedIn;
                     const isMyBooking = currentUser && b.user === currentUser;
