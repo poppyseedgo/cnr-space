@@ -28,6 +28,10 @@ export function BookingStatusBadge({
   const em      = tsMin(b.end_at)
 
   const isAct    = isToday && sm <= now && now < em && !b.autoCancelled && !b.earlyEnded
+  // 승인 기한 만료: pending + autoCancelled
+  const isExpiredPending = b.status === 'pending' && b.autoCancelled
+  // 승인완료: admin_only 룸의 confirmed 예약 (승인 프로세스 통과)
+  const isApproved = !!r?.is_admin_only && b.status === 'confirmed' && !b.autoCancelled
   const nci      = isAct && !b.checkedIn
   const isFuture = tsDate(b.start_at) > todayStr() || (isToday && sm > now)
   const isPast   = !isAct && !isFuture && !b.autoCancelled
@@ -45,7 +49,9 @@ export function BookingStatusBadge({
     (b.checkedIn && isAct) ||
     isPast ||
     b.earlyEnded ||
-    (!isAct && !b.autoCancelled && isToday && tl > 0 && tl <= 10)
+    (!isAct && !b.autoCancelled && isToday && tl > 0 && tl <= 10) ||
+    isExpiredPending ||
+    isApproved
 
   if (!hasAny) return null
 

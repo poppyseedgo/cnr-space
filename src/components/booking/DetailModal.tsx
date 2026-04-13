@@ -1,5 +1,5 @@
 import { useBreakpoint } from '../../hooks/useBreakpoint'
-import { AlertTriangle, CheckCircle2, X, Building2, Clock, User, Monitor, FileText, Users } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, X, Building2, Clock, User, Monitor, FileText, Users, ShieldCheck, ShieldX } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtTimeFull, fmtTSFull, fmtTSRangeFull, fmtDateFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
@@ -10,7 +10,7 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, B
 import { AttendeeChip } from '../common/AttendeeChip'
 import { BookingStatusBadge } from '../common/BookingStatusBadge'
 
-export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser, rooms:rp=[], users:up=[]}) {
+export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser, rooms:rp=[], users:up=[], isAdmin=false, onApprove=null, onReject=null, onForceCancel=null}: any) {
   const { isMobile } = useBreakpoint();
   const r=rp.find(r=>r.room_id===b.room_id);
   const floor=r ? getFloor(r.floor_id) : null;
@@ -22,6 +22,11 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
   // 변경 가능 조건: 본인 예약, 취소/체크인 안됨, 시작 전
   const isFuture = tsDate(b.start_at) > todayStr() || (tsDate(b.start_at) === todayStr() && sm > now);
   const canEdit  = isOwner && !b.autoCancelled && !b.checkedIn && isFuture;
+  // 관리자 승인 가능 여부 (시작 1분 전까지)
+  const nowMs = Date.now();
+  const startMs = new Date(b.start_at).getTime();
+  const adminCanApprove = isAdmin && b.status === 'pending' && !b.autoCancelled && nowMs < startMs - 60_000;
+  const isExpiredPending = b.status === 'pending' && b.autoCancelled;
   return(
     <div className="anm" style={{
       background:"#fff",
@@ -40,7 +45,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
             <div style={{marginBottom:8}}>
               <BookingStatusBadge booking={b} room={r} currentUser={currentUser} />
             </div>
-            <div style={{fontSize: isMobile ? 17 : 20, fontWeight:600, color:"#111111", wordBreak:"break-word"}}>{b.title}</div>
+            <div style={{fontSize: isMobile ? 17 : 20, fontWeight:800, color:"#111111", wordBreak:"break-word"}}>{b.title}</div>
           </div>
           <button className="btn" onClick={onClose}
             style={{width:32,height:32,borderRadius:"50%",background:"#F1F5F9",
@@ -122,14 +127,53 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
       </div>
       {/* 버튼 영역 - 항상 하단 고정 */}
       {(()=>{
-        // ── 버튼 표시 조건 (매트릭스 기준) ─────────────────────────
-        // 체크인: 진행중 + 본인 + 미체크인
+        // ── 관리자 버튼 매트릭스 ────────────────────────────────────
+        // 1. pending + 승인가능 → 닫기 + 거절 + 승인
+        // 2. pending + 기한만료  → 닫기
+        // 3. confirmed + 미래(1분 전까지) → 닫기 + 강제취소
+        // 4. confirmed + 시작 이후 → 닫기
+        if (isAdmin) {
+          const adminCanForceCancel = b.status === 'confirmed' && isFuture && !b.autoCancelled
+          return (
+            <div style={{padding: isMobile ? "12px 20px 24px" : "12px 24px 20px", display:"flex", gap:8, flexShrink:0,
+              borderTop: "1px solid #F1F5F9"}}>
+              <button className="btn" onClick={onClose}
+                style={{flex:1, background:"#F1F5F9", color:"#64748B", padding:"13px 8px", borderRadius:12}}>
+                닫기
+              </button>
+              {adminCanApprove && onReject && (
+                <button className="btn" onClick={()=>{onReject(b.id,'');onClose();}}
+                  style={{flex:1, background:"#FEF2F2", border:"1px solid #FCA5A5", color:"#DC2626",
+                    padding:"13px 8px", fontSize: isMobile ? 12 : 13, borderRadius:12}}>
+                  <span style={{display:"inline-flex",alignItems:"center",gap:5}}>
+                    <ShieldX size={13} strokeWidth={2}/>거절
+                  </span>
+                </button>
+              )}
+              {adminCanApprove && onApprove && (
+                <button className="btn" onClick={()=>{onApprove(b.id);onClose();}}
+                  style={{flex:2, background:"#16A34A", color:"#fff",
+                    padding:"13px 8px", fontSize: isMobile ? 13 : 14, fontWeight:600, borderRadius:12}}>
+                  <span style={{display:"inline-flex",alignItems:"center",gap:5}}>
+                    <ShieldCheck size={14} strokeWidth={2}/>승인
+                  </span>
+                </button>
+              )}
+              {adminCanForceCancel && onForceCancel && (
+                <button className="btn" onClick={()=>{onForceCancel(b.id,'관리자 강제취소');onClose();}}
+                  style={{flex:1, background:"#FEF2F2", border:"1px solid #FCA5A5", color:"#DC2626",
+                    padding:"13px 8px", fontSize: isMobile ? 12 : 13, borderRadius:12}}>
+                  강제취소
+                </button>
+              )}
+            </div>
+          )
+        }
+
+        // ── 일반 사용자 버튼 매트릭스 ───────────────────────────────
         const showCheckin = isAct && isOwner && !b.checkedIn
-        // 예약변경: 미래 + 본인 + confirmed (pending 제외)
         const showEdit    = isOwner && isFuture && !b.autoCancelled && !b.checkedIn && b.status === 'confirmed'
-        // 예약취소: 미래 + 본인 (confirmed + pending 모두 가능)
         const showCancel  = isOwner && isFuture && !b.autoCancelled
-        // 닫기: 위 버튼 하나도 없을 때
         const showClose   = !showCheckin && !showEdit && !showCancel
         return (
           <div style={{padding: isMobile ? "12px 20px 24px" : "12px 24px 20px", display:"flex", gap:8, flexShrink:0,

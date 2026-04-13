@@ -1347,12 +1347,13 @@ export function AdminApprovals({ bookings, rooms, onApprove, onReject, showToast
 
   useEffect(() => { fetchRange() }, [fetchRange])
 
-  // 병합: 실시간 pending + 기간 조회 이력
+  // 병합: admin 방 실시간 전체 예약 + 기간 조회 이력
+  // liveIds를 admin 방 전체로 확장해야 승인 후 rangeData 구버전이 mergedData에 부활하지 않음
   const mergedData = useMemo(() => {
-    const livePending = bookings.filter(b => b.status === 'pending' && adminRoomIds.has(b.room_id))
-    const liveIds = new Set(livePending.map(b => b.id))
+    const liveAll = bookings.filter(b => adminRoomIds.has(b.room_id))
+    const liveIds = new Set(liveAll.map(b => b.id))
     const historical = rangeData.filter(b => !liveIds.has(b.id))
-    return [...livePending, ...historical].sort((a,b) => b.start_at.localeCompare(a.start_at))
+    return [...liveAll, ...historical].sort((a,b) => b.start_at.localeCompare(a.start_at))
   }, [bookings, rangeData, adminRoomIds])
 
   // 상태 분류
@@ -1392,7 +1393,7 @@ export function AdminApprovals({ bookings, rooms, onApprove, onReject, showToast
     e.stopPropagation()
     if (processing) return
     setProcessing(id)
-    try { await onApprove(id) }
+    try { await onApprove(id); fetchRange() }
     finally { setProcessing(null) }
   }
 
@@ -1402,6 +1403,7 @@ export function AdminApprovals({ bookings, rooms, onApprove, onReject, showToast
     try {
       await onReject(rejectModal.id, rejectReason || '관리자 거절')
       setRejectModal(null); setRejectReason('')
+      fetchRange()
     } finally { setProcessing(null) }
   }
 

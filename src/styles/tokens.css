@@ -21,6 +21,8 @@
   --color-checkin-wait-bg: #FFF7ED; --color-checkin-wait-text: #C2410C;
   --color-done-bg:         #F1F5F9; --color-done-text:         #64748B;
   --color-noshow-bg:       #FEF3C7; --color-noshow-text:       #92400E;
+  --color-approved-bg:     #DCFCE7; --color-approved-text:     #166534;
+  --color-expired-bg:      #F8FAFC; --color-expired-text:      #94A3B8;
 
   --shadow-card:     0 2px 8px rgba(0,0,0,0.06);
   --shadow-card-lg:  0 8px 32px rgba(0,0,0,0.10);
@@ -43,6 +45,8 @@
 .chip-checkin-wait  { background: var(--color-checkin-wait-bg);  color: var(--color-checkin-wait-text); }
 .chip-done          { background: var(--color-done-bg);          color: var(--color-done-text); }
 .chip-noshow        { background: var(--color-noshow-bg);        color: var(--color-noshow-text); }
+.chip-approved      { background: var(--color-approved-bg);      color: var(--color-approved-text); }
+.chip-expired       { background: var(--color-expired-bg);        color: var(--color-expired-text); }
 
 /* 카드 호버 */
 .card-hover { transition: box-shadow 0.22s, transform 0.22s; }
