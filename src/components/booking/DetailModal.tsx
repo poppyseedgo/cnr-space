@@ -40,7 +40,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
             <div style={{marginBottom:8}}>
               <BookingStatusBadge booking={b} room={r} currentUser={currentUser} />
             </div>
-            <div style={{fontSize: isMobile ? 17 : 20, fontWeight:800, color:"#111111", wordBreak:"break-word"}}>{b.title}</div>
+            <div style={{fontSize: isMobile ? 17 : 20, fontWeight:600, color:"#111111", wordBreak:"break-word"}}>{b.title}</div>
           </div>
           <button className="btn" onClick={onClose}
             style={{width:32,height:32,borderRadius:"50%",background:"#F1F5F9",

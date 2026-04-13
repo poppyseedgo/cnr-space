@@ -34,6 +34,9 @@ export function BookingStatusBadge({
   const tl       = sm - now
   const isOwner  = !!currentUser && b.user === currentUser
 
+  // 디버그 로그 — 확인 후 제거 예정
+  console.log('[내 예약 체크]', { b_user: b.user, currentUser, isOwner })
+
   const hasAny =
     (isOwner && !b.autoCancelled) ||
     b.cancelledBy === 'admin' ||
@@ -57,43 +60,20 @@ export function BookingStatusBadge({
 
   return (
     <div style={{ display: 'inline-flex', gap, flexWrap: 'wrap', alignItems: 'center' }}>
-
-      {/* 1. 내 예약 */}
       {isOwner && !b.autoCancelled && <C cls="chip-mine">내 예약</C>}
-
-      {/* 2. 관리자 강제취소 */}
       {b.cancelledBy === 'admin' && <C cls="chip-admin">관리자 강제취소</C>}
-
-      {/* 3. 노쇼 */}
       {b.autoCancelled && b.cancelledBy === 'system' && <C cls="chip-noshow">노쇼</C>}
-
-      {/* 4. 승인 대기 */}
       {b.status === 'pending' && !b.autoCancelled && <C cls="chip-pending">승인 대기</C>}
-
-      {/* 5. 진행 중 — room.color 기반 */}
       {isAct && !b.autoCancelled && r && (
-        <span className="chip" style={{ ...cs, background: r.color + '18', color: r.color }}>
-          진행 중
-        </span>
+        <span className="chip" style={{ ...cs, background: r.color + '18', color: r.color }}>진행 중</span>
       )}
-
-      {/* 6. 체크인 대기 */}
       {nci && <C cls="chip-checkin-wait">체크인 대기</C>}
-
-      {/* 7. 체크인 완료 */}
       {b.checkedIn && isAct && <C cls="chip-success">체크인 완료</C>}
-
-      {/* 8. 종료 */}
       {isPast && <C cls="chip-done">종료</C>}
-
-      {/* 9. 조기반납 */}
       {b.earlyEnded && <C cls="chip-earlyend">조기반납</C>}
-
-      {/* 10. N분 후 */}
       {!isAct && !b.autoCancelled && isToday && tl > 0 && tl <= 10 && (
         <C cls="chip-countdown">{tl}분 후</C>
       )}
-
     </div>
   )
 }
