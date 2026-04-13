@@ -77,10 +77,11 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
     <div>
       {/* 툴바 */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 mb-4"
-        style={{padding: isMobile ? "10px 12px" : "12px 18px", position:"relative", zIndex:50, display:"flex", flexDirection:"column", gap: isMobile ? 8 : 10}}>
+        style={{padding: isMobile ? "10px 12px" : "12px 18px", position:"relative", zIndex:50,
+          display:"flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 8 : 10, alignItems: isMobile ? "stretch" : "center"}}>
 
-        {/* 1행: 날짜 네비 + 뷰 탭 */}
-        <div style={{display:"flex", alignItems:"center", gap:8, position:"relative"}}>
+        {/* 1행(모바일) / 좌측(데스크탑): 날짜 네비 + 뷰 탭 */}
+        <div style={{display:"flex", alignItems:"center", gap:8, flex: isMobile ? "none" : 1}}>
 
           {/* 날짜 네비 — 좌측 */}
           <div className="flex items-center gap-1.5" style={{flex:1}}>
@@ -178,8 +179,8 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
           </div>
         </div>
 
-        {/* 2행: 예약 필터 + 층 드롭다운 */}
-        <div style={{display:"flex", alignItems:"center", gap:8}}>
+        {/* 2행(모바일) / 우측(데스크탑): 예약 필터 + 층 드롭다운 */}
+        <div style={{display:"flex", alignItems:"center", gap:8, flexShrink:0}}>
 
           {/* 예약 필터 — 전체 예약 / 내 예약 */}
           <div className="flex dark:bg-slate-700 rounded-xl p-0.5 gap-0.5"
