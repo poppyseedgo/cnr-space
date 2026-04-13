@@ -20,7 +20,6 @@ import { RecurDoneModal } from './components/booking/RecurDoneModal'
 // ── 무거운 페이지는 lazy load — 초기 번들에서 제외 ─────────────────────────
 const MyPageView          = lazy(() => import('./pages/MyPage').then(m => ({ default: m.MyPageView })))
 import { UserAvatar } from './components/common/UserAvatar'
-const MyBookingWeeklyView = lazy(() => import('./pages/MyPage').then(m => ({ default: m.MyBookingWeeklyView })))
 const AdminView           = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminView })))
 import LoginPage from './pages/LoginPage'
 import { useBreakpoint, useVisualViewport } from './hooks/useBreakpoint'
@@ -43,7 +42,7 @@ function AppContent() {
   const getViewFromHash = (): string => {
     const hash = window.location.hash.replace('#', '')
     if (hash.startsWith('admin-tab-')) return 'admin'
-    return ['home','calendar','mybookings','mypage','admin'].includes(hash) ? hash : 'home'
+    return ['home','calendar','mypage','admin'].includes(hash) ? hash : 'home'
   }
   const [view, setViewState] = useState<string>(getViewFromHash);
   const setView = (v: string) => {
@@ -117,7 +116,7 @@ function AppContent() {
     }
     // 최초 로그인(hash 없을 때)만 홈으로 이동, 새로고침 시 현재 hash 유지
     const currentHash = window.location.hash.replace('#', '');
-    const isValidHash = ['home','calendar','mybookings','mypage','admin'].includes(currentHash)
+    const isValidHash = ['home','calendar','mypage','admin'].includes(currentHash)
       || currentHash.startsWith('admin-tab-');
     if (!isValidHash) {
       setView('home');
@@ -932,12 +931,11 @@ function AppContent() {
             </div>
 
             {/* ② Nav pills (center) */}
-            {(view==="home"||view==="calendar"||view==="mybookings") ? (
+            {(view==="home"||view==="calendar") ? (
               <div className="flex dark:bg-slate-700 rounded-full p-1 gap-1" style={{background:"#F3F4F8"}}>
                 {([
                   ["home",       <Home size={14} strokeWidth={1.8}/>,     "실시간 현황", "현황"]    as const,
                   ["calendar",   <Calendar size={14} strokeWidth={1.8}/>,  "캘린더 뷰",  "캘린더"]  as const,
-                  ["mybookings", <ClipboardList size={14} strokeWidth={1.8}/>, "나의 예약", "나의 예약"] as const,
                 ] as [string, React.ReactElement, string, string][]).map(([v,icon,label,mLabel])=>(
                   <button key={v} onClick={()=>setView(v)}
                     className="btn flex items-center gap-1.5 rounded-full font-semibold transition-all whitespace-nowrap"
@@ -1174,13 +1172,7 @@ function AppContent() {
           {view==="calendar" && <CalendarShell bookings={bookings} rooms={rooms} selectedDate={selectedDate} setSelectedDate={setSelectedDate} calView={calView} setCalView={setCalView} onBookingClick={b=>setModal({type:"detail",data:b})} onNewBooking={(d,h,rid)=>setModal({type:"new",prefill:{room_id:rid,start:h!=null?`${fmt2(h)}:00`:undefined,end:h!=null?`${fmt2(h+1)}:00`:undefined},date:d}) } onCheckIn={checkIn} filterFloor={calFilterFloor} setFilterFloor={setCalFilterFloor} currentUser={currentUser} />}
         </div>
       )}
-      {view==="mybookings" && <Suspense fallback={null}><MyBookingWeeklyView
-          bookings={bookings} currentUser={currentUser} rooms={rooms}
-          onDetail={b=>setModal({type:"detail",data:b})}
-          onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={cancelBooking}
-          onNewBooking={()=>setModal({type:"new",prefill:{}})}
-          authUser={authUser}
-        /></Suspense>}
+
       {view==="mypage" && <Suspense fallback={null}><MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={cancelBooking} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} avatarUrl={authUser?.avatar_url ?? null} /></Suspense>}
       {view==="admin" && <Suspense fallback={null}><AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={adminForceCancelBooking} onDetail={b=>setModal({type:'detail',data:b})} /></Suspense>}
 

@@ -26,7 +26,8 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
 
   const allRooms = roomsProp;
   const filteredRooms = filterFloor==="ALL" ? allRooms.filter(r=>r.is_active) : allRooms.filter(r=>r.is_active&&r.floor_id===parseInt(filterFloor));
-  const filteredBks = filterFloor==="ALL" ? bookings : bookings.filter(b=>filteredRooms.some(r=>r.room_id===b.room_id));
+  const floorFilteredBks = filterFloor==="ALL" ? bookings : bookings.filter(b=>filteredRooms.some(r=>r.room_id===b.room_id));
+  const filteredBks = filterMine ? floorFilteredBks.filter(b=>b.user===currentUser) : floorFilteredBks;
 
   // ── 커스텀 날짜 피커 state ──
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -53,6 +54,19 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
   const dpSelectDate = (ds) => { setSelectedDate(ds); setShowDatePicker(false); };
 
   const dpFirstDay    = new Date(dpYear, dpMonth, 1).getDay();
+
+  // ── 내 예약 필터 + 층 드롭다운 ──
+  const [filterMine, setFilterMine] = useState(false);
+  const [showFloorDrop, setShowFloorDrop] = useState(false);
+  const floorDropRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const h = (e) => { if(floorDropRef.current && !floorDropRef.current.contains(e.target)) setShowFloorDrop(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  // 내 예약 필터 적용
+  const currentFloorLabel = filterFloor==="ALL" ? "전체 층" : (FLOORS.find(f=>f.floor_id===parseInt(filterFloor))?.floor_name ?? "전체 층");
   const dpDaysInMonth = new Date(dpYear, dpMonth+1, 0).getDate();
   const dpCells       = [];
   for(let i=0; i<dpFirstDay; i++) dpCells.push(null);
@@ -61,146 +75,179 @@ export function CalendarShell({bookings, rooms: roomsProp=[], selectedDate, setS
 
   return (
     <div>
-      {/* 툴바 — 모바일: 2행, 데스크탑: 1행 */}
+      {/* 툴바 */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 mb-4"
-        style={{padding: isMobile ? "10px 12px" : "12px 18px", position:"relative", zIndex:50}}>
+        style={{padding: isMobile ? "10px 12px" : "12px 18px", position:"relative", zIndex:50, display:"flex", flexDirection:"column", gap: isMobile ? 8 : 10}}>
 
-        {/* 모바일: 1행 — 뷰탭 + 날짜 네비 */}
-        {/* 데스크탑: 단일 flex 행 */}
-        <div style={{display:"flex", alignItems:"center", gap: isMobile ? 8 : 10,
-          flexWrap: isMobile ? "wrap" : "nowrap", position:"relative"}}>
+        {/* 1행: 날짜 네비 + 뷰 탭 */}
+        <div style={{display:"flex", alignItems:"center", gap:8, position:"relative"}}>
 
-        {/* 뷰 탭 */}
-        <div className="flex dark:bg-slate-700 rounded-xl p-0.5 gap-0.5"
-          style={{background:"#F3F4F8", flexShrink:0, order: isMobile ? 1 : 0}}>
-          {VIEWS.map(v=>(
-            <button key={v.id} className="btn rounded-lg font-semibold"
-              onClick={()=>setCalView(v.id)}
-              style={{
-                background: calView===v.id ? "#111111" : "transparent",
-                color:      calView===v.id ? "#fff"    : "#64748B",
-                padding:    isMobile ? "6px 10px" : "8px 16px",
-                fontSize:   isMobile ? 12 : 13,
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}>
-              {isMobile ? v.label.slice(0,2) : v.label}
-            </button>
-          ))}
-        </div>
+          {/* 날짜 네비 — 좌측 */}
+          <div className="flex items-center gap-1.5" style={{flex:1}}>
+            <button className="btn dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex-shrink-0"
+              style={{padding:"7px 12px", fontSize:18, background:"#F3F4F8", lineHeight:1}} onClick={()=>navigate(-1)}>‹</button>
 
-        {/* 날짜 네비 */}
-        <div className="flex items-center gap-1.5"
-          style={{
-            flex: isMobile ? "1 1 100%" : 1,
-            justifyContent: "center",
-            order: isMobile ? 3 : 1,
-            position: isMobile ? "static" : "absolute",
-            left: isMobile ? "auto" : "50%",
-            transform: isMobile ? "none" : "translateX(-50%)",
-            zIndex: 51,
-          }}>
-          <button className="btn dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex-shrink-0"
-            style={{padding:"7px 14px", fontSize:20, background:"#FFFFFF", lineHeight:1}} onClick={()=>navigate(-1)}>‹</button>
+            {(calView==="timeline"||calView==="daily") ? (
+              <div ref={dpRef} style={{position:"relative", flex:1, minWidth:0}}>
+                <button className="btn dark:bg-slate-700 rounded-lg"
+                  onClick={()=>setShowDatePicker(v=>!v)}
+                  style={{width:"100%", padding:"6px 12px", background:"#F3F4F8", whiteSpace:"nowrap",
+                    border:showDatePicker?"1px solid #111111":"1px solid transparent",
+                    display:"flex", alignItems:"center", gap:6, cursor:"pointer"}}>
+                  <span style={{display:"inline-flex", alignItems:"center", gap:6, fontSize:isMobile?13:15, fontWeight:600, color:"#111111"}}>
+                    <Calendar size={14} strokeWidth={1.8}/> {selectedDate} ({DAY_NAMES[dateToObj(selectedDate).getDay()]})
+                  </span>
+                </button>
+                {showDatePicker && (
+                  <div style={{position:"absolute", top:"calc(100% + 4px)", left:0, zIndex:9999,
+                    background:"#fff", border:"1px solid #E2E8F0", borderRadius:12,
+                    boxShadow:"0 8px 32px rgba(0,0,0,0.12)", padding:"14px", minWidth:260}}>
+                    <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10}}>
+                      <button className="btn" onClick={e=>{e.stopPropagation();dpPrevMonth();}}
+                        style={{background:"none", color:"#111111", padding:"4px 10px", fontSize:16}}>‹</button>
+                      <span style={{fontSize:14, fontWeight:700, color:"#111111"}}>{dpYear}년 {MONTH_NAMES[dpMonth]}</span>
+                      <button className="btn" onClick={e=>{e.stopPropagation();dpNextMonth();}}
+                        style={{background:"none", color:"#111111", padding:"4px 10px", fontSize:16}}>›</button>
+                    </div>
+                    <div style={{display:"grid", gridTemplateColumns:"repeat(7,1fr)", marginBottom:4}}>
+                      {DAY_NAMES.map((n,i)=>(
+                        <div key={n} style={{textAlign:"center", fontSize:10, fontWeight:700,
+                          color:i===0?"#EF4444":i===6?"#3B82F6":"#94A3B8", padding:"2px 0"}}>{n}</div>
+                      ))}
+                    </div>
+                    <div style={{display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2}}>
+                      {dpCells.map((day,idx)=>{
+                        if(!day) return <div key={`e${idx}`}/>;
+                        const ds=`${dpYear}-${fmt2(dpMonth+1)}-${fmt2(day)}`;
+                        const isSel=ds===selectedDate, isToday2=ds===today;
+                        const dow=(dpFirstDay+day-1)%7;
+                        return (
+                          <div key={day} onClick={()=>dpSelectDate(ds)}
+                            style={{textAlign:"center", padding:"5px 2px", borderRadius:6, fontSize:12,
+                              fontWeight:isSel||isToday2?700:400,
+                              background:isSel?"#111111":isToday2?"#EFF6FF":"transparent",
+                              color:isSel?"#fff":isToday2?"#3B82F6":dow===0?"#EF4444":dow===6?"#3B82F6":"#374151",
+                              cursor:"pointer"}}
+                            onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background="#F1F5F9";}}
+                            onMouseLeave={e=>{if(!isSel)e.currentTarget.style.background=isToday2?"#EFF6FF":"transparent";}}>
+                            {day}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{marginTop:10, paddingTop:8, borderTop:"1px solid #F1F5F9", textAlign:"center"}}>
+                      <button className="btn" onClick={()=>dpSelectDate(today)}
+                        style={{background:"#111111", color:"#fff", padding:"5px 16px", fontSize:11, borderRadius:8}}>
+                        오늘로 이동
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <span className="font-semibold text-slate-900 dark:text-white whitespace-nowrap"
+                style={{fontSize: isMobile ? 13 : 15, flex:1}}>
+                {navLabel()}
+              </span>
+            )}
 
-          {(calView==="timeline"||calView==="daily") ? (
-            <div ref={dpRef} style={{position:"relative",flex:1,minWidth:0}}>
-              <button className="btn dark:bg-slate-700 rounded-lg"
-                onClick={()=>setShowDatePicker(v=>!v)}
-                style={{width:"100%",padding:"5px 14px",background:"#FFFFFF",whiteSpace:"nowrap",
-                  border:showDatePicker?"1px solid #111111":"1px solid transparent",
-                  display:"flex",alignItems:"center",justifyContent:"center",gap:6,cursor:"pointer"}}>
-                <span style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:isMobile?14:16,fontWeight:700,color:"#111111"}}>
-                  <Calendar size={14} strokeWidth={1.8}/> {selectedDate} ({DAY_NAMES[dateToObj(selectedDate).getDay()]})
-                </span>
-                {showDatePicker ? null : null}
+            <button className="btn dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex-shrink-0"
+              style={{padding:"7px 12px", fontSize:18, background:"#F3F4F8", lineHeight:1}} onClick={()=>navigate(1)}>›</button>
+            {selectedDate!==todayStr() && (
+              <button className="btn rounded-lg flex-shrink-0"
+                style={{padding:"5px 10px", fontSize:11, background:"#111111", color:"#fff"}} onClick={()=>setSelectedDate(todayStr())}>오늘</button>
+            )}
+          </div>
+
+          {/* 뷰 탭 — 우측 */}
+          <div className="flex dark:bg-slate-700 rounded-xl p-0.5 gap-0.5 flex-shrink-0"
+            style={{background:"#F3F4F8"}}>
+            {VIEWS.map(v=>(
+              <button key={v.id} className="btn rounded-lg font-semibold"
+                onClick={()=>setCalView(v.id)}
+                style={{
+                  background: calView===v.id ? "#111111" : "transparent",
+                  color:      calView===v.id ? "#fff"    : "#64748B",
+                  padding:    isMobile ? "6px 10px" : "7px 14px",
+                  fontSize:   isMobile ? 11 : 12,
+                  whiteSpace: "nowrap",
+                }}>
+                {v.label}
               </button>
-              {showDatePicker && (
-                <div style={{position:"absolute",top:"calc(100% + 4px)",left:"50%",transform:"translateX(-50%)",zIndex:9999,
-                  background:"#fff",border:"1px solid #E2E8F0",borderRadius:12,
-                  boxShadow:"0 8px 32px rgba(0,0,0,0.12)",padding:"14px",minWidth:260}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                    <button className="btn" onClick={e=>{e.stopPropagation();dpPrevMonth();}}
-                      style={{background:"none",color:"#111111",padding:"4px 10px",fontSize:16}}>‹</button>
-                    <span style={{fontSize:14,fontWeight:700,color:"#111111"}}>{dpYear}년 {MONTH_NAMES[dpMonth]}</span>
-                    <button className="btn" onClick={e=>{e.stopPropagation();dpNextMonth();}}
-                      style={{background:"none",color:"#111111",padding:"4px 10px",fontSize:16}}>›</button>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",marginBottom:4}}>
-                    {DAY_NAMES.map((n,i)=>(
-                      <div key={n} style={{textAlign:"center",fontSize:10,fontWeight:700,
-                        color:i===0?"#EF4444":i===6?"#3B82F6":"#94A3B8",padding:"2px 0"}}>{n}</div>
-                    ))}
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
-                    {dpCells.map((day,idx)=>{
-                      if(!day) return <div key={`e${idx}`}/>;
-                      const ds=`${dpYear}-${fmt2(dpMonth+1)}-${fmt2(day)}`;
-                      const isSel=ds===selectedDate, isToday2=ds===today;
-                      const dow=(dpFirstDay+day-1)%7;
-                      return (
-                        <div key={day} onClick={()=>dpSelectDate(ds)}
-                          style={{textAlign:"center",padding:"5px 2px",borderRadius:6,fontSize:12,
-                            fontWeight:isSel||isToday2?700:400,
-                            background:isSel?"#111111":isToday2?"#EFF6FF":"transparent",
-                            color:isSel?"#fff":isToday2?"#3B82F6":dow===0?"#EF4444":dow===6?"#3B82F6":"#374151",
-                            cursor:"pointer"}}
-                          onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background="#F1F5F9";}}
-                          onMouseLeave={e=>{if(!isSel)e.currentTarget.style.background=isToday2?"#EFF6FF":"transparent";}}>
-                          {day}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div style={{marginTop:10,paddingTop:8,borderTop:"1px solid #F1F5F9",textAlign:"center"}}>
-                    <button className="btn" onClick={()=>dpSelectDate(today)}
-                      style={{background:"#111111",color:"#fff",padding:"5px 16px",fontSize:11,borderRadius:8}}>
-                      오늘로 이동
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <span className="font-semibold text-slate-900 dark:text-white whitespace-nowrap"
-              style={{fontSize: isMobile ? 14 : 16, flex:1, textAlign:"center"}}>
-              {navLabel()}
-            </span>
-          )}
-
-          <button className="btn dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex-shrink-0"
-            style={{padding:"7px 14px", fontSize:20, background:"#FFFFFF", lineHeight:1}} onClick={()=>navigate(1)}>›</button>
-          {selectedDate!==todayStr() && (
-            <button className="btn bg-slate-900 dark:bg-slate-700 text-white dark:text-slate-900 rounded-lg flex-shrink-0"
-              style={{padding:"5px 10px", fontSize:11}} onClick={()=>setSelectedDate(todayStr())}>오늘</button>
-          )}
+            ))}
+          </div>
         </div>
 
-        {/* 층 필터 */}
-        <div style={{
-          display:"flex", gap:6, flexShrink:0,
-          order: isMobile ? 2 : 2,
-          marginLeft: isMobile ? 0 : "auto",
-          overflowX: isMobile ? "auto" : "visible",
-          scrollbarWidth: "none",
-          WebkitOverflowScrolling: "touch",
-        }}>
-          {[{id:"ALL",label:"전체"},...FLOORS.map(f=>({id:f.floor_id,label:f?.floor_name}))].map(f=>(
-            <button key={f.id} className="btn rounded-full flex-shrink-0 border"
-              onClick={()=>setFilterFloor(f.id==="ALL"?"ALL":f.id)}
+        {/* 2행: 예약 필터 + 층 드롭다운 */}
+        <div style={{display:"flex", alignItems:"center", gap:8}}>
+
+          {/* 예약 필터 — 전체 예약 / 내 예약 */}
+          <div className="flex dark:bg-slate-700 rounded-xl p-0.5 gap-0.5"
+            style={{background:"#F3F4F8", flexShrink:0}}>
+            <button className="btn rounded-lg font-semibold"
+              onClick={()=>setFilterMine(false)}
               style={{
-                padding: isMobile ? "5px 10px" : "4px 12px",
-                fontSize: 11,
+                background: !filterMine ? "#111111" : "transparent",
+                color:      !filterMine ? "#fff"    : "#64748B",
+                padding:    isMobile ? "5px 10px" : "6px 14px",
+                fontSize:   isMobile ? 11 : 12,
                 whiteSpace: "nowrap",
-                background: filterFloor===(f.id==="ALL"?"ALL":f.id) ? "#111111" : "transparent",
-                color:      filterFloor===(f.id==="ALL"?"ALL":f.id) ? "#fff"    : "#64748B",
-                borderColor: filterFloor===(f.id==="ALL"?"ALL":f.id) ? "#111111" : "#E2E8F0",
               }}>
-              {f.label}
+              전체 예약
             </button>
-          ))}
+            <button className="btn rounded-lg font-semibold"
+              onClick={()=>setFilterMine(true)}
+              style={{
+                background: filterMine ? "#111111" : "transparent",
+                color:      filterMine ? "#fff"    : "#64748B",
+                padding:    isMobile ? "5px 10px" : "6px 14px",
+                fontSize:   isMobile ? 11 : 12,
+                whiteSpace: "nowrap",
+              }}>
+              내 예약
+            </button>
+          </div>
+
+          {/* 층 드롭다운 */}
+          <div ref={floorDropRef} style={{position:"relative", flexShrink:0}}>
+            <button className="btn rounded-xl font-semibold"
+              onClick={()=>setShowFloorDrop(v=>!v)}
+              style={{
+                display:"flex", alignItems:"center", gap:6,
+                padding: isMobile ? "5px 10px" : "6px 14px",
+                fontSize: isMobile ? 11 : 12,
+                background: filterFloor!=="ALL" ? "#111111" : "#F3F4F8",
+                color:      filterFloor!=="ALL" ? "#fff"    : "#64748B",
+                whiteSpace: "nowrap",
+              }}>
+              {currentFloorLabel}
+              <span style={{fontSize:9, opacity:0.7}}>{showFloorDrop ? "▲" : "▼"}</span>
+            </button>
+            {showFloorDrop && (
+              <div style={{
+                position:"absolute", top:"calc(100% + 4px)", left:0, zIndex:9999,
+                background:"#fff", border:"1px solid #E2E8F0", borderRadius:12,
+                boxShadow:"0 8px 24px rgba(0,0,0,0.10)", padding:"6px", minWidth:110,
+              }}>
+                {[{id:"ALL", label:"전체 층"}, ...FLOORS.map(f=>({id:f.floor_id, label:f.floor_name}))].map(f=>(
+                  <button key={f.id} className="btn"
+                    onClick={()=>{setFilterFloor(f.id==="ALL"?"ALL":f.id); setShowFloorDrop(false);}}
+                    style={{
+                      display:"block", width:"100%", textAlign:"left",
+                      padding:"8px 12px", fontSize:12, borderRadius:8,
+                      background: filterFloor===(f.id==="ALL"?"ALL":f.id) ? "#111111" : "transparent",
+                      color:      filterFloor===(f.id==="ALL"?"ALL":f.id) ? "#fff"    : "#374151",
+                    }}
+                    onMouseEnter={e=>{ if(filterFloor!==(f.id==="ALL"?"ALL":f.id)) (e.target as HTMLElement).style.background="#F3F4F8"; }}
+                    onMouseLeave={e=>{ if(filterFloor!==(f.id==="ALL"?"ALL":f.id)) (e.target as HTMLElement).style.background="transparent"; }}>
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-        </div>  {/* flex 행 닫기 */}
+
       </div>
 
       {calView==="monthly"  && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d=>{setSelectedDate(d);setCalView("daily");}} onBookingClick={onBookingClick} rooms={allRooms} currentUser={currentUser} />}
