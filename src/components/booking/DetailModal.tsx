@@ -28,6 +28,8 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
   const startMs = new Date(b.start_at).getTime();
   const adminCanApprove = isAdmin && b.status === 'pending' && !b.autoCancelled && nowMs < startMs - 60_000;
   const isExpiredPending = b.status === 'pending' && b.autoCancelled;
+  // 승인완료된 관리자 전용룸(에메랄드) → 변경 불가, 취소만 가능
+  const isApprovedAdminRoom = !!(r?.is_admin_only && b.status === 'confirmed')
   // 관리자 거절 인라인 flow 상태
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectReasonInput, setRejectReasonInput] = useState('');
@@ -179,7 +181,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
           // pending → 닫기 + 거절 + 승인
           if (adminCanApprove) return btnWrap(<><BtnClose />{onReject&&<BtnReject />}{onApprove&&<BtnApprove />}</>)
           // confirmed 미래 → 닫기 + 변경 + 강제취소
-          if (b.status === 'confirmed' && isFuture) return btnWrap(<><BtnClose />{onEdit&&<BtnEdit />}{onForceCancel&&<BtnForce />}</>)
+          if (b.status === 'confirmed' && isFuture) return btnWrap(<><BtnClose />{onEdit&&!isApprovedAdminRoom&&<BtnEdit />}{onForceCancel&&<BtnForce />}</>)
           // 진행중 → 닫기 + 강제취소
           if (isAct) return btnWrap(<><BtnClose />{onForceCancel&&<BtnForce />}</>)
           return btnWrap(<BtnClose />)
@@ -191,8 +193,8 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
           if (adminCanApprove) return btnWrap(<>{onApprove&&<BtnApprove />}<BtnCancel /></>)
           // 진행중 미체크인 → 체크인 + 취소
           if (isAct && !b.checkedIn) return btnWrap(<><BtnCancel /><BtnCheckin /></>)
-          // 미래 confirmed → 변경 + 취소
-          if (isFuture && b.status === 'confirmed') return btnWrap(<><BtnCancel /><BtnEdit /></>)
+          // 미래 confirmed → 변경 + 취소 (승인완료 에메랄드룸은 취소만)
+          if (isFuture && b.status === 'confirmed') return btnWrap(<><BtnCancel />{!isApprovedAdminRoom&&<BtnEdit />}</>)
           return btnWrap(<BtnClose />)
         }
 
@@ -200,8 +202,8 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         if (isOwner) {
           // 진행중 미체크인 → 체크인 + 취소
           if (isAct && !b.checkedIn) return btnWrap(<><BtnCancel /><BtnCheckin /></>)
-          // 미래 → 변경 + 취소
-          if (isFuture && b.status === 'confirmed') return btnWrap(<><BtnCancel /><BtnEdit /></>)
+          // 미래 → 변경 + 취소 (승인완료 에메랄드룸은 취소만)
+          if (isFuture && b.status === 'confirmed') return btnWrap(<><BtnCancel />{!isApprovedAdminRoom&&<BtnEdit />}</>)
           // pending 미래 → 취소만
           if (isFuture && b.status === 'pending') return btnWrap(<><BtnCancel /></>)
           return btnWrap(<BtnClose />)

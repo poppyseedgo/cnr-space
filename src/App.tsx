@@ -683,11 +683,29 @@ function AppContent() {
     if (!form.room_id || !form.title.trim() || timeToMin(form.start) >= timeToMin(form.end)) {
       showToast("예약 정보를 확인해주세요.", "error"); return false;
     }
+
+    // ── Bug 2 방어: pending 예약은 변경 불가 ──────────────────────────
+    const originalBooking = bookings.find(b => b.id === originalId)
+    if (originalBooking?.status === 'pending') {
+      showToast("승인 대기 중인 예약은 변경할 수 없습니다.", "error"); return false;
+    }
+
+    // ── 승인완료된 에메랄드룸 예약은 변경 불가 ────────────────────────
+    const originalRoom = rooms.find(r => r.room_id === originalBooking?.room_id)
+    if (originalRoom?.is_admin_only && originalBooking?.status === 'confirmed') {
+      showToast("승인 완료된 예약은 변경할 수 없습니다. 취소 후 재예약해주세요.", "error"); return false;
+    }
+
     const otherBookings = bookings.filter(b => b.id !== originalId);
     const check = hasTimeConflict(otherBookings, form.room_id, date, timeToMin(form.start), timeToMin(form.end));
     if (check.conflict) {
       showToast("선택한 시간에 이미 예약이 있습니다.", "error"); return false;
     }
+
+    // ── Bug 1: 변경 후 room이 에메랄드(is_admin_only)면 pending 재설정 ──
+    const newRoom = rooms.find(r => r.room_id === form.room_id)
+    const newStatus = newRoom?.is_admin_only ? 'pending' : 'confirmed'
+
     const changes = {
       room_id:   form.room_id,
       title:     form.title,
@@ -695,6 +713,7 @@ function AppContent() {
       attendees: form.attendees || [],
       start_at:  makeTZ(date, form.start),
       end_at:    makeTZ(date, form.end),
+      status:    newStatus as 'confirmed' | 'pending',
     };
     // 낙관적 UI 업데이트
     setBookings(prev => prev.map(b => b.id === originalId ? { ...b, ...changes } : b));
@@ -743,7 +762,7 @@ function AppContent() {
         beforeData: prevBooking ? { title: prevBooking.title, start_at: prevBooking.start_at, end_at: prevBooking.end_at, room_id: prevBooking.room_id } : undefined,
         afterData:  { title: changes.title, start_at: changes.start_at, end_at: changes.end_at, room_id: changes.room_id }
       }).catch(() => {})
-      showToast("예약이 변경되었습니다.");
+      showToast(newStatus === 'pending' ? "예약이 변경되었습니다. 관리자 승인 후 확정됩니다." : "예약이 변경되었습니다.");
 
       // 이메일 알림 발송
       const updatedB = bookings.find(b => b.id === originalId);
