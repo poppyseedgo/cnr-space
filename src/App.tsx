@@ -566,7 +566,7 @@ function AppContent() {
     try {
       await rejectBooking(id, reason)
       const target = bookings.find(b => b.id === id)
-      setBookings(prev => prev.map(b => b.id===id ? {...b, status:'rejected', autoCancelled:true, cancelledBy:'system'} : b))
+      setBookings(prev => prev.map(b => b.id===id ? {...b, status:'rejected', autoCancelled:true, cancelledBy:'admin'} : b))
       // 거절 이메일 — 예약자·참석자 수신자는 Edge Fn이 DB에서 조회
       if (target) {
         const rejectedRoom = rooms.find(r => r.room_id === target.room_id)

@@ -354,15 +354,17 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
             const isPast    = tsMin(b.end_at) < now
             const minsUntil = tsMin(b.start_at) - now
             const isSoon    = minsUntil > 0 && minsUntil <= 10
-            const cardState: string = b.cancelledBy === 'system' ? "noshow"
-              : b.autoCancelled              ? "cancelled"
-              : b.earlyEnded                ? "earlyEnded"
-              : b.checkedIn && isActive     ? "using"
-              : b.checkedIn                 ? "done"
-              : isActive                    ? "checkin"
-              : isPast                      ? "done"
-              : b.status === 'pending'      ? "pending"
-              : isSoon                      ? "soon"
+            const cardState: string = b.status === 'rejected'       ? "rejected"
+              : b.cancelledBy === 'admin'         ? "adminCancel"
+              : b.cancelledBy === 'system'        ? "noshow"
+              : b.autoCancelled                   ? "cancelled"
+              : b.earlyEnded                      ? "earlyEnded"
+              : b.checkedIn && isActive           ? "using"
+              : b.checkedIn                       ? "done"
+              : isActive                          ? "checkin"
+              : isPast                            ? "done"
+              : b.status === 'pending'            ? "pending"
+              : isSoon                            ? "soon"
               : "waiting"
             const S: any = {
               waiting:    {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                    showBtn:true},
@@ -373,6 +375,8 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
               noshow:     {label:null,           btnBg:"",        btnColor:"",        disabled:true,  action:null,                    showBtn:false},
               done:       {label:"종료",         btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                    showBtn:true},
               earlyEnded: {label:"반납됨",       btnBg:"#DBEAFE", btnColor:"#2563EB", disabled:true,  action:null,                    showBtn:true},
+              adminCancel:{label:"강제취소",      btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                    showBtn:false},
+              rejected:   {label:"거절됨",       btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                    showBtn:false},
               cancelled:  {label:"취소됨",       btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                    showBtn:true},
             }[cardState] ?? {label:"체크인 대기", btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true, action:null, showBtn:true}
             const isCancellable = cardState==="waiting" || cardState==="soon" || cardState==="pending"
@@ -382,7 +386,7 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
                 onClick={()=>onDetail(b)}
                 style={{width:isMobile?"42vw":160, minWidth:140, minHeight:isMobile?120:140,
                   flexShrink:0, cursor:"pointer",
-                  opacity:(cardState==="cancelled"||cardState==="noshow")?0.45:1,
+                  opacity:(cardState==="cancelled"||cardState==="noshow"||cardState==="adminCancel"||cardState==="rejected")?0.45:1,
                   border:cardState==="pending"?"1.5px solid #FCD34D":"none"}}>
                 <div>
                   <div className="text-xs font-semibold text-slate-900 dark:text-white leading-snug line-clamp-2 mb-1.5">{b.title}</div>
