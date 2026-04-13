@@ -43,7 +43,7 @@ export function RoomStatusBadge({ status }: RoomStatusBadgeProps) {
       {type === 'BUSY' && (
         <>
           <span className="chip chip-busy">
-            <span style={{ width: 7, height: 7, borderRadius: '50%',
+            <span className="rec-dot" style={{ width: 7, height: 7, borderRadius: '50%',
               background: '#EC4899', display: 'inline-block', flexShrink: 0 }} />
             사용중
           </span>
