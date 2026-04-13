@@ -34,8 +34,6 @@ export function BookingStatusBadge({
   const tl       = sm - now
   const isOwner  = !!currentUser && b.user === currentUser
 
-  // 디버그 로그 — 확인 후 제거 예정
-  console.log('[내 예약 체크]', { b_user: b.user, currentUser, isOwner })
 
   const hasAny =
     (isOwner && !b.autoCancelled) ||
