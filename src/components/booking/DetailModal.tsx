@@ -140,134 +140,75 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
       </div>
       {/* 버튼 영역 - 항상 하단 고정 */}
       {(()=>{
-        // ── 관리자 버튼 매트릭스 ────────────────────────────────────
-        // 1. pending + 승인가능 → 닫기 + 거절 + 승인
-        // 2. pending + 기한만료  → 닫기
-        // 3. confirmed + 미래(1분 전까지) → 닫기 + 강제취소
-        // 4. confirmed + 시작 이후 → 닫기
-        // ── Admin · 타인 예약 매트릭스 ──────────────────────────────
-        // 체크인: 예약자 본인만 (Admin도 타인 대신 안 함)
-        // 변경:   Admin도 가능 (confirmed, 시작 전, 미취소)
-        // 취소:   본인만 직접 취소 / Admin은 "강제취소"로 구분
-        // 승인/거절: Admin 전용, pending 상태만
-        if (isAdmin && !isOwner) {
-          const adminCanEdit        = isFuture && !b.autoCancelled && !b.checkedIn && b.status === 'confirmed'
-          const adminCanForceCancel = isFuture && !b.autoCancelled && b.status === 'confirmed'
-          return (
-            <div style={{flexShrink:0, borderTop:"1px solid #F1F5F9"}}>
-              {/* 거절 사유 인라인 입력 영역 */}
-              {showRejectInput && (
-                <div style={{padding: isMobile?"12px 20px 0":"12px 24px 0"}}>
-                  <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"12px 14px",marginBottom:8}}>
-                    <div style={{fontSize:11,color:"#92400E",marginBottom:8,fontWeight:600}}>⚠️ 거절 시 예약이 즉시 취소되며 신청자에게 알림이 발송됩니다</div>
-                    <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:6}}>거절 사유 (신청자에게 전달됩니다)</label>
-                    <textarea
-                      value={rejectReasonInput}
-                      onChange={e=>setRejectReasonInput(e.target.value)}
-                      rows={2}
-                      placeholder="거절 사유를 입력하세요 (선택)"
-                      style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #E2E8F0",fontSize:12,outline:"none",resize:"none",background:"#fff",boxSizing:"border-box" as const}}
-                    />
-                  </div>
-                  <div style={{display:"flex",gap:8,marginBottom:8}}>
-                    <button className="btn" onClick={()=>{setShowRejectInput(false);setRejectReasonInput('');}}
-                      style={{flex:1,background:"#F1F5F9",color:"#64748B",padding:"10px 8px",borderRadius:10,fontSize:12}}>
-                      취소
-                    </button>
-                    <button className="btn" onClick={()=>{onReject(b.id, rejectReasonInput||'');setShowRejectInput(false);setRejectReasonInput('');onClose();}}
-                      style={{flex:2,background:"#DC2626",color:"#fff",padding:"10px 8px",borderRadius:10,fontSize:12,fontWeight:600}}>
-                      거절 확정
-                    </button>
-                  </div>
-                </div>
-              )}
-              {/* 기본 버튼 행 */}
-              {!showRejectInput && (
-                <div style={{padding: isMobile?"12px 20px 24px":"12px 24px 20px", display:"flex", gap:8}}>
-                  <button className="btn" onClick={onClose}
-                    style={{flex:1, background:"#F1F5F9", color:"#64748B", padding:"13px 8px", borderRadius:12}}>
-                    닫기
-                  </button>
-                  {adminCanEdit && onEdit && (
-                    <button className="btn" onClick={()=>{ onClose(); onEdit(b); }}
-                      style={{flex:1, background:"#EFF6FF", border:"1px solid #BFDBFE", color:"#1D4ED8",
-                        padding:"13px 8px", fontSize: isMobile?12:13, fontWeight:600, borderRadius:12}}>
-                      예약 변경
-                    </button>
-                  )}
-                  {adminCanApprove && onReject && (
-                    <button className="btn" onClick={()=>setShowRejectInput(true)}
-                      style={{flex:1, background:"#FEF2F2", border:"1px solid #FCA5A5", color:"#DC2626",
-                        padding:"13px 8px", fontSize: isMobile?12:13, borderRadius:12}}>
-                      <span style={{display:"inline-flex",alignItems:"center",gap:5}}>
-                        <ShieldX size={13} strokeWidth={2}/>거절
-                      </span>
-                    </button>
-                  )}
-                  {adminCanApprove && onApprove && (
-                    <button className="btn" onClick={()=>{onApprove(b.id);onClose();}}
-                      style={{flex:2, background:"#16A34A", color:"#fff",
-                        padding:"13px 8px", fontSize: isMobile?13:14, fontWeight:600, borderRadius:12}}>
-                      <span style={{display:"inline-flex",alignItems:"center",gap:5}}>
-                        <ShieldCheck size={14} strokeWidth={2}/>승인
-                      </span>
-                    </button>
-                  )}
-                  {adminCanForceCancel && onForceCancel && (
-                    <button className="btn" onClick={()=>{onForceCancel(b.id,'관리자 강제취소');onClose();}}
-                      style={{flex:1, background:"#FEF2F2", border:"1px solid #FCA5A5", color:"#DC2626",
-                        padding:"13px 8px", fontSize: isMobile?12:13, borderRadius:12}}>
-                      강제취소
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          )
-        }
-
-        // ── 사용자 매트릭스 (본인 예약 — Admin 포함) ────────────────
-        // 체크인: 진행 중 + 미체크인
-        // 변경:   confirmed + 시작 전 + 미취소 + 미체크인
-        // 취소:   시작 전 + 미취소
-        const showCheckin = isAct && !b.checkedIn
-        const showEdit    = isFuture && !b.autoCancelled && !b.checkedIn && b.status === 'confirmed'
-        const showCancel  = isFuture && !b.autoCancelled
-        const showClose   = !showCheckin && !showEdit && !showCancel
-        return (
-          <div style={{padding: isMobile ? "12px 20px 24px" : "12px 24px 20px", display:"flex", gap:8, flexShrink:0,
-            borderTop: "1px solid #F1F5F9"}}>
-            {showCheckin && (
-              <button className="btn" onClick={()=>{onCheckIn(b.id);onClose();}}
-                style={{flex:2, background:"#16A34A", color:"#fff",
-                  padding:"13px 8px", fontSize: isMobile ? 13 : 14, fontWeight:600, borderRadius:12}}>
-                <span style={{display:"inline-flex",alignItems:"center",gap:5}}>
-                  <CheckCircle2 size={14} strokeWidth={2}/>체크인하기
-                </span>
-              </button>
-            )}
-            {showEdit && (
-              <button className="btn" onClick={()=>{ onClose(); onEdit(b); }}
-                style={{flex:1, background:"#EFF6FF", border:"1px solid #BFDBFE", color:"#1D4ED8",
-                  padding:"13px 8px", fontSize: isMobile ? 12 : 13, fontWeight:600, borderRadius:12}}>
-                예약 변경
-              </button>
-            )}
-            {showCancel && (
-              <button className="btn" onClick={()=>onCancel(b.id)}
-                style={{flex:1, background:"#FEF2F2", border:"1px solid #FCA5A5", color:"#DC2626",
-                  padding:"13px 8px", fontSize: isMobile ? 12 : 13, borderRadius:12}}>
-                예약 취소
-              </button>
-            )}
-            {showClose && (
-              <button className="btn" onClick={onClose}
-                style={{flex:1, background:"#F1F5F9", color:"#64748B", padding:"13px 8px", borderRadius:12}}>
-                닫기
-              </button>
-            )}
+        const btnWrap = (children: React.ReactNode) => (
+          <div style={{padding: isMobile?"12px 20px 24px":"12px 24px 20px", display:"flex", gap:8, flexShrink:0, borderTop:"1px solid #F1F5F9"}}>
+            {children}
           </div>
         )
+        const BtnClose    = () => <button className="btn" onClick={onClose} style={{flex:1,background:"#F1F5F9",color:"#64748B",padding:"13px 8px",borderRadius:12}}>닫기</button>
+        const BtnCancel   = () => <button className="btn" onClick={()=>onCancel(b.id)} style={{flex:1,background:"#FEF2F2",border:"1px solid #FCA5A5",color:"#DC2626",padding:"13px 8px",fontSize:isMobile?12:13,borderRadius:12}}>예약 취소</button>
+        const BtnEdit     = () => <button className="btn" onClick={()=>{onClose();onEdit(b);}} style={{flex:1,background:"#EFF6FF",border:"1px solid #BFDBFE",color:"#1D4ED8",padding:"13px 8px",fontSize:isMobile?12:13,fontWeight:600,borderRadius:12}}>예약 변경</button>
+        const BtnCheckin  = () => <button className="btn" onClick={()=>{onCheckIn(b.id);onClose();}} style={{flex:2,background:"#16A34A",color:"#fff",padding:"13px 8px",fontSize:isMobile?13:14,fontWeight:600,borderRadius:12}}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><CheckCircle2 size={14} strokeWidth={2}/>체크인하기</span></button>
+        const BtnApprove  = () => <button className="btn" onClick={()=>{onApprove(b.id);onClose();}} style={{flex:2,background:"#16A34A",color:"#fff",padding:"13px 8px",fontSize:isMobile?13:14,fontWeight:600,borderRadius:12}}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><ShieldCheck size={14} strokeWidth={2}/>승인</span></button>
+        const BtnReject   = () => <button className="btn" onClick={()=>setShowRejectInput(true)} style={{flex:1,background:"#FEF2F2",border:"1px solid #FCA5A5",color:"#DC2626",padding:"13px 8px",fontSize:isMobile?12:13,borderRadius:12}}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><ShieldX size={13} strokeWidth={2}/>거절</span></button>
+        const BtnForce    = () => <button className="btn" onClick={()=>{onForceCancel(b.id,'관리자 강제취소');onClose();}} style={{flex:1,background:"#FEF2F2",border:"1px solid #FCA5A5",color:"#DC2626",padding:"13px 8px",fontSize:isMobile?12:13,borderRadius:12}}>강제취소</button>
+
+        // ── 1. 종료/취소/노쇼/거절/조기반납 → 닫기 ─────────────────
+        const isDone = b.autoCancelled || b.status === 'rejected' || b.earlyEnded || (!isFuture && !isAct)
+        if (isDone) return btnWrap(<BtnClose />)
+
+        // ── 2. Admin · 타인 ──────────────────────────────────────────
+        if (isAdmin && !isOwner) {
+          // 거절 사유 입력 flow
+          if (showRejectInput) return (
+            <div style={{flexShrink:0, borderTop:"1px solid #F1F5F9"}}>
+              <div style={{padding: isMobile?"12px 20px 0":"12px 24px 0"}}>
+                <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"12px 14px",marginBottom:8}}>
+                  <div style={{fontSize:11,color:"#92400E",marginBottom:8,fontWeight:600}}>⚠️ 거절 시 예약이 즉시 취소되며 신청자에게 알림이 발송됩니다</div>
+                  <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:6}}>거절 사유 (신청자에게 전달됩니다)</label>
+                  <textarea value={rejectReasonInput} onChange={e=>setRejectReasonInput(e.target.value)} rows={2} placeholder="거절 사유를 입력하세요 (선택)"
+                    style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #E2E8F0",fontSize:12,outline:"none",resize:"none",background:"#fff",boxSizing:"border-box" as const}} />
+                </div>
+                <div style={{display:"flex",gap:8,marginBottom:8}}>
+                  <button className="btn" onClick={()=>{setShowRejectInput(false);setRejectReasonInput('');}} style={{flex:1,background:"#F1F5F9",color:"#64748B",padding:"10px 8px",borderRadius:10,fontSize:12}}>취소</button>
+                  <button className="btn" onClick={()=>{onReject(b.id,rejectReasonInput||'');setShowRejectInput(false);setRejectReasonInput('');onClose();}} style={{flex:2,background:"#DC2626",color:"#fff",padding:"10px 8px",borderRadius:10,fontSize:12,fontWeight:600}}>거절 확정</button>
+                </div>
+              </div>
+            </div>
+          )
+          // pending → 닫기 + 거절 + 승인
+          if (adminCanApprove) return btnWrap(<><BtnClose />{onReject&&<BtnReject />}{onApprove&&<BtnApprove />}</>)
+          // confirmed 미래 → 닫기 + 변경 + 강제취소
+          if (b.status === 'confirmed' && isFuture) return btnWrap(<><BtnClose />{onEdit&&<BtnEdit />}{onForceCancel&&<BtnForce />}</>)
+          // 진행중 → 닫기 + 강제취소
+          if (isAct) return btnWrap(<><BtnClose />{onForceCancel&&<BtnForce />}</>)
+          return btnWrap(<BtnClose />)
+        }
+
+        // ── 3. Admin · 본인 ──────────────────────────────────────────
+        if (isAdmin && isOwner) {
+          // pending → 취소 + 승인 (Admin은 본인 예약 직접 승인 가능)
+          if (adminCanApprove) return btnWrap(<>{onApprove&&<BtnApprove />}<BtnCancel /></>)
+          // 진행중 미체크인 → 체크인 + 취소
+          if (isAct && !b.checkedIn) return btnWrap(<><BtnCancel /><BtnCheckin /></>)
+          // 미래 confirmed → 변경 + 취소
+          if (isFuture && b.status === 'confirmed') return btnWrap(<><BtnCancel /><BtnEdit /></>)
+          return btnWrap(<BtnClose />)
+        }
+
+        // ── 4. 유저 · 본인 ────────────────────────────────────────────
+        if (isOwner) {
+          // 진행중 미체크인 → 체크인 + 취소
+          if (isAct && !b.checkedIn) return btnWrap(<><BtnCancel /><BtnCheckin /></>)
+          // 미래 → 변경 + 취소
+          if (isFuture && b.status === 'confirmed') return btnWrap(<><BtnCancel /><BtnEdit /></>)
+          // pending 미래 → 취소만
+          if (isFuture && b.status === 'pending') return btnWrap(<><BtnCancel /></>)
+          return btnWrap(<BtnClose />)
+        }
+
+        // ── 5. 타인 예약 (비어있는 상태) → 닫기 ─────────────────────
+        return btnWrap(<BtnClose />)
       })()}
     </div>
   );
