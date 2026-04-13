@@ -11,11 +11,11 @@ interface BookingStatusBadgeProps {
   size?:        'md' | 'sm' | 'xs'
 }
 
-/** size별 chip 크기 override — 색상은 chip-* 클래스가 담당 */
-const CHIP_SIZE = {
-  md: {},
-  sm: { fontSize: 9,  padding: '2px 7px'  },
-  xs: { fontSize: 8,  padding: '1px 4px', borderRadius: 3 },
+/** size별 chip modifier 클래스 — tokens.css 정의 */
+const SIZE_CLASS = {
+  md: '',
+  sm: 'chip--sm',
+  xs: 'chip--xs',
 } as const
 
 export function BookingStatusBadge({
@@ -69,11 +69,11 @@ export function BookingStatusBadge({
 
   if (!hasAny) return null
 
-  const cs  = CHIP_SIZE[size]
+  const sizeClass = SIZE_CLASS[size]
   const gap = size === 'xs' ? 3 : 5
 
   const C = ({ cls, children }: { cls: string; children: React.ReactNode }) => (
-    <span className={`chip ${cls}`} style={cs}>{children}</span>
+    <span className={`chip ${sizeClass} ${cls}`.trim()}>{children}</span>
   )
 
   return (
@@ -105,7 +105,7 @@ export function BookingStatusBadge({
 
       {/* ⑨ 진행 중 */}
       {isAct && !b.autoCancelled && (
-        <span className="chip" style={{ ...cs, background: (r?.color ?? '#6366F1') + '18', color: r?.color ?? '#6366F1' }}>
+        <span className={`chip ${sizeClass}`.trim()} style={{ background: (r?.color ?? '#6366F1') + '18', color: r?.color ?? '#6366F1' }}>
           진행 중
         </span>
       )}

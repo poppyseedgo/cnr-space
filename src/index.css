@@ -220,19 +220,13 @@
   }
 
   /* ── 칩 (상태 뱃지) ── */
+  /* base 클래스만 여기에. 색상·사이즈 modifier는 tokens.css 단일 관리 */
   .chip {
     display: inline-flex; align-items: center; gap: 4px;
     padding: 3px 10px; border-radius: var(--radius-full);
     font-size: 11px; font-weight: 600; letter-spacing: 0.2px;
     white-space: nowrap;
   }
-  .chip-available { background: var(--color-available-bg);  color: var(--color-available-text); }
-  .chip-busy      { background: var(--color-busy-bg);       color: var(--color-busy-text); }
-  .chip-soon      { background: var(--color-soon-bg);       color: var(--color-soon-text); }
-  .chip-pending   { background: var(--color-pending-bg);    color: var(--color-pending-text); }
-  .chip-success   { background: var(--color-success-bg);    color: var(--color-success-text); }
-  .chip-danger    { background: var(--color-danger-bg);     color: var(--color-danger-text); }
-  .chip-neutral   { background: #F1F5F9; color: #64748B; }
 
   /* ── 회의실 카드 ── */
   .room-card {

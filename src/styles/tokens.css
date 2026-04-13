@@ -31,24 +31,32 @@
   --sab: env(safe-area-inset-bottom, 0px);
 }
 
-/* ── 상태 칩 클래스 ── */
-.chip-available  { background: var(--color-available-bg);  color: var(--color-available-text); }
-.chip-busy       { background: var(--color-busy-bg);       color: var(--color-busy-text); }
-.chip-soon       { background: var(--color-soon-bg);       color: var(--color-soon-text); }
-.chip-pending    { background: var(--color-pending-bg);    color: var(--color-pending-text); }
-.chip-success    { background: var(--color-success-bg);    color: var(--color-success-text); }
-.chip-danger     { background: var(--color-danger-bg);     color: var(--color-danger-text); }
-.chip-neutral    { background: var(--color-neutral-bg);    color: var(--color-neutral-text); }
-.chip-mine       { background: var(--color-mine-bg);       color: var(--color-mine-text); }
-.chip-admin      { background: var(--color-admin-bg);      color: var(--color-admin-text); }
+/* ── 칩 사이즈 modifier ─────────────────────────────────────────────────────
+   base .chip (md) : font-size 11px / padding 3px 10px  — index.css 정의
+   .chip--sm       : font-size  9px / padding 2px 7px
+   .chip--xs       : font-size  8px / padding 1px 4px   / border-radius 3px
+─────────────────────────────────────────────────────────────────────────── */
+.chip--sm { font-size: 9px;  padding: 2px 7px; }
+.chip--xs { font-size: 8px;  padding: 1px 4px; border-radius: 3px; }
+
+/* ── 상태 칩 색상 클래스 (단일 소스 — index.css 중복 제거됨) ── */
+.chip-available     { background: var(--color-available-bg);     color: var(--color-available-text); }
+.chip-busy          { background: var(--color-busy-bg);          color: var(--color-busy-text); }
+.chip-soon          { background: var(--color-soon-bg);          color: var(--color-soon-text); }
+.chip-pending       { background: var(--color-pending-bg);       color: var(--color-pending-text); }
+.chip-success       { background: var(--color-success-bg);       color: var(--color-success-text); }
+.chip-danger        { background: var(--color-danger-bg);        color: var(--color-danger-text); }
+.chip-neutral       { background: var(--color-neutral-bg);       color: var(--color-neutral-text); }
+.chip-mine          { background: var(--color-mine-bg);          color: var(--color-mine-text); }
+.chip-admin         { background: var(--color-admin-bg);         color: var(--color-admin-text); }
 .chip-earlyend      { background: var(--color-earlyend-bg);      color: var(--color-earlyend-text); }
 .chip-countdown     { background: var(--color-countdown-bg);     color: var(--color-countdown-text); }
 .chip-checkin-wait  { background: var(--color-checkin-wait-bg);  color: var(--color-checkin-wait-text); }
 .chip-done          { background: var(--color-done-bg);          color: var(--color-done-text); }
 .chip-noshow        { background: var(--color-noshow-bg);        color: var(--color-noshow-text); }
 .chip-approved      { background: var(--color-approved-bg);      color: var(--color-approved-text); }
-.chip-expired       { background: var(--color-expired-bg);        color: var(--color-expired-text); }
-.chip-rejected      { background: var(--color-rejected-bg);       color: var(--color-rejected-text); }
+.chip-expired       { background: var(--color-expired-bg);       color: var(--color-expired-text); }
+.chip-rejected      { background: var(--color-rejected-bg);      color: var(--color-rejected-text); }
 
 /* 카드 호버 */
 .card-hover { transition: box-shadow 0.22s, transform 0.22s; }
