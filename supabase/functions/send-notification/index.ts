@@ -213,13 +213,6 @@ function getEmailHtml(type: string, booking: any, isAttendee = false): string {
                   <span style="font-size:13px;color:#111;font-weight:500;">${booking.user_name} (${booking.user_dept})</span>
                 </td>
               </tr>
-              ${isAttendee ? `
-              <tr>
-                <td style="padding:6px 0;">
-                  <span style="display:inline-block;width:72px;font-size:12px;color:#6B7280;font-weight:600;">구분</span>
-                  <span style="font-size:13px;color:#4F46E5;font-weight:600;">${role}</span>
-                </td>
-              </tr>` : ''}
               ${booking.memo ? `
               <tr>
                 <td style="padding:6px 0;">

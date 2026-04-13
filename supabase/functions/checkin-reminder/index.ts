@@ -54,6 +54,14 @@ function fmtTime(ts: string): string {
   return `${h < 12 ? '오전' : '오후'} ${h === 0 ? 12 : h > 12 ? h - 12 : h}:${p(k.getUTCMinutes())}`
 }
 
+function fmtDate(ts: string): string {
+  const d = new Date(ts)
+  const k = new Date(d.getTime() + 9 * 60 * 60 * 1000)
+  const days = ['일','월','화','수','목','금','토']
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${k.getUTCFullYear()}년 ${p(k.getUTCMonth()+1)}월 ${p(k.getUTCDate())}일 (${days[k.getUTCDay()]})`
+}
+
 // ── ① 10분 전 알림 — 체크인 버튼 없음 ─────────────────────────────────────
 function makeBefore10Html(b: any, recipientName: string, isAttendee: boolean): string {
   return `<!DOCTYPE html>
@@ -71,16 +79,20 @@ function makeBefore10Html(b: any, recipientName: string, isAttendee: boolean): s
         <p style="margin:0 0 18px;font-size:14px;color:#374151;font-weight:600;">${b.title}</p>
         <table width="100%" style="background:#F0F9FF;border-radius:10px;padding:14px 18px;">
           <tr><td style="padding:5px 0;">
-            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">시작</span>
-            <span style="font-size:13px;color:#0E7490;font-weight:700;">${fmtTime(b.start_at)}</span>
+            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">날짜</span>
+            <span style="font-size:13px;color:#111;">${fmtDate(b.start_at)}</span>
           </td></tr>
           <tr><td style="padding:5px 0;">
-            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">종료</span>
-            <span style="font-size:13px;color:#111;">${fmtTime(b.end_at)}</span>
+            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">시간</span>
+            <span style="font-size:13px;color:#0E7490;font-weight:700;">${fmtTime(b.start_at)} – ${fmtTime(b.end_at)}</span>
           </td></tr>
           <tr><td style="padding:5px 0;">
             <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">회의실</span>
             <span style="font-size:13px;color:#111;">${b.room_name ?? b.room_id + 'F'}</span>
+          </td></tr>
+          <tr><td style="padding:5px 0;">
+            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">예약자</span>
+            <span style="font-size:13px;color:#111;">${b.user_name}</span>
           </td></tr>
         </table>
         <div style="margin:16px 0 0;padding:12px 14px;background:#F0F9FF;border-radius:8px;border-left:3px solid #0891B2;">
@@ -114,16 +126,20 @@ function makeStartHtml(b: any, recipientName: string, isAttendee: boolean): stri
         <p style="margin:0 0 18px;font-size:14px;color:#374151;font-weight:600;">${b.title}</p>
         <table width="100%" style="background:#F0FDF4;border-radius:10px;padding:14px 18px;">
           <tr><td style="padding:5px 0;">
-            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">시작</span>
-            <span style="font-size:13px;color:#16A34A;font-weight:700;">${fmtTime(b.start_at)}</span>
+            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">날짜</span>
+            <span style="font-size:13px;color:#111;">${fmtDate(b.start_at)}</span>
           </td></tr>
           <tr><td style="padding:5px 0;">
-            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">종료</span>
-            <span style="font-size:13px;color:#111;">${fmtTime(b.end_at)}</span>
+            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">시간</span>
+            <span style="font-size:13px;color:#16A34A;font-weight:700;">${fmtTime(b.start_at)} – ${fmtTime(b.end_at)}</span>
           </td></tr>
           <tr><td style="padding:5px 0;">
             <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">회의실</span>
             <span style="font-size:13px;color:#111;">${b.room_name ?? b.room_id + 'F'}</span>
+          </td></tr>
+          <tr><td style="padding:5px 0;">
+            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">예약자</span>
+            <span style="font-size:13px;color:#111;">${b.user_name}</span>
           </td></tr>
         </table>
         <div style="margin:16px 0 0;padding:12px 14px;background:#FEF9C3;border-radius:8px;border-left:3px solid #EAB308;">
@@ -166,12 +182,20 @@ function makeAfter5Html(b: any, recipientName: string, isAttendee: boolean): str
         </div>
         <table width="100%" style="background:#F8FAFC;border-radius:10px;padding:12px 16px;">
           <tr><td style="padding:4px 0;">
-            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">시작</span>
-            <span style="font-size:13px;color:#111;">${fmtTime(b.start_at)}</span>
+            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">날짜</span>
+            <span style="font-size:13px;color:#111;">${fmtDate(b.start_at)}</span>
+          </td></tr>
+          <tr><td style="padding:4px 0;">
+            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">시간</span>
+            <span style="font-size:13px;color:#111;">${fmtTime(b.start_at)} – ${fmtTime(b.end_at)}</span>
           </td></tr>
           <tr><td style="padding:4px 0;">
             <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">회의실</span>
             <span style="font-size:13px;color:#111;">${b.room_name ?? b.room_id + 'F'}</span>
+          </td></tr>
+          <tr><td style="padding:4px 0;">
+            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">예약자</span>
+            <span style="font-size:13px;color:#111;">${b.user_name}</span>
           </td></tr>
         </table>
         <div style="margin:16px 0 0;text-align:center;">
@@ -210,7 +234,7 @@ Deno.serve(async (req: Request) => {
     const before10 = new Date(now.getTime() + 10 * 60 * 1000)
     const { data: upcoming } = await supabase
       .from('bookings')
-      .select('*, profiles!bookings_user_id_fkey(email, name), booking_attendees(email, name)')
+      .select('*, profiles!bookings_user_id_fkey(email, name)')
       .gte('start_at', new Date(before10.getTime() - 30000).toISOString())
       .lte('start_at', new Date(before10.getTime() + 30000).toISOString())
       .eq('auto_cancelled', false)
@@ -232,14 +256,7 @@ Deno.serve(async (req: Request) => {
           bookingId: b.id,
         })
       }
-      // 참석자 이메일 — booking_attendees 테이블에서 조회
-      const attendeeEmails = (b.booking_attendees ?? [])
-        .map((a: any) => a.email)
-        .filter((e: string) => e && e !== userEmail)
-      if (attendeeEmails.length > 0) {
-        await sendEmail(attendeeEmails, `[C&R SPACE] ⏰ 10분 후 시작 — ${b.title}`, makeBefore10Html(b, '참석자', true))
-        totalSent++
-      }
+      // 참석자 이메일 미발송 (예약자만 수신)
     }
 
     // ── ② 예약 시작 시각 알림 (체크인 버튼 포함) ────────────────────────
@@ -281,7 +298,7 @@ Deno.serve(async (req: Request) => {
     const after5 = new Date(now.getTime() - 5 * 60 * 1000)
     const { data: started } = await supabase
       .from('bookings')
-      .select('*, profiles!bookings_user_id_fkey(email, name), booking_attendees(email, name)')
+      .select('*, profiles!bookings_user_id_fkey(email, name)')
       .gte('start_at', new Date(after5.getTime() - 30000).toISOString())
       .lte('start_at', new Date(after5.getTime() + 30000).toISOString())
       .eq('auto_cancelled', false)
@@ -304,14 +321,7 @@ Deno.serve(async (req: Request) => {
           bookingId: b.id,
         })
       }
-      // 참석자 이메일 — booking_attendees 테이블에서 조회
-      const attendeeEmails = (b.booking_attendees ?? [])
-        .map((a: any) => a.email)
-        .filter((e: string) => e && e !== userEmail)
-      if (attendeeEmails.length > 0) {
-        await sendEmail(attendeeEmails, `[C&R SPACE] ⚠️ 5분 후 자동취소 — ${b.title}`, makeAfter5Html(b, '참석자', true))
-        totalSent++
-      }
+      // 참석자 이메일 미발송 (예약자만 수신)
     }
 
     return new Response(
