@@ -169,7 +169,7 @@ function getEmailHtml(type: string, booking: any, isAttendee = false): string {
   return `<!DOCTYPE html>
 <html lang="ko">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background:#F8FAFC;font-family:'Apple SD Gothic Neo',Pretendard,-apple-system,sans-serif;">
+<body style="margin:0;padding:0;background:#F8FAFC;font-family:'Pretendard','Arial','Malgun Gothic','맑은 고딕',sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC;padding:32px 16px;">
     <tr><td align="center">
       <table width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
