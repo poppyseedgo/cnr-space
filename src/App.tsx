@@ -964,6 +964,16 @@ function AppContent() {
   // ── 미로그인 → 로그인 페이지 ──
   if (!authUser) return <LoginPage />
 
+
+  // ── 모달 chunk 사전 로드 — 초기 렌더 후 1초 뒤 preload ──────────────────────
+  useEffect(() => {
+    const t = setTimeout(() => {
+      import('./components/booking/DetailModal')
+      import('./components/booking/BookingModal')
+    }, 1000)
+    return () => clearTimeout(t)
+  }, [])
+
   // ── 데이터 로딩 중 ──
   if (loading) {
     if (!showSkeleton) return null; // 100ms 미만이면 아무것도 표시 안 함
@@ -1274,7 +1284,11 @@ function AppContent() {
             zIndex:1000,
             padding: isMobile ? 0 : 16,
           }}>
-          <Suspense fallback={null}>
+          <Suspense fallback={
+            <div style={{position:'fixed',inset:0,zIndex:1001,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
+              <div style={{width:36,height:36,border:'3px solid #E2E8F0',borderTopColor:'#111',borderRadius:'50%',animation:'spin 0.7s linear infinite'}}/>
+            </div>
+          }>
             {modal.type==="new"         && <BookingModal prefill={modal.prefill} date={modal.date||selectedDate} onClose={()=>setModal(null)} onSubmit={addBooking} onUpdate={()=>false} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} />}
             {modal.type==="edit"         && <BookingModal prefill={{}} editBooking={modal.data} date={tsDate(modal.data.start_at)} onClose={()=>setModal(null)} onSubmit={async ()=>false} onUpdate={(form,date)=>updateBooking(form,date,modal.data.id)} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} />}
             {modal.type==="detail"      && <DetailModal booking={modal.data} onClose={()=>setModal(null)} onCheckIn={checkIn} onCancel={cancelBooking} onEdit={(b)=>setModal({type:"edit",data:b})} currentUser={currentUser} rooms={rooms} users={users} isAdmin={isAdmin} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={adminForceCancelBooking} />}
