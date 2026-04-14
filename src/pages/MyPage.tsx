@@ -441,12 +441,10 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
         <WeeklyView
           bookings={myBookings}
           selectedDate={selectedDate}
-          onDateClick={setSelectedDate}
           onBlockClick={onDetail}
           onEmptyClick={()=>{}}
-          onCheckIn={onCheckIn}
-          fillContainer={true}
           rooms={rooms}
+          currentUser={currentUser}
         />
       </div>
     </div>
