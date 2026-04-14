@@ -585,28 +585,48 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
 
           {/* ── 그리드 바디 ── */}
           <div style={{ position: 'relative' }} id="weekly-body">
-            {/* 현재시간 인디케이터 (오늘 포함 주만) */}
-            {weekContainsToday && nowPx >= 0 && nowPx <= HOURS.length * HOUR_H && (() => {
-              const todayIdx = days.indexOf(today)
-              return (
-                <div style={{ position: 'absolute', left: 0, right: 0, top: nowPx,
-                  height: 19, zIndex: 8, pointerEvents: 'none', transform: 'translateY(-50%)' }}>
-                  {/* pill */}
-                  <div style={{ position: 'absolute', left: 4, top: 0, height: 19,
-                    padding: '0 8px', background: '#FF393C', borderRadius: 24,
-                    display: 'flex', alignItems: 'center', zIndex: 3 }}>
+            {/* 현재시간 인디케이터 — flex 구조로 열과 동일하게 움직임 */}
+            {weekContainsToday && nowPx >= 0 && nowPx <= HOURS.length * HOUR_H && (
+              <div style={{
+                position: 'absolute', left: 0, right: 0,
+                top: nowPx - 9,   /* pill 높이(19px) 절반 중앙 정렬 */
+                height: 19, zIndex: 8, pointerEvents: 'none',
+                display: 'flex', alignItems: 'center',
+              }}>
+                {/* 시간 레이블 열: pill */}
+                <div style={{ width: TIME_W, minWidth: TIME_W, flexShrink: 0,
+                  display: 'flex', alignItems: 'center', paddingLeft: 4 }}>
+                  <div style={{ height: 19, padding: '0 8px', background: '#FF393C',
+                    borderRadius: 24, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
                     <span style={{ fontSize: 11, fontWeight: 500, color: '#fff', whiteSpace: 'nowrap' }}>
                       {fmt2(Math.floor(now/60))}:{fmt2(now%60)}
                     </span>
                   </div>
-                  {/* week line — 전체 7열 관통, 연한 라인 */}
-                  <div style={{ position: 'absolute', left: 4 + 39, right: 0,
-                    top: 9, height: 2, background: '#FFCACA' }} />
-                  {/* today dot + line — 오늘 열만 진하게 */}
-                  <TodayNowLine todayIdx={todayIdx} totalCols={7} timeW={TIME_W} />
                 </div>
-              )
-            })()}
+                {/* 요일 열: 각 열이 자기 영역의 라인을 직접 그림 → flex:1 변화에 자동 추적 */}
+                {days.map((ds, i) => {
+                  const isToday2 = ds === today
+                  return (
+                    <div key={ds} style={{ flex: 1, minWidth: 0, position: 'relative', height: 19,
+                      borderRight: i < days.length - 1 ? '1px solid transparent' : 'none' }}>
+                      {/* week line — 모든 열: #FFCACA 연한 라인 */}
+                      <div style={{ position: 'absolute', left: 0, right: 0, top: 8, height: 2, background: '#FFCACA' }} />
+                      {/* today dot + line — 오늘 열만: #FF393C 진한 라인 + dot */}
+                      {isToday2 && (
+                        <>
+                          <div style={{
+                            position: 'absolute', left: -5, top: 4,
+                            width: 10, height: 10, borderRadius: '50%',
+                            background: '#FF373B', border: '1.5px solid #fff', zIndex: 4,
+                          }} />
+                          <div style={{ position: 'absolute', left: 0, right: 0, top: 8, height: 2, background: '#FF393C', zIndex: 3 }} />
+                        </>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
 
             {/* 시간 행 */}
             {HOURS.map(h => (
@@ -673,44 +693,6 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
           </div>
         </div>
       </div>
-    </div>
-  )
-}
-
-// 오늘 열 dot + line — 열 인덱스 기반으로 위치 계산
-function TodayNowLine({ todayIdx, totalCols, timeW }: { todayIdx: number; totalCols: number; timeW: number }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState<{ left: number; width: number } | null>(null)
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    // 부모(relative div) 기준 today 열 위치 계산
-    const parent = el.closest('[id="weekly-body"]')?.parentElement
-    if (!parent) return
-    const parentRect = parent.getBoundingClientRect()
-    const colW = (parentRect.width - timeW) / totalCols
-    const left = timeW + todayIdx * colW
-    setPos({ left, width: colW })
-  }, [todayIdx, totalCols, timeW])
-
-  return (
-    <div ref={ref}>
-      {pos && (
-        <>
-          {/* today dot */}
-          <div style={{
-            position: 'absolute', left: pos.left - 5, top: 4,
-            width: 10, height: 10, borderRadius: '50%',
-            background: '#FF373B', border: '1.5px solid #fff', zIndex: 4,
-          }} />
-          {/* today line */}
-          <div style={{
-            position: 'absolute', left: pos.left, top: 9,
-            width: pos.width, height: 2, background: '#FF393C', zIndex: 3,
-          }} />
-        </>
-      )}
     </div>
   )
 }
