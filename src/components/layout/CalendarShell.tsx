@@ -10,6 +10,35 @@ import {
 import { FLOORS, getFloor } from '../../data/floors'
 import type { Booking, Room } from '../../types'
 
+// ── 툴바 아이콘 SVG (Figma 기준) ──────────────────────────────────────────────
+const IcoBack = () => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <path d="M13.25 17.5L6 10.25L13.25 3L13.896 3.646L7.292 10.25L13.896 16.854L13.25 17.5Z" fill="#1c1b1f"/>
+  </svg>
+)
+const IcoForward = () => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <path d="M6.646 17.5L6 16.854L12.604 10.25L6 3.646L6.646 3L13.896 10.25L6.646 17.5Z" fill="#1c1b1f"/>
+  </svg>
+)
+const IcoChevronDown = ({ color = '#d0d0d0' }: { color?: string }) => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <path d="M10 12.5L5 7.5L5.625 6.875L10 11.25L14.375 6.875L15 7.5L10 12.5Z" fill={color}/>
+  </svg>
+)
+// 데이트피커 좌/우 화살표 (zip 파일 기준)
+const IcoDpBack = () => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <path d="M7.4375 10.25L11.6875 6L12 6.3125L8.0625 10.25L12 14.1875L11.6875 14.5L7.4375 10.25Z" fill="#111111"/>
+  </svg>
+)
+const IcoDpForward = () => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <path d="M12.5625 9.75L8.3125 14L8 13.6875L11.9375 9.75L8 5.8125L8.3125 5.5L12.5625 9.75Z" fill="#111111"/>
+  </svg>
+)
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── CalendarShell ────────────────────────────────────────────────────────────
 export function CalendarShell({
   bookings, rooms: roomsProp = [], selectedDate, setSelectedDate,
@@ -108,10 +137,11 @@ export function CalendarShell({
 
         {/* ① 날짜 네비 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 0, flex: isMobile ? 'none' : 1 }}>
-          {/* arrow_back_ios */}
-          <button className="btn dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex-shrink-0"
-            style={{ padding: '7px 12px', fontSize: 18, background: '#F3F4F8', lineHeight: 1 }}
-            onClick={() => navigate(-1)}>‹</button>
+          <button className="btn" onClick={() => navigate(-1)}
+            style={{ width: 20, height: 20, padding: 0, background: 'none', border: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+            <IcoBack />
+          </button>
 
           {calView === 'daily' ? (
             <div ref={dpRef} style={{ position: 'relative', minWidth: 0 }}>
@@ -123,7 +153,7 @@ export function CalendarShell({
                   borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
                   height: 33,
                 }}>
-                <span style={{ fontSize: 19, fontWeight: 600, color: '#111111',
+                <span style={{ fontSize: 20, fontWeight: 500, color: '#111111',
                   fontFamily: "'Pretendard', -apple-system, sans-serif" }}>
                   {(() => { const d = dateToObj(selectedDate); return `${d.getFullYear()}년 ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}일 ${DAY_NAMES[d.getDay()]}요일` })()}
                 </span>
@@ -136,10 +166,14 @@ export function CalendarShell({
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                     <button className="btn" onClick={e => { e.stopPropagation(); dpMonth === 0 ? (setDpYear(y => y-1), setDpMonth(11)) : setDpMonth(m => m-1) }}
-                      style={{ background: 'none', color: '#111111', padding: '4px 10px', fontSize: 16 }}>‹</button>
-                    <span style={{ fontSize: 14, fontWeight:600, color: '#111111' }}>{dpYear}년 {MONTH_NAMES[dpMonth]}</span>
+                      style={{ background: 'none', border: 'none', padding: '4px 8px', display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M7.4375 10.25L11.6875 6L12 6.3125L8.0625 10.25L12 14.1875L11.6875 14.5L7.4375 10.25Z" fill="#111111"/></svg>
+                    </button>
+                    <span style={{ fontSize: 14, fontWeight:500, color: '#111111' }}>{dpYear}년 {MONTH_NAMES[dpMonth]}</span>
                     <button className="btn" onClick={e => { e.stopPropagation(); dpMonth === 11 ? (setDpYear(y => y+1), setDpMonth(0)) : setDpMonth(m => m+1) }}
-                      style={{ background: 'none', color: '#111111', padding: '4px 10px', fontSize: 16 }}>›</button>
+                      style={{ background: 'none', border: 'none', padding: '4px 8px', display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M12.5625 9.75L8.3125 14L8 13.6875L11.9375 9.75L8 5.8125L8.3125 5.5L12.5625 9.75Z" fill="#111111"/></svg>
+                    </button>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', marginBottom: 4 }}>
                     {DAY_NAMES.map((n, i) => (
@@ -178,7 +212,7 @@ export function CalendarShell({
           ) : (
             <div style={{ padding: '5px 14px', border: 'none', borderRadius: 8, height: 33,
               display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontSize: 19, fontWeight: 600, color: '#111111',
+              <span style={{ fontSize: 20, fontWeight: 500, color: '#111111',
                 fontFamily: "'Pretendard', -apple-system, sans-serif", whiteSpace: 'nowrap' }}>
                 {navLabel()}
               </span>
@@ -186,9 +220,11 @@ export function CalendarShell({
           )}
 
           {/* arrow_forward_ios */}
-          <button className="btn dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex-shrink-0"
-            style={{ padding: '7px 12px', fontSize: 18, background: '#F3F4F8', lineHeight: 1 }}
-            onClick={() => navigate(1)}>›</button>
+          <button className="btn" onClick={() => navigate(1)}
+            style={{ width: 20, height: 20, padding: 0, background: 'none', border: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+            <IcoForward />
+          </button>
           {selectedDate !== today && (
             <button className="btn rounded-full flex-shrink-0"
               style={{ padding: '5px 12px', fontSize: 12, fontWeight: 500, background: '#111111', color: '#fff',
@@ -223,7 +259,10 @@ export function CalendarShell({
               background: '#111111', color: '#fff', cursor: 'pointer', height: 32,
             }}>
             {currentFloorLabel}
-            <span style={{ fontSize: 9, opacity: 0.7 }}>{showFloorDrop ? '▲' : '▼'}</span>
+            <svg width="9" height="5" viewBox="0 0 9 5" fill="none" xmlns="http://www.w3.org/2000/svg"
+              style={{transform: showFloorDrop ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s'}}>
+              <path d="M4.25 4.5625L0 0.3125L0.3125 0L4.25 3.9375L8.1875 0L8.5 0.3125L4.25 4.5625Z" fill="#d0d0d0"/>
+            </svg>
           </button>
           {showFloorDrop && (
             <div style={{
