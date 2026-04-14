@@ -973,19 +973,18 @@ function AppContent() {
                        : HomeSkeleton;
     return (
       <div style={{background:'#F3F4F8', minHeight:'100vh'}}>
-        {/* 헤더 스켈레톤 */}
-        <div style={{background:'#fff', height:52, borderBottom:'1px solid #E2E8F0',
-          display:'flex', alignItems:'center', padding:'0 28px', gap:12}}>
-          <div className="sk-block" style={{width:88, height:20, borderRadius:6}} />
+        {/* 헤더 스켈레톤 — 좌:로고pill / 중:nav2개 / 우:유저pill */}
+        <div style={{background:'#fff', height:60, borderBottom:'1px solid #E2E8F0',
+          display:'flex', alignItems:'center', padding:'0 28px'}}>
+          {/* 좌: 로고 */}
+          <div className="sk-block" style={{width:120, height:36, borderRadius:999, flexShrink:0}} />
+          {/* 중: 네비 탭 2개 — 가운데 정렬 */}
           <div style={{flex:1, display:'flex', justifyContent:'center', gap:8}}>
-            <div className="sk-block" style={{width:100, height:32, borderRadius:999}} />
-            <div className="sk-block" style={{width:100, height:32, borderRadius:999}} />
-            <div className="sk-block" style={{width:100, height:32, borderRadius:999}} />
+            <div className="sk-block" style={{width:120, height:36, borderRadius:999}} />
+            <div className="sk-block" style={{width:120, height:36, borderRadius:999}} />
           </div>
-          <div style={{display:'flex', gap:10}}>
-            <div className="sk-block" style={{width:32, height:32, borderRadius:'50%'}} />
-            <div className="sk-block" style={{width:32, height:32, borderRadius:'50%'}} />
-          </div>
+          {/* 우: 유저 정보 */}
+          <div className="sk-block" style={{width:180, height:36, borderRadius:999, flexShrink:0}} />
         </div>
         <SkeletonComp />
       </div>
