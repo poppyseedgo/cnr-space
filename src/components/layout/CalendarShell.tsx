@@ -107,7 +107,20 @@ export function CalendarShell({
           gap: isMobile ? 8 : 10, alignItems: isMobile ? 'stretch' : 'center',
         }}>
 
-        {/* 날짜 네비 */}
+        {/* ① 뷰 탭 — 맨 앞 */}
+        <div className="flex dark:bg-slate-700 rounded-xl p-0.5 gap-0.5 flex-shrink-0" style={{ background: '#F3F4F8' }}>
+          {VIEWS.map(v => (
+            <button key={v.id} className="btn rounded-lg font-semibold" onClick={() => setCalView(v.id)}
+              style={{
+                background: calView===v.id ? '#111111' : 'transparent',
+                color:      calView===v.id ? '#fff'    : '#64748B',
+                padding: isMobile ? '6px 10px' : '7px 14px',
+                fontSize: isMobile ? 11 : 12, whiteSpace: 'nowrap',
+              }}>{v.label}</button>
+          ))}
+        </div>
+
+        {/* ② 날짜 네비 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: isMobile ? 'none' : 1 }}>
           <button className="btn dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex-shrink-0"
             style={{ padding: '7px 12px', fontSize: 18, background: '#F3F4F8', lineHeight: 1 }}
@@ -188,73 +201,56 @@ export function CalendarShell({
           )}
         </div>
 
-        {/* 필터 + 뷰탭 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          {/* 내 예약 필터 */}
-          <div className="flex dark:bg-slate-700 rounded-xl p-0.5 gap-0.5" style={{ background: '#F3F4F8' }}>
-            {([{ v: false, l: '전체 예약' }, { v: true, l: '내 예약' }] as const).map(({ v, l }) => (
-              <button key={l} className="btn rounded-lg font-semibold" onClick={() => setFilterMine(v)}
-                style={{
-                  background: filterMine===v ? '#111111' : 'transparent',
-                  color:      filterMine===v ? '#fff'    : '#64748B',
-                  padding: isMobile ? '5px 10px' : '6px 14px',
-                  fontSize: isMobile ? 11 : 12, whiteSpace: 'nowrap',
-                }}>{l}</button>
-            ))}
-          </div>
+        {/* ③ 층 드롭다운 — 항상 블랙 (어떤 층이든 선택된 상태) */}
+        <div ref={floorDropRef} style={{ position: 'relative', flexShrink: 0 }}>
+          <button className="btn rounded-xl font-semibold" onClick={() => setShowFloorDrop(v => !v)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: isMobile ? '5px 10px' : '6px 14px',
+              fontSize: isMobile ? 11 : 12, whiteSpace: 'nowrap',
+              background: '#111111', color: '#fff',
+            }}>
+            {currentFloorLabel}
+            <span style={{ fontSize: 9, opacity: 0.7 }}>{showFloorDrop ? '▲' : '▼'}</span>
+          </button>
+          {showFloorDrop && (
+            <div style={{
+              position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 9999,
+              background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.10)', padding: 6, minWidth: 110,
+            }}>
+              {([{ id: 'ALL', label: '전체 층' }, ...FLOORS.map(f => ({ id: f.floor_id, label: f.floor_name }))] as { id: any; label: string }[]).map(f => {
+                const isActive = filterFloor === (f.id === 'ALL' ? 'ALL' : f.id)
+                return (
+                  <button key={f.id} className="btn"
+                    onClick={() => { setFilterFloor(f.id === 'ALL' ? 'ALL' : f.id); setShowFloorDrop(false) }}
+                    style={{
+                      display: 'block', width: '100%', textAlign: 'left',
+                      padding: '8px 12px', fontSize: 12, borderRadius: 8,
+                      background: isActive ? '#111111' : 'transparent',
+                      color:      isActive ? '#fff'    : '#374151',
+                    }}
+                    onMouseEnter={e => { if (!isActive) (e.target as HTMLElement).style.background = '#F3F4F8' }}
+                    onMouseLeave={e => { if (!isActive) (e.target as HTMLElement).style.background = 'transparent' }}>
+                    {f.label}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
 
-          {/* 층 드롭다운 */}
-          <div ref={floorDropRef} style={{ position: 'relative', flexShrink: 0 }}>
-            <button className="btn rounded-xl font-semibold" onClick={() => setShowFloorDrop(v => !v)}
+        {/* ④ 전체예약/내예약 필터 */}
+        <div className="flex dark:bg-slate-700 rounded-xl p-0.5 gap-0.5 flex-shrink-0" style={{ background: '#F3F4F8' }}>
+          {([{ v: false, l: '전체 예약' }, { v: true, l: '내 예약' }] as const).map(({ v, l }) => (
+            <button key={l} className="btn rounded-lg font-semibold" onClick={() => setFilterMine(v)}
               style={{
-                display: 'flex', alignItems: 'center', gap: 6,
+                background: filterMine===v ? '#111111' : 'transparent',
+                color:      filterMine===v ? '#fff'    : '#64748B',
                 padding: isMobile ? '5px 10px' : '6px 14px',
                 fontSize: isMobile ? 11 : 12, whiteSpace: 'nowrap',
-                background: filterFloor !== 'ALL' ? '#111111' : '#F3F4F8',
-                color:      filterFloor !== 'ALL' ? '#fff'    : '#64748B',
-              }}>
-              {currentFloorLabel}
-              <span style={{ fontSize: 9, opacity: 0.7 }}>{showFloorDrop ? '▲' : '▼'}</span>
-            </button>
-            {showFloorDrop && (
-              <div style={{
-                position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 9999,
-                background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
-                boxShadow: '0 8px 24px rgba(0,0,0,0.10)', padding: 6, minWidth: 110,
-              }}>
-                {([{ id: 'ALL', label: '전체 층' }, ...FLOORS.map(f => ({ id: f.floor_id, label: f.floor_name }))] as { id: any; label: string }[]).map(f => {
-                  const isActive = filterFloor === (f.id === 'ALL' ? 'ALL' : f.id)
-                  return (
-                    <button key={f.id} className="btn"
-                      onClick={() => { setFilterFloor(f.id === 'ALL' ? 'ALL' : f.id); setShowFloorDrop(false) }}
-                      style={{
-                        display: 'block', width: '100%', textAlign: 'left',
-                        padding: '8px 12px', fontSize: 12, borderRadius: 8,
-                        background: isActive ? '#111111' : 'transparent',
-                        color:      isActive ? '#fff'    : '#374151',
-                      }}
-                      onMouseEnter={e => { if (!isActive) (e.target as HTMLElement).style.background = '#F3F4F8' }}
-                      onMouseLeave={e => { if (!isActive) (e.target as HTMLElement).style.background = 'transparent' }}>
-                      {f.label}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* 뷰 탭 */}
-          <div className="flex dark:bg-slate-700 rounded-xl p-0.5 gap-0.5 flex-shrink-0" style={{ background: '#F3F4F8' }}>
-            {VIEWS.map(v => (
-              <button key={v.id} className="btn rounded-lg font-semibold" onClick={() => setCalView(v.id)}
-                style={{
-                  background: calView===v.id ? '#111111' : 'transparent',
-                  color:      calView===v.id ? '#fff'    : '#64748B',
-                  padding: isMobile ? '6px 10px' : '7px 14px',
-                  fontSize: isMobile ? 11 : 12, whiteSpace: 'nowrap',
-                }}>{v.label}</button>
-            ))}
-          </div>
+              }}>{l}</button>
+          ))}
         </div>
       </div>
 
@@ -506,8 +502,8 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
 export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick, rooms = [], currentUser = '' }) {
   const today     = todayStr()
   const now       = nowMinutes()
-  const HOUR_H    = 130
-  const TIME_W    = 68
+  const HOUR_H    = 140   // 1시간 행 높이 (Figma 스펙)
+  const TIME_W    = 64    // 시간 레이블 열 너비
 
   const weekStart = getWeekStart(selectedDate)
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
@@ -517,6 +513,8 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
   const weekContainsToday = days.includes(today)
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  const todayColRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     if (!scrollRef.current) return
     scrollRef.current.scrollTop = Math.max(0, nowPx - 200)
@@ -536,34 +534,48 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
     return `${h < 12 ? '오전' : '오후'} ${h12}:${fmt2(min)}`
   }
 
+  // 요일별 색상
+  const dayColor = (dow: number, isToday2: boolean) => {
+    if (dow === 0) return '#EF4444'
+    if (dow === 6) return '#3B82F6'
+    return '#333333'
+  }
+
   return (
     <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden' }}>
       <div ref={scrollRef} style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 180px)', overflowX: 'auto' }}>
-        <div style={{ minWidth: TIME_W + days.length * 180, position: 'relative' }}>
+        <div style={{ minWidth: TIME_W + days.length * 140, position: 'relative' }}>
 
-          {/* 요일 헤더 (sticky top) */}
+          {/* ── 요일 헤더 (sticky top) ── */}
           <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 10,
-            background: '#F8FAFC', borderBottom: '2px solid #E2E8F0' }}>
+            background: '#fff', borderBottom: '2px solid #E2E8F0' }}>
+            {/* 코너 */}
             <div style={{ width: TIME_W, minWidth: TIME_W, flexShrink: 0,
               borderRight: '1px solid #E2E8F0', position: 'sticky', left: 0,
-              zIndex: 11, background: '#F8FAFC' }} />
-            {days.map(ds => {
-              const d = dateToObj(ds), dow = d.getDay()
+              zIndex: 11, background: '#fff' }} />
+            {/* 요일 컬럼 */}
+            {days.map((ds, i) => {
+              const d      = dateToObj(ds)
+              const dow    = d.getDay()
               const isToday2 = ds === today
-              const dayColor = dow===0 ? '#EF4444' : dow===6 ? '#3B82F6' : '#64748B'
+              const color  = dayColor(dow, isToday2)
+              const fw     = isToday2 ? 600 : 400
               return (
-                <div key={ds} style={{ flex: 1, minWidth: 0, padding: '10px 8px 8px',
-                  textAlign: 'center', borderRight: '1px solid #E2E8F0',
-                  background: isToday2 ? '#EFF6FF' : 'transparent' }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: dayColor }}>{DAY_NAMES[dow]}</div>
-                  <div style={{
-                    width: 28, height: 28, margin: '4px auto 0',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    borderRadius: '50%', fontSize: 13, fontWeight: 700,
-                    background: isToday2 ? '#111111' : 'transparent',
-                    color: isToday2 ? '#fff' : dow===0 ? '#EF4444' : dow===6 ? '#3B82F6' : '#374151',
-                  }}>{d.getDate()}</div>
-                  <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>
+                <div key={ds} style={{
+                  flex: 1, minWidth: 0, textAlign: 'center',
+                  padding: '12px 4px 10px',
+                  borderRight: i < days.length - 1 ? '1px solid #E2E8F0' : 'none',
+                  background: isToday2 ? '#EFF6FF' : 'transparent',
+                }}>
+                  {/* 요일명: 토#3B82F6 / 일#EF4444 / 평일#333 / 오늘fw600 */}
+                  <div style={{ fontSize: 12, fontWeight: fw, color, lineHeight: 1.5,
+                    fontFamily: "'Pretendard', -apple-system, sans-serif" }}>
+                    {['일','월','화','수','목','금','토'][dow]}
+                  </div>
+                  {/* N월 N일: 동일 색상 체계 */}
+                  <div style={{ fontSize: 12, fontWeight: fw, color, marginTop: 3,
+                    fontFamily: "'Pretendard', -apple-system, sans-serif" }}
+                    ref={isToday2 ? todayColRef : undefined}>
                     {d.getMonth()+1}월 {d.getDate()}일
                   </div>
                 </div>
@@ -571,19 +583,30 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
             })}
           </div>
 
-          {/* 그리드 바디 */}
-          <div style={{ position: 'relative' }}>
-            {/* 현재 시간 가로선 */}
-            {weekContainsToday && nowPx >= 0 && nowPx <= HOURS.length * HOUR_H && (
-              <div style={{ position: 'absolute', left: 0, right: 0, top: nowPx,
-                height: 2, background: '#EF4444', zIndex: 8, pointerEvents: 'none' }}>
-                <div style={{ position: 'absolute', left: 4, top: -11,
-                  fontSize: 10, fontWeight: 700, color: '#EF4444',
-                  background: '#fff', padding: '1px 4px', borderRadius: 3, whiteSpace: 'nowrap' }}>
-                  {fmt2(Math.floor(now/60))}:{fmt2(now%60)}
+          {/* ── 그리드 바디 ── */}
+          <div style={{ position: 'relative' }} id="weekly-body">
+            {/* 현재시간 인디케이터 (오늘 포함 주만) */}
+            {weekContainsToday && nowPx >= 0 && nowPx <= HOURS.length * HOUR_H && (() => {
+              const todayIdx = days.indexOf(today)
+              return (
+                <div style={{ position: 'absolute', left: 0, right: 0, top: nowPx,
+                  height: 19, zIndex: 8, pointerEvents: 'none', transform: 'translateY(-50%)' }}>
+                  {/* pill */}
+                  <div style={{ position: 'absolute', left: 4, top: 0, height: 19,
+                    padding: '0 8px', background: '#FF393C', borderRadius: 24,
+                    display: 'flex', alignItems: 'center', zIndex: 3 }}>
+                    <span style={{ fontSize: 11, fontWeight: 500, color: '#fff', whiteSpace: 'nowrap' }}>
+                      {fmt2(Math.floor(now/60))}:{fmt2(now%60)}
+                    </span>
+                  </div>
+                  {/* week line — 전체 7열 관통, 연한 라인 */}
+                  <div style={{ position: 'absolute', left: 4 + 39, right: 0,
+                    top: 9, height: 2, background: '#FFCACA' }} />
+                  {/* today dot + line — 오늘 열만 진하게 */}
+                  <TodayNowLine todayIdx={todayIdx} totalCols={7} timeW={TIME_W} />
                 </div>
-              </div>
-            )}
+              )
+            })()}
 
             {/* 시간 행 */}
             {HOURS.map(h => (
@@ -592,7 +615,7 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
                 <div style={{
                   width: TIME_W, minWidth: TIME_W, flexShrink: 0,
                   padding: '8px 10px 0 0', textAlign: 'right', alignSelf: 'flex-start',
-                  fontSize: 11, fontWeight: 600, color: '#94A3B8',
+                  fontSize: 11, fontWeight: 400, color: '#333333',
                   borderRight: '1px solid #E2E8F0',
                   position: 'sticky', left: 0, background: '#fff', zIndex: 5,
                 }}>
@@ -600,18 +623,18 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
                 </div>
 
                 {/* 요일 셀 */}
-                {days.map(ds => {
+                {days.map((ds, i) => {
                   const isToday2 = ds === today
                   const cellBks  = getCellBks(ds, h)
                   const visible  = cellBks.slice(0, 5)
                   const overflow = cellBks.length - 5
-
                   return (
                     <div key={ds}
                       onClick={() => onEmptyClick(ds, h)}
                       style={{
                         flex: 1, minWidth: 0, padding: '4px 5px',
-                        borderRight: '1px solid #E2E8F0', cursor: 'pointer',
+                        borderRight: i < days.length - 1 ? '1px solid #F1F5F9' : 'none',
+                        cursor: 'pointer',
                         background: isToday2 ? '#FAFEFF' : 'transparent',
                         minHeight: HOUR_H, transition: 'background 0.1s',
                       }}
@@ -623,12 +646,12 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
                             onClick={e => { e.stopPropagation(); onBlockClick(b) }}
                             style={{
                               display: 'flex', alignItems: 'center', gap: 5,
-                              height: 20, padding: '0 6px', borderRadius: 4,
+                              height: 20, padding: '0 8px', borderRadius: 6,
                               background: isToday2 ? '#1F232A' : '#E7E7E7',
                               color:      isToday2 ? '#FFFFFF' : '#1F232A',
                               cursor: 'pointer', overflow: 'hidden', flexShrink: 0,
                             }}>
-                            <span style={{ fontSize: 10, fontWeight: 500, flexShrink: 0, opacity: 0.7, whiteSpace: 'nowrap' }}>
+                            <span style={{ fontSize: 10, fontWeight: 400, flexShrink: 0, opacity: 0.7, whiteSpace: 'nowrap' }}>
                               {fmtAmPm(b.start_at)}
                             </span>
                             <span style={{ fontSize: 10, fontWeight: 500, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1 }}>
@@ -653,3 +676,43 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
     </div>
   )
 }
+
+// 오늘 열 dot + line — 열 인덱스 기반으로 위치 계산
+function TodayNowLine({ todayIdx, totalCols, timeW }: { todayIdx: number; totalCols: number; timeW: number }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ left: number; width: number } | null>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    // 부모(relative div) 기준 today 열 위치 계산
+    const parent = el.closest('[id="weekly-body"]')?.parentElement
+    if (!parent) return
+    const parentRect = parent.getBoundingClientRect()
+    const colW = (parentRect.width - timeW) / totalCols
+    const left = timeW + todayIdx * colW
+    setPos({ left, width: colW })
+  }, [todayIdx, totalCols, timeW])
+
+  return (
+    <div ref={ref}>
+      {pos && (
+        <>
+          {/* today dot */}
+          <div style={{
+            position: 'absolute', left: pos.left - 5, top: 4,
+            width: 10, height: 10, borderRadius: '50%',
+            background: '#FF373B', border: '1.5px solid #fff', zIndex: 4,
+          }} />
+          {/* today line */}
+          <div style={{
+            position: 'absolute', left: pos.left, top: 9,
+            width: pos.width, height: 2, background: '#FF393C', zIndex: 3,
+          }} />
+        </>
+      )}
+    </div>
+  )
+}
+
+

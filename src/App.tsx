@@ -52,7 +52,7 @@ function AppContent() {
     if (v === 'home')     setHomeFilterFloor('ALL')
     if (v === 'calendar') setCalFilterFloor('ALL')
   }
-  const [calView, setCalView]     = useState("timeline");
+  const [calView, setCalView]     = useState("daily");
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [modal, setModal]         = useState(null);
   const [toast, setToast]         = useState(null);
@@ -1230,7 +1230,7 @@ function AppContent() {
 
       {/* ── Views ── */}
       {(view==="home"||view==="calendar") && (
-        <div style={{maxWidth:1280, margin:"0 auto", padding: isMobile?"16px 12px":"28px 28px"}}>
+        <div style={{maxWidth:1400, margin:"0 auto", padding: isMobile?"16px 12px":"28px 28px"}}>
           {view==="home"     && <HomeView     bookings={bookings} rooms={rooms} tick={tick} searchQ={searchQ} setSearchQ={setSearchQ} filterFloor={homeFilterFloor} setFilterFloor={setHomeFilterFloor} onBook={(r, status)=>{
               // 바로예약: 지금 시각부터 다음 예약 직전까지 자동 설정
               const now = nowMinutes();
