@@ -579,10 +579,10 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
 
           {/* ── 요일 헤더 (sticky top) ── */}
           <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 10,
-            background: '#fff', borderBottom: '2px solid #E2E8F0' }}>
+            background: '#fff', borderBottom: '1px solid #E2E8F0' }}>
             {/* 코너 */}
             <div style={{ width: TIME_W, minWidth: TIME_W, flexShrink: 0,
-              borderRight: '1px solid #E2E8F0', position: 'sticky', left: 0,
+              boxShadow: 'inset -1px 0 0 #E2E8F0', position: 'sticky', left: 0,
               zIndex: 11, background: '#fff' }} />
             {/* 요일 컬럼 */}
             {days.map((ds, i) => {
@@ -667,7 +667,7 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
                   width: TIME_W, minWidth: TIME_W, flexShrink: 0,
                   padding: '8px 10px 0 0', textAlign: 'right', alignSelf: 'flex-start',
                   fontSize: 11, fontWeight: 400, color: '#333333',
-                  borderRight: '1px solid #E2E8F0',
+                  boxShadow: 'inset -1px 0 0 #E2E8F0',
                   position: 'sticky', left: 0, background: '#fff', zIndex: 5,
                 }}>
                   {h < 12 ? `오전 ${h}시` : h === 12 ? '오후 12시' : `오후 ${h-12}시`}
