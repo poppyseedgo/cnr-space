@@ -171,7 +171,7 @@ export function CalendarShell({
                 borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
                 height: 33, userSelect: 'none', WebkitUserSelect: 'none',
               }}>
-              <span style={{ fontSize: 20, fontWeight: 500, color: '#111111',
+              <span style={{ fontSize: 19, fontWeight: 500, color: '#111111',
                 fontFamily: "'Pretendard', -apple-system, sans-serif",
                 userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'none' }}>
                 {calView === 'daily'
@@ -239,16 +239,18 @@ export function CalendarShell({
               display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
             <IcoForward />
           </button>
+          {/* 오늘 버튼 — datepicker 10px 옆에 위치 */}
+          {selectedDate !== today && (
+            <button className="btn"
+              style={{ marginLeft: 10, padding: '4px 10px', fontSize: 11, fontWeight: 500,
+                background: '#111111', color: '#fff', borderRadius: 999, border: 'none',
+                cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}
+              onClick={() => setSelectedDate(today)}>오늘</button>
+          )}
         </div>
 
         {/* ── 우: 오늘버튼(조건) + 층 드롭다운 + 필터탭 ── */}
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10 }}>
-          {selectedDate !== today && (
-            <button className="btn"
-              style={{ padding: '5px 12px', fontSize: 12, fontWeight: 500, background: '#111111', color: '#fff',
-                borderRadius: 999, border: 'none', cursor: 'pointer', flexShrink: 0 }}
-              onClick={() => setSelectedDate(today)}>오늘</button>
-          )}
           {/* 층 드롭다운 */}
           <div ref={floorDropRef} style={{ position: 'relative', flexShrink: 0 }}>
             <button className="btn" onClick={() => setShowFloorDrop(v => !v)}
