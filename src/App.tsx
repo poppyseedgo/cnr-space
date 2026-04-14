@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react'
+import { Bell, Calendar, Home, LogOut, Settings, User } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtTSFull, fmtTSRangeFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
@@ -13,10 +14,10 @@ import { HomeSkeleton, CalendarSkeleton, MyPageSkeleton } from './components/ske
 import { initGlobalRipple } from './hooks/useGlobalRipple'
 import { CalendarShell } from './components/layout/CalendarShell'
 // ── 무거운 페이지는 lazy load — 초기 번들에서 제외 ─────────────────────────
+import { BookingDoneModal } from './components/booking/BookingDoneModal'
+import { RecurDoneModal } from './components/booking/RecurDoneModal'
 const BookingModal        = lazy(() => import('./components/booking/BookingModal').then(m => ({ default: m.BookingModal })))
 const DetailModal         = lazy(() => import('./components/booking/DetailModal').then(m => ({ default: m.DetailModal })))
-const BookingDoneModal    = lazy(() => import('./components/booking/BookingDoneModal').then(m => ({ default: m.BookingDoneModal })))
-const RecurDoneModal      = lazy(() => import('./components/booking/RecurDoneModal').then(m => ({ default: m.RecurDoneModal })))
 const MyPageView          = lazy(() => import('./pages/MyPage').then(m => ({ default: m.MyPageView })))
 import { UserAvatar } from './components/common/UserAvatar'
 const AdminView           = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminView })))
@@ -1013,8 +1014,8 @@ function AppContent() {
             {(view==="home"||view==="calendar") ? (
               <div className="flex dark:bg-slate-700 rounded-full p-1 gap-1" style={{background:"#F3F4F8"}}>
                 {([
-                  ["home",       <span className="material-symbols-outlined" style={{fontSize:14}}>home</span>,     "실시간 현황", "현황"]    as const,
-                  ["calendar",   <span className="material-symbols-outlined" style={{fontSize:14}}>calendar_today</span>,  "캘린더 뷰",  "캘린더"]  as const,
+                  ["home",       <Home size={14} strokeWidth={1.8}/>,     "실시간 현황", "현황"]    as const,
+                  ["calendar",   <Calendar size={14} strokeWidth={1.8}/>,  "캘린더 뷰",  "캘린더"]  as const,
                 ] as [string, React.ReactElement, string, string][]).map(([v,icon,label,mLabel])=>(
                   <button key={v} onClick={()=>setView(v)}
                     className="btn flex items-center gap-1.5 rounded-full font-semibold transition-all whitespace-nowrap"
@@ -1051,7 +1052,7 @@ function AppContent() {
                     display:"flex",alignItems:"center",justifyContent:"center",
                     background:showNotifPanel?(dark?"rgba(255,255,255,0.1)":"#F1F5F9"):"transparent",
                     color:dark?"#94A3B8":"#64748B"}}>
-                  <span className="material-symbols-outlined" style={{fontSize:18}}>notifications</span>
+                  <Bell size={18} strokeWidth={1.8}/>
                   {unreadCount > 0 && (
                     <span style={{position:"absolute",top:4,right:4,
                       background:"#EF4444",color:"#fff",
@@ -1197,7 +1198,7 @@ function AppContent() {
                           display:"flex",alignItems:"center",gap:8}}
                         onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
                         onMouseLeave={e=>e.currentTarget.style.background=view==="mypage"?"#F8FAFC":"transparent"}>
-                        <span className="material-symbols-outlined" style={{fontSize:15}}>person</span> My Page
+                        <User size={15} strokeWidth={1.8}/> My Page
                       </button>
                       {isAdmin && (
                         <button className="btn" onClick={()=>{setView("admin");setShowDropdown(false);}}
@@ -1206,7 +1207,7 @@ function AppContent() {
                             display:"flex",alignItems:"center",gap:8}}
                           onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
                           onMouseLeave={e=>e.currentTarget.style.background=view==="admin"?"#F8FAFC":"transparent"}>
-                          <span className="material-symbols-outlined" style={{fontSize:15}}>settings</span> Admin
+                          <Settings size={15} strokeWidth={1.8}/> Admin
                         </button>
                       )}
                     </div>
@@ -1215,7 +1216,7 @@ function AppContent() {
                       <button className="btn" onClick={()=>{logout();setShowDropdown(false);}}
                         style={{width:"100%",textAlign:"left",padding:"10px 16px",fontSize:13,
                           color:"#EF4444",display:"flex",alignItems:"center",gap:8}}>
-                        <span className="material-symbols-outlined" style={{fontSize:15}}>logout</span> 로그아웃
+                        <LogOut size={15} strokeWidth={1.8}/> 로그아웃
                       </button>
                     </div>
                   </div>

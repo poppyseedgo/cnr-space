@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { Layers, Search, UsersRound, X } from 'lucide-react'
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtRangeFull, fmtTimeFull, fmtTSRangeFull, fmtTSFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
@@ -239,19 +240,19 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
         {/* 검색 */}
         <div className="flex items-center gap-2 bg-white dark:bg-slate-800 rounded-full flex-1 min-w-[160px]"
           style={{padding:"7px 16px"}}>
-          <span className="material-symbols-outlined text-slate-300 dark:text-slate-500 flex-shrink-0" style={{fontSize:14}}>search</span>
+          <Search size={14} strokeWidth={1.8} className="text-slate-300 dark:text-slate-500 flex-shrink-0"/>
           <input className="bg-transparent flex-1 text-sm text-slate-900 dark:text-white outline-none min-w-0"
             style={{fontSize:13}}
             placeholder="회의실 이름, 층수로 검색..."
             value={searchQ} onChange={e=>setSearchQ(e.target.value)}/>
-          {searchQ && <button className="text-slate-300 flex-shrink-0 text-xs" onClick={()=>setSearchQ("")}><span className="material-symbols-outlined" style={{fontSize:10}}>close</span></button>}
+          {searchQ && <button className="text-slate-300 flex-shrink-0 text-xs" onClick={()=>setSearchQ("")}><X size={10} strokeWidth={1.8}/></button>}
         </div>
       </div>
 
       {/* ── 회의실 그리드 ── */}
       {withStatus.length===0 ? (
         <div className="text-center py-20 text-slate-400">
-          <div className="mb-4" style={{display:"flex",justifyContent:"center"}}><span className="material-symbols-outlined" style={{fontSize:48,color:"#CBD5E1"}}>search</span></div>
+          <div className="mb-4" style={{display:"flex",justifyContent:"center"}}><Search size={48} strokeWidth={1.8} color="#CBD5E1"/></div>
           <div className="text-lg font-semibold">검색 결과가 없습니다</div>
         </div>
       ) : (
@@ -348,11 +349,11 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
         <div style={{display:"flex", alignItems:"center", gap:12, fontSize:13,
           color: (isBusy||isSoon) ? "#CBD5E1" : "#64748B"}}>
           <span style={{display:"flex",alignItems:"center",gap:4}}>
-            <span className="material-symbols-outlined" style={{fontSize:13,flexShrink:0}}>layers</span>
+            <Layers size={13} strokeWidth={1.8} style={{flexShrink:0}}/>
             <span style={{fontWeight:500}}>{floor?.floor_no}층</span>
           </span>
           <span style={{display:"flex",alignItems:"center",gap:4}}>
-            <span className="material-symbols-outlined" style={{fontSize:13,flexShrink:0}}>groups</span>
+            <UsersRound size={13} strokeWidth={1.8} style={{flexShrink:0}}/>
             <span style={{fontWeight:500}}>{r.capacity}명</span>
           </span>
         </div>

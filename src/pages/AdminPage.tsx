@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react'
+import { AlertCircle, AlertTriangle, ArrowUpDown, Ban, BarChart2, Building2, Calendar, CheckCircle2, ChevronDown, Clock, Download, ImagePlus, Inbox, RefreshCw, RotateCw, Search, Trash2, Upload, Users, X } from 'lucide-react'
 import {
   todayStr, tsDate, tsMin, fmtTSDateFull, fmtTSRangeFull,
   fmt2, objToStr,
@@ -74,9 +75,9 @@ function DateRangePicker({ from, to, onChangeFn, presetId, onPreset, compact = f
         style={{ display:'flex', alignItems:'center', gap:6, padding: compact ? '6px 10px' : '8px 14px',
           borderRadius:10, border:'1px solid #E2E8F0', background:'#fff', fontSize:compact?11:12,
           fontWeight:600, color:'#374151', whiteSpace:'nowrap' }}>
-        <span className="material-symbols-outlined" style={{fontSize:12}}>calendar_today</span>
+        <Calendar size={12} strokeWidth={1.8}/>
         {label}
-        <span className="material-symbols-outlined" style={{fontSize:12,opacity:0.5, transform: open ? 'rotate(180deg)' : 'none', transition:'transform 0.2s'}}>expand_more</span>
+        <ChevronDown size={12} strokeWidth={1.8} style={{opacity:0.5,transform: open ? 'rotate(180deg)' : 'none',transition:'transform 0.2s'}}/>
       </button>
       {open && (
         <div className="anm" style={{ position:'absolute', top:'calc(100% + 6px)', left:0, zIndex:300,
@@ -131,13 +132,13 @@ type DetailType = 'bookings'|'noshow'|'rooms'|'dept'|'hours'|'pending'|'users'
 interface DetailConfig { type: DetailType; title: string; icon: React.ReactNode }
 
 const DETAIL_META: Record<DetailType, { title: string; icon: React.ReactNode }> = {
-  bookings: { title: '예약 전체 목록',     icon: <span className="material-symbols-outlined" style={{fontSize:16}}>calendar_today</span> },
-  noshow:   { title: '노쇼 목록',          icon: <span className="material-symbols-outlined" style={{fontSize:16}}>error</span> },
-  rooms:    { title: '회의실별 예약 통계', icon: <span className="material-symbols-outlined" style={{fontSize:16}}>domain</span> },
-  dept:     { title: '부서별 예약 통계',   icon: <span className="material-symbols-outlined" style={{fontSize:16}}>group</span> },
-  hours:    { title: '시간대별 분포',      icon: <span className="material-symbols-outlined" style={{fontSize:16}}>schedule</span> },
-  pending:  { title: '승인 대기 목록',     icon: <span className="material-symbols-outlined" style={{fontSize:16}}>inbox</span> },
-  users:    { title: '사용자 예약 현황',   icon: <span className="material-symbols-outlined" style={{fontSize:16}}>group</span> },
+  bookings: { title: '예약 전체 목록',     icon: <Calendar size={16} strokeWidth={1.8}/> },
+  noshow:   { title: '노쇼 목록',          icon: <AlertCircle size={16} strokeWidth={1.8}/> },
+  rooms:    { title: '회의실별 예약 통계', icon: <Building2 size={16} strokeWidth={1.8}/> },
+  dept:     { title: '부서별 예약 통계',   icon: <Users size={16} strokeWidth={1.8}/> },
+  hours:    { title: '시간대별 분포',      icon: <Clock size={16} strokeWidth={1.8}/> },
+  pending:  { title: '승인 대기 목록',     icon: <Inbox size={16} strokeWidth={1.8}/> },
+  users:    { title: '사용자 예약 현황',   icon: <Users size={16} strokeWidth={1.8}/> },
 }
 
 function DetailDrawer({ type, rooms, users, initFrom, initTo, onClose }:
@@ -218,7 +219,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onClose }:
 
   // 테이블 렌더
   const renderTable = () => {
-    if (loading) return <div style={{ textAlign:'center', padding:40, color:'#94A3B8', fontSize:13 }}><span className="material-symbols-outlined" style={{fontSize:20}}>refresh</span> 불러오는 중...</div>
+    if (loading) return <div style={{ textAlign:'center', padding:40, color:'#94A3B8', fontSize:13 }}><RefreshCw size={20} strokeWidth={1.8}/> 불러오는 중...</div>
     if (type === 'rooms') return <AggTable rows={roomAgg} cols={[{k:'room_name',l:'회의실'},{k:'confirmed',l:'예약'},{k:'checkin',l:'체크인'},{k:'noshow',l:'노쇼'},{k:'noshow_rate',l:'노쇼율(%)',fmt:v=>`${v}%`}]} onExport={() => exportCSV(roomAgg.map(r=>({회의실:r.room_name,예약:r.confirmed,체크인:r.checkin,노쇼:r.noshow,'노쇼율(%)':r.noshow_rate})), `회의실별통계_${dateFrom}_${dateTo}`)} />
     if (type === 'dept')  return <AggTable rows={deptAgg} cols={[{k:'dept',l:'부서'},{k:'confirmed',l:'예약'},{k:'noshow',l:'노쇼'}]} onExport={() => exportCSV(deptAgg.map(r=>({부서:r.dept,예약:r.confirmed,노쇼:r.noshow})), `부서별통계_${dateFrom}_${dateTo}`)} />
     if (type === 'hours') return <AggTable rows={hourAgg} cols={[{k:'hour',l:'시간대'},{k:'count',l:'예약 건수'}]} onExport={() => exportCSV(hourAgg.map(r=>({시간대:r.hour,예약건수:r.count})), `시간대별분포_${dateFrom}_${dateTo}`)} />
@@ -240,7 +241,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onClose }:
           <div style={{ fontSize:12, color:'#64748B' }}>총 <b style={{ color:'#111' }}>{total}</b>건</div>
           <button className="btn" onClick={() => exportCSV(csvRows, `${DETAIL_META[type].title}_${dateFrom}_${dateTo}`)}
             style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', borderRadius:8, background:'#F8FAFC', border:'1px solid #E2E8F0', fontSize:11, fontWeight:600, color:'#374151' }}>
-            <span className="material-symbols-outlined" style={{fontSize:11}}>download</span> CSV 내보내기
+            <Download size={11} strokeWidth={1.8}/> CSV 내보내기
           </button>
         </div>
         <div style={{ overflowX:'auto', borderRadius:10, border:'1px solid #F1F5F9' }}>
@@ -250,7 +251,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onClose }:
                 {[{k:'title',l:'회의명'},{k:'room_id',l:'회의실'},{k:'start_at',l:'날짜'},{k:'start_at',l:'시간'},{k:'user',l:'예약자'},{k:'dept',l:'부서'},{k:'',l:'상태'}].map((h,i) => (
                   <th key={i} onClick={()=>{if(h.k){setSortKey(h.k);setSortAsc(s=>sortKey===h.k?!s:false)}}}
                     style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600, color:'#94A3B8', whiteSpace:'nowrap', borderBottom:'1px solid #F1F5F9', cursor:h.k?'pointer':'default' }}>
-                    {h.l}{h.k&&<span className="material-symbols-outlined" style={{fontSize:9}}>swap_vert</span>}
+                    {h.l}{h.k&&<ArrowUpDown size={9} strokeWidth={1.8}/>}
                   </th>
                 ))}
               </tr>
@@ -303,7 +304,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onClose }:
               <div style={{ fontSize:16, fontWeight:600, color:'#111' }}>{meta.title}</div>
             </div>
             <button className="btn" onClick={onClose} style={{ width:32, height:32, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:'50%', background:'#F1F5F9', color:'#64748B' }}>
-              <span className="material-symbols-outlined" style={{fontSize:14}}>close</span>
+              <X size={14} strokeWidth={1.8}/>
             </button>
           </div>
           {/* 기간 선택 */}
@@ -314,7 +315,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onClose }:
               compact />
             <button className="btn" onClick={fetchData} disabled={loading}
               style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 10px', borderRadius:8, background:loading?'#F8FAFC':'#111', border:'none', color:loading?'#CBD5E1':'#fff', fontSize:11, fontWeight:600 }}>
-              <span className="material-symbols-outlined" style={{fontSize:11}}>refresh</span>{loading?'조회 중...':'새로고침'}
+              <RefreshCw size={11} strokeWidth={1.8}/>{loading?'조회 중...':'새로고침'}
             </button>
             <div style={{ fontSize:11, color:'#94A3B8', marginLeft:'auto' }}>
               {dateFrom === dateTo ? dateFrom : `${dateFrom} ~ ${dateTo}`}
@@ -339,7 +340,7 @@ function AggTable({ rows, cols, onExport }: { rows: any[]; cols:{k:string;l:stri
         <div style={{ fontSize:12, color:'#64748B' }}>총 <b style={{ color:'#111' }}>{rows.length}</b>개</div>
         <button className="btn" onClick={onExport}
           style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', borderRadius:8, background:'#F8FAFC', border:'1px solid #E2E8F0', fontSize:11, fontWeight:600, color:'#374151' }}>
-          <span className="material-symbols-outlined" style={{fontSize:11}}>download</span> CSV 내보내기
+          <Download size={11} strokeWidth={1.8}/> CSV 내보내기
         </button>
       </div>
       <div style={{ overflowX:'auto', borderRadius:10, border:'1px solid #F1F5F9' }}>
@@ -374,11 +375,11 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
   }
   const PER_PAGE = 15
   const tabs = [
-    { id:'dashboard', icon:<span className="material-symbols-outlined" style={{fontSize:14}}>bar_chart</span>,  label:'대시보드' },
-    { id:'bookings',  icon:<span className="material-symbols-outlined" style={{fontSize:14}}>calendar_today</span>,  label:'예약 관리' },
-    { id:'approvals', icon:<span className="material-symbols-outlined" style={{fontSize:14}}>inbox</span>,  label:'승인 관리', badge: bookings.filter(b => b.status === 'pending' && !b.autoCancelled).length },
-    { id:'rooms',     icon:<span className="material-symbols-outlined" style={{fontSize:14}}>domain</span>,  label:'회의실 관리' },
-    { id:'users',     icon:<span className="material-symbols-outlined" style={{fontSize:14}}>group</span>,  label:'사용자 관리' },
+    { id:'dashboard', icon:<BarChart2 size={14} strokeWidth={1.8}/>,  label:'대시보드' },
+    { id:'bookings',  icon:<Calendar size={14} strokeWidth={1.8}/>,  label:'예약 관리' },
+    { id:'approvals', icon:<Inbox size={14} strokeWidth={1.8}/>,  label:'승인 관리', badge: bookings.filter(b => b.status === 'pending' && !b.autoCancelled).length },
+    { id:'rooms',     icon:<Building2 size={14} strokeWidth={1.8}/>,  label:'회의실 관리' },
+    { id:'users',     icon:<Users size={14} strokeWidth={1.8}/>,  label:'사용자 관리' },
   ]
   return (
     <div className="max-w-[1200px] mx-auto px-3 py-4 sm:px-6 sm:py-7">
@@ -501,10 +502,10 @@ export function AdminDashboard({ bookings, rooms, users, isMobile }) {
   const maxHour = Math.max(...hourDist.map(h=>h.count),1)
 
   const KPI = [
-    { type:'bookings' as DetailType, label:'기간 내 예약', value:confirmed.length, sub:`취소 포함 ${filtered.length}건`, color:'#111', bg:'#F8FAFC', icon:<span className="material-symbols-outlined" style={{fontSize:18}}>calendar_today</span> },
-    { type:'noshow'   as DetailType, label:'노쇼율', value:`${noshowRate}%`, sub:`${past.filter(isNoshow).length}건 / 과거 ${past.length}건`, color:noshowRate>15?'#DC2626':noshowRate>8?'#D97706':'#16A34A', bg:noshowRate>15?'#FEF2F2':noshowRate>8?'#FFFBEB':'#F0FDF4', icon:<span className="material-symbols-outlined" style={{fontSize:18}}>error</span> },
-    { type:'pending'  as DetailType, label:'승인 대기', value:pendingCount, sub:'즉시 처리 필요', color:'#D97706', bg:'#FFFBEB', icon:<span className="material-symbols-outlined" style={{fontSize:18}}>inbox</span> },
-    { type:'users'    as DetailType, label:'이용 사용자', value:new Set(confirmed.map(b=>b.user)).size, sub:`전체 ${users.length}명 중`, color:'#2563EB', bg:'#EFF6FF', icon:<span className="material-symbols-outlined" style={{fontSize:18}}>group</span> },
+    { type:'bookings' as DetailType, label:'기간 내 예약', value:confirmed.length, sub:`취소 포함 ${filtered.length}건`, color:'#111', bg:'#F8FAFC', icon:<Calendar size={18} strokeWidth={1.8}/> },
+    { type:'noshow'   as DetailType, label:'노쇼율', value:`${noshowRate}%`, sub:`${past.filter(isNoshow).length}건 / 과거 ${past.length}건`, color:noshowRate>15?'#DC2626':noshowRate>8?'#D97706':'#16A34A', bg:noshowRate>15?'#FEF2F2':noshowRate>8?'#FFFBEB':'#F0FDF4', icon:<AlertCircle size={18} strokeWidth={1.8}/> },
+    { type:'pending'  as DetailType, label:'승인 대기', value:pendingCount, sub:'즉시 처리 필요', color:'#D97706', bg:'#FFFBEB', icon:<Inbox size={18} strokeWidth={1.8}/> },
+    { type:'users'    as DetailType, label:'이용 사용자', value:new Set(confirmed.map(b=>b.user)).size, sub:`전체 ${users.length}명 중`, color:'#2563EB', bg:'#EFF6FF', icon:<Users size={18} strokeWidth={1.8}/> },
   ]
 
   const openDetail = useCallback((type: DetailType) => setDetail(type), [])
@@ -705,7 +706,7 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
     if(b.status==='pending'&&!b.autoCancelled)return<span style={{background:'#FEF3C7',color:'#92400E',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>승인대기</span>
     if(b.status==='rejected')return<span style={{background:'#FEE2E2',color:'#DC2626',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>거절</span>
     // ★ 관리자 강제취소 — 가장 먼저 체크 (다른 취소 케이스와 명확히 구분)
-    if(b.cancelledBy==='admin')return<span style={{background:'#111',color:'#fff',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,display:'inline-flex',alignItems:'center',gap:3}}><span className="material-symbols-outlined" style={{fontSize:9}}>warning</span>관리자 강제취소</span>
+    if(b.cancelledBy==='admin')return<span style={{background:'#111',color:'#fff',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,display:'inline-flex',alignItems:'center',gap:3}}><AlertTriangle size={9} strokeWidth={1.8}/>관리자 강제취소</span>
     if(isNoshow(b)&&d<today)return<span style={{background:'#FEF3C7',color:'#D97706',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>노쇼</span>
     if(b.autoCancelled)return<span style={{background:'#F1F5F9',color:'#94A3B8',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>취소</span>
     if(b.checkedIn||b.earlyEnded)return<span style={{background:'#DCFCE7',color:'#16A34A',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>완료</span>
@@ -753,12 +754,12 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
             const csvRows=filtered.map(b=>{const r=rooms.find(rm=>rm.room_id===b.room_id);return{회의명:b.title,회의실:r?.room_name??'',날짜:tsDate(b.start_at),시작:b.start_at.slice(11,16),종료:b.end_at.slice(11,16),예약자:b.user,부서:b.dept,상태:getStatus(b)}})
             exportCSV(csvRows,`예약목록_${dateFrom}_${dateTo}`)
           }} style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:5,padding:'5px 12px',fontSize:11,borderRadius:999,background:'#F8FAFC',border:'1px solid #E2E8F0',color:'#374151',fontWeight:600}}>
-            <span className="material-symbols-outlined" style={{fontSize:10}}>download</span> CSV
+            <Download size={10} strokeWidth={1.8}/> CSV
           </button>
         </div>
       </div>
       <div style={{background:'#fff',borderRadius:16,overflow:'hidden'}}>
-        {paged.length===0?(<div style={{textAlign:'center',padding:'60px',color:'#CBD5E1'}}><div style={{display:'flex',justifyContent:'center',marginBottom:8}}><span className="material-symbols-outlined" style={{fontSize:40,color:"#CBD5E1"}}>inbox</span></div><div style={{fontSize:13}}>조건에 맞는 예약이 없습니다</div></div>):(
+        {paged.length===0?(<div style={{textAlign:'center',padding:'60px',color:'#CBD5E1'}}><div style={{display:'flex',justifyContent:'center',marginBottom:8}}><Inbox size={40} strokeWidth={1.8} color="#CBD5E1"/></div><div style={{fontSize:13}}>조건에 맞는 예약이 없습니다</div></div>):(
           <div style={{overflowX:'auto'}}>
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
               <thead><tr style={{background:'#F8FAFC'}}>
@@ -786,7 +787,7 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
       </div>
       {cancelModal&&(<div onClick={e=>e.target===e.currentTarget&&setCancelModal(null)} style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.55)',backdropFilter:'blur(6px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
         <div className="anm" style={{background:'#fff',borderRadius:16,width:'100%',maxWidth:400,padding:'24px',boxShadow:'0 20px 60px rgba(0,0,0,0.15)'}}>
-          <div style={{fontSize:16,fontWeight:600,color:'#111',marginBottom:4,display:'flex',alignItems:'center',gap:6}}><span className="material-symbols-outlined" style={{fontSize:15}}>warning</span>예약 강제 취소</div>
+          <div style={{fontSize:16,fontWeight:600,color:'#111',marginBottom:4,display:'flex',alignItems:'center',gap:6}}><AlertTriangle size={15} strokeWidth={1.8}/>예약 강제 취소</div>
           <div style={{fontSize:13,color:'#64748B',marginBottom:16}}>"{cancelModal.title}" — {cancelModal.user}</div>
           <label style={{fontSize:11,fontWeight:600,color:'#94A3B8',display:'block',marginBottom:6}}>취소 사유</label>
           <textarea value={cancelReason} onChange={e=>setCancelReason(e.target.value)} rows={3} placeholder="취소 사유를 입력하세요 (선택)" style={{width:'100%',background:'#F8FAFC',border:'1px solid #E2E8F0',borderRadius:10,padding:'10px 14px',fontSize:13,outline:'none',resize:'none'}}/>
@@ -836,7 +837,7 @@ export function AdminRooms({ showToast, isMobile }) {
     }catch(err:any){showToast(err.message,'error')}
   }
   const toggleActive=async(rid:number)=>{const next=!rooms.find(r=>r.room_id===rid)?.is_active;try{await toggleRoomActive(rid,next);setRooms(rooms.map(r=>r.room_id===rid?{...r,is_active:next}:r));showToast(next?'활성화되었습니다.':'비활성화되었습니다.','info')}catch(err:any){showToast(err.message,'error')}}
-  if(loadingRooms)return<div style={{textAlign:'center',padding:'60px',color:'#CBD5E1'}}><span className="material-symbols-outlined" style={{fontSize:36,color:"#CBD5E1"}}>domain</span><div style={{fontSize:13,marginTop:8}}>회의실 불러오는 중...</div></div>
+  if(loadingRooms)return<div style={{textAlign:'center',padding:'60px',color:'#CBD5E1'}}><Building2 size={36} strokeWidth={1.8} color="#CBD5E1"/><div style={{fontSize:13,marginTop:8}}>회의실 불러오는 중...</div></div>
   return(
     <div className="anm">
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
@@ -848,7 +849,7 @@ export function AdminRooms({ showToast, isMobile }) {
           <div key={r.room_id} className="anm" style={{background:'#fff',borderRadius:16,overflow:'hidden',opacity:r.is_active?1:0.6}}>
             <div style={{display:'flex',gap:16,padding:'16px 20px'}}>
               <div style={{width:72,height:72,borderRadius:10,overflow:'hidden',flexShrink:0,background:'#F8FAFC'}}>
-                {r.thumbnail?<img src={r.thumbnail} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center'}}><span className="material-symbols-outlined" style={{fontSize:24,color:"#CBD5E1"}}>domain</span></div>}
+                {r.thumbnail?<img src={r.thumbnail} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center'}}><Building2 size={24} strokeWidth={1.8} color="#CBD5E1"/></div>}
               </div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
@@ -871,7 +872,7 @@ export function AdminRooms({ showToast, isMobile }) {
         <div className="anm" style={{background:'#fff',borderRadius:16,width:'100%',maxWidth:460,maxHeight:'90vh',overflow:'auto',padding:'24px',boxShadow:'0 20px 60px rgba(0,0,0,0.15)'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
             <div style={{fontSize:16,fontWeight:600,color:'#111'}}>{editRoom?.room_id?'회의실 정보 수정':'새 회의실 추가'}</div>
-            <button className="btn" onClick={()=>setEditRoom(null)} style={{width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:'50%',background:'#F1F5F9',color:'#64748B'}}><span className="material-symbols-outlined" style={{fontSize:14}}>close</span></button>
+            <button className="btn" onClick={()=>setEditRoom(null)} style={{width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:'50%',background:'#F1F5F9',color:'#64748B'}}><X size={14} strokeWidth={1.8}/></button>
           </div>
           {[{k:'room_name',l:'회의실명 (영문) *'},{k:'room_name_ko',l:'회의실명 (한글)'}].map(f=>(<div key={f.k} style={{marginBottom:14}}><label style={{fontSize:11,fontWeight:600,color:'#94A3B8',display:'block',marginBottom:4}}>{f.l}</label><input value={form[f.k]||''} onChange={e=>setForm(p=>({...p,[f.k]:e.target.value}))} style={{width:'100%',padding:'10px 14px',borderRadius:10,border:'1px solid #E2E8F0',fontSize:14,background:'#F8FAFC',outline:'none'}}/></div>))}
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}}>
@@ -884,13 +885,13 @@ export function AdminRooms({ showToast, isMobile }) {
           {editRoom?.room_id&&(<>
             <div style={{marginBottom:14}}><label style={{fontSize:11,fontWeight:600,color:'#94A3B8',display:'block',marginBottom:8}}>대표 이미지</label>
               <div style={{display:'flex',gap:12,alignItems:'flex-start'}}>
-                <div style={{width:72,height:72,borderRadius:10,overflow:'hidden',background:'#F8FAFC',flexShrink:0,border:'1px solid #E2E8F0'}}>{thumbnail?<img src={thumbnail} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center'}}><span className="material-symbols-outlined" style={{fontSize:20,color:"#CBD5E1"}}>domain</span></div>}</div>
-                <div style={{flex:1}}><input ref={thumbRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleThumbnailUpload}/><button className="btn" onClick={()=>thumbRef.current?.click()} disabled={uploading} style={{width:'100%',padding:'10px',borderRadius:10,border:'1.5px dashed #CBD5E1',background:'#F8FAFC',color:'#64748B',fontSize:12,fontWeight:600,display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><span className="material-symbols-outlined" style={{fontSize:13}}>upload</span>{uploading?'업로드 중...':thumbnail?'이미지 교체':'이미지 업로드'}</button>{thumbnail&&<button className="btn" onClick={async()=>{await deleteRoomImage(thumbnail);setThumbnail('');showToast('삭제되었습니다.','info')}} style={{width:'100%',marginTop:6,padding:'8px',borderRadius:10,background:'#FEF2F2',color:'#DC2626',fontSize:11,fontWeight:600,display:'flex',alignItems:'center',justifyContent:'center',gap:4}}><span className="material-symbols-outlined" style={{fontSize:11}}>delete</span> 삭제</button>}</div>
+                <div style={{width:72,height:72,borderRadius:10,overflow:'hidden',background:'#F8FAFC',flexShrink:0,border:'1px solid #E2E8F0'}}>{thumbnail?<img src={thumbnail} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center'}}><Building2 size={20} strokeWidth={1.8} color="#CBD5E1"/></div>}</div>
+                <div style={{flex:1}}><input ref={thumbRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleThumbnailUpload}/><button className="btn" onClick={()=>thumbRef.current?.click()} disabled={uploading} style={{width:'100%',padding:'10px',borderRadius:10,border:'1.5px dashed #CBD5E1',background:'#F8FAFC',color:'#64748B',fontSize:12,fontWeight:600,display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Upload size={13} strokeWidth={1.8}/>{uploading?'업로드 중...':thumbnail?'이미지 교체':'이미지 업로드'}</button>{thumbnail&&<button className="btn" onClick={async()=>{await deleteRoomImage(thumbnail);setThumbnail('');showToast('삭제되었습니다.','info')}} style={{width:'100%',marginTop:6,padding:'8px',borderRadius:10,background:'#FEF2F2',color:'#DC2626',fontSize:11,fontWeight:600,display:'flex',alignItems:'center',justifyContent:'center',gap:4}}><Trash2 size={11} strokeWidth={1.8}/> 삭제</button>}</div>
               </div>
             </div>
             <div style={{marginBottom:14}}><label style={{fontSize:11,fontWeight:600,color:'#94A3B8',display:'block',marginBottom:8}}>갤러리 ({gallery.length}장)</label>
-              {gallery.length>0&&<div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:8}}>{gallery.map((url,i)=>(<div key={i} style={{position:'relative',paddingBottom:'100%',borderRadius:8,overflow:'hidden',background:'#F8FAFC'}}><img src={url} alt="" style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/><button onClick={()=>removeGalleryImage(url)} style={{position:'absolute',top:4,right:4,width:20,height:20,borderRadius:'50%',background:'rgba(0,0,0,0.6)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><span className="material-symbols-outlined" style={{fontSize:10}}>close</span></button></div>))}</div>}
-              <input ref={galleryRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={handleGalleryUpload}/><button className="btn" onClick={()=>galleryRef.current?.click()} disabled={uploading} style={{width:'100%',padding:'10px',borderRadius:10,border:'1.5px dashed #CBD5E1',background:'#F8FAFC',color:'#64748B',fontSize:12,fontWeight:600,display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><span className="material-symbols-outlined" style={{fontSize:13}}>add_photo_alternate</span>{uploading?'업로드 중...':'갤러리 이미지 추가'}</button>
+              {gallery.length>0&&<div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:8}}>{gallery.map((url,i)=>(<div key={i} style={{position:'relative',paddingBottom:'100%',borderRadius:8,overflow:'hidden',background:'#F8FAFC'}}><img src={url} alt="" style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/><button onClick={()=>removeGalleryImage(url)} style={{position:'absolute',top:4,right:4,width:20,height:20,borderRadius:'50%',background:'rgba(0,0,0,0.6)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><X size={10} strokeWidth={1.8}/></button></div>))}</div>}
+              <input ref={galleryRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={handleGalleryUpload}/><button className="btn" onClick={()=>galleryRef.current?.click()} disabled={uploading} style={{width:'100%',padding:'10px',borderRadius:10,border:'1.5px dashed #CBD5E1',background:'#F8FAFC',color:'#64748B',fontSize:12,fontWeight:600,display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><ImagePlus size={13} strokeWidth={1.8}/>{uploading?'업로드 중...':'갤러리 이미지 추가'}</button>
             </div>
           </>)}
           <div style={{display:'flex',gap:8,marginTop:20}}>
@@ -1031,7 +1032,7 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
             style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', fontSize:11, borderRadius:8,
               background: syncing ? '#F1F5F9' : '#EFF6FF', border:'1px solid #BFDBFE',
               color: syncing ? '#94A3B8' : '#2563EB', fontWeight:600, cursor: syncing ? 'not-allowed' : 'pointer' }}>
-            <span className="material-symbols-outlined" style={{fontSize:11}}>refresh</span>
+            <RefreshCw size={11} strokeWidth={1.8}/>
             {syncing ? '동기화 중...' : 'Azure AD 동기화'}
           </button>
           <button className="btn"
@@ -1042,7 +1043,7 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
               filter === 'departed' ? '퇴사자목록' : '사용자목록'
             )}
             style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', fontSize:11, borderRadius:8, background:'#F8FAFC', border:'1px solid #E2E8F0', color:'#374151', fontWeight:600 }}>
-            <span className="material-symbols-outlined" style={{fontSize:10}}>download</span> CSV
+            <Download size={10} strokeWidth={1.8}/> CSV
           </button>
         </div>
       </div>
@@ -1051,7 +1052,7 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
       {syncResult && (
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 14px', marginBottom:10, borderRadius:10, background:'#F0FDF4', border:'1px solid #86EFAC', flexWrap:'wrap', gap:6 }}>
           <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-            <span className="material-symbols-outlined" style={{fontSize:13,color:"#16A34A"}}>check_circle</span>
+            <CheckCircle2 size={13} strokeWidth={1.8} color="#16A34A"/>
             <span style={{ fontSize:12, fontWeight:600, color:'#15803D' }}>Azure AD 동기화 완료</span>
             <span style={{ fontSize:11, color:'#64748B' }}>총 {syncResult.total}명 · {syncResult.synced}명 반영</span>
             {syncResult.departed > 0 && (
@@ -1072,7 +1073,7 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
         <div style={{ marginBottom:10 }}>
           <button className="btn" onClick={() => setShowLogs(v => !v)}
             style={{ fontSize:11, color:'#94A3B8', background:'none', display:'flex', alignItems:'center', gap:4, padding:'2px 0' }}>
-            <span className="material-symbols-outlined" style={{fontSize:10}}>refresh</span>
+            <RefreshCw size={10} strokeWidth={1.8}/>
             동기화 이력 {syncLogs.length}건 {showLogs ? '▲' : '▼'}
           </button>
           {showLogs && (
@@ -1109,13 +1110,13 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
 
       {/* ── 검색창 ── */}
       <div style={{ background:'#fff', borderRadius:12, padding:'10px 16px', marginBottom:12, display:'flex', alignItems:'center', gap:8 }}>
-        <span className="material-symbols-outlined" style={{fontSize:14,color:'#94A3B8', flexShrink:0}}>search</span>
+        <Search size={14} strokeWidth={1.8} color="#94A3B8" style={{flexShrink:0}}/>
         <input value={searchQ} onChange={e => setSearchQ(e.target.value)}
           placeholder="이름, 부서, 이메일로 검색..."
           style={{ flex:1, border:'none', outline:'none', fontSize:13, background:'transparent', color:'#111' }}/>
         {searchQ && (
           <button className="btn" onClick={() => setSearchQ('')} style={{ background:'none', color:'#CBD5E1', display:'flex', alignItems:'center' }}>
-            <span className="material-symbols-outlined" style={{fontSize:11}}>close</span>
+            <X size={11} strokeWidth={1.8}/>
           </button>
         )}
       </div>
@@ -1253,7 +1254,7 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
             {editUser?.email && <div style={{ fontSize:11, color:'#94A3B8', marginTop:2 }}>{editUser.email}</div>}
           </div>
           <button className="btn" onClick={() => setEditUser(null)} style={{ width:32, height:32, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:'50%', background:'#F1F5F9', color:'#64748B' }}>
-            <span className="material-symbols-outlined" style={{fontSize:14}}>close</span>
+            <X size={14} strokeWidth={1.8}/>
           </button>
         </div>
         <div style={{ flex:1, overflowY:'auto', padding:'24px' }}>
@@ -1421,7 +1422,7 @@ export function AdminApprovals({ bookings, rooms, onApprove, onReject, showToast
               onPreset={(id,f,t) => { setPresetId(id); setDateFrom(f); setDateTo(t) }}/>
             <button className="btn" onClick={fetchRange} disabled={loadingRange}
               style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 10px', borderRadius:8, background:loadingRange?'#F8FAFC':'#111', color:loadingRange?'#CBD5E1':'#fff', fontSize:11, fontWeight:600, border:'none' }}>
-              <span className="material-symbols-outlined" style={{fontSize:11}}>refresh</span>{loadingRange?'조회 중...':'새로고침'}
+              <RefreshCw size={11} strokeWidth={1.8}/>{loadingRange?'조회 중...':'새로고침'}
             </button>
           </div>
         </div>
@@ -1483,22 +1484,22 @@ export function AdminApprovals({ bookings, rooms, onApprove, onReject, showToast
                     <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8, flexWrap:'wrap' }}>
                       {status === 'pending' && !b.autoCancelled && (
                         <span style={{ background:'#FEF3C7', color:'#92400E', fontSize:11, fontWeight:600, padding:'3px 10px', borderRadius:999, display:'flex', alignItems:'center', gap:4 }}>
-                          <span className="material-symbols-outlined" style={{fontSize:10}}>schedule</span> 승인 대기
+                          <Clock size={10} strokeWidth={1.8}/> 승인 대기
                         </span>
                       )}
                       {status === 'confirmed' && (
                         <span style={{ background:'#DCFCE7', color:'#15803D', fontSize:11, fontWeight:600, padding:'3px 10px', borderRadius:999, display:'flex', alignItems:'center', gap:4 }}>
-                          <span className="material-symbols-outlined" style={{fontSize:10}}>check_circle</span> 승인 완료
+                          <CheckCircle2 size={10} strokeWidth={1.8}/> 승인 완료
                         </span>
                       )}
                       {status === 'rejected' && (
                         <span style={{ background:'#FEF2F2', color:'#DC2626', fontSize:11, fontWeight:600, padding:'3px 10px', borderRadius:999, display:'flex', alignItems:'center', gap:4 }}>
-                          <span className="material-symbols-outlined" style={{fontSize:10}}>block</span> 거절됨
+                          <Ban size={10} strokeWidth={1.8}/> 거절됨
                         </span>
                       )}
                       {status === 'expired' && (
                         <span style={{ background:'#F1F5F9', color:'#94A3B8', fontSize:11, fontWeight:600, padding:'3px 10px', borderRadius:999, display:'flex', alignItems:'center', gap:4 }}>
-                          <span className="material-symbols-outlined" style={{fontSize:10}}>error</span> 승인 기한 초과
+                          <AlertCircle size={10} strokeWidth={1.8}/> 승인 기한 초과
                         </span>
                       )}
                       <span style={{ fontSize:12, color:'#94A3B8' }}>{r?.room_name_ko ?? r?.room_name}</span>

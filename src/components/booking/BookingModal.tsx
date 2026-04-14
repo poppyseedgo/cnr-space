@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { AlertCircle, AlertTriangle, Ban, Calendar, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, X } from 'lucide-react'
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
@@ -433,7 +434,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             padding:"7px 12px", borderRadius:8,
             background:"#FFF7ED", border:"1px solid #FED7AA",
           }}>
-            <span className="material-symbols-outlined" style={{fontSize:13,color:"#F97316",flexShrink:0}}>error</span>
+            <AlertCircle size={13} strokeWidth={1.8} color="#F97316" style={{flexShrink:0}}/>
             <span style={{fontSize:11, fontWeight:600, color:"#C2410C"}}>
               오후 7시 이후에는 예약할 수 없습니다.
             </span>
@@ -467,7 +468,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 color: isPickingStart && startOpen ? "#6366F1" : "#111111"}}>
                 {form.start ? fmtTime(form.start) : <span style={{color:"#CBD5E1",fontWeight:400}}>선택하세요</span>}
               </span>
-              <span style={{color:"#CBD5E1",fontSize:11}}>startOpen ? <span className="material-symbols-outlined" style={{fontSize:11}}>expand_less</span> : <span className="material-symbols-outlined" style={{fontSize:11}}>expand_more</span></span>
+              <span style={{color:"#CBD5E1",fontSize:11}}>startOpen ? <ChevronUp size={11} strokeWidth={1.8}/> : <ChevronDown size={11} strokeWidth={1.8}/></span>
             </div>
           </div>
           {startOpen && (
@@ -509,10 +510,10 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               <span style={{fontSize:13,fontWeight:600,
                 color: isPickingEnd && endOpen ? "#6366F1" : validTime ? "#111111" : "#EF4444"}}>
                 {form.end
-                  ? <>{fmtTime(form.end)}{!validTime&&<span className="material-symbols-outlined" style={{fontSize:10,marginLeft:4,flexShrink:0,display:"inline-block",verticalAlign:"middle"}}>warning</span>}</>
+                  ? <>{fmtTime(form.end)}{!validTime&&<AlertTriangle size={10} strokeWidth={1.8} style={{marginLeft:4,flexShrink:0,display:"inline-block",verticalAlign:"middle"}}/>}</>
                   : <span style={{color:"#CBD5E1",fontWeight:400}}>선택하세요</span>}
               </span>
-              <span style={{color:"#CBD5E1",fontSize:11}}>endOpen ? <span className="material-symbols-outlined" style={{fontSize:11}}>expand_less</span> : <span className="material-symbols-outlined" style={{fontSize:11}}>expand_more</span></span>
+              <span style={{color:"#CBD5E1",fontSize:11}}>endOpen ? <ChevronUp size={11} strokeWidth={1.8}/> : <ChevronDown size={11} strokeWidth={1.8}/></span>
             </div>
           </div>
           {endOpen && (
@@ -567,7 +568,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             onMouseLeave={e=>{if(!isSel){e.currentTarget.style.borderColor="#E2E8F0";}}}>
             <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
               {isSel
-                ? <span style={{background:"#B9F8CF",color:"#111",fontSize:10,fontWeight:600,padding:"3px 10px",borderRadius:999,display:"inline-flex",alignItems:"center",gap:3}}><span className="material-symbols-outlined" style={{fontSize:10}}>check</span>선택됨</span>
+                ? <span style={{background:"#B9F8CF",color:"#111",fontSize:10,fontWeight:600,padding:"3px 10px",borderRadius:999,display:"inline-flex",alignItems:"center",gap:3}}><Check size={10} strokeWidth={1.8}/>선택됨</span>
                 : <span style={{background:"#CBECFF",color:"#000",fontSize:10,fontWeight:600,padding:"3px 10px",borderRadius:999}}>예약가능</span>}
               {isAdminRoom && !isSel && (
                 <span style={{background:"#FEF3C7",color:"#92400E",fontSize:10,fontWeight:600,padding:"3px 10px",borderRadius:999}}>승인 필요</span>
@@ -662,7 +663,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                       fontSize:12,fontWeight:600,flexShrink:0,
                       background:step>=n?"#111111":"#F1F5F9",
                       color:step>=n?"#fff":"#94A3B8"}}>
-                      {step>n?<span className="material-symbols-outlined" style={{fontSize:14}}>check_circle</span>:n}
+                      {step>n?<CheckCircle2 size={14} strokeWidth={1.8}/>:n}
                     </div>
                     <span style={{fontSize:13,fontWeight:step===n?700:400,
                       color:step===n?"#111111":step>n?"#16A34A":"#94A3B8"}}>
@@ -679,7 +680,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
         )}
         <button className="btn" onClick={onClose}
           style={{background:"none",color:"#94A3B8",fontSize:22,marginLeft:12,flexShrink:0,
-            padding:"4px",lineHeight:1,display:"flex",alignItems:"center"}}><span className="material-symbols-outlined" style={{fontSize:10}}>close</span></button>
+            padding:"4px",lineHeight:1,display:"flex",alignItems:"center"}}><X size={10} strokeWidth={1.8}/></button>
       </div>
 
       {/* ════ 모바일: 2-Step Wizard ════ */}
@@ -711,8 +712,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   style={{width:"100%",background:"#F8FAFC",border:`1px solid ${showPicker?"#111111":"#E2E8F0"}`,
                     borderRadius:10,color:"#111111",padding:"12px 14px",fontSize:14,
                     display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
-                  <span style={{display:"inline-flex",alignItems:"center",gap:5}}><span className="material-symbols-outlined" style={{fontSize:13}}>calendar_today</span>{bookingDate} ({DAY_NAMES[dateToObj(bookingDate).getDay()]})</span>
-                  <span className="material-symbols-outlined" style={{fontSize:10,color:"#94A3B8"}}>expand_more</span>
+                  <span style={{display:"inline-flex",alignItems:"center",gap:5}}><Calendar size={13} strokeWidth={1.8}/>{bookingDate} ({DAY_NAMES[dateToObj(bookingDate).getDay()]})</span>
+                  <ChevronDown size={10} strokeWidth={1.8} color="#94A3B8"/>
                 </button>
                 {showPicker && (
                   <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:300,
@@ -785,7 +786,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                         <div style={{fontSize:13,fontWeight:600,color:recur===o.val?"#fff":"#374151"}}>{o.label}</div>
                         <div style={{fontSize:11,color:recur===o.val?"rgba(255,255,255,0.55)":"#94A3B8",marginTop:1}}>{o.sub}</div>
                       </div>
-                      {recur===o.val && <span className="material-symbols-outlined" style={{fontSize:14,color:"#fff"}}>check_circle</span>}
+                      {recur===o.val && <CheckCircle2 size={14} strokeWidth={1.8} color="#fff"/>}
                     </button>
                   ))}
                 </div>
@@ -802,7 +803,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                     {/* 충돌 날짜 경고 */}
                     {form.room_id && recurPreview.conflictDates.length > 0 && (
                       <div style={{padding:"8px 12px",background:"#FEF2F2",border:"1px solid #FCA5A5",borderRadius:8,fontSize:11,color:"#DC2626"}}>
-                        <div style={{fontWeight:600,marginBottom:4}}><span style={{display:"inline-flex",alignItems:"center",gap:4}}><span className="material-symbols-outlined" style={{fontSize:12}}>warning</span>아래 날짜는 이미 예약이 있어 생성되지 않습니다</span></div>
+                        <div style={{fontWeight:600,marginBottom:4}}><span style={{display:"inline-flex",alignItems:"center",gap:4}}><AlertTriangle size={12} strokeWidth={1.8}/>아래 날짜는 이미 예약이 있어 생성되지 않습니다</span></div>
                         <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
                           {recurPreview.conflictDates.slice(0,10).map(ds=>(
                             <span key={ds} style={{background:"#FEE2E2",padding:"2px 7px",borderRadius:4,fontWeight:600}}>{ds} ({DAY_NAMES[dateToObj(ds).getDay()]})</span>
@@ -844,7 +845,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:10,padding:"10px 14px",
                   display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
                   <div>
-                    <div style={{fontSize:13,fontWeight:600,color:"#111111"}}><span style={{display:"inline-flex",alignItems:"center",gap:4}}><span className="material-symbols-outlined" style={{fontSize:12}}>check_circle</span>{selectedRoom.room_name}</span></div>
+                    <div style={{fontSize:13,fontWeight:600,color:"#111111"}}><span style={{display:"inline-flex",alignItems:"center",gap:4}}><CheckCircle2 size={12} strokeWidth={1.8}/>{selectedRoom.room_name}</span></div>
                     <div style={{fontSize:11,color:"#64748B",marginTop:2}}>{selectedFloor?.floor_name} · {selectedRoom.capacity}인</div>
                   </div>
                   <button className="btn" onClick={()=>set("room_id",null)}
@@ -863,7 +864,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   {fmtTime(form.start)} – {fmtTime(form.end)} 이용 가능 회의실
                 </div>
                 <span style={{background:"#DCFCE7",color:"#16A34A",fontSize:11,fontWeight:600,display:"inline-flex",alignItems:"center",gap:3,padding:"3px 10px",borderRadius:20}}>
-                  <span className="material-symbols-outlined" style={{fontSize:11,marginRight:3}}>check_circle</span>{availableRooms.length}개
+                  <CheckCircle2 size={11} strokeWidth={1.8} style={{marginRight:3}}/>{availableRooms.length}개
                 </span>
               </div>
               {/* 회의실 그리드 */}
@@ -946,8 +947,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 style={{width:"100%",background:"#fff",border:`1px solid ${showPicker?"#111111":"#E2E8F0"}`,
                   borderRadius:10,color:"#111111",padding:"12px 16px",fontSize:14,
                   display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
-                <span style={{display:"inline-flex",alignItems:"center",gap:5}}><span className="material-symbols-outlined" style={{fontSize:13}}>calendar_today</span>{bookingDate} ({DAY_NAMES[dateToObj(bookingDate).getDay()]})</span>
-                {showPicker ? <span className="material-symbols-outlined" style={{fontSize:10,color:"#94A3B8"}}>expand_less</span> : <span className="material-symbols-outlined" style={{fontSize:10,color:"#94A3B8"}}>expand_more</span>}
+                <span style={{display:"inline-flex",alignItems:"center",gap:5}}><Calendar size={13} strokeWidth={1.8}/>{bookingDate} ({DAY_NAMES[dateToObj(bookingDate).getDay()]})</span>
+                {showPicker ? <ChevronUp size={10} strokeWidth={1.8} color="#94A3B8"/> : <ChevronDown size={10} strokeWidth={1.8} color="#94A3B8"/>}
               </button>
               {showPicker && (
                 <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:300,
@@ -996,7 +997,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 <label style={{fontSize:13,fontWeight:600,color:"#111"}}>시간 <span style={{color:"#EF4444"}}>*</span></label>
                 {isAfter7pm && (
                   <span style={{fontSize:11,fontWeight:600,color:"#C2410C",display:"flex",alignItems:"center",gap:4}}>
-                    <span className="material-symbols-outlined" style={{fontSize:11,color:"#F97316"}}>error</span>
+                    <AlertCircle size={11} strokeWidth={1.8} color="#F97316"/>
                     오후 7시 이후에는 예약할 수 없습니다.
                   </span>
                 )}
@@ -1005,7 +1006,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 <div style={{display:"flex",alignItems:"center",justifyContent:"center",
                   background:"#F8FAFC",border:"1.5px dashed #CBD5E1",borderRadius:10,
                   padding:"14px 16px",color:"#94A3B8",fontSize:13,fontWeight:600,gap:8}}>
-                  <span className="material-symbols-outlined" style={{fontSize:16}}>block</span>
+                  <Ban size={16} strokeWidth={1.8}/>
                   오늘은 더 예약할 수 없습니다
                 </div>
               ) : (
@@ -1162,7 +1163,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   {/* 충돌 날짜 경고 */}
                   {form.room_id && recurPreview.conflictDates.length > 0 && (
                     <div style={{padding:"8px 12px",background:"#FEF2F2",border:"1px solid #FCA5A5",borderRadius:8,fontSize:11,color:"#DC2626"}}>
-                      <div style={{fontWeight:600,marginBottom:4}}><span style={{display:"inline-flex",alignItems:"center",gap:4}}><span className="material-symbols-outlined" style={{fontSize:12}}>warning</span>아래 날짜는 이미 예약이 있어 생성되지 않습니다</span></div>
+                      <div style={{fontWeight:600,marginBottom:4}}><span style={{display:"inline-flex",alignItems:"center",gap:4}}><AlertTriangle size={12} strokeWidth={1.8}/>아래 날짜는 이미 예약이 있어 생성되지 않습니다</span></div>
                       <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
                         {recurPreview.conflictDates.slice(0,10).map(ds=>(
                           <span key={ds} style={{background:"#FEE2E2",padding:"2px 7px",borderRadius:4,fontWeight:600}}>{ds} ({DAY_NAMES[dateToObj(ds).getDay()]})</span>
@@ -1192,7 +1193,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             </div>
             {!validTime ? (
               <div style={{textAlign:"center",padding:"60px 20px",color:"#CBD5E1"}}>
-                <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><span className="material-symbols-outlined" style={{fontSize:40,color:"#CBD5E1"}}>schedule</span></div>
+                <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><Clock size={40} strokeWidth={1.8} color="#CBD5E1"/></div>
                 <div style={{fontSize:13}}>시작/종료 시간을 설정하면<br/>예약 가능한 회의실이 자동으로 표시됩니다</div>
               </div>
             ) : RoomGrid2(2)}

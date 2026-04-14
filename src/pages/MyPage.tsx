@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { BarChart2, ClipboardList, Inbox } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtRangeFull, fmtTSFull, fmtTimeFull, fmtTSRangeFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
@@ -171,7 +172,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
       {/* ── 기간별 예약 조회 ── */}
       <div className="anm" style={{background:"#fff",borderRadius:16,overflow:"hidden",marginTop:20,animationDelay:"150ms"}}>
         <div style={{padding:isMobile?"16px 20px":"20px 28px",borderBottom:"1px solid #F1F5F9"}}>
-          <div style={{fontSize:15,fontWeight:600,color:"#111",marginBottom:14}}><span style={{display:"inline-flex",alignItems:"center",gap:6}}><span className="material-symbols-outlined" style={{fontSize:15}}>assignment</span>기간별 예약 조회</span></div>
+          <div style={{fontSize:15,fontWeight:600,color:"#111",marginBottom:14}}><span style={{display:"inline-flex",alignItems:"center",gap:6}}><ClipboardList size={15} strokeWidth={1.8}/>기간별 예약 조회</span></div>
           {/* 날짜 필터 */}
           <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
             <div style={{flex:"1 1 140px",minWidth:120}}>
@@ -203,7 +204,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
         <div style={{maxHeight:400,overflowY:"auto"}}>
           {filteredList.length===0?(
             <div style={{textAlign:"center",padding:"40px 20px",color:"#CBD5E1"}}>
-              <div style={{display:"flex",justifyContent:"center",marginBottom:8}}><span className="material-symbols-outlined" style={{fontSize:32,color:"#CBD5E1"}}>inbox</span></div>
+              <div style={{display:"flex",justifyContent:"center",marginBottom:8}}><Inbox size={32} strokeWidth={1.8} color="#CBD5E1"/></div>
               <div style={{fontSize:13}}>해당 기간에 예약 내역이 없습니다</div>
             </div>
           ):(
@@ -250,7 +251,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
       {/* 월별 통계 */}
       <div className="anm" style={{background:"#fff",borderRadius:16,padding:isMobile?"20px":"24px 28px",animationDelay:"100ms",marginTop:32}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-          <div style={{fontSize:15,fontWeight:600,color:"#111"}}><span style={{display:"inline-flex",alignItems:"center",gap:6}}><span className="material-symbols-outlined" style={{fontSize:15}}>bar_chart</span>월별 이용 통계</span></div>
+          <div style={{fontSize:15,fontWeight:600,color:"#111"}}><span style={{display:"inline-flex",alignItems:"center",gap:6}}><BarChart2 size={15} strokeWidth={1.8}/>월별 이용 통계</span></div>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <button className="btn" onClick={()=>{if(statMonth===0){setStatYear(y=>y-1);setStatMonth(11);}else setStatMonth(m=>m-1);}}
               style={{background:"#F1F5F9",color:"#64748B",padding:"4px 10px",fontSize:14,borderRadius:8}}>‹</button>

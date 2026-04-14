@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom'
+import { X } from 'lucide-react'
 import { useState } from 'react'
 import { UserAvatar } from './UserAvatar'
 import type { AppUser } from '../../types'
@@ -60,7 +61,7 @@ export function AttendeeChip({ name, avatarUrl, userInfo, onRemove, avatarSize =
               alignItems:  'center',
             }}
           >
-            <span className="material-symbols-outlined" style={{fontSize:10}}>close</span>
+            <X size={10} strokeWidth={1.8}/>
           </button>
         )}
       </div>
@@ -110,7 +111,7 @@ export function AttendeeChip({ name, avatarUrl, userInfo, onRemove, avatarSize =
                 color:          '#64748B',
               }}
             >
-              <span className="material-symbols-outlined" style={{fontSize:13}}>close</span>
+              <X size={13} strokeWidth={1.8}/>
             </button>
 
             {/* 프로필 영역 */}

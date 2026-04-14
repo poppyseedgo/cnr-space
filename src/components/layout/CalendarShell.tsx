@@ -109,25 +109,23 @@ export function CalendarShell({
         {/* ① 날짜 네비 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 0, flex: isMobile ? 'none' : 1 }}>
           {/* arrow_back_ios */}
-          <button className="btn" onClick={() => navigate(-1)}
-            style={{ width: 20, height: 20, padding: 0, background: 'none', border: 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#111111' }}>arrow_back_ios</span>
-          </button>
+          <button className="btn dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex-shrink-0"
+            style={{ padding: '7px 12px', fontSize: 18, background: '#F3F4F8', lineHeight: 1 }}
+            onClick={() => navigate(-1)}>‹</button>
 
           {calView === 'daily' ? (
             <div ref={dpRef} style={{ position: 'relative', minWidth: 0 }}>
               <button className="btn"
                 onClick={() => setShowDatePicker(v => !v)}
                 style={{
-                  padding: '5px 14px', background: '#fff', whiteSpace: 'nowrap',
-                  border: showDatePicker ? '1px solid #111111' : '1px solid #E2E8F0',
+                  padding: '5px 14px', background: 'transparent', whiteSpace: 'nowrap',
+                  border: showDatePicker ? '1px solid #111111' : '1px solid transparent',
                   borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
                   height: 33,
                 }}>
                 <span style={{ fontSize: 19, fontWeight: 600, color: '#111111',
                   fontFamily: "'Pretendard', -apple-system, sans-serif" }}>
-                  {selectedDate} ({DAY_NAMES[dateToObj(selectedDate).getDay()]})
+                  {(() => { const d = dateToObj(selectedDate); return `${d.getFullYear()}년 ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}일 ${DAY_NAMES[d.getDay()]}요일` })()}
                 </span>
               </button>
               {showDatePicker && (
@@ -178,7 +176,7 @@ export function CalendarShell({
               )}
             </div>
           ) : (
-            <div style={{ padding: '5px 14px', border: '1px solid #E2E8F0', borderRadius: 8, height: 33,
+            <div style={{ padding: '5px 14px', border: 'none', borderRadius: 8, height: 33,
               display: 'flex', alignItems: 'center' }}>
               <span style={{ fontSize: 19, fontWeight: 600, color: '#111111',
                 fontFamily: "'Pretendard', -apple-system, sans-serif", whiteSpace: 'nowrap' }}>
@@ -188,33 +186,30 @@ export function CalendarShell({
           )}
 
           {/* arrow_forward_ios */}
-          <button className="btn" onClick={() => navigate(1)}
-            style={{ width: 20, height: 20, padding: 0, background: 'none', border: 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#111111' }}>arrow_forward_ios</span>
-          </button>
+          <button className="btn dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex-shrink-0"
+            style={{ padding: '7px 12px', fontSize: 18, background: '#F3F4F8', lineHeight: 1 }}
+            onClick={() => navigate(1)}>›</button>
           {selectedDate !== today && (
             <button className="btn rounded-full flex-shrink-0"
               style={{ padding: '5px 12px', fontSize: 12, fontWeight: 500, background: '#111111', color: '#fff',
                 marginLeft: 6, borderRadius: 999 }}
               onClick={() => setSelectedDate(today)}>오늘</button>
           )}
-        </div>
-
-        {/* ② 뷰 탭 — pill radius=1000, padding=10/20, h=40 */}
-        <div style={{ display: 'flex', background: '#F3F4F8', borderRadius: 1000,
-          padding: 2, gap: 2, flexShrink: 0, height: 40, alignItems: 'center' }}>
-          {VIEWS.map(v => (
-            <button key={v.id} className="btn" onClick={() => setCalView(v.id)}
-              style={{
-                background: calView===v.id ? '#111111' : 'transparent',
-                color:      calView===v.id ? '#fff'    : '#657487',
-                padding: '10px 20px', borderRadius: 1000,
-                fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap',
-                fontFamily: "'Pretendard', -apple-system, sans-serif",
-                border: 'none', cursor: 'pointer', lineHeight: 1,
-              }}>{v.label}</button>
-          ))}
+          {/* 뷰탭 — 날짜 네비 바로 오른쪽 */}
+          <div style={{ display: 'flex', background: '#F3F4F8', borderRadius: 1000,
+            padding: 2, gap: 2, flexShrink: 0, height: 40, alignItems: 'center', marginLeft: 4 }}>
+            {VIEWS.map(v => (
+              <button key={v.id} className="btn" onClick={() => setCalView(v.id)}
+                style={{
+                  background: calView===v.id ? '#111111' : 'transparent',
+                  color:      calView===v.id ? '#fff'    : '#657487',
+                  padding: '10px 20px', borderRadius: 1000,
+                  fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap',
+                  fontFamily: "'Pretendard', -apple-system, sans-serif",
+                  border: 'none', cursor: 'pointer', lineHeight: 1,
+                }}>{v.label}</button>
+            ))}
+          </div>
         </div>
 
         {/* ③ 층 드롭다운 — 항상 블랙, 대칭 패딩 7/14, keyboard_arrow_down */}
@@ -228,7 +223,7 @@ export function CalendarShell({
               background: '#111111', color: '#fff', cursor: 'pointer', height: 32,
             }}>
             {currentFloorLabel}
-            <span className="material-symbols-outlined" style={{ fontSize: 18, lineHeight: 1 }}>keyboard_arrow_down</span>
+            <span style={{ fontSize: 9, opacity: 0.7 }}>{showFloorDrop ? '▲' : '▼'}</span>
           </button>
           {showFloorDrop && (
             <div style={{
@@ -379,7 +374,7 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
       <div style={{ minWidth: LW + totalW, position: 'relative' }}>
 
         {/* 현재시간 인디케이터 — pill(헤더 하단) + dot + #FF393C 세로 라인 */}
-        {isToday && nowLeft >= 0 && (
+        {isToday && nowLeft >= 0 && nowLeft <= totalW && (
           <div style={{ position: 'absolute', zIndex: 8, pointerEvents: 'none',
             top: 0, bottom: 0, left: LW + nowLeft, width: 0 }}>
             {/* pill — 헤더 하단(top:29px = 헤더 48px - pill 19px 절반) */}

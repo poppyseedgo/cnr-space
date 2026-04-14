@@ -1,4 +1,5 @@
 import { useBreakpoint } from '../../hooks/useBreakpoint'
+import { Building2, Calendar, ClipboardList, Clock, FileText, User, Users } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
@@ -39,12 +40,12 @@ export function BookingDoneModal({booking:b, onClose, rooms:rp=[], users:up=[]})
       {/* 예약 상세 */}
       <div style={{padding: isMobile?"16px 20px":"16px 24px", display:"flex", flexDirection:"column", gap:8}}>
         {[
-          [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><span className="material-symbols-outlined" style={{fontSize:11}}>assignment</span>회의명</span>, b.title, null],
-          [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><span className="material-symbols-outlined" style={{fontSize:11}}>calendar_today</span>날짜</span>,   tsDate(b.start_at), `${DAY_NAMES[dateToObj(tsDate(b.start_at)).getDay()]}요일`],
-          [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><span className="material-symbols-outlined" style={{fontSize:11}}>schedule</span>시간</span>,   `${fmtTS(b.start_at)} – ${fmtTS(b.end_at)}`,
+          [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><ClipboardList size={11} strokeWidth={1.8}/>회의명</span>, b.title, null],
+          [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Calendar size={11} strokeWidth={1.8}/>날짜</span>,   tsDate(b.start_at), `${DAY_NAMES[dateToObj(tsDate(b.start_at)).getDay()]}요일`],
+          [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Clock size={11} strokeWidth={1.8}/>시간</span>,   `${fmtTS(b.start_at)} – ${fmtTS(b.end_at)}`,
             `${Math.floor((tsMin(b.end_at)-tsMin(b.start_at))/60)}시간 ${(tsMin(b.end_at)-tsMin(b.start_at))%60>0?(tsMin(b.end_at)-tsMin(b.start_at))%60+"분":""}`],
-          [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><span className="material-symbols-outlined" style={{fontSize:11}}>domain</span>회의실</span>, <span style={{color:r?.color,fontWeight:600}}>{r?.room_name}</span>, `${floor?.floor_name} · ${r?.capacity}인`],
-          b.memo && [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><span className="material-symbols-outlined" style={{fontSize:11}}>description</span>메모</span>, b.memo, null],
+          [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Building2 size={11} strokeWidth={1.8}/>회의실</span>, <span style={{color:r?.color,fontWeight:600}}>{r?.room_name}</span>, `${floor?.floor_name} · ${r?.capacity}인`],
+          b.memo && [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><FileText size={11} strokeWidth={1.8}/>메모</span>, b.memo, null],
         ].filter(Boolean).map(([label,main,sub],i)=>(
           <div key={i} style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
             <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0,paddingTop:1}}>{label}</div>
@@ -61,7 +62,7 @@ export function BookingDoneModal({booking:b, onClose, rooms:rp=[], users:up=[]})
           return (
             <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
               <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0,paddingTop:1,display:"flex",alignItems:"center",gap:4}}>
-                <span className="material-symbols-outlined" style={{fontSize:11}}>person</span>예약자
+                <User size={11} strokeWidth={1.8}/>예약자
               </div>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <UserAvatar name={b.user} avatarUrl={owner?.avatar_url ?? null} size={24} />
@@ -78,7 +79,7 @@ export function BookingDoneModal({booking:b, onClose, rooms:rp=[], users:up=[]})
         {b.attendees && b.attendees.length > 0 && (
           <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
             <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0,paddingTop:4,display:"flex",alignItems:"center",gap:4}}>
-              <span className="material-symbols-outlined" style={{fontSize:11}}>group</span>참석자
+              <Users size={11} strokeWidth={1.8}/>참석자
             </div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
               {b.attendees.map((a, idx) => {
@@ -101,7 +102,7 @@ export function BookingDoneModal({booking:b, onClose, rooms:rp=[], users:up=[]})
         {tsDate(b.start_at)===todayStr() && (
           <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,
             padding:"10px 14px",fontSize:12,color:"#92400E",display:"flex",gap:8,alignItems:"flex-start"}}>
-            <span className="material-symbols-outlined" style={{fontSize:16,flexShrink:0}}>schedule</span>
+            <Clock size={16} strokeWidth={1.8} style={{flexShrink:0}}/>
             <span>회의 시작 후 <strong>{CHECKIN_WINDOW_MIN}분 이내</strong> 체크인이 필요합니다. 미체크인 시 자동 취소됩니다.</span>
           </div>
         )}

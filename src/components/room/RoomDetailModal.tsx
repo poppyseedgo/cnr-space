@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Circle, X } from 'lucide-react'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { todayStr, nowMinutes, tsDate, tsMin, fmtTimeFull, fmtTSFull, getRoomStatus } from '../../utils/time'
 import { getFloor } from '../../data/floors'
@@ -28,7 +29,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
         <button onClick={()=>setLightbox(false)}
           style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,0.15)",
             border:"none",borderRadius:"50%",width:36,height:36,color:"#fff",
-            cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><span className="material-symbols-outlined" style={{fontSize:16}}>close</span></button>
+            cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={16} strokeWidth={1.8}/></button>
       </div>
     )}
 
@@ -61,7 +62,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
         <button className="btn" onClick={onClose}
           style={{width:32,height:32,borderRadius:"50%",background:"#F1F5F9",
             color:"#64748B",flexShrink:0,
-            display:"flex",alignItems:"center",justifyContent:"center"}}><span className="material-symbols-outlined" style={{fontSize:14}}>close</span></button>
+            display:"flex",alignItems:"center",justifyContent:"center"}}><X size={14} strokeWidth={1.8}/></button>
       </div>
 
       {/* ── 본문: 데스크톱 2컬럼 / 모바일 1컬럼 ── */}

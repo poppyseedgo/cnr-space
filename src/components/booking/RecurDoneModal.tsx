@@ -1,4 +1,5 @@
 import { useBreakpoint } from '../../hooks/useBreakpoint'
+import { AlertTriangle, Building2, Calendar } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
@@ -43,7 +44,7 @@ export function RecurDoneModal({data, onClose}) {
         {/* 회의실 */}
         <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
           <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0,paddingTop:1}}>
-            <span style={{display:"inline-flex",alignItems:"center",gap:4}}><span className="material-symbols-outlined" style={{fontSize:11}}>domain</span>회의실</span>
+            <span style={{display:"inline-flex",alignItems:"center",gap:4}}><Building2 size={11} strokeWidth={1.8}/>회의실</span>
           </div>
           <div style={{minWidth:0}}>
             <div style={{fontSize:13,fontWeight:600,color:r?.color,wordBreak:"break-word"}}>{r?.room_name}</div>
@@ -54,7 +55,7 @@ export function RecurDoneModal({data, onClose}) {
         {/* 반복일시 — 건별 카드 */}
         <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
           <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0,paddingTop:4}}>
-            <span style={{display:"inline-flex",alignItems:"center",gap:4}}><span className="material-symbols-outlined" style={{fontSize:11}}>calendar_today</span>반복일시</span>
+            <span style={{display:"inline-flex",alignItems:"center",gap:4}}><Calendar size={11} strokeWidth={1.8}/>반복일시</span>
             <div style={{marginTop:4,fontSize:10,color:"#CBD5E1",fontWeight:500}}>{recurLabel} · {bks.length}회</div>
           </div>
           <div style={{flex:1,display:"flex",flexDirection:"column",gap:5}}>
@@ -86,7 +87,7 @@ export function RecurDoneModal({data, onClose}) {
         {skipped > 0 && (
           <div style={{background:"#FEF2F2",border:"1px solid #FCA5A5",borderRadius:10,
             padding:"10px 14px",fontSize:12,color:"#DC2626",display:"flex",alignItems:"flex-start",gap:6}}>
-            <span className="material-symbols-outlined" style={{fontSize:13,flexShrink:0,marginTop:1}}>warning</span>
+            <AlertTriangle size={13} strokeWidth={1.8} style={{flexShrink:0,marginTop:1}}/>
             <span>기존 예약과 겹치는 <strong>{skipped}건</strong>은 자동으로 제외되었습니다.</span>
           </div>
         )}

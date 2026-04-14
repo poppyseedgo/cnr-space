@@ -1,4 +1,3 @@
-import 'material-symbols/outlined.css'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import './styles/tokens.css'

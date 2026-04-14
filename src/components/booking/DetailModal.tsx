@@ -1,4 +1,5 @@
 import { useBreakpoint } from '../../hooks/useBreakpoint'
+import { AlertTriangle, Building2, CheckCircle2, Clock, FileText, Monitor, ShieldCheck, ShieldX, User, Users, X } from 'lucide-react'
 import { useState } from 'react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtTimeFull, fmtTSFull, fmtTSRangeFull, fmtDateFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
@@ -55,12 +56,12 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
           <button className="btn" onClick={onClose}
             style={{width:32,height:32,borderRadius:"50%",background:"#F1F5F9",
               color:"#64748B",flexShrink:0,
-              display:"flex",alignItems:"center",justifyContent:"center"}}><span className="material-symbols-outlined" style={{fontSize:14}}>close</span></button>
+              display:"flex",alignItems:"center",justifyContent:"center"}}><X size={14} strokeWidth={1.8}/></button>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
           {[
-            [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><span className="material-symbols-outlined" style={{fontSize:11}}>domain</span>회의실</span>, <span style={{color:r?.color,fontWeight:600}}>{r?.room_name ?? '-'}</span>, r ? `${r.capacity}인` : ''],
-            [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><span className="material-symbols-outlined" style={{fontSize:11}}>schedule</span>시간</span>,
+            [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Building2 size={11} strokeWidth={1.8}/>회의실</span>, <span style={{color:r?.color,fontWeight:600}}>{r?.room_name ?? '-'}</span>, r ? `${r.capacity}인` : ''],
+            [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Clock size={11} strokeWidth={1.8}/>시간</span>,
               b.earlyEnded && b.originalEndAt
                 ? <span>
                     <span style={{color:"#94A3B8",textDecoration:"line-through",fontSize:12}}>
@@ -72,8 +73,8 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
                   </span>
                 : `${fmtTSFull(b.start_at)} – ${fmtTSFull(b.end_at)}`,
               fmtTSDateFull(b.start_at)],
-            features.length>0&&[<span style={{display:"inline-flex",alignItems:"center",gap:4}}><span className="material-symbols-outlined" style={{fontSize:11}}>monitor</span>설비</span>, features.map(f=>f.feature_name).join(", "), null],
-            b.memo&&[<span style={{display:"inline-flex",alignItems:"center",gap:4}}><span className="material-symbols-outlined" style={{fontSize:11}}>description</span>메모</span>, b.memo, null],
+            features.length>0&&[<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Monitor size={11} strokeWidth={1.8}/>설비</span>, features.map(f=>f.feature_name).join(", "), null],
+            b.memo&&[<span style={{display:"inline-flex",alignItems:"center",gap:4}}><FileText size={11} strokeWidth={1.8}/>메모</span>, b.memo, null],
           ].filter(Boolean).map(([label,main,sub],i)=>(
             <div key={i} style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
               <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0}}>{label}</div>
@@ -90,7 +91,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
             return (
               <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
                 <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0,display:"flex",alignItems:"center",gap:4}}>
-                  <span className="material-symbols-outlined" style={{fontSize:11}}>person</span>예약자
+                  <User size={11} strokeWidth={1.8}/>예약자
                 </div>
                 <div style={{display:"flex",alignItems:"center"}}>
                   <AttendeeChip
@@ -116,7 +117,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
           {b.attendees && b.attendees.length > 0 && (
             <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
               <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0,paddingTop:2,display:"flex",alignItems:"center",gap:4}}>
-                <span className="material-symbols-outlined" style={{fontSize:11}}>group</span>참석자
+                <Users size={11} strokeWidth={1.8}/>참석자
               </div>
               <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                 {b.attendees.map((a, idx) => {
@@ -136,7 +137,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
           )}
         </div>
         {nci&&<div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400E",display:"flex",alignItems:"flex-start",gap:6}}>
-          <span className="material-symbols-outlined" style={{fontSize:14,flexShrink:0,marginTop:1}}>warning</span><span>회의 시작 후 <strong>{CHECKIN_WINDOW_MIN}분 이내</strong> 체크인 필요</span>
+          <AlertTriangle size={14} strokeWidth={1.8} style={{flexShrink:0,marginTop:1}}/><span>회의 시작 후 <strong>{CHECKIN_WINDOW_MIN}분 이내</strong> 체크인 필요</span>
         </div>}
       </div>
       {/* 버튼 영역 - 항상 하단 고정 */}
@@ -149,9 +150,9 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         const BtnClose    = () => <button className="btn" onClick={onClose} style={{flex:1,background:"#F1F5F9",color:"#64748B",padding:"13px 8px",borderRadius:12}}>닫기</button>
         const BtnCancel   = () => <button className="btn" onClick={()=>onCancel(b.id)} style={{flex:1,background:"#FEF2F2",border:"1px solid #FCA5A5",color:"#DC2626",padding:"13px 8px",fontSize:isMobile?12:13,borderRadius:12}}>예약 취소</button>
         const BtnEdit     = () => <button className="btn" onClick={()=>{onClose();onEdit(b);}} style={{flex:1,background:"#EFF6FF",border:"1px solid #BFDBFE",color:"#1D4ED8",padding:"13px 8px",fontSize:isMobile?12:13,fontWeight:600,borderRadius:12}}>예약 변경</button>
-        const BtnCheckin  = () => <button className="btn" onClick={()=>{onCheckIn(b.id);onClose();}} style={{flex:2,background:"#16A34A",color:"#fff",padding:"13px 8px",fontSize:isMobile?13:14,fontWeight:600,borderRadius:12}}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><span className="material-symbols-outlined" style={{fontSize:14}}>check_circle</span>체크인하기</span></button>
-        const BtnApprove  = () => <button className="btn" onClick={()=>{onApprove(b.id);onClose();}} style={{flex:2,background:"#16A34A",color:"#fff",padding:"13px 8px",fontSize:isMobile?13:14,fontWeight:600,borderRadius:12}}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><span className="material-symbols-outlined" style={{fontSize:14}}>verified_user</span>승인</span></button>
-        const BtnReject   = () => <button className="btn" onClick={()=>setShowRejectInput(true)} style={{flex:1,background:"#FEF2F2",border:"1px solid #FCA5A5",color:"#DC2626",padding:"13px 8px",fontSize:isMobile?12:13,borderRadius:12}}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><span className="material-symbols-outlined" style={{fontSize:13}}>gpp_bad</span>거절</span></button>
+        const BtnCheckin  = () => <button className="btn" onClick={()=>{onCheckIn(b.id);onClose();}} style={{flex:2,background:"#16A34A",color:"#fff",padding:"13px 8px",fontSize:isMobile?13:14,fontWeight:600,borderRadius:12}}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><CheckCircle2 size={14} strokeWidth={1.8}/>체크인하기</span></button>
+        const BtnApprove  = () => <button className="btn" onClick={()=>{onApprove(b.id);onClose();}} style={{flex:2,background:"#16A34A",color:"#fff",padding:"13px 8px",fontSize:isMobile?13:14,fontWeight:600,borderRadius:12}}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><ShieldCheck size={14} strokeWidth={1.8}/>승인</span></button>
+        const BtnReject   = () => <button className="btn" onClick={()=>setShowRejectInput(true)} style={{flex:1,background:"#FEF2F2",border:"1px solid #FCA5A5",color:"#DC2626",padding:"13px 8px",fontSize:isMobile?12:13,borderRadius:12}}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><ShieldX size={13} strokeWidth={1.8}/>거절</span></button>
         const BtnForce    = () => <button className="btn" onClick={()=>{onForceCancel(b.id,'관리자 강제취소');onClose();}} style={{flex:1,background:"#FEF2F2",border:"1px solid #FCA5A5",color:"#DC2626",padding:"13px 8px",fontSize:isMobile?12:13,borderRadius:12}}>강제취소</button>
 
         // ── 1. 종료/취소/노쇼/거절/조기반납 → 닫기 ─────────────────
