@@ -107,20 +107,7 @@ export function CalendarShell({
           gap: isMobile ? 8 : 10, alignItems: isMobile ? 'stretch' : 'center',
         }}>
 
-        {/* ① 뷰 탭 — 맨 앞 */}
-        <div className="flex dark:bg-slate-700 rounded-xl p-0.5 gap-0.5 flex-shrink-0" style={{ background: '#F3F4F8' }}>
-          {VIEWS.map(v => (
-            <button key={v.id} className="btn rounded-lg font-semibold" onClick={() => setCalView(v.id)}
-              style={{
-                background: calView===v.id ? '#111111' : 'transparent',
-                color:      calView===v.id ? '#fff'    : '#64748B',
-                padding: isMobile ? '6px 10px' : '7px 14px',
-                fontSize: isMobile ? 11 : 12, whiteSpace: 'nowrap',
-              }}>{v.label}</button>
-          ))}
-        </div>
-
-        {/* ② 날짜 네비 */}
+        {/* ① 날짜 네비 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: isMobile ? 'none' : 1 }}>
           <button className="btn dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex-shrink-0"
             style={{ padding: '7px 12px', fontSize: 18, background: '#F3F4F8', lineHeight: 1 }}
@@ -199,6 +186,19 @@ export function CalendarShell({
               style={{ padding: '5px 10px', fontSize: 11, background: '#111111', color: '#fff' }}
               onClick={() => setSelectedDate(today)}>오늘</button>
           )}
+        </div>
+
+        {/* ② 뷰 탭 */}
+        <div className="flex dark:bg-slate-700 rounded-xl p-0.5 gap-0.5 flex-shrink-0" style={{ background: '#F3F4F8' }}>
+          {VIEWS.map(v => (
+            <button key={v.id} className="btn rounded-lg font-semibold" onClick={() => setCalView(v.id)}
+              style={{
+                background: calView===v.id ? '#111111' : 'transparent',
+                color:      calView===v.id ? '#fff'    : '#64748B',
+                padding: isMobile ? '6px 10px' : '7px 14px',
+                fontSize: isMobile ? 11 : 12, whiteSpace: 'nowrap',
+              }}>{v.label}</button>
+          ))}
         </div>
 
         {/* ③ 층 드롭다운 — 항상 블랙 (어떤 층이든 선택된 상태) */}
