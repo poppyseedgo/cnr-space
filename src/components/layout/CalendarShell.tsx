@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { SlotContent } from '../calendar/SlotContent'
 import { getSlotState, getSlotColors } from '../calendar/slotHelpers'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
-import { Calendar } from 'lucide-react'
 import {
   todayStr, nowMinutes, tsDate, tsMin, fmtTS,
   fmt2, DAY_NAMES, MONTH_NAMES, HOURS,
@@ -102,28 +101,33 @@ export function CalendarShell({
       {/* ── 툴바 ── */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 mb-4"
         style={{
-          padding: isMobile ? '10px 12px' : '12px 18px', position: 'relative', zIndex: 50,
+          padding: '12px 18px', position: 'relative', zIndex: 50,
           display: 'flex', flexDirection: isMobile ? 'column' : 'row',
-          gap: isMobile ? 8 : 10, alignItems: isMobile ? 'stretch' : 'center',
+          gap: 10, alignItems: 'center', height: isMobile ? 'auto' : 64,
         }}>
 
         {/* ① 날짜 네비 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: isMobile ? 'none' : 1 }}>
-          <button className="btn dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex-shrink-0"
-            style={{ padding: '7px 12px', fontSize: 18, background: '#F3F4F8', lineHeight: 1 }}
-            onClick={() => navigate(-1)}>‹</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 0, flex: isMobile ? 'none' : 1 }}>
+          {/* arrow_back_ios */}
+          <button className="btn" onClick={() => navigate(-1)}
+            style={{ width: 20, height: 20, padding: 0, background: 'none', border: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#111111' }}>arrow_back_ios</span>
+          </button>
 
           {calView === 'daily' ? (
-            <div ref={dpRef} style={{ position: 'relative', flex: 1, minWidth: 0 }}>
-              <button className="btn dark:bg-slate-700 rounded-lg"
+            <div ref={dpRef} style={{ position: 'relative', minWidth: 0 }}>
+              <button className="btn"
                 onClick={() => setShowDatePicker(v => !v)}
                 style={{
-                  width: '100%', padding: '6px 12px', background: '#F3F4F8', whiteSpace: 'nowrap',
-                  border: showDatePicker ? '1px solid #111111' : '1px solid transparent',
-                  display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+                  padding: '5px 14px', background: '#fff', whiteSpace: 'nowrap',
+                  border: showDatePicker ? '1px solid #111111' : '1px solid #E2E8F0',
+                  borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+                  height: 33,
                 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: isMobile ? 13 : 15, fontWeight: 600, color: '#111111' }}>
-                  <Calendar size={14} strokeWidth={1.8} /> {selectedDate} ({DAY_NAMES[dateToObj(selectedDate).getDay()]})
+                <span style={{ fontSize: 19, fontWeight: 600, color: '#111111',
+                  fontFamily: "'Pretendard', -apple-system, sans-serif" }}>
+                  {selectedDate} ({DAY_NAMES[dateToObj(selectedDate).getDay()]})
                 </span>
               </button>
               {showDatePicker && (
@@ -174,44 +178,57 @@ export function CalendarShell({
               )}
             </div>
           ) : (
-            <span className="font-semibold text-slate-900 dark:text-white whitespace-nowrap"
-              style={{ fontSize: isMobile ? 13 : 15, flex: 1 }}>{navLabel()}</span>
+            <div style={{ padding: '5px 14px', border: '1px solid #E2E8F0', borderRadius: 8, height: 33,
+              display: 'flex', alignItems: 'center' }}>
+              <span style={{ fontSize: 19, fontWeight: 600, color: '#111111',
+                fontFamily: "'Pretendard', -apple-system, sans-serif", whiteSpace: 'nowrap' }}>
+                {navLabel()}
+              </span>
+            </div>
           )}
 
-          <button className="btn dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex-shrink-0"
-            style={{ padding: '7px 12px', fontSize: 18, background: '#F3F4F8', lineHeight: 1 }}
-            onClick={() => navigate(1)}>›</button>
+          {/* arrow_forward_ios */}
+          <button className="btn" onClick={() => navigate(1)}
+            style={{ width: 20, height: 20, padding: 0, background: 'none', border: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#111111' }}>arrow_forward_ios</span>
+          </button>
           {selectedDate !== today && (
-            <button className="btn rounded-lg flex-shrink-0"
-              style={{ padding: '5px 10px', fontSize: 11, background: '#111111', color: '#fff' }}
+            <button className="btn rounded-full flex-shrink-0"
+              style={{ padding: '5px 12px', fontSize: 12, fontWeight: 500, background: '#111111', color: '#fff',
+                marginLeft: 6, borderRadius: 999 }}
               onClick={() => setSelectedDate(today)}>오늘</button>
           )}
         </div>
 
-        {/* ② 뷰 탭 */}
-        <div className="flex dark:bg-slate-700 rounded-xl p-0.5 gap-0.5 flex-shrink-0" style={{ background: '#F3F4F8' }}>
+        {/* ② 뷰 탭 — pill radius=1000, padding=10/20, h=40 */}
+        <div style={{ display: 'flex', background: '#F3F4F8', borderRadius: 1000,
+          padding: 2, gap: 2, flexShrink: 0, height: 40, alignItems: 'center' }}>
           {VIEWS.map(v => (
-            <button key={v.id} className="btn rounded-lg font-semibold" onClick={() => setCalView(v.id)}
+            <button key={v.id} className="btn" onClick={() => setCalView(v.id)}
               style={{
                 background: calView===v.id ? '#111111' : 'transparent',
-                color:      calView===v.id ? '#fff'    : '#64748B',
-                padding: isMobile ? '6px 10px' : '7px 14px',
-                fontSize: isMobile ? 11 : 12, whiteSpace: 'nowrap',
+                color:      calView===v.id ? '#fff'    : '#657487',
+                padding: '10px 20px', borderRadius: 1000,
+                fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap',
+                fontFamily: "'Pretendard', -apple-system, sans-serif",
+                border: 'none', cursor: 'pointer', lineHeight: 1,
               }}>{v.label}</button>
           ))}
         </div>
 
-        {/* ③ 층 드롭다운 — 항상 블랙 (어떤 층이든 선택된 상태) */}
+        {/* ③ 층 드롭다운 — 항상 블랙, 대칭 패딩 7/14, keyboard_arrow_down */}
         <div ref={floorDropRef} style={{ position: 'relative', flexShrink: 0 }}>
-          <button className="btn rounded-xl font-semibold" onClick={() => setShowFloorDrop(v => !v)}
+          <button className="btn" onClick={() => setShowFloorDrop(v => !v)}
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
-              padding: isMobile ? '5px 10px' : '6px 14px',
-              fontSize: isMobile ? 11 : 12, whiteSpace: 'nowrap',
-              background: '#111111', color: '#fff',
+              padding: '7px 14px', borderRadius: 999, border: 'none',
+              fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap',
+              fontFamily: "'Pretendard', -apple-system, sans-serif",
+              background: '#111111', color: '#fff', cursor: 'pointer', height: 32,
             }}>
             {currentFloorLabel}
-            <span style={{ fontSize: 9, opacity: 0.7 }}>{showFloorDrop ? '▲' : '▼'}</span>
+            <span className="material-symbols-outlined" style={{ fontSize: 18, lineHeight: 1 }}>keyboard_arrow_down</span>
           </button>
           {showFloorDrop && (
             <div style={{
@@ -240,15 +257,18 @@ export function CalendarShell({
           )}
         </div>
 
-        {/* ④ 전체예약/내예약 필터 */}
-        <div className="flex dark:bg-slate-700 rounded-xl p-0.5 gap-0.5 flex-shrink-0" style={{ background: '#F3F4F8' }}>
+        {/* ④ 전체예약/내예약 필터 — pill radius=1000, padding=8/16, h=36 */}
+        <div style={{ display: 'flex', background: '#F3F4F8', borderRadius: 1000,
+          padding: 2, gap: 2, flexShrink: 0, height: 36, alignItems: 'center' }}>
           {([{ v: false, l: '전체 예약' }, { v: true, l: '내 예약' }] as const).map(({ v, l }) => (
-            <button key={l} className="btn rounded-lg font-semibold" onClick={() => setFilterMine(v)}
+            <button key={l} className="btn" onClick={() => setFilterMine(v)}
               style={{
                 background: filterMine===v ? '#111111' : 'transparent',
-                color:      filterMine===v ? '#fff'    : '#64748B',
-                padding: isMobile ? '5px 10px' : '6px 14px',
-                fontSize: isMobile ? 11 : 12, whiteSpace: 'nowrap',
+                color:      filterMine===v ? '#fff'    : '#657487',
+                padding: '8px 16px', borderRadius: 10000, border: 'none',
+                fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap',
+                fontFamily: "'Pretendard', -apple-system, sans-serif",
+                cursor: 'pointer', lineHeight: 1,
               }}>{l}</button>
           ))}
         </div>
@@ -333,7 +353,7 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
 // ─── Daily View ───────────────────────────────────────────────────────────────
 export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, onCheckIn, rooms: dvRooms = [], currentUser = '' }) {
   const isToday = selectedDate === todayStr(), now = nowMinutes()
-  const CW = 160, RH = 80, LW = 148
+  const CW = 160, RH = 80, LW = 224
   const rooms = (dvRooms as any[]).filter(r => r.is_active)
   const totalW = CW * HOURS.length
 
@@ -358,14 +378,25 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
     <div ref={scrollRef} style={{ background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', overflowX: 'auto', overflowY: 'visible' }}>
       <div style={{ minWidth: LW + totalW, position: 'relative' }}>
 
-        {/* 현재 시간 세로선 */}
+        {/* 현재시간 인디케이터 — pill(헤더 하단) + dot + #FF393C 세로 라인 */}
         {isToday && nowLeft >= 0 && (
-          <div style={{ position: 'absolute', top: 48, bottom: 0, left: LW + nowLeft, width: 2, background: '#EF4444', zIndex: 8, pointerEvents: 'none' }}>
-            <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)',
-              fontSize: 10, fontWeight: 700, color: '#EF4444', background: '#fff',
-              padding: '2px 4px', borderRadius: 4, whiteSpace: 'nowrap' }}>
-              {fmt2(Math.floor(now/60))}:{fmt2(now%60)}
+          <div style={{ position: 'absolute', zIndex: 8, pointerEvents: 'none',
+            top: 0, bottom: 0, left: LW + nowLeft, width: 0 }}>
+            {/* pill — 헤더 하단(top:29px = 헤더 48px - pill 19px 절반) */}
+            <div style={{ position: 'absolute', top: 29, left: '50%', transform: 'translateX(-50%)',
+              height: 19, padding: '0 8px', background: '#FF393C', borderRadius: 24,
+              display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', zIndex: 10 }}>
+              <span style={{ fontSize: 11, fontWeight: 500, color: '#fff' }}>
+                {fmt2(Math.floor(now/60))}:{fmt2(now%60)}
+              </span>
             </div>
+            {/* dot — pill 바로 아래 (top:48) */}
+            <div style={{ position: 'absolute', top: 48, left: '50%', transform: 'translateX(-50%)',
+              width: 10, height: 10, borderRadius: '50%',
+              background: '#FF373B', border: '1.5px solid #fff', zIndex: 9 }} />
+            {/* 세로 라인 — dot 아래부터 바닥까지 */}
+            <div style={{ position: 'absolute', top: 53, bottom: 0, left: '50%',
+              transform: 'translateX(-50%)', width: 2, background: '#FF393C' }} />
           </div>
         )}
 
