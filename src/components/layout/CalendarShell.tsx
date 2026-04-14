@@ -161,27 +161,32 @@ export function CalendarShell({
             <IcoBack />
           </button>
 
-          {calView === 'daily' ? (
-            <div ref={dpRef} style={{ position: 'relative', minWidth: 0 }}>
-              <button className="btn"
-                onClick={() => setShowDatePicker(v => !v)}
-                style={{
-                  padding: '5px 14px', background: 'transparent', whiteSpace: 'nowrap',
-                  border: showDatePicker ? '1px solid #111111' : '1px solid transparent',
-                  borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-                  height: 33,
-                }}>
-                <span style={{ fontSize: 20, fontWeight: 500, color: '#111111',
-                  fontFamily: "'Pretendard', -apple-system, sans-serif" }}>
-                  {(() => { const d = dateToObj(selectedDate); return `${d.getFullYear()}년 ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}일 ${DAY_NAMES[d.getDay()]}요일` })()}
-                </span>
-              </button>
-              {showDatePicker && (
-                <div style={{
-                  position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 9999,
-                  background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
-                  boxShadow: '0 8px 32px rgba(0,0,0,0.12)', padding: 14, minWidth: 260,
-                }}>
+          {/* 날짜 버튼 — 모든 뷰 공통, 항상 데이트피커 열림 */}
+          <div ref={dpRef} style={{ position: 'relative', minWidth: 0 }}>
+            <button className="btn"
+              onClick={() => setShowDatePicker(v => !v)}
+              style={{
+                padding: '5px 14px', background: 'transparent', whiteSpace: 'nowrap',
+                border: 'none',
+                borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+                height: 33, userSelect: 'none', WebkitUserSelect: 'none',
+              }}>
+              <span style={{ fontSize: 20, fontWeight: 500, color: '#111111',
+                fontFamily: "'Pretendard', -apple-system, sans-serif",
+                userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'none' }}>
+                {calView === 'daily'
+                  ? (() => { const d = dateToObj(selectedDate); return `${d.getFullYear()}년 ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}일 ${DAY_NAMES[d.getDay()]}요일` })()
+                  : navLabel()}
+              </span>
+            </button>
+            {showDatePicker && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 8px)',
+                left: '50%', transform: 'translateX(-50%)',
+                zIndex: 9999,
+                background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
+                boxShadow: '0 8px 32px rgba(0,0,0,0.12)', padding: 14, minWidth: 260,
+              }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                     <button className="btn" onClick={e => { e.stopPropagation(); dpMonth === 0 ? (setDpYear(y => y-1), setDpMonth(11)) : setDpMonth(m => m-1) }}
                       style={{ background: 'none', border: 'none', padding: '4px 8px', display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
@@ -227,15 +232,6 @@ export function CalendarShell({
                 </div>
               )}
             </div>
-          ) : (
-            <div style={{ padding: '5px 14px', border: 'none', borderRadius: 8, height: 33,
-              display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontSize: 20, fontWeight: 500, color: '#111111',
-                fontFamily: "'Pretendard', -apple-system, sans-serif", whiteSpace: 'nowrap' }}>
-                {navLabel()}
-              </span>
-            </div>
-          )}
 
           {/* arrow_forward_ios */}
           <button className="btn" onClick={() => navigate(1)}
@@ -243,12 +239,6 @@ export function CalendarShell({
               display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
             <IcoForward />
           </button>
-          {selectedDate !== today && (
-            <button className="btn rounded-full flex-shrink-0"
-              style={{ padding: '5px 12px', fontSize: 12, fontWeight: 500, background: '#111111', color: '#fff',
-                marginLeft: 6, borderRadius: 999 }}
-              onClick={() => setSelectedDate(today)}>오늘</button>
-          )}
         </div>
 
         {/* ── 우: 오늘버튼(조건) + 층 드롭다운 + 필터탭 ── */}
@@ -261,20 +251,20 @@ export function CalendarShell({
           )}
           {/* 층 드롭다운 */}
           <div ref={floorDropRef} style={{ position: 'relative', flexShrink: 0 }}>
-          <button className="btn" onClick={() => setShowFloorDrop(v => !v)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '7px 14px', borderRadius: 999, border: 'none',
-              fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap',
-              fontFamily: "'Pretendard', -apple-system, sans-serif",
-              background: '#111111', color: '#fff', cursor: 'pointer', height: 32,
-            }}>
-            {currentFloorLabel}
-            <svg width="9" height="5" viewBox="0 0 9 5" fill="none" xmlns="http://www.w3.org/2000/svg"
-              style={{transform: showFloorDrop ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s'}}>
-              <path d="M4.25 4.5625L0 0.3125L0.3125 0L4.25 3.9375L8.1875 0L8.5 0.3125L4.25 4.5625Z" fill="#d0d0d0"/>
-            </svg>
-          </button>
+            <button className="btn" onClick={() => setShowFloorDrop(v => !v)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '7px 14px', borderRadius: 999, border: 'none',
+                fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap',
+                fontFamily: "'Pretendard', -apple-system, sans-serif",
+                background: '#111111', color: '#fff', cursor: 'pointer', height: 32,
+              }}>
+              {currentFloorLabel}
+              <svg width="9" height="5" viewBox="0 0 9 5" fill="none" xmlns="http://www.w3.org/2000/svg"
+                style={{transform: showFloorDrop ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s'}}>
+                <path d="M4.25 4.5625L0 0.3125L0.3125 0L4.25 3.9375L8.1875 0L8.5 0.3125L4.25 4.5625Z" fill="#d0d0d0"/>
+              </svg>
+            </button>
           {showFloorDrop && (
             <div style={{
               position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 9999,
@@ -300,22 +290,22 @@ export function CalendarShell({
               })}
             </div>
           )}
-        </div>
+          </div>
 
-        {/* ④ 전체예약/내예약 필터 — Figma: padding=0, h=32, gap=2 */}
-        <div style={{ display: 'flex', background: '#F3F4F8', borderRadius: 1000,
-          padding: 0, gap: 2, flexShrink: 0, height: 32, alignItems: 'center' }}>
-          {([{ v: false, l: '전체 예약' }, { v: true, l: '내 예약' }] as const).map(({ v, l }) => (
-            <button key={l} className="btn" onClick={() => setFilterMine(v)}
-              style={{
-                background: filterMine===v ? '#111111' : 'transparent',
-                color:      filterMine===v ? '#fff'    : '#657487',
-                padding: '8px 16px', borderRadius: 10000, border: 'none',
-                fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap',
-                fontFamily: "'Pretendard', -apple-system, sans-serif",
-                cursor: 'pointer', lineHeight: 1, height: 32,
-              }}>{l}</button>
-          ))}
+          {/* ④ 전체예약/내예약 필터 — Figma: padding=0, h=32, gap=2 */}
+          <div style={{ display: 'flex', background: '#F3F4F8', borderRadius: 1000,
+            padding: 0, gap: 2, flexShrink: 0, height: 32, alignItems: 'center' }}>
+            {([{ v: false, l: '전체 예약' }, { v: true, l: '내 예약' }] as const).map(({ v, l }) => (
+              <button key={l} className="btn" onClick={() => setFilterMine(v)}
+                style={{
+                  background: filterMine===v ? '#111111' : 'transparent',
+                  color:      filterMine===v ? '#fff'    : '#657487',
+                  padding: '8px 16px', borderRadius: 10000, border: 'none',
+                  fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap',
+                  fontFamily: "'Pretendard', -apple-system, sans-serif",
+                  cursor: 'pointer', lineHeight: 1, height: 32,
+                }}>{l}</button>
+            ))}
           </div>
         </div>
       </div>
