@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
-import { Circle, X } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsMin, fmtTimeFull, fmtTSFull, getRoomStatus } from '../../utils/time'
 import { getFloor } from '../../data/floors'
 
@@ -29,7 +28,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
         <button onClick={()=>setLightbox(false)}
           style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,0.15)",
             border:"none",borderRadius:"50%",width:36,height:36,color:"#fff",
-            cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={16} strokeWidth={2}/></button>
+            cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><span className="material-symbols-outlined" style={{fontSize:16}}>close</span></button>
       </div>
     )}
 
@@ -52,7 +51,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
         alignItems:"center", flexShrink:0}}>
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-            <div style={{fontSize: isMobile ? 17 : 20, fontWeight:800, color:"#111111"}}>{r.room_name}</div>
+            <div style={{fontSize: isMobile ? 17 : 20, fontWeight:600, color:"#111111"}}>{r.room_name}</div>
             {status.type==="AVAILABLE"&&<span className="chip" style={{background:"#CBECFF",color:"#111"}}>예약가능</span>}
             {status.type==="BUSY"&&<span className="chip" style={{background:"#FEE2E2",color:"#DC2626"}}>사용중</span>}
             {status.type==="SOON"&&<span className="chip" style={{background:"#FEF3C7",color:"#D97706"}}>곧 사용</span>}
@@ -62,7 +61,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
         <button className="btn" onClick={onClose}
           style={{width:32,height:32,borderRadius:"50%",background:"#F1F5F9",
             color:"#64748B",flexShrink:0,
-            display:"flex",alignItems:"center",justifyContent:"center"}}><X size={14} strokeWidth={2}/></button>
+            display:"flex",alignItems:"center",justifyContent:"center"}}><span className="material-symbols-outlined" style={{fontSize:14}}>close</span></button>
       </div>
 
       {/* ── 본문: 데스크톱 2컬럼 / 모바일 1컬럼 ── */}
@@ -139,31 +138,31 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
           }}>
             {status.type==="BUSY" && (
               <div style={{background:"#FEF2F2",borderRadius:10,padding:"12px 14px"}}>
-                <div style={{fontSize:11,color:"#DC2626",fontWeight:700,marginBottom:6}}>현재 사용 중</div>
-                <div style={{fontSize:14,color:"#111111",fontWeight:700}}>{status.booking?.title}</div>
+                <div style={{fontSize:11,color:"#DC2626",fontWeight:600,marginBottom:6}}>현재 사용 중</div>
+                <div style={{fontSize:14,color:"#111111",fontWeight:600}}>{status.booking?.title}</div>
                 <div style={{fontSize:12,color:"#64748B",marginTop:4}}>{fmtTimeFull(status.endTime)}까지 · {status.minsLeft}분 남음</div>
               </div>
             )}
             {status.type==="SOON" && (
               <div style={{background:"#FFFBEB",borderRadius:10,padding:"12px 14px"}}>
-                <div style={{fontSize:11,color:"#D97706",fontWeight:700,marginBottom:6}}>사용 예정</div>
-                <div style={{fontSize:14,color:"#111111",fontWeight:700}}>{status.minsUntil}분 후 사용 시작</div>
+                <div style={{fontSize:11,color:"#D97706",fontWeight:600,marginBottom:6}}>사용 예정</div>
+                <div style={{fontSize:14,color:"#111111",fontWeight:600}}>{status.minsUntil}분 후 사용 시작</div>
                 <div style={{fontSize:12,color:"#64748B",marginTop:4}}>{fmtTimeFull(status.nextStart)} 부터</div>
               </div>
             )}
             {status.type==="AVAILABLE" && (
               <div style={{background:"#E8F4FF",borderRadius:10,padding:"12px 14px"}}>
-                <div style={{fontSize:11,color:"#0369A1",fontWeight:700,marginBottom:4}}>예약 가능</div>
+                <div style={{fontSize:11,color:"#0369A1",fontWeight:600,marginBottom:4}}>예약 가능</div>
                 <div style={{fontSize:13,color:"#111111",fontWeight:600}}>지금 바로 이용 가능합니다</div>
               </div>
             )}
 
             {/* 오늘 예약 현황 */}
             <div>
-              <div style={{fontSize:12,fontWeight:700,color:"#111111",marginBottom:10,
+              <div style={{fontSize:12,fontWeight:600,color:"#111111",marginBottom:10,
                 display:"flex",alignItems:"center",gap:6}}>
                 <span>오늘 예약 현황</span>
-                <span style={{fontSize:11,color:"#fff",fontWeight:700,background:"#111",
+                <span style={{fontSize:11,color:"#fff",fontWeight:600,background:"#111",
                   borderRadius:999,padding:"1px 7px"}}>{todayBks.length}건</span>
               </div>
               {todayBks.length===0
@@ -185,7 +184,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
                           <div style={{flex:1,minWidth:0,marginRight:10}}>
                             <div style={{fontSize:13,color:"#111111",fontWeight:600,
                               overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                              {isActive && <Circle size={7} fill="#E11D48" strokeWidth={0} style={{marginRight:4,flexShrink:0,display:"inline-block",verticalAlign:"middle"}}/>}
+                              {isActive && <span style={{width:7,height:7,borderRadius:"50%",background:"#E11D48",display:"inline-block",verticalAlign:"middle",flexShrink:0,marginRight:4}}/>}
                               {b.title}
                             </div>
                             <div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>{b.user} · {b.dept}</div>
@@ -209,7 +208,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
         flexShrink:0, borderTop:"1px solid #F1F5F9"}}>
         <button className="btn" onClick={()=>onBook(status)}
           style={{width:"100%", background:"#111111", color:"#fff", padding:"13px 8px",
-            fontSize:14, fontWeight:700, borderRadius:12}}>
+            fontSize:14, fontWeight:600, borderRadius:12}}>
           이 회의실 예약하기
         </button>
       </div>

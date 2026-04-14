@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react'
-import { Layers, Users, UsersRound, Building2, Clock, User, Monitor, FileText, XCircle, AlertTriangle, CheckCircle2, Circle, X, Calendar, Home, LayoutGrid, LogOut, Settings, Search, BarChart2, ClipboardList, Inbox, ChevronDown, ChevronUp, AlertCircle, CheckCheck, Ban, Check, Bell } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtTSFull, fmtTSRangeFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
@@ -13,11 +12,11 @@ import { RoomDetailModal } from './components/room/RoomDetailModal'
 import { HomeSkeleton, CalendarSkeleton, MyPageSkeleton } from './components/skeleton'
 import { initGlobalRipple } from './hooks/useGlobalRipple'
 import { CalendarShell } from './components/layout/CalendarShell'
-import { BookingModal } from './components/booking/BookingModal'
-import { DetailModal } from './components/booking/DetailModal'
-import { BookingDoneModal } from './components/booking/BookingDoneModal'
-import { RecurDoneModal } from './components/booking/RecurDoneModal'
 // ── 무거운 페이지는 lazy load — 초기 번들에서 제외 ─────────────────────────
+const BookingModal        = lazy(() => import('./components/booking/BookingModal').then(m => ({ default: m.BookingModal })))
+const DetailModal         = lazy(() => import('./components/booking/DetailModal').then(m => ({ default: m.DetailModal })))
+const BookingDoneModal    = lazy(() => import('./components/booking/BookingDoneModal').then(m => ({ default: m.BookingDoneModal })))
+const RecurDoneModal      = lazy(() => import('./components/booking/RecurDoneModal').then(m => ({ default: m.RecurDoneModal })))
 const MyPageView          = lazy(() => import('./pages/MyPage').then(m => ({ default: m.MyPageView })))
 import { UserAvatar } from './components/common/UserAvatar'
 const AdminView           = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminView })))
@@ -997,7 +996,7 @@ function AppContent() {
     <div className="dark:bg-slate-900 min-h-screen text-slate-800 dark:text-slate-200" style={{background:"#F3F4F8"}}>
 {/* ── Header ── */}
       <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-[100]">
-        <div className="max-w-[1280px] mx-auto px-3 sm:px-7">
+        <div className="max-w-[1400px] mx-auto px-3 sm:px-7">
           <div className="grid items-center gap-3" style={{gridTemplateColumns:"1fr auto 1fr", height:52}} data-desktop-height="64">
 
             {/* ① 브랜드 (left) — 클릭 시 홈 */}
@@ -1014,8 +1013,8 @@ function AppContent() {
             {(view==="home"||view==="calendar") ? (
               <div className="flex dark:bg-slate-700 rounded-full p-1 gap-1" style={{background:"#F3F4F8"}}>
                 {([
-                  ["home",       <Home size={14} strokeWidth={1.8}/>,     "실시간 현황", "현황"]    as const,
-                  ["calendar",   <Calendar size={14} strokeWidth={1.8}/>,  "캘린더 뷰",  "캘린더"]  as const,
+                  ["home",       <span className="material-symbols-outlined" style={{fontSize:14}}>home</span>,     "실시간 현황", "현황"]    as const,
+                  ["calendar",   <span className="material-symbols-outlined" style={{fontSize:14}}>calendar_today</span>,  "캘린더 뷰",  "캘린더"]  as const,
                 ] as [string, React.ReactElement, string, string][]).map(([v,icon,label,mLabel])=>(
                   <button key={v} onClick={()=>setView(v)}
                     className="btn flex items-center gap-1.5 rounded-full font-semibold transition-all whitespace-nowrap"
@@ -1037,7 +1036,7 @@ function AppContent() {
                 <button className="btn" onClick={()=>setView("home")}
                   style={{background:"#F3F4F8",color:"#64748B",padding:"6px 14px",fontSize:12,borderRadius:999,
                     display:"flex",alignItems:"center",gap:5}}>
-                  ← <span style={{fontWeight:700}}>{view==="mypage"?"My Page":"Admin"}</span>에서 홈으로
+                  ← <span style={{fontWeight:600}}>{view==="mypage"?"My Page":"Admin"}</span>에서 홈으로
                 </button>
               </div>
             )}
@@ -1052,11 +1051,11 @@ function AppContent() {
                     display:"flex",alignItems:"center",justifyContent:"center",
                     background:showNotifPanel?(dark?"rgba(255,255,255,0.1)":"#F1F5F9"):"transparent",
                     color:dark?"#94A3B8":"#64748B"}}>
-                  <Bell size={18} strokeWidth={1.8}/>
+                  <span className="material-symbols-outlined" style={{fontSize:18}}>notifications</span>
                   {unreadCount > 0 && (
                     <span style={{position:"absolute",top:4,right:4,
                       background:"#EF4444",color:"#fff",
-                      fontSize:9,fontWeight:700,borderRadius:999,
+                      fontSize:9,fontWeight:600,borderRadius:999,
                       padding:"1px 4px",lineHeight:1.4,minWidth:14,textAlign:"center"}}>
                       {unreadCount > 99 ? "99+" : unreadCount}
                     </span>
@@ -1073,7 +1072,7 @@ function AppContent() {
                     {/* 패널 헤더 */}
                     <div style={{padding:"14px 16px",borderBottom:"1px solid #F1F5F9",
                       display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                      <span style={{fontSize:14,fontWeight:700,color:"#111"}}>
+                      <span style={{fontSize:14,fontWeight:600,color:"#111"}}>
                         알림 {unreadCount > 0 && <span style={{color:"#EF4444",fontSize:12}}>({unreadCount})</span>}
                       </span>
                       {unreadCount > 0 && (
@@ -1187,7 +1186,7 @@ function AppContent() {
                   }}>
                     {/* 사용자 정보 */}
                     <div style={{padding:"14px 16px",borderBottom:"1px solid #F1F5F9"}}>
-                      <div style={{fontSize:13,fontWeight:700,color:"#111"}}>{currentUser}</div>
+                      <div style={{fontSize:13,fontWeight:600,color:"#111"}}>{currentUser}</div>
                       <div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>{currentDept}</div>
                     </div>
                     {/* 메뉴 항목 */}
@@ -1198,7 +1197,7 @@ function AppContent() {
                           display:"flex",alignItems:"center",gap:8}}
                         onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
                         onMouseLeave={e=>e.currentTarget.style.background=view==="mypage"?"#F8FAFC":"transparent"}>
-                        <User size={15} strokeWidth={1.8}/> My Page
+                        <span className="material-symbols-outlined" style={{fontSize:15}}>person</span> My Page
                       </button>
                       {isAdmin && (
                         <button className="btn" onClick={()=>{setView("admin");setShowDropdown(false);}}
@@ -1207,7 +1206,7 @@ function AppContent() {
                             display:"flex",alignItems:"center",gap:8}}
                           onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
                           onMouseLeave={e=>e.currentTarget.style.background=view==="admin"?"#F8FAFC":"transparent"}>
-                          <Settings size={15} strokeWidth={1.8}/> Admin
+                          <span className="material-symbols-outlined" style={{fontSize:15}}>settings</span> Admin
                         </button>
                       )}
                     </div>
@@ -1216,7 +1215,7 @@ function AppContent() {
                       <button className="btn" onClick={()=>{logout();setShowDropdown(false);}}
                         style={{width:"100%",textAlign:"left",padding:"10px 16px",fontSize:13,
                           color:"#EF4444",display:"flex",alignItems:"center",gap:8}}>
-                        <LogOut size={15} strokeWidth={1.8}/> 로그아웃
+                        <span className="material-symbols-outlined" style={{fontSize:15}}>logout</span> 로그아웃
                       </button>
                     </div>
                   </div>
@@ -1275,11 +1274,13 @@ function AppContent() {
             zIndex:1000,
             padding: isMobile ? 0 : 16,
           }}>
-          {modal.type==="new"         && <BookingModal prefill={modal.prefill} date={modal.date||selectedDate} onClose={()=>setModal(null)} onSubmit={addBooking} onUpdate={()=>false} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} />}
-          {modal.type==="edit"         && <BookingModal prefill={{}} editBooking={modal.data} date={tsDate(modal.data.start_at)} onClose={()=>setModal(null)} onSubmit={async ()=>false} onUpdate={(form,date)=>updateBooking(form,date,modal.data.id)} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} />}
-          {modal.type==="detail"      && <DetailModal booking={modal.data} onClose={()=>setModal(null)} onCheckIn={checkIn} onCancel={cancelBooking} onEdit={(b)=>setModal({type:"edit",data:b})} currentUser={currentUser} rooms={rooms} users={users} isAdmin={isAdmin} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={adminForceCancelBooking} />}
-          {modal.type==="bookingDone" && <BookingDoneModal booking={modal.data} onClose={()=>setModal(null)} rooms={rooms} users={users} />}
-          {modal.type==="recurDone"    && <RecurDoneModal data={modal.data} onClose={()=>setModal(null)} />}
+          <Suspense fallback={null}>
+            {modal.type==="new"         && <BookingModal prefill={modal.prefill} date={modal.date||selectedDate} onClose={()=>setModal(null)} onSubmit={addBooking} onUpdate={()=>false} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} />}
+            {modal.type==="edit"         && <BookingModal prefill={{}} editBooking={modal.data} date={tsDate(modal.data.start_at)} onClose={()=>setModal(null)} onSubmit={async ()=>false} onUpdate={(form,date)=>updateBooking(form,date,modal.data.id)} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} />}
+            {modal.type==="detail"      && <DetailModal booking={modal.data} onClose={()=>setModal(null)} onCheckIn={checkIn} onCancel={cancelBooking} onEdit={(b)=>setModal({type:"edit",data:b})} currentUser={currentUser} rooms={rooms} users={users} isAdmin={isAdmin} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={adminForceCancelBooking} />}
+            {modal.type==="bookingDone" && <BookingDoneModal booking={modal.data} onClose={()=>setModal(null)} rooms={rooms} users={users} />}
+            {modal.type==="recurDone"    && <RecurDoneModal data={modal.data} onClose={()=>setModal(null)} />}
+          </Suspense>
           {modal.type==="roomDetail"  && <RoomDetailModal room={modal.data} bookings={bookings} onClose={()=>setModal(null)} onBook={(status)=>{
               const now = nowMinutes();
               const snapStart = Math.ceil((now+1)/15)*15;
@@ -1315,7 +1316,7 @@ function AppContent() {
 
       {/* ── Footer ── */}
       <footer style={{
-        maxWidth:1280, margin:"200px auto 0",
+        maxWidth:1400, margin:"200px auto 0",
         padding: isMobile?"24px 12px 16px":"32px 28px 20px",
         textAlign:"center", fontSize:11, color:"#94A3B8", letterSpacing:"0.2px",
       }}>

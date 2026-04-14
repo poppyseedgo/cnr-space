@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
-import { Layers, Users, UsersRound, Building2, Clock, User, Monitor, FileText, XCircle, AlertTriangle, CheckCircle2, Circle, X, Calendar, Home, LayoutGrid, LogOut, Settings, Search, BarChart2, ClipboardList, Inbox, ChevronDown, ChevronUp, AlertCircle, CheckCheck, Ban, Check } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtRangeFull, fmtTimeFull, fmtTSRangeFull, fmtTSFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
@@ -215,7 +214,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
             <span style={{
               background: filterStatus===s.id ? "rgba(255,255,255,0.2)" : (s.badgeBg || (dark?"#475569":"#F1F5F9")),
               color: filterStatus===s.id ? "#fff" : (s.badgeColor || "#94A3B8"),
-              fontSize:11, fontWeight:700, padding:"1px 7px", borderRadius:999,
+              fontSize:11, fontWeight:600, padding:"1px 7px", borderRadius:999,
             }}>{s.count}</span>
           </button>
         ))}
@@ -240,19 +239,19 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
         {/* 검색 */}
         <div className="flex items-center gap-2 bg-white dark:bg-slate-800 rounded-full flex-1 min-w-[160px]"
           style={{padding:"7px 16px"}}>
-          <Search size={14} strokeWidth={1.8} className="text-slate-300 dark:text-slate-500 flex-shrink-0"/>
+          <span className="material-symbols-outlined text-slate-300 dark:text-slate-500 flex-shrink-0" style={{fontSize:14}}>search</span>
           <input className="bg-transparent flex-1 text-sm text-slate-900 dark:text-white outline-none min-w-0"
             style={{fontSize:13}}
             placeholder="회의실 이름, 층수로 검색..."
             value={searchQ} onChange={e=>setSearchQ(e.target.value)}/>
-          {searchQ && <button className="text-slate-300 flex-shrink-0 text-xs" onClick={()=>setSearchQ("")}><X size={10} strokeWidth={2}/></button>}
+          {searchQ && <button className="text-slate-300 flex-shrink-0 text-xs" onClick={()=>setSearchQ("")}><span className="material-symbols-outlined" style={{fontSize:10}}>close</span></button>}
         </div>
       </div>
 
       {/* ── 회의실 그리드 ── */}
       {withStatus.length===0 ? (
         <div className="text-center py-20 text-slate-400">
-          <div className="mb-4" style={{display:"flex",justifyContent:"center"}}><Search size={48} strokeWidth={1.2} color="#CBD5E1"/></div>
+          <div className="mb-4" style={{display:"flex",justifyContent:"center"}}><span className="material-symbols-outlined" style={{fontSize:48,color:"#CBD5E1"}}>search</span></div>
           <div className="text-lg font-semibold">검색 결과가 없습니다</div>
         </div>
       ) : (
@@ -273,7 +272,7 @@ export function Section({title, count, accent, children}) {
       <div className="flex items-center gap-2.5 mb-4">
         <div style={{width:4,height:20,background:accent,borderRadius:2}} />
         <h2 className="text-lg font-semibold text-slate-900 dark:text-white tracking-tight">{title}</h2>
-        <span style={{background:accent+"18",color:accent,fontSize:12,fontWeight:700,padding:"2px 9px",borderRadius:20}}>{count}</span>
+        <span style={{background:accent+"18",color:accent,fontSize:12,fontWeight:600,padding:"2px 9px",borderRadius:20}}>{count}</span>
       </div>
       {children}
     </div>
@@ -340,7 +339,7 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
         <RoomStatusBadge status={status} />
 
         {/* ② 회의실명 */}
-        <div style={{fontSize:21, fontWeight:700, letterSpacing:"-0.3px", lineHeight:1.2,
+        <div style={{fontSize:21, fontWeight:600, letterSpacing:"-0.3px", lineHeight:1.2,
           color: (isBusy||isSoon) ? "#94A3B8" : dark?"#fff":"#111111"}}>
           {r.room_name}
         </div>
@@ -349,11 +348,11 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
         <div style={{display:"flex", alignItems:"center", gap:12, fontSize:13,
           color: (isBusy||isSoon) ? "#CBD5E1" : "#64748B"}}>
           <span style={{display:"flex",alignItems:"center",gap:4}}>
-            <Layers size={13} strokeWidth={1.8} style={{flexShrink:0}}/>
+            <span className="material-symbols-outlined" style={{fontSize:13,flexShrink:0}}>layers</span>
             <span style={{fontWeight:500}}>{floor?.floor_no}층</span>
           </span>
           <span style={{display:"flex",alignItems:"center",gap:4}}>
-            <UsersRound size={13} strokeWidth={1.8} style={{flexShrink:0}}/>
+            <span className="material-symbols-outlined" style={{fontSize:13,flexShrink:0}}>groups</span>
             <span style={{fontWeight:500}}>{r.capacity}명</span>
           </span>
         </div>
@@ -417,7 +416,7 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
       <div style={{display:"flex", alignItems:"center", gap:8, padding:"4px 20px 20px"}}>
         {isAvail && (<>
           <button className="btn" onClick={()=>onBook(r, status)}
-            style={{flex:1, background:"#111111", color:"#fff", fontWeight:700,
+            style={{flex:1, background:"#111111", color:"#fff", fontWeight:600,
               borderRadius:12, padding:"13px", fontSize:14, textAlign:"center"}}>
             바로 예약
           </button>
@@ -429,7 +428,7 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
         </>)}
         {isSoon && (<>
           <button className="btn" disabled
-            style={{flex:1, background:"#FCE7F3", color:"#BE185D", fontWeight:700,
+            style={{flex:1, background:"#FCE7F3", color:"#BE185D", fontWeight:600,
               borderRadius:12, padding:"13px", fontSize:14, textAlign:"center",
               cursor:"not-allowed", border:"none"}}>
             {status.minsUntil}분 뒤 사용

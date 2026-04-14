@@ -1,4 +1,3 @@
-import { X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { useState } from 'react'
 import { UserAvatar } from './UserAvatar'
@@ -61,7 +60,7 @@ export function AttendeeChip({ name, avatarUrl, userInfo, onRemove, avatarSize =
               alignItems:  'center',
             }}
           >
-            <X size={10} strokeWidth={2.5} />
+            <span className="material-symbols-outlined" style={{fontSize:10}}>close</span>
           </button>
         )}
       </div>
@@ -111,7 +110,7 @@ export function AttendeeChip({ name, avatarUrl, userInfo, onRemove, avatarSize =
                 color:          '#64748B',
               }}
             >
-              <X size={13} strokeWidth={2} />
+              <span className="material-symbols-outlined" style={{fontSize:13}}>close</span>
             </button>
 
             {/* 프로필 영역 */}

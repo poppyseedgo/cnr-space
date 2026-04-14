@@ -139,13 +139,13 @@ export function CalendarShell({
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                     <button className="btn" onClick={e => { e.stopPropagation(); dpMonth === 0 ? (setDpYear(y => y-1), setDpMonth(11)) : setDpMonth(m => m-1) }}
                       style={{ background: 'none', color: '#111111', padding: '4px 10px', fontSize: 16 }}>‹</button>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: '#111111' }}>{dpYear}년 {MONTH_NAMES[dpMonth]}</span>
+                    <span style={{ fontSize: 14, fontWeight:600, color: '#111111' }}>{dpYear}년 {MONTH_NAMES[dpMonth]}</span>
                     <button className="btn" onClick={e => { e.stopPropagation(); dpMonth === 11 ? (setDpYear(y => y+1), setDpMonth(0)) : setDpMonth(m => m+1) }}
                       style={{ background: 'none', color: '#111111', padding: '4px 10px', fontSize: 16 }}>›</button>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', marginBottom: 4 }}>
                     {DAY_NAMES.map((n, i) => (
-                      <div key={n} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, padding: '2px 0',
+                      <div key={n} style={{ textAlign: 'center', fontSize: 10, fontWeight:600, padding: '2px 0',
                         color: i===0 ? '#EF4444' : i===6 ? '#3B82F6' : '#94A3B8' }}>{n}</div>
                     ))}
                   </div>
@@ -296,7 +296,7 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
     <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
         {DAY_NAMES.map((n, i) => (
-          <div key={n} style={{ padding: '10px 0', textAlign: 'center', fontSize: 12, fontWeight: 700,
+          <div key={n} style={{ padding: '10px 0', textAlign: 'center', fontSize: 12, fontWeight:600,
             color: i===0 ? '#EF4444' : i===6 ? '#3B82F6' : '#64748B' }}>{n}</div>
         ))}
       </div>
@@ -403,7 +403,7 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
         {/* 헤더: 시간축 */}
         <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 9, background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
           <div style={{ width: LW, minWidth: LW, flexShrink: 0, borderRight: '1px solid #E2E8F0',
-            padding: '10px 16px', fontSize: 11, fontWeight: 700, color: '#94A3B8',
+            padding: '10px 16px', fontSize: 11, fontWeight:600, color: '#94A3B8',
             position: 'sticky', left: 0, zIndex: 9, background: '#F8FAFC' }}>회의실</div>
           {HOURS.map(h => (
             <div key={h} style={{ width: CW, minWidth: CW, textAlign: 'center', padding: '10px 0',
@@ -444,7 +444,7 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                     }} />
                   )}
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#111111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{room.room_name}</div>
+                    <div style={{ fontSize: 13, fontWeight:600, color: '#111111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{room.room_name}</div>
                     <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{floor?.floor_name} · {room?.capacity}인</div>
                   </div>
                 </div>
@@ -484,7 +484,7 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                         background: '#F1F5F9', border: '1px dashed #D1D5DB', borderRadius: 5,
                         padding: '2px 5px', cursor: 'pointer', opacity: 0.5, overflow: 'hidden', zIndex: 1 }}>
                       <span style={{ display: 'inline-block', background: '#FEF3C7', color: '#92400E',
-                        fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 2 }}>노쇼</span>
+                        fontSize: 8, fontWeight:600, padding: '1px 4px', borderRadius: 2 }}>노쇼</span>
                     </div>
                   )
                 })}

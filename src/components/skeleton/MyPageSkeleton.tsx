@@ -13,7 +13,7 @@ const S = ({ w, h, r = 8, style = {} }: { w?: string|number, h: number, r?: numb
 
 export function MyPageSkeleton() {
   return (
-    <div className="sk-wrap" style={{ padding: '20px 28px', maxWidth: 960, margin: '0 auto' }}>
+    <div className="sk-wrap" style={{ padding: '20px 28px', maxWidth: 1400, margin: '0 auto' }}>
       {/* 프로필 카드 */}
       <S h={120} r={16} style={{ marginBottom: 20 }} />
       {/* 기간 조회 섹션 */}

@@ -13,33 +13,36 @@ const S = ({ w, h, r = 8, style = {} }: { w?: string|number, h: number, r?: numb
 
 export function CalendarSkeleton() {
   return (
-    <div className="sk-wrap" style={{ padding: '20px 28px' }}>
-      {/* 탭 + 날짜 네비 행 */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 20 }}>
-        <S w={80}  h={36} r={999} />
-        <S w={60}  h={36} r={999} />
-        <S w={60}  h={36} r={999} />
-        <S h={36} r={999} />
+    <div className="sk-wrap" style={{ padding: '20px 28px', maxWidth: 1400, margin: '0 auto' }}>
+      {/* 툴바 skeleton — h=64, pill tabs */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16,
+        background: '#fff', borderRadius: 16, padding: '12px 18px', height: 64 }}>
+        <S w={160} h={40} r={999} />
+        <S w={220} h={33} r={8}   />
+        <div style={{ flex: 1 }} />
+        <S w={88}  h={32} r={999} />
+        <S w={148} h={36} r={999} />
       </div>
 
-      {/* 타임라인 그리드 — 회의실명 + 시간 셀 × 4 */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {/* 헤더행: 비어있는 코너 + 시간 셀 */}
-        <div style={{ display: 'flex', gap: 6 }}>
-          <S w={100} h={44} r={8} />
-          <S h={44} r={8} />
-          <S h={44} r={8} />
-          <S h={44} r={8} />
-          <S h={44} r={8} />
+      {/* 일간뷰 skeleton — 회의실 컬럼(224px) + 시간 그리드 */}
+      <div style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', border: '1px solid #E2E8F0' }}>
+        {/* 헤더 */}
+        <div style={{ display: 'flex', borderBottom: '1px solid #E2E8F0', padding: '10px 16px', gap: 8 }}>
+          <S w={224} h={20} r={4} />
+          {[0,1,2,3,4].map(i => <S key={i} w={160} h={20} r={4} />)}
         </div>
-        {/* 회의실 행 × 3 */}
-        {[0,1,2].map(i => (
-          <div key={i} style={{ display: 'flex', gap: 6 }}>
-            <S w={100} h={66} r={8} />
-            <S h={66} r={8} />
-            <S h={66} r={8} />
-            <S h={66} r={8} />
-            <S h={66} r={8} />
+        {/* 회의실 행 × 4 */}
+        {[0,1,2,3].map(i => (
+          <div key={i} style={{ display: 'flex', borderBottom: '1px solid #F1F5F9', height: 80 }}>
+            <div style={{ width: 224, flexShrink: 0, padding: '0 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 6 }}>
+              <S w={100} h={13} r={4} />
+              <S w={70}  h={11} r={4} />
+            </div>
+            {[0,1,2,3,4].map(j => (
+              <div key={j} style={{ flex: 1, padding: 8 }}>
+                {i === 1 && j === 1 && <S h={56} r={8} />}
+              </div>
+            ))}
           </div>
         ))}
       </div>

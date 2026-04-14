@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { Layers, Users, UsersRound, Building2, Clock, User, Monitor, FileText, XCircle, AlertTriangle, CheckCircle2, Circle, X, Calendar, Home, LayoutGrid, LogOut, Settings, Search, BarChart2, ClipboardList, Inbox, ChevronDown, ChevronUp, AlertCircle, CheckCheck, Ban, Check } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtRangeFull, fmtTSFull, fmtTimeFull, fmtTSRangeFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
@@ -154,16 +153,16 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
         display:"flex",alignItems:isMobile?"flex-start":"center",gap:isMobile?16:20,flexDirection:isMobile?"column":"row"}}>
         <UserAvatar name={currentUser} avatarUrl={avatarUrl} size={56} />
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:20,fontWeight:800,color:"#111"}}>{currentUser}</div>
+          <div style={{fontSize:20,fontWeight:600,color:"#111"}}>{currentUser}</div>
           <div style={{fontSize:13,color:"#64748B",marginTop:2}}>{currentDept} · {userInfo?.email}</div>
         </div>
         <div style={{display:"flex",gap:12}}>
           <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 16px",textAlign:"center"}}>
-            <div style={{fontSize:20,fontWeight:800,color:"#111"}}>{allLoading ? "—" : thisBks.length}</div>
+            <div style={{fontSize:20,fontWeight:600,color:"#111"}}>{allLoading ? "—" : thisBks.length}</div>
             <div style={{fontSize:11,color:"#94A3B8",fontWeight:600}}>이번 달 예약</div>
           </div>
           <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 16px",textAlign:"center"}}>
-            <div style={{fontSize:20,fontWeight:800,color:thisRate>=70?"#16A34A":"#D97706"}}>{allLoading ? "—" : `${thisRate}%`}</div>
+            <div style={{fontSize:20,fontWeight:600,color:thisRate>=70?"#16A34A":"#D97706"}}>{allLoading ? "—" : `${thisRate}%`}</div>
             <div style={{fontSize:11,color:"#94A3B8",fontWeight:600}}>체크인율</div>
           </div>
         </div>
@@ -172,17 +171,17 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
       {/* ── 기간별 예약 조회 ── */}
       <div className="anm" style={{background:"#fff",borderRadius:16,overflow:"hidden",marginTop:20,animationDelay:"150ms"}}>
         <div style={{padding:isMobile?"16px 20px":"20px 28px",borderBottom:"1px solid #F1F5F9"}}>
-          <div style={{fontSize:15,fontWeight:800,color:"#111",marginBottom:14}}><span style={{display:"inline-flex",alignItems:"center",gap:6}}><ClipboardList size={15} strokeWidth={1.8}/>기간별 예약 조회</span></div>
+          <div style={{fontSize:15,fontWeight:600,color:"#111",marginBottom:14}}><span style={{display:"inline-flex",alignItems:"center",gap:6}}><span className="material-symbols-outlined" style={{fontSize:15}}>assignment</span>기간별 예약 조회</span></div>
           {/* 날짜 필터 */}
           <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
             <div style={{flex:"1 1 140px",minWidth:120}}>
-              <label style={{fontSize:11,fontWeight:700,color:"#94A3B8",display:"block",marginBottom:4}}>시작일</label>
+              <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:4}}>시작일</label>
               <input type="date" value={listFrom} onChange={e=>setListFrom(e.target.value)}
                 style={{width:"100%",padding:"8px 12px",borderRadius:10,border:"1px solid #E2E8F0",fontSize:13,background:"#fff",outline:"none"}}/>
             </div>
             <span style={{color:"#CBD5E1",marginTop:16}}>~</span>
             <div style={{flex:"1 1 140px",minWidth:120}}>
-              <label style={{fontSize:11,fontWeight:700,color:"#94A3B8",display:"block",marginBottom:4}}>종료일</label>
+              <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:4}}>종료일</label>
               <input type="date" value={listTo} onChange={e=>setListTo(e.target.value)}
                 style={{width:"100%",padding:"8px 12px",borderRadius:10,border:"1px solid #E2E8F0",fontSize:13,background:"#fff",outline:"none"}}/>
             </div>
@@ -204,7 +203,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
         <div style={{maxHeight:400,overflowY:"auto"}}>
           {filteredList.length===0?(
             <div style={{textAlign:"center",padding:"40px 20px",color:"#CBD5E1"}}>
-              <div style={{display:"flex",justifyContent:"center",marginBottom:8}}><Inbox size={32} strokeWidth={1.2} color="#CBD5E1"/></div>
+              <div style={{display:"flex",justifyContent:"center",marginBottom:8}}><span className="material-symbols-outlined" style={{fontSize:32,color:"#CBD5E1"}}>inbox</span></div>
               <div style={{fontSize:13}}>해당 기간에 예약 내역이 없습니다</div>
             </div>
           ):(
@@ -212,7 +211,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
               <thead>
                 <tr style={{background:"#F8FAFC"}}>
                   {["날짜/시간","회의명","회의실","상태",""].map(h=>(
-                    <th key={h} style={{padding:"8px 14px",textAlign:"left",fontSize:11,fontWeight:700,color:"#94A3B8",whiteSpace:"nowrap",borderBottom:"1px solid #F1F5F9"}}>{h}</th>
+                    <th key={h} style={{padding:"8px 14px",textAlign:"left",fontSize:11,fontWeight:600,color:"#94A3B8",whiteSpace:"nowrap",borderBottom:"1px solid #F1F5F9"}}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -251,11 +250,11 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
       {/* 월별 통계 */}
       <div className="anm" style={{background:"#fff",borderRadius:16,padding:isMobile?"20px":"24px 28px",animationDelay:"100ms",marginTop:32}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-          <div style={{fontSize:15,fontWeight:800,color:"#111"}}><span style={{display:"inline-flex",alignItems:"center",gap:6}}><BarChart2 size={15} strokeWidth={1.8}/>월별 이용 통계</span></div>
+          <div style={{fontSize:15,fontWeight:600,color:"#111"}}><span style={{display:"inline-flex",alignItems:"center",gap:6}}><span className="material-symbols-outlined" style={{fontSize:15}}>bar_chart</span>월별 이용 통계</span></div>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <button className="btn" onClick={()=>{if(statMonth===0){setStatYear(y=>y-1);setStatMonth(11);}else setStatMonth(m=>m-1);}}
               style={{background:"#F1F5F9",color:"#64748B",padding:"4px 10px",fontSize:14,borderRadius:8}}>‹</button>
-            <span style={{fontSize:13,fontWeight:700,color:"#111",minWidth:100,textAlign:"center"}}>{statYear}년 {MONTH_NAMES[statMonth]}</span>
+            <span style={{fontSize:13,fontWeight:600,color:"#111",minWidth:100,textAlign:"center"}}>{statYear}년 {MONTH_NAMES[statMonth]}</span>
             <button className="btn" onClick={()=>{if(statMonth===11){setStatYear(y=>y+1);setStatMonth(0);}else setStatMonth(m=>m+1);}}
               style={{background:"#F1F5F9",color:"#64748B",padding:"4px 10px",fontSize:14,borderRadius:8}}>›</button>
           </div>
@@ -267,7 +266,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
             {[{label:"예약",value:monthStats.total,color:"#3B82F6"},{label:"체크인",value:monthStats.checkedIn,color:"#16A34A"},{label:"취소/노쇼",value:monthStats.cancelled,color:"#F59E0B"}].map(bar=>(
               <div key={bar.label}>
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
-                  <span style={{color:"#64748B",fontWeight:600}}>{bar.label}</span><span style={{color:"#111",fontWeight:700}}>{bar.value}건</span>
+                  <span style={{color:"#64748B",fontWeight:600}}>{bar.label}</span><span style={{color:"#111",fontWeight:600}}>{bar.value}건</span>
                 </div>
                 <div style={{height:8,background:"#F1F5F9",borderRadius:4,overflow:"hidden"}}>
                   <div style={{height:"100%",width:`${monthStats.total>0?(bar.value/monthStats.total)*100:0}%`,background:bar.color,borderRadius:4,transition:"width 0.4s"}}/>
@@ -277,12 +276,12 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
             <div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:4}}>
               <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",flex:1,minWidth:120}}>
                 <div style={{fontSize:11,color:"#94A3B8",fontWeight:600}}>체크인율</div>
-                <div style={{fontSize:18,fontWeight:800,color:monthStats.rate>=70?"#16A34A":"#D97706",marginTop:2}}>{monthStats.rate}%</div>
+                <div style={{fontSize:18,fontWeight:600,color:monthStats.rate>=70?"#16A34A":"#D97706",marginTop:2}}>{monthStats.rate}%</div>
               </div>
               {monthStats.topRoom&&(
                 <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",flex:1,minWidth:120}}>
                   <div style={{fontSize:11,color:"#94A3B8",fontWeight:600}}>가장 많이 이용</div>
-                  <div style={{fontSize:13,fontWeight:700,color:"#111",marginTop:2}}>{(monthStats.topRoom as any).room_name} ({monthStats.topCount}회)</div>
+                  <div style={{fontSize:13,fontWeight:600,color:"#111",marginTop:2}}>{(monthStats.topRoom as any).room_name} ({monthStats.topCount}회)</div>
                 </div>
               )}
             </div>
@@ -320,13 +319,13 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
   const goWeek = (dir: number) => setSelectedDate(addDays(selectedDate, dir * 7))
 
   return (
-    <div style={{maxWidth:1280, margin:"0 auto", padding: isMobile?"16px 12px":"28px 28px"}}>
+    <div style={{maxWidth:1400, margin:"0 auto", padding: isMobile?"16px 12px":"28px 28px"}}>
 
       {/* ── 오늘 내 예약 — HomeView 동일 카드 UI ── */}
       <div style={{marginBottom:28}}>
         <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12}}>
           <div style={{display:"flex", alignItems:"center", gap:8}}>
-            <span style={{fontSize:15, fontWeight:800, color:"#111"}}>오늘 내 예약</span>
+            <span style={{fontSize:15, fontWeight:600, color:"#111"}}>오늘 내 예약</span>
             <span style={{fontSize:12, color:"#94A3B8", fontWeight:500}}>{todayBookings.length}건</span>
           </div>
         </div>
@@ -425,7 +424,7 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
           <button className="btn rounded-lg text-slate-600"
             style={{padding:"7px 14px", fontSize:20, background:"#F8FAFC", lineHeight:1}}
             onClick={()=>goWeek(-1)}>‹</button>
-          <span style={{fontSize:isMobile?14:15, fontWeight:700, color:"#111111", whiteSpace:"nowrap"}}>
+          <span style={{fontSize:isMobile?14:15, fontWeight:600, color:"#111111", whiteSpace:"nowrap"}}>
             {weekLabel}
           </span>
           <button className="btn rounded-lg text-slate-600"

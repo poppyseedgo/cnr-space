@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react'
-import { AlertCircle } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { todayStr, tsMin, nowMinutes } from '../utils/time'
@@ -170,7 +169,7 @@ export default function LoginPage() {
           {/* SSO 오류 메시지 */}
           {error && (
             <div className="flex items-center gap-2 rounded-xl px-3 py-2.5 mt-3 text-sm bg-red-50 border border-red-200 text-red-600">
-              <AlertCircle size={14} className="flex-shrink-0" />
+              <span className="material-symbols-outlined flex-shrink-0" style={{fontSize:14}}>error</span>
               <span>{error}</span>
             </div>
           )}
