@@ -135,8 +135,26 @@ export function CalendarShell({
           gap: 10, alignItems: 'center', height: isMobile ? 'auto' : 64,
         }}>
 
-        {/* ① 날짜 네비 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 0, flex: isMobile ? 'none' : 1 }}>
+        {/* ── 좌: 뷰탭 ── */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 8 }}>
+          <div style={{ display: 'flex', background: '#F3F4F8', borderRadius: 1000,
+            padding: 2, gap: 2, flexShrink: 0, height: 40, alignItems: 'center' }}>
+            {VIEWS.map(v => (
+              <button key={v.id} className="btn" onClick={() => setCalView(v.id)}
+                style={{
+                  background: calView===v.id ? '#111111' : 'transparent',
+                  color:      calView===v.id ? '#fff'    : '#657487',
+                  padding: '10px 20px', borderRadius: 1000,
+                  fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap',
+                  fontFamily: "'Pretendard', -apple-system, sans-serif",
+                  border: 'none', cursor: 'pointer', lineHeight: 1,
+                }}>{v.label}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* ── 중앙: 날짜 네비 ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           <button className="btn" onClick={() => navigate(-1)}
             style={{ width: 20, height: 20, padding: 0, background: 'none', border: 'none',
               display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
@@ -231,25 +249,18 @@ export function CalendarShell({
                 marginLeft: 6, borderRadius: 999 }}
               onClick={() => setSelectedDate(today)}>오늘</button>
           )}
-          {/* 뷰탭 — 날짜 네비 바로 오른쪽 */}
-          <div style={{ display: 'flex', background: '#F3F4F8', borderRadius: 1000,
-            padding: 2, gap: 2, flexShrink: 0, height: 40, alignItems: 'center', marginLeft: 4 }}>
-            {VIEWS.map(v => (
-              <button key={v.id} className="btn" onClick={() => setCalView(v.id)}
-                style={{
-                  background: calView===v.id ? '#111111' : 'transparent',
-                  color:      calView===v.id ? '#fff'    : '#657487',
-                  padding: '10px 20px', borderRadius: 1000,
-                  fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap',
-                  fontFamily: "'Pretendard', -apple-system, sans-serif",
-                  border: 'none', cursor: 'pointer', lineHeight: 1,
-                }}>{v.label}</button>
-            ))}
-          </div>
         </div>
 
-        {/* ③ 층 드롭다운 — 항상 블랙, 대칭 패딩 7/14, keyboard_arrow_down */}
-        <div ref={floorDropRef} style={{ position: 'relative', flexShrink: 0 }}>
+        {/* ── 우: 오늘버튼(조건) + 층 드롭다운 + 필터탭 ── */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10 }}>
+          {selectedDate !== today && (
+            <button className="btn"
+              style={{ padding: '5px 12px', fontSize: 12, fontWeight: 500, background: '#111111', color: '#fff',
+                borderRadius: 999, border: 'none', cursor: 'pointer', flexShrink: 0 }}
+              onClick={() => setSelectedDate(today)}>오늘</button>
+          )}
+          {/* 층 드롭다운 */}
+          <div ref={floorDropRef} style={{ position: 'relative', flexShrink: 0 }}>
           <button className="btn" onClick={() => setShowFloorDrop(v => !v)}
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
@@ -305,6 +316,7 @@ export function CalendarShell({
                 cursor: 'pointer', lineHeight: 1, height: 32,
               }}>{l}</button>
           ))}
+          </div>
         </div>
       </div>
 
@@ -351,7 +363,7 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
                 <span style={{
                   width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  borderRadius: '50%', fontSize: 12, fontWeight: isToday ? 800 : 500,
+                  borderRadius: '50%', fontSize: 12, fontWeight: isToday ? 600 : 500,
                   background: isToday ? '#111111' : 'transparent',
                   color: isToday ? '#fff' : dow===0 ? '#EF4444' : dow===6 ? '#3B82F6' : '#374151',
                 }}>{day}</span>
@@ -699,7 +711,7 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
                 {/* 시간 레이블 (sticky left) */}
                 <div style={{
                   width: TIME_W, minWidth: TIME_W, flexShrink: 0,
-                  padding: '8px 10px 0 0', textAlign: 'right', alignSelf: 'flex-start',
+                  padding: '8px 10px 0 0', textAlign: 'right', alignSelf: 'stretch',
                   fontSize: 11, fontWeight: 400, color: '#333333',
                   boxShadow: 'inset -1px 0 0 #E2E8F0',
                   position: 'sticky', left: 0, background: '#fff', zIndex: 5,
