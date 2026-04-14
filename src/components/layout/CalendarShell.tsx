@@ -128,7 +128,7 @@ export function CalendarShell({
   return (
     <div>
       {/* ── 툴바 ── */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 mb-4"
+      <div className="bg-white dark:bg-slate-800 rounded-2xl mb-4"
         style={{
           padding: '12px 18px', position: 'relative', zIndex: 50,
           display: 'flex', flexDirection: isMobile ? 'column' : 'row',
@@ -291,9 +291,9 @@ export function CalendarShell({
           )}
         </div>
 
-        {/* ④ 전체예약/내예약 필터 — pill radius=1000, padding=8/16, h=36 */}
+        {/* ④ 전체예약/내예약 필터 — Figma: padding=0, h=32, gap=2 */}
         <div style={{ display: 'flex', background: '#F3F4F8', borderRadius: 1000,
-          padding: 2, gap: 2, flexShrink: 0, height: 36, alignItems: 'center' }}>
+          padding: 0, gap: 2, flexShrink: 0, height: 32, alignItems: 'center' }}>
           {([{ v: false, l: '전체 예약' }, { v: true, l: '내 예약' }] as const).map(({ v, l }) => (
             <button key={l} className="btn" onClick={() => setFilterMine(v)}
               style={{
@@ -302,7 +302,7 @@ export function CalendarShell({
                 padding: '8px 16px', borderRadius: 10000, border: 'none',
                 fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap',
                 fontFamily: "'Pretendard', -apple-system, sans-serif",
-                cursor: 'pointer', lineHeight: 1,
+                cursor: 'pointer', lineHeight: 1, height: 32,
               }}>{l}</button>
           ))}
         </div>
@@ -469,7 +469,7 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
               <div style={{ width: LW, minWidth: LW, flexShrink: 0, borderRight: '1px solid #E2E8F0',
                 padding: '0 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center',
                 position: 'sticky', left: 0, background: '#fff', zIndex: 5,
-                boxShadow: '2px 0 6px rgba(0,0,0,0.04)' }}>
+                boxShadow: 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   {dot && (
                     <span style={{
