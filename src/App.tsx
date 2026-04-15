@@ -357,6 +357,7 @@ function AppContent() {
         const notifType = isAdminOnlyRoom ? 'pending' : 'created'
         const notifPayload = {
           ...newBookings[0],
+          user_id:    authUser?.user_id ?? '',
           user_name:  currentUser,
           user_email: authUser?.email ?? '',
           user_dept:  currentDept,
@@ -376,6 +377,19 @@ function AppContent() {
           room: rooms.find(r => r.room_id === form.room_id),
           floor: getFloor(rooms.find(r => r.room_id === form.room_id)?.floor_id),
         }});
+        // 반복 예약 이메일 알림 — 각 건별 발송
+        const notifType = isAdminOnlyRoom ? 'pending' : 'created'
+        for (const bk of newBookings) {
+          const bkRoom = rooms.find(r => r.room_id === bk.room_id)
+          sendNotification(notifType, {
+            ...bk,
+            user_id:    authUser?.user_id ?? '',
+            user_name:  currentUser,
+            user_email: authUser?.email ?? '',
+            user_dept:  currentDept,
+            room_name:  bkRoom?.room_name_ko ?? bkRoom?.room_name ?? String(bk.room_id) + 'F',
+          })
+        }
       }
       // Audit log + 인앱 알림
       for (const bk of newBookings) {
@@ -527,7 +541,6 @@ function AppContent() {
           ...targetBooking,
           user_name:  targetBooking.user,
           user_dept:  targetBooking.dept,
-          user_email: authUser?.email ?? '',
           room_name:  cancelledRoom?.room_name_ko ?? cancelledRoom?.room_name ?? String(targetBooking.room_id) + 'F',
         });
       }
@@ -535,7 +548,7 @@ function AppContent() {
       setBookings(prev => prev.map(b => b.id===id ? {...b, autoCancelled:false} : b));
       showToast(err.message ?? "취소에 실패했습니다.", "error");
     }
-  }, [bookings, showToast, authUser?.email, sendNotification]);
+  }, [bookings, showToast, sendNotification]);
 
   // ── 에메랄드 승인/거절 ─────────────────────────────────────────────────────
   const approvePendingBooking = useCallback(async (id: string) => {
@@ -795,7 +808,6 @@ function AppContent() {
             ...prevBooking, ...changes,
             user_name:  prevBooking.user,
             user_dept:  prevBooking.dept,
-            user_email: authUser?.email ?? '',
             room_name:  pendingRoom?.room_name_ko ?? pendingRoom?.room_name ?? '',
           })
         }
@@ -809,7 +821,6 @@ function AppContent() {
           ...updatedB, ...changes,
           user_name:  updatedB.user,
           user_dept:  updatedB.dept,
-          user_email: authUser?.email ?? '',
           room_name:  updatedRoom?.room_name_ko ?? updatedRoom?.room_name ?? String(updatedB.room_id) + 'F',
         }
 

@@ -459,14 +459,21 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    // ── user_email 확보: 없으면 user_id → profiles 조회 ────────────────────
-    let creatorEmail = booking.user_email ?? ''
-    if (!creatorEmail && booking.user_id) {
-      console.log('[notify] user_email 없음 → user_id로 profiles 조회:', booking.user_id)
+    // ── 예약자 이메일 확보: user_id → DB 조회 우선, 없으면 payload user_email ─
+    // user_id → DB 조회가 항상 신뢰할 수 있는 방식
+    // (payload user_email은 클라이언트 상태에 의존하므로 보조 수단으로만 사용)
+    let creatorEmail = ''
+    if (booking.user_id) {
       creatorEmail = await fetchUserEmail(booking.user_id) ?? ''
+      if (!creatorEmail) {
+        console.warn('[notify] user_id로 profiles 조회 실패:', booking.user_id)
+      }
     }
     if (!creatorEmail) {
-      console.warn('[notify] 예약자 이메일 확인 불가 — user_email, user_id 모두 없거나 profiles 조회 실패')
+      creatorEmail = booking.user_email ?? ''
+    }
+    if (!creatorEmail) {
+      console.warn('[notify] 예약자 이메일 확인 불가 — user_id, user_email 모두 없거나 조회 실패')
     }
 
     // ── booking_attendees 테이블에서 참석자 조회 ────────────────────────────
