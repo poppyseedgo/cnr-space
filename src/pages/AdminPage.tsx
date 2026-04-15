@@ -391,6 +391,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
           <button key={t.id} className="btn" onClick={()=>setTab(t.id)}
             style={{
               flex: 1,
+              maxWidth: 140,
               padding: isMobile ? '8px 6px' : '10px 12px',
               fontSize: isMobile ? 11 : 13,
               borderRadius: 999,
