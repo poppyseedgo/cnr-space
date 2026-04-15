@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react'
 import { AlertCircle, AlertTriangle, ArrowUpDown, Ban, BarChart2, Building2, Calendar, CheckCircle2, ChevronDown, Clock, Download, ImagePlus, Inbox, RefreshCw, RotateCw, Search, Trash2, Upload, Users, X } from 'lucide-react'
+import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import {
-  todayStr, tsDate, tsMin, fmtTSDateFull, fmtTSRangeFull,
+  todayStr, tsDate, tsMin, tsTime, fmtTime, fmtTSDateFull, fmtTSRangeFull,
   fmt2, objToStr,
 } from '../utils/time'
 import { FLOORS, getFloor } from '../data/floors'
@@ -46,6 +47,11 @@ const PRESETS = [
   { id: 'thisYear',  label: '올해',    fn: (): [string,string] => [getYearStart(), today] },
   { id: 'custom',    label: '기간 지정', fn: (): [string,string] => [addDaysStr(today,-29), today] },
 ]
+
+// ─── 차트 공통 ────────────────────────────────────────────────────────────────
+const PIE_COLORS  = ['#6366F1','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#F97316','#EC4899']
+const CHART_STYLE = { borderRadius:12, border:'none', boxShadow:'0 4px 24px rgba(0,0,0,0.10)', fontSize:12 }
+const AXIS_TICK   = { fontSize:11, fill:'#94A3B8' }
 
 // ─── DateRangePicker ──────────────────────────────────────────────────────────
 function DateRangePicker({ from, to, onChangeFn, presetId, onPreset, compact = false }:
@@ -440,30 +446,39 @@ const CardShell = memo(function CardShell({ children, type: ct, onClick }: {
 
 // ─── AdminDashboard ────────────────────────────────────────────────────────────
 export function AdminDashboard({ bookings, rooms, users, isMobile }) {
-  const [presetId,  setPresetId]  = useState('30d')
-  const [dateFrom,  setDateFrom]  = useState(addDaysStr(todayStr(),-29))
-  const [dateTo,    setDateTo]    = useState(todayStr())
-  const [detail,    setDetail]    = useState<DetailType|null>(null)
+  const [dateFrom, setDateFrom] = useState(addDaysStr(todayStr(), -29))
+  const [dateTo,   setDateTo]   = useState(todayStr())
+  const [detail,   setDetail]   = useState<DetailType|null>(null)
+  const [openLog,  setOpenLog]  = useState(false)
+  const [nowMs,    setNowMs]    = useState(Date.now())
 
-  const handlePreset = (id:string, f:string, t:string) => { setPresetId(id); setDateFrom(f); setDateTo(t) }
+  useEffect(() => {
+    const iv = setInterval(() => setNowMs(Date.now()), 30_000)
+    return () => clearInterval(iv)
+  }, [])
 
   const td = todayStr()
-  const filtered = useMemo(() => bookings.filter(b => {
-    const d = tsDate(b.start_at); return d >= dateFrom && d <= dateTo
-  }), [bookings, dateFrom, dateTo])
-
-  const past = useMemo(() => filtered.filter(b => tsDate(b.start_at) < td && b.status !== 'pending'), [filtered, td])
-  const isNoshow = (b: Booking) => b.autoCancelled && !b.checkedIn && !b.earlyEnded
+  const filtered  = useMemo(() => bookings.filter(b => { const d = tsDate(b.start_at); return d >= dateFrom && d <= dateTo }), [bookings, dateFrom, dateTo])
+  const past      = useMemo(() => filtered.filter(b => tsDate(b.start_at) < td && b.status !== 'pending'), [filtered, td])
+  const isNoshow  = (b: Booking) => b.autoCancelled && !b.checkedIn && !b.earlyEnded
   const confirmed = filtered.filter(b => !b.autoCancelled && b.status !== 'rejected')
-  const noshowRate = past.length > 0 ? Math.round(past.filter(isNoshow).length / past.length * 100) : 0
+  const noshowRate   = past.length > 0 ? Math.round(past.filter(isNoshow).length / past.length * 100) : 0
   const pendingCount = bookings.filter(b => b.status === 'pending' && !b.autoCancelled).length
 
-  // 차트: 날짜별 추이
+  // 실시간 사용자: 현재 진행 중인 예약이 있는 사용자
+  const activeBookings = useMemo(() =>
+    bookings.filter(b => {
+      const s = new Date(b.start_at).getTime()
+      const e = new Date(b.end_at).getTime()
+      return !b.autoCancelled && !b.earlyEnded && b.status === 'confirmed'
+        && s <= nowMs && nowMs <= e
+    }).map(b => ({ ...b, roomObj: rooms.find(r => r.room_id === b.room_id) })),
+  [bookings, rooms, nowMs])
+
+  // 차트 데이터
   const dayRange = useMemo(() => {
     const days: {date:string;label:string;count:number;isToday:boolean}[] = []
-    const diffMs = new Date(dateTo).getTime() - new Date(dateFrom).getTime()
-    const diffDays = Math.round(diffMs / 86400000) + 1
-    // 너무 많으면 주간 집계
+    const diffDays = Math.round((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000) + 1
     if (diffDays <= 31) {
       for (let i = 0; i < diffDays; i++) {
         const d = addDaysStr(dateFrom, i)
@@ -472,7 +487,6 @@ export function AdminDashboard({ bookings, rooms, users, isMobile }) {
         days.push({ date:d, label:`${fmt2(dt.getMonth()+1)}/${fmt2(dt.getDate())}`, count:cnt, isToday:d===td })
       }
     } else {
-      // 주간 집계
       let cur = new Date(dateFrom)
       while (objToStr(cur) <= dateTo) {
         const wStart = objToStr(cur)
@@ -485,31 +499,24 @@ export function AdminDashboard({ bookings, rooms, users, isMobile }) {
     }
     return days
   }, [filtered, dateFrom, dateTo, td])
-  const maxDay = Math.max(...dayRange.map(d=>d.count), 1)
 
-  // 회의실별
   const roomStats = useMemo(() => rooms.map(r => {
     const rb = filtered.filter(b => b.room_id===r.room_id)
     return { room:r, confirmed:rb.filter(b=>!b.autoCancelled&&b.status!=='rejected').length, noshow:rb.filter(isNoshow).length }
   }).filter(s=>s.confirmed+s.noshow>0).sort((a,b)=>b.confirmed-a.confirmed), [rooms, filtered])
-  const maxRoom = Math.max(...roomStats.map(r=>r.confirmed), 1)
 
-  // 부서별
   const deptStats = useMemo(()=>{
     const map = new Map<string,number>()
     confirmed.filter(b=>b.dept).forEach(b=>map.set(b.dept,(map.get(b.dept)??0)+1))
     return Array.from(map.entries()).map(([dept,count])=>({dept,count})).sort((a,b)=>b.count-a.count).slice(0,8)
   },[confirmed])
-  const maxDept = Math.max(...deptStats.map(d=>d.count), 1)
 
-  // 노쇼 TOP
   const noshowRank = useMemo(()=>rooms.map(r=>{
     const pb=past.filter(b=>b.room_id===r.room_id)
     const ns=pb.filter(isNoshow).length
     return {room:r,total:pb.length,noshow:ns,rate:pb.length>0?Math.round(ns/pb.length*100):0}
   }).filter(r=>r.total>=3).sort((a,b)=>b.rate-a.rate).slice(0,5),[rooms,past])
 
-  // 시간대별 07~19
   const hourDist = useMemo(()=>Array.from({length:13},(_,i)=>{
     const h=7+i
     const count=filtered.filter(b=>!b.autoCancelled&&b.status!=='rejected'&&Math.floor(tsMin(b.start_at)/60)===h).length
@@ -517,133 +524,259 @@ export function AdminDashboard({ bookings, rooms, users, isMobile }) {
   }),[filtered])
   const maxHour = Math.max(...hourDist.map(h=>h.count),1)
 
-  const KPI = [
-    { type:'bookings' as DetailType, label:'기간 내 예약', value:confirmed.length, sub:`취소 포함 ${filtered.length}건`, color:'#111', bg:'#F8FAFC', icon:<Calendar size={18} strokeWidth={1.8}/> },
-    { type:'noshow'   as DetailType, label:'노쇼율', value:`${noshowRate}%`, sub:`${past.filter(isNoshow).length}건 / 과거 ${past.length}건`, color:noshowRate>15?'#DC2626':noshowRate>8?'#D97706':'#16A34A', bg:noshowRate>15?'#FEF2F2':noshowRate>8?'#FFFBEB':'#F0FDF4', icon:<AlertCircle size={18} strokeWidth={1.8}/> },
-    { type:'pending'  as DetailType, label:'승인 대기', value:pendingCount, sub:'즉시 처리 필요', color:'#D97706', bg:'#FFFBEB', icon:<Inbox size={18} strokeWidth={1.8}/> },
-    { type:'users'    as DetailType, label:'이용 사용자', value:new Set(confirmed.map(b=>b.user)).size, sub:`전체 ${users.length}명 중`, color:'#2563EB', bg:'#EFF6FF', icon:<Users size={18} strokeWidth={1.8}/> },
-  ]
+  const roomChartData = useMemo(() => roomStats.map(s => ({
+    name: (s.room.room_name_ko || s.room.room_name).slice(0, 11),
+    confirmed: s.confirmed, noshow: s.noshow,
+  })), [roomStats])
 
+  const deptChartData = useMemo(() => deptStats.slice(0,6).map(d => ({
+    name: d.dept, value: d.count,
+  })), [deptStats])
+
+  const noswColor = (rate:number) => rate >= 20 ? '#EF4444' : rate >= 10 ? '#F59E0B' : '#10B981'
   const openDetail = useCallback((type: DetailType) => setDetail(type), [])
 
+  const KPI = [
+    { type:'pending' as DetailType, label:'승인 대기',    value: pendingCount,                   sub:'즉시 처리 필요',             color:'#D97706', bg:'#FFFBEB', icon:<Inbox        size={18} strokeWidth={1.8}/> },
+    { type:'noshow'  as DetailType, label:'노쇼율',       value: `${noshowRate}%`,                sub:`${past.filter(isNoshow).length}건 / 과거 ${past.length}건`, color:noshowRate>15?'#DC2626':noshowRate>8?'#D97706':'#16A34A', bg:noshowRate>15?'#FEF2F2':noshowRate>8?'#FFFBEB':'#F0FDF4', icon:<AlertCircle size={18} strokeWidth={1.8}/> },
+  ]
+
+  const inputStyle: React.CSSProperties = { height:34, border:'0.5px solid #E2E8F0', borderRadius:8, padding:'0 8px', fontSize:12, background:'#fff', color:'#111', width:112, outline:'none' }
+  const btnStyle: React.CSSProperties  = { height:34, padding:'0 11px', border:'0.5px solid #E2E8F0', borderRadius:8, fontSize:12, background:'#fff', color:'#64748B', cursor:'pointer', whiteSpace:'nowrap' }
+
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-      {/* 통계 기간 */}
-      <div style={{ background:'#fff', borderRadius:14, padding:'14px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
-        <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>📊 통계 대시보드</div>
+    <div className="flex flex-col gap-3">
+
+      {/* ── 날짜 필터 ── */}
+      <div className="bg-white rounded-2xl px-5 py-4 flex items-center justify-between flex-wrap gap-3">
+        <span style={{ fontSize:13, fontWeight:600, color:'#111' }}>📊 통계 대시보드</span>
         <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-            style={{ height:34, border:'0.5px solid #E2E8F0', borderRadius:8, padding:'0 8px', fontSize:12, background:'#fff', color:'#111', width:112, outline:'none' }}/>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={inputStyle}/>
           <span style={{ fontSize:12, color:'#CBD5E1' }}>~</span>
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-            style={{ height:34, border:'0.5px solid #E2E8F0', borderRadius:8, padding:'0 8px', fontSize:12, background:'#fff', color:'#111', width:112, outline:'none' }}/>
+          <input type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)}   style={inputStyle}/>
           {[
-            { label:'7일',    fn:():[string,string]=>[addDaysStr(todayStr(),-6), todayStr()] },
+            { label:'7일',    fn:():[string,string]=>[addDaysStr(todayStr(),-6),  todayStr()] },
             { label:'30일',   fn:():[string,string]=>[addDaysStr(todayStr(),-29), todayStr()] },
-            { label:'이번 달',fn:():[string,string]=>[getMonthStart(0), todayStr()] },
+            { label:'이번 달',fn:():[string,string]=>[getMonthStart(0),  todayStr()] },
             { label:'지난 달',fn:():[string,string]=>[getMonthStart(-1), getMonthEnd(-1)] },
           ].map(p => (
-            <button key={p.label} className="btn" onClick={() => { const [f,t]=p.fn(); setDateFrom(f); setDateTo(t) }}
-              style={{ height:34, padding:'0 11px', border:'0.5px solid #E2E8F0', borderRadius:8, fontSize:12, background:'#fff', color:'#64748B', cursor:'pointer', whiteSpace:'nowrap' }}>
+            <button key={p.label} className="btn" onClick={() => { const [f,t]=p.fn(); setDateFrom(f); setDateTo(t) }} style={btnStyle}>
               {p.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* KPI */}
-      <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr 1fr':'repeat(4,1fr)', gap:12 }}>
-        {KPI.map((k,i)=>(
+      {/* ── KPI 3개 ── */}
+      <div className={`grid gap-3 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
+
+        {/* 승인 대기 + 노쇼율 */}
+        {KPI.map((k,i) => (
           <CardShell key={i} type={k.type} onClick={openDetail}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
-              <div style={{ fontSize:10, fontWeight:600, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'0.06em' }}>{k.label}</div>
-              <div style={{ width:32, height:32, borderRadius:10, background:k.bg, display:'flex', alignItems:'center', justifyContent:'center', color:k.color }}>{k.icon}</div>
+              <p style={{ fontSize:10, fontWeight:600, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'0.06em' }}>{k.label}</p>
+              <div style={{ width:34, height:34, borderRadius:10, background:k.bg, display:'flex', alignItems:'center', justifyContent:'center', color:k.color }}>{k.icon}</div>
             </div>
-            <div style={{ fontSize:isMobile?22:26, fontWeight:600, color:k.color, lineHeight:1 }}>{k.value}</div>
-            <div style={{ fontSize:11, color:'#94A3B8', marginTop:6 }}>{k.sub}</div>
+            <div style={{ fontSize:28, fontWeight:700, color:k.color, lineHeight:1 }}>{k.value}</div>
+            <p style={{ fontSize:11, color:'#94A3B8', marginTop:6 }}>{k.sub}</p>
           </CardShell>
         ))}
-      </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr':'1fr 1fr', gap:16 }}>
-        {/* 회의실별 */}
-        <CardShell type="rooms" onClick={openDetail}>
-          <div style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:2 }}>회의실별 예약 현황</div>
-          <div style={{ fontSize:11, color:'#94A3B8', marginBottom:16 }}>{dateFrom} ~ {dateTo}</div>
-          {roomStats.length===0?<div style={{ textAlign:'center', padding:'24px 0', color:'#CBD5E1', fontSize:12 }}>예약 없음</div>
-          :<div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            {roomStats.slice(0,7).map(s=>(
-              <div key={s.room.room_id}>
-                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                  <span style={{ fontSize:12, fontWeight:600, color:'#374151' }}>{s.room.room_name_ko||s.room.room_name}</span>
-                  <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                    {s.noshow>0&&<span style={{ fontSize:10, color:'#DC2626', fontWeight:600 }}>노쇼 {s.noshow}</span>}
-                    <span style={{ fontSize:12, fontWeight:600, color:'#111' }}>{s.confirmed}건</span>
-                  </div>
-                </div>
-                <div style={{ height:6, background:'#F1F5F9', borderRadius:999 }}>
-                  <div style={{ height:'100%', borderRadius:999, background:'#111', width:`${Math.round(s.confirmed/maxRoom*100)}%`, transition:'width 0.5s' }}/>
-                </div>
-              </div>
-            ))}
-          </div>}
-        </CardShell>
-
-        {/* 부서별 */}
-        <CardShell type="dept" onClick={openDetail}>
-          <div style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:2 }}>부서별 예약 현황</div>
-          <div style={{ fontSize:11, color:'#94A3B8', marginBottom:16 }}>{dateFrom} ~ {dateTo}</div>
-          {deptStats.length===0?<div style={{ textAlign:'center', padding:'24px 0', color:'#CBD5E1', fontSize:12 }}>예약 없음</div>
-          :<div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            {deptStats.map((d,i)=>(
-              <div key={d.dept}>
-                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                  <span style={{ fontSize:12, fontWeight:600, color:'#374151' }}>{d.dept}</span>
-                  <span style={{ fontSize:12, fontWeight:600, color:'#111' }}>{d.count}건</span>
-                </div>
-                <div style={{ height:6, background:'#F1F5F9', borderRadius:999 }}>
-                  <div style={{ height:'100%', borderRadius:999, background:['#111','#334155','#64748B','#94A3B8','#CBD5E1'][Math.min(i,4)], width:`${Math.round(d.count/maxDept*100)}%`, transition:'width 0.5s' }}/>
-                </div>
-              </div>
-            ))}
-          </div>}
-        </CardShell>
-
-        {/* 노쇼 TOP */}
-        <CardShell type="noshow" onClick={openDetail}>
-          <div style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:2 }}>노쇼율 상위 회의실</div>
-          <div style={{ fontSize:11, color:'#94A3B8', marginBottom:16 }}>과거 예약 기준 · 3건 이상</div>
-          {noshowRank.length===0?<div style={{ textAlign:'center', padding:'24px 0', color:'#CBD5E1', fontSize:12 }}>집계 데이터 없음</div>
-          :<div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            {noshowRank.map((r,i)=>(
-              <div key={r.room.room_id} style={{ display:'flex', alignItems:'center', gap:12 }}>
-                <div style={{ width:24, height:24, borderRadius:'50%', background:i===0?'#FEF2F2':'#F8FAFC', color:i===0?'#DC2626':'#94A3B8', fontSize:11, fontWeight:600, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{i+1}</div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:12, fontWeight:600, color:'#374151' }}>{r.room.room_name_ko||r.room.room_name}</div>
-                  <div style={{ fontSize:10, color:'#94A3B8' }}>{r.noshow}건 노쇼 / {r.total}건</div>
-                </div>
-                <div style={{ fontSize:16, fontWeight:600, color:r.rate>=20?'#DC2626':r.rate>=10?'#D97706':'#64748B' }}>{r.rate}%</div>
-              </div>
-            ))}
-          </div>}
-        </CardShell>
-
-        {/* 시간대별 07~19 */}
-        <CardShell type="hours" onClick={openDetail}>
-          <div style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:2 }}>시간대별 예약 분포</div>
-          <div style={{ fontSize:11, color:'#94A3B8', marginBottom:16 }}>운영시간 07:00 ~ 19:00</div>
-          <div style={{ display:'flex', alignItems:'flex-end', gap:3, height:80 }}>
-            {hourDist.map((h,i)=>(
-              <div key={i} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
-                {h.count===maxHour&&maxHour>0&&<div style={{ fontSize:8, color:'#111', fontWeight:600 }}>{h.count}</div>}
-                <div style={{ width:'100%', borderRadius:'2px 2px 0 0', height:Math.max(h.count/maxHour*56,h.count>0?3:0), background:h.count===maxHour?'#111':h.count>0?'#CBD5E1':'#F8FAFC' }}/>
-                <div style={{ fontSize:7, color:'#94A3B8' }}>{h.label}</div>
-              </div>
-            ))}
+        {/* 실시간 사용자 — 클릭 시 접속 로그 토글 */}
+        <div onClick={() => setOpenLog(v => !v)} style={{
+          background:'#fff', borderRadius:16, padding:24, cursor:'pointer',
+          boxShadow: openLog ? '0 0 0 2px #16A34A' : 'none',
+          transition:'box-shadow 0.15s',
+        }}
+          onMouseEnter={e => { if(!openLog)(e.currentTarget as HTMLElement).style.boxShadow='0 4px 20px rgba(0,0,0,0.08)' }}
+          onMouseLeave={e => { if(!openLog)(e.currentTarget as HTMLElement).style.boxShadow='none' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
+            <p style={{ fontSize:10, fontWeight:600, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'0.06em' }}>실시간 사용자</p>
+            <div style={{ width:34, height:34, borderRadius:10, background:'#F0FDF4', display:'flex', alignItems:'center', justifyContent:'center', color:'#16A34A' }}>
+              <Users size={18} strokeWidth={1.8}/>
+            </div>
           </div>
+          <div style={{ display:'flex', alignItems:'baseline', gap:8 }}>
+            <div style={{ fontSize:28, fontWeight:700, color:'#16A34A', lineHeight:1 }}>{activeBookings.length}</div>
+            <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:'#16A34A', fontWeight:600 }}>
+              <span style={{ width:7, height:7, borderRadius:'50%', background:'#16A34A', display:'inline-block', animation:'sk-shimmer 1.6s ease-in-out infinite' }}/>
+              접속 중
+            </span>
+          </div>
+          <p style={{ fontSize:11, color:'#94A3B8', marginTop:6 }}>현재 체크인 / 활성 예약</p>
+
+          {/* 접속 로그 테이블 */}
+          {openLog && (
+            <div onClick={e => e.stopPropagation()} style={{ borderTop:'1px solid #F1F5F9', marginTop:16 }}>
+              {activeBookings.length === 0
+                ? <div style={{ textAlign:'center', padding:'20px 0', color:'#CBD5E1', fontSize:12 }}>현재 진행 중인 예약이 없습니다</div>
+                : <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, marginTop:12 }}>
+                    <thead>
+                      <tr style={{ borderBottom:'1px solid #F1F5F9', background:'#FAFBFD' }}>
+                        {['이름','부서','회의실','시간','상태'].map(h => (
+                          <th key={h} style={{ padding:'8px 10px', textAlign:'left', fontSize:10, fontWeight:600, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeBookings.map(b => (
+                        <tr key={b.id} style={{ borderBottom:'0.5px solid #F8FAFC' }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='#FAFBFD'}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='transparent'}>
+                          <td style={{ padding:'9px 10px', fontWeight:600 }}>{b.user ?? '—'}</td>
+                          <td style={{ padding:'9px 10px', color:'#64748B', fontSize:11 }}>{b.dept ?? '—'}</td>
+                          <td style={{ padding:'9px 10px', color:'#64748B', fontSize:11 }}>{(b as any).roomObj?.room_name_ko ?? (b as any).roomObj?.room_name ?? '—'}</td>
+                          <td style={{ padding:'9px 10px', color:'#64748B', fontSize:11, whiteSpace:'nowrap' }}>{fmtTime(tsTime(b.start_at))} ~ {fmtTime(tsTime(b.end_at))}</td>
+                          <td style={{ padding:'9px 10px' }}>
+                            <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color: b.checkedIn ? '#16A34A' : '#D97706', fontWeight:500 }}>
+                              <span style={{ width:6, height:6, borderRadius:'50%', background: b.checkedIn ? '#16A34A' : '#D97706', display:'inline-block' }}/>
+                              {b.checkedIn ? '체크인 완료' : '진행 중'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+              }
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Row 2: 회의실별 | 노쇼율 상위 ── */}
+      <div className={`grid gap-3 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
+
+        <CardShell type="rooms" onClick={openDetail}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+            <div>
+              <p style={{ fontSize:14, fontWeight:600, color:'#111' }}>회의실별 예약 현황</p>
+              <p style={{ fontSize:11, color:'#94A3B8', marginTop:2 }}>{dateFrom} ~ {dateTo}</p>
+            </div>
+            <div style={{ display:'flex', gap:12 }}>
+              <span style={{ fontSize:10, color:'#64748B', display:'flex', alignItems:'center', gap:4 }}><span style={{ width:8, height:8, borderRadius:2, background:'#1E293B', display:'inline-block' }}/>예약</span>
+              <span style={{ fontSize:10, color:'#EF4444', display:'flex', alignItems:'center', gap:4 }}><span style={{ width:8, height:8, borderRadius:2, background:'#EF4444', display:'inline-block' }}/>노쇼</span>
+            </div>
+          </div>
+          {roomChartData.length === 0
+            ? <div style={{ textAlign:'center', padding:'32px 0', color:'#CBD5E1', fontSize:12 }}>예약 없음</div>
+            : <ResponsiveContainer width="100%" height={Math.max(roomChartData.length * 36, 180)}>
+                <BarChart data={roomChartData} layout="vertical" margin={{ top:0, right:16, bottom:0, left:0 }} barGap={2}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false}/>
+                  <XAxis type="number" tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false}/>
+                  <YAxis type="category" dataKey="name" tick={AXIS_TICK} tickLine={false} axisLine={false} width={90}/>
+                  <Tooltip contentStyle={CHART_STYLE} formatter={(v:any, n:any)=>[`${v}건`, n==='confirmed'?'예약':'노쇼']}/>
+                  <Bar dataKey="confirmed" name="예약" fill="#1E293B" radius={[0,4,4,0]} barSize={9}/>
+                  <Bar dataKey="noshow"    name="노쇼"  fill="#EF4444" radius={[0,4,4,0]} barSize={9}/>
+                </BarChart>
+              </ResponsiveContainer>
+          }
+        </CardShell>
+
+        <CardShell type="noshow" onClick={openDetail}>
+          <p style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:4 }}>노쇼율 상위 회의실</p>
+          <p style={{ fontSize:11, color:'#94A3B8', marginBottom:16 }}>과거 예약 기준 · 3건 이상</p>
+          {noshowRank.length === 0
+            ? <div style={{ textAlign:'center', padding:'32px 0', color:'#CBD5E1', fontSize:12 }}>집계 데이터 없음</div>
+            : <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+                {noshowRank.map((r,i) => (
+                  <div key={r.room.room_id}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:5 }}>
+                      <span style={{ width:20, height:20, borderRadius:6, background:i===0?'#FEF2F2':'#F8FAFC', color:i===0?'#EF4444':'#94A3B8', fontSize:10, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{i+1}</span>
+                      <span style={{ flex:1, fontSize:12, fontWeight:600, color:'#374151', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.room.room_name_ko||r.room.room_name}</span>
+                      <span style={{ fontSize:14, fontWeight:700, color:noswColor(r.rate), flexShrink:0 }}>{r.rate}%</span>
+                    </div>
+                    <div style={{ height:5, background:'#F1F5F9', borderRadius:999, overflow:'hidden' }}>
+                      <div style={{ height:'100%', width:`${r.rate}%`, background:noswColor(r.rate), borderRadius:999, transition:'width 0.6s ease' }}/>
+                    </div>
+                    <p style={{ fontSize:10, color:'#94A3B8', marginTop:3 }}>{r.noshow}건 노쇼 / {r.total}건</p>
+                  </div>
+                ))}
+              </div>
+          }
         </CardShell>
       </div>
 
+      {/* ── Row 3: 시간대별 | 부서별 ── */}
+      <div className={`grid gap-3 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
+
+        <CardShell type="hours" onClick={openDetail}>
+          <p style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:4 }}>시간대별 예약 분포</p>
+          <p style={{ fontSize:11, color:'#94A3B8', marginBottom:16 }}>운영시간 07:00 ~ 19:00</p>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={hourDist} margin={{ top:8, right:4, bottom:0, left:-20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false}/>
+              <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={false}/>
+              <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false}/>
+              <Tooltip contentStyle={CHART_STYLE} formatter={(v:any)=>[`${v}건`,'예약']}/>
+              <Bar dataKey="count" radius={[4,4,0,0]} maxBarSize={32}>
+                {hourDist.map((h,i) => (
+                  <Cell key={i} fill={
+                    h.count === maxHour && maxHour > 0 ? '#6366F1' :
+                    h.count > maxHour * 0.6             ? '#818CF8' :
+                    h.count > maxHour * 0.3             ? '#A5B4FC' :
+                    h.count > 0                         ? '#C7D2FE' : '#F1F5F9'
+                  }/>
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </CardShell>
+
+        <CardShell type="dept" onClick={openDetail}>
+          <p style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:4 }}>부서별 예약 현황</p>
+          <p style={{ fontSize:11, color:'#94A3B8', marginBottom:14 }}>{dateFrom} ~ {dateTo}</p>
+          {deptChartData.length === 0
+            ? <div style={{ textAlign:'center', padding:'32px 0', color:'#CBD5E1', fontSize:12 }}>예약 없음</div>
+            : <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+                <ResponsiveContainer width="48%" height={180}>
+                  <PieChart>
+                    <Pie data={deptChartData} cx="50%" cy="50%" innerRadius={46} outerRadius={74}
+                      dataKey="value" paddingAngle={2} startAngle={90} endAngle={-270}>
+                      {deptChartData.map((_,i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]}/>)}
+                    </Pie>
+                    <Tooltip contentStyle={CHART_STYLE} formatter={(v:any, n:any)=>[`${v}건`, n]}/>
+                  </PieChart>
+                </ResponsiveContainer>
+                <div style={{ flex:1, display:'flex', flexDirection:'column', gap:7 }}>
+                  {deptChartData.map((d,i) => (
+                    <div key={d.name} style={{ display:'flex', alignItems:'center', gap:6 }}>
+                      <span style={{ width:8, height:8, borderRadius:2, background:PIE_COLORS[i % PIE_COLORS.length], flexShrink:0, display:'inline-block' }}/>
+                      <span style={{ fontSize:11, color:'#374151', flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.name}</span>
+                      <span style={{ fontSize:11, fontWeight:600, color:'#111', flexShrink:0 }}>{d.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+          }
+        </CardShell>
+      </div>
+
+      {/* ── 예약 추이 (full width, last) ── */}
+      <CardShell type="bookings" onClick={openDetail}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+          <div>
+            <p style={{ fontSize:14, fontWeight:600, color:'#111' }}>예약 추이</p>
+            <p style={{ fontSize:11, color:'#94A3B8', marginTop:2 }}>{dateFrom} ~ {dateTo} · {dayRange.length > 31 ? '주간 집계' : '일간 집계'}</p>
+          </div>
+          <span style={{ fontSize:13, fontWeight:600, color:'#6366F1' }}>{confirmed.length}건</span>
+        </div>
+        <ResponsiveContainer width="100%" height={180}>
+          <AreaChart data={dayRange} margin={{ top:4, right:4, bottom:0, left:-20 }}>
+            <defs>
+              <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"   stopColor="#6366F1" stopOpacity={0.22}/>
+                <stop offset="100%" stopColor="#6366F1" stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false}/>
+            <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={false} interval="preserveStartEnd"/>
+            <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false}/>
+            <Tooltip contentStyle={CHART_STYLE} formatter={(v:any)=>[`${v}건`,'예약']}/>
+            <Area type="monotone" dataKey="count" stroke="#6366F1" strokeWidth={2} fill="url(#areaGrad)" dot={false}
+              activeDot={{ r:5, fill:'#6366F1', strokeWidth:2, stroke:'#fff' }}/>
+          </AreaChart>
+        </ResponsiveContainer>
+      </CardShell>
 
       {/* Detail Drawer */}
       {detail && (
