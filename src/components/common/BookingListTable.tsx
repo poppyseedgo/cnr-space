@@ -31,14 +31,13 @@ function thStyle(width?: number): React.CSSProperties {
 interface BookingListTableProps {
   bookings:          Booking[]
   rooms:             Room[]
-  users?:            AppUser[]      // avatar URL 조회용
+  users?:            AppUser[]
   currentUser:       string
   currentUserEmail?: string
   onDetail:          (b: Booking) => void
   loading?:          boolean
-  // Controlled 모드: 이 데이터를 소스로 사용, 날짜/상태 필터 UI 숨김
   controlled?:       Booking[]
-  // 추가 액션 컬럼 (승인/거절 버튼 등)
+  hideFilters?:      boolean    // 필터 UI 전체 숨김 (부모가 직접 필터 제어할 때)
   actionColumn?: {
     header?: string
     render: (b: Booking) => React.ReactNode
@@ -50,7 +49,7 @@ const PAGE_SIZE = 15
 // ─── Component ───────────────────────────────────────────────────────────────
 export function BookingListTable({
   bookings, rooms, users = [], currentUser, onDetail,
-  loading = false, controlled, actionColumn,
+  loading = false, controlled, hideFilters = false, actionColumn,
 }: BookingListTableProps) {
   const today = todayStr()
 
@@ -170,7 +169,7 @@ export function BookingListTable({
   return (
     <div>
       {/* ── Row 1: 날짜 범위 + 퀵버튼 (normal 모드만) ── */}
-      {!controlled && (
+      {!controlled && !hideFilters && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
           <input type="date" value={listFrom}
             onChange={e => { setListFrom(e.target.value); setActiveQuick(null); resetPage() }}
@@ -195,6 +194,7 @@ export function BookingListTable({
       )}
 
       {/* ── Row 2: 상태 칩 (normal) + 정렬 + 층 + 검색 ── */}
+      {!hideFilters && (
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
         {/* 상태 칩 — normal 모드만 */}
         {!controlled && (
@@ -247,6 +247,7 @@ export function BookingListTable({
             style={{ width: '100%', height: 34, border: '0.5px solid #E2E8F0', borderRadius: 8, padding: '0 10px 0 30px', fontSize: 12, background: '#fff', color: '#111', outline: 'none' }}/>
         </div>
       </div>
+      )}
 
       {/* ── 테이블 컨테이너 ── */}
       <div style={{ marginTop: 12, border: '1px solid #F1F5F9', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>

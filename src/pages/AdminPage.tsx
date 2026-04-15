@@ -379,27 +379,27 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
   const PER_PAGE = 15
   const tabs = [
     { id:'dashboard', icon:<BarChart2 size={14} strokeWidth={1.8}/>,  label:'대시보드' },
-    { id:'bookings',  icon:<Calendar size={14} strokeWidth={1.8}/>,  label:'예약 관리' },
-    { id:'approvals', icon:<Inbox size={14} strokeWidth={1.8}/>,  label:'승인 관리', badge: bookings.filter(b => b.status === 'pending' && !b.autoCancelled).length },
+    { id:'approvals', icon:<Inbox size={14} strokeWidth={1.8}/>,      label:'승인 관리', badge: bookings.filter(b => b.status === 'pending' && !b.autoCancelled).length },
+    { id:'bookings',  icon:<Calendar size={14} strokeWidth={1.8}/>,   label:'예약 관리' },
+    { id:'users',     icon:<Users size={14} strokeWidth={1.8}/>,      label:'사용자 관리' },
     { id:'rooms',     icon:<Building2 size={14} strokeWidth={1.8}/>,  label:'회의실 관리' },
-    { id:'users',     icon:<Users size={14} strokeWidth={1.8}/>,  label:'사용자 관리' },
   ]
   return (
     <div className="max-w-[1200px] mx-auto px-3 py-4 sm:px-6 sm:py-7">
-      <div className="anm flex gap-2 mb-5 overflow-x-auto" style={{ scrollbarWidth:'none' }}>
+      <div className="anm flex gap-1 mb-5 overflow-x-auto" style={{ scrollbarWidth:'none' }}>
         {tabs.map(t=>(
           <button key={t.id} className="btn" onClick={()=>setTab(t.id)}
             style={{
-              flexShrink: 0,
-              padding: isMobile ? '8px 14px' : '10px 20px',
+              flex: 1,
+              padding: isMobile ? '8px 6px' : '10px 12px',
               fontSize: isMobile ? 11 : 13,
               borderRadius: 999,
               fontWeight: activeTab===t.id ? 600 : 400,
               background: activeTab===t.id ? '#111' : '#fff',
               color: activeTab===t.id ? '#fff' : '#64748B',
-              border: activeTab===t.id ? 'none' : '1px solid #E2E8F0',
+              border: 'none',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              gap: 5, whiteSpace: 'nowrap',
+              gap: 5, whiteSpace: 'nowrap', minWidth: 0,
             }}>
             {isMobile && <span style={{ display:'flex', alignItems:'center' }}>{t.icon}</span>}
             {!isMobile && t.label}
@@ -876,7 +876,7 @@ export function AdminRooms({ showToast, isMobile }) {
         <div style={{fontSize:15,fontWeight:600,color:'#111'}}>전체 {rooms.length}개 <span style={{fontSize:12,color:'#94A3B8',fontWeight:400}}>활성 {rooms.filter(r=>r.is_active).length} · 비활성 {rooms.filter(r=>!r.is_active).length}</span></div>
         <button className="btn" onClick={()=>openEdit(null)} style={{background:'#111',color:'#fff',padding:'8px 16px',fontSize:12,borderRadius:10}}>+ 회의실 추가</button>
       </div>
-      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:12}}>
+      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:12}}>
         {rooms.map(r=>{const fl=getFloor(r.floor_id);return(
           <div key={r.room_id} className="anm" style={{background:'#fff',borderRadius:16,overflow:'hidden',opacity:r.is_active?1:0.6}}>
             <div style={{display:'flex',gap:16,padding:'16px 20px'}}>
@@ -1386,6 +1386,10 @@ export function AdminApprovals({ bookings, rooms, users, onApprove, onReject, sh
   const [dateTo,       setDateTo]       = useState(todayStr())
   const [rangeData,    setRangeData]    = useState<Booking[]>([])
   const [loadingRange, setLoadingRange] = useState(false)
+  // 툴바 내 로컬 필터 (sort/floor/search)
+  const [sortOrder,   setSortOrder]   = useState<'latest'|'oldest'>('latest')
+  const [floorFilter, setFloorFilter] = useState<number|'ALL'>('ALL')
+  const [searchQ,     setSearchQ]     = useState('')
 
   useEffect(() => {
     const iv = setInterval(() => setNowMs(Date.now()), 10000)
@@ -1424,6 +1428,26 @@ export function AdminApprovals({ bookings, rooms, users, onApprove, onReject, sh
     if (filterStatus === 'all') return mergedData
     return mergedData.filter(b => classify(b) === filterStatus)
   }, [mergedData, filterStatus])
+
+  // 툴바 내 로컬 필터 적용 (sort/floor/search)
+  const floors = useMemo(() =>
+    [...new Set(rooms.map(r => r.floor_id).filter(Boolean))].sort((a,b) => (a as number)-(b as number)) as number[],
+  [rooms])
+
+  const filteredDisplayData = useMemo(() => {
+    let list = [...displayData]
+    if (floorFilter !== 'ALL') {
+      const ids = rooms.filter(r => r.floor_id === floorFilter).map(r => r.room_id)
+      list = list.filter(b => ids.includes(b.room_id))
+    }
+    if (searchQ.trim()) {
+      const q = searchQ.toLowerCase()
+      list = list.filter(b => b.title.toLowerCase().includes(q) || (b.user ?? '').toLowerCase().includes(q))
+    }
+    return list.sort((a, b) =>
+      sortOrder === 'latest' ? (b.createdAt ?? 0) - (a.createdAt ?? 0) : (a.createdAt ?? 0) - (b.createdAt ?? 0)
+    )
+  }, [displayData, floorFilter, searchQ, sortOrder, rooms])
 
   const counts = useMemo(() => ({
     pending:   mergedData.filter(b => classify(b) === 'pending').length,
@@ -1489,18 +1513,42 @@ export function AdminApprovals({ bookings, rooms, users, onApprove, onReject, sh
             </button>
           </div>
         </div>
-        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-          {TABS.map(t => (
-            <button key={t.id} className="btn" onClick={() => setFilterStatus(t.id as any)}
-              style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', fontSize:11, borderRadius:999,
-                fontWeight: filterStatus===t.id ? 700 : 500,
-                background: filterStatus===t.id ? t.activeBg : '#F8FAFC',
-                color:      filterStatus===t.id ? t.color    : '#64748B',
-                border:     filterStatus===t.id ? `1.5px solid ${t.color}40` : '1px solid #E2E8F0' }}>
-              <span>{t.label}</span>
-              {t.count > 0 && <span style={{ background: filterStatus===t.id ? t.color : '#E2E8F0', color: filterStatus===t.id ? '#fff' : '#64748B', borderRadius:999, padding:'1px 6px', fontSize:10, fontWeight:600 }}>{t.count}</span>}
+        {/* Row 2: 상태 탭 + 정렬 + 층 + 검색 */}
+        <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+          <div style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
+            {TABS.map(t => (
+              <button key={t.id} className="btn" onClick={() => setFilterStatus(t.id as any)}
+                style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', fontSize:11, borderRadius:999,
+                  fontWeight: filterStatus===t.id ? 700 : 500,
+                  background: filterStatus===t.id ? t.activeBg : '#F8FAFC',
+                  color:      filterStatus===t.id ? t.color    : '#64748B',
+                  border:     filterStatus===t.id ? `1.5px solid ${t.color}40` : '1px solid #E2E8F0' }}>
+                <span>{t.label}</span>
+                {t.count > 0 && <span style={{ background: filterStatus===t.id ? t.color : '#E2E8F0', color: filterStatus===t.id ? '#fff' : '#64748B', borderRadius:999, padding:'1px 6px', fontSize:10, fontWeight:600 }}>{t.count}</span>}
+              </button>
+            ))}
+          </div>
+          <div style={{ flex:1 }}/>
+          {(['latest','oldest'] as const).map(s => (
+            <button key={s} className="btn" onClick={() => setSortOrder(s)}
+              style={{ height:32, padding:'0 10px', border:'0.5px solid', borderColor: sortOrder===s ? 'transparent' : '#E2E8F0', borderRadius:8, fontSize:12, cursor:'pointer', whiteSpace:'nowrap' as const, background: sortOrder===s ? '#111' : '#fff', color: sortOrder===s ? '#fff' : '#64748B' }}>
+              {s==='latest' ? '최신순' : '과거순'}
             </button>
           ))}
+          <select value={floorFilter === 'ALL' ? 'ALL' : String(floorFilter)}
+            onChange={e => setFloorFilter(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
+            style={{ height:32, border:'0.5px solid #E2E8F0', borderRadius:8, padding:'0 8px', fontSize:12, background:'#fff', color:'#64748B', outline:'none' }}>
+            <option value="ALL">전체 층</option>
+            {floors.map(f => <option key={f} value={String(f)}>{f}층</option>)}
+          </select>
+          <div style={{ position:'relative', minWidth:140, maxWidth:200 }}>
+            <svg style={{ position:'absolute', left:8, top:'50%', transform:'translateY(-50%)', opacity:.35, pointerEvents:'none' }} width="13" height="13" viewBox="0 0 16 16" fill="none">
+              <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5"/>
+              <path d="M11 11l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            <input type="text" value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="이름 또는 회의명"
+              style={{ width:'100%', height:32, border:'0.5px solid #E2E8F0', borderRadius:8, padding:'0 10px 0 28px', fontSize:12, background:'#fff', color:'#111', outline:'none' }}/>
+          </div>
         </div>
       </div>
 
@@ -1511,7 +1559,8 @@ export function AdminApprovals({ bookings, rooms, users, onApprove, onReject, sh
         currentUser=""
         onDetail={onDetail ?? (() => {})}
         loading={loadingRange}
-        controlled={displayData}
+        controlled={filteredDisplayData}
+        hideFilters={true}
         actionColumn={{
           header: '처리',
           render: (b: Booking) => {
