@@ -250,7 +250,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onClose }:
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
             <thead>
               <tr style={{ background:'#F8FAFC' }}>
-                {[{k:'title',l:'회의명'},{k:'room_id',l:'회의실'},{k:'start_at',l:'날짜'},{k:'start_at',l:'시간'},{k:'user',l:'예약자'},{k:'dept',l:'부서'},{k:'',l:'상태'}].map((h,i) => (
+                {[{k:'title',l:'회의명'},{k:'room_id',l:'회의실'},{k:'start_at',l:'날짜'},{k:'start_at',l:'시간'},{k:'user',l:'예약자'},{k:'',l:'상태'}].map((h,i) => (
                   <th key={i} onClick={()=>{if(h.k){setSortKey(h.k);setSortAsc(s=>sortKey===h.k?!s:false)}}}
                     style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600, color:'#94A3B8', whiteSpace:'nowrap', borderBottom:'1px solid #F1F5F9', cursor:h.k?'pointer':'default' }}>
                     {h.l}{h.k&&<ArrowUpDown size={9} strokeWidth={1.8}/>}
@@ -270,8 +270,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onClose }:
                     <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{r?.room_name??''}</td>
                     <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{fmtTSDateFull(b.start_at)}</td>
                     <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{fmtTSRangeFull(b.start_at,b.end_at)}</td>
-                    <td style={{ padding:'8px 12px', fontWeight:600, color:'#111', whiteSpace:'nowrap' }}>{b.user}</td>
-                    <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{b.dept}</td>
+                    <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}><div style={{display:'flex',alignItems:'center',gap:6}}><div style={{width:22,height:22,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:500,flexShrink:0,background:'#F1EFE8',color:'#444441'}}>{(b.user??'?')[0]}</div><span style={{fontSize:12,fontWeight:500,color:'#111'}}>{b.user}</span></div></td>
                     <td style={{ padding:'8px 12px' }}><span style={{ background:status.bg, color:status.c, fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:999 }}>{status.l}</span></td>
                   </tr>
                 )
@@ -775,7 +774,7 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
                   <td style={{padding:'10px 14px',color:'#64748B',whiteSpace:'nowrap'}}>{r?.room_name??'?'}</td>
                   <td style={{padding:'10px 14px',color:'#64748B',whiteSpace:'nowrap'}}>{fmtTSDateFull(b.start_at)}</td>
                   <td style={{padding:'10px 14px',color:'#64748B',whiteSpace:'nowrap'}}>{fmtTSRangeFull(b.start_at,b.end_at)}</td>
-                  <td style={{padding:'10px 14px',whiteSpace:'nowrap'}}><span style={{fontWeight:600,color:'#111'}}>{b.user}</span> <span style={{color:'#94A3B8',fontSize:11}}>{b.dept}</span></td>
+                  <td style={{padding:'10px 14px',whiteSpace:'nowrap'}}><div style={{display:'flex',alignItems:'center',gap:7}}><div style={{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:500,flexShrink:0,background:'#F1EFE8',color:'#444441'}}>{(b.user??'?')[0]}</div><span style={{fontSize:13,fontWeight:500}}>{b.user??'—'}</span></div></td>
                   <td style={{padding:'10px 14px',whiteSpace:'nowrap'}}>{getBadge(b)}</td>
                   <td style={{padding:'10px 14px'}} onClick={e=>e.stopPropagation()}>{canCancel&&<button className="btn" onClick={()=>setCancelModal(b)} style={{background:'#FEF2F2',border:'1px solid #FCA5A5',color:'#DC2626',padding:'5px 12px',fontSize:11,borderRadius:10}}>강제 취소</button>}</td>
                 </tr>
