@@ -73,6 +73,12 @@ export function fmtDateFull(dateStr: string): string {
   const d = dateToObj(dateStr);
   return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`;
 }
+/** YYYY년 M월 D일 (요) 형식 */
+export function fmtDateFullWithDay(dateStr: string): string {
+  if (!dateStr) return "";
+  const d = dateToObj(dateStr);
+  return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${DAY_NAMES[d.getDay()]})`;
+}
 /** timestamp → YYYY년 MM월 DD일 */
 export function fmtTSDateFull(ts: string): string { return fmtDateFull(tsDate(ts)); }
 /** N층 회의실명 합성 (예: 2층 에메랄드) */

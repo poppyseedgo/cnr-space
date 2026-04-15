@@ -13,6 +13,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../types'
 
 import { UserAvatar } from '../components/common/UserAvatar'
+import { BookingListTable } from '../components/common/BookingListTable'
 
 export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail, onCheckIn, onEarlyEnd, onCancel, rooms:rp=[], users:up=[], authUserId='', currentUserEmail='', avatarUrl=null}) {
   const [tab, setTab] = useState("upcoming");
@@ -24,10 +25,6 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   const allRooms = rp;
   const userInfo = allUsers.find(u=>u.name===currentUser);
 
-  // 기간별 조회
-  const [listFrom, setListFrom] = useState(()=>{const d=new Date();d.setDate(1);return objToStr(d);});
-  const [listTo, setListTo] = useState(()=>{const d=new Date();d.setMonth(d.getMonth()+1,0);return objToStr(d);});
-  const [listStatus, setListStatus] = useState("ALL"); // ALL | upcoming | completed | cancelled
   // 전체 내 예약 기록 (마이페이지 전용 — 기간 제한 없이)
   const [allMyBookings, setAllMyBookings] = useState<Booking[]>([]);
   const [allLoading, setAllLoading] = useState(false);
@@ -119,35 +116,9 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   const thisCI = thisPastBks.filter(b => b.checkedIn).length;
   const thisRate = thisPastBks.length > 0 ? Math.round((thisCI / thisPastBks.length) * 100) : 0;
 
-  // 기간별 조회 리스트
-  // 기간별 기록은 allMyBookings(전체) 기반, 없으면 myBookings fallback
+  // 기간별 조회 리스트 — BookingListTable 컴포넌트에 위임
+  // baseBookings: allMyBookings(전체) 기반, 없으면 myBookings fallback
   const baseBookings = allMyBookings.length > 0 ? allMyBookings : myBookings;
-
-  // ★ 날짜 범위만 적용한 전체 목록 (상태 필터 미적용) — 버튼 카운트 기준
-  const dateFilteredList = useMemo(() =>
-    baseBookings.filter(b => {
-      const d = tsDate(b.start_at);
-      return d >= listFrom && d <= listTo;
-    }),
-  [allMyBookings, myBookings, listFrom, listTo]);
-
-  // ★ Bug Fix: listStats는 dateFilteredList(날짜만 필터) 기준 — 상태 필터 무관하게 고정
-  const listStats = {
-    all:  dateFilteredList.length,
-    up:   dateFilteredList.filter(b => !b.autoCancelled && tsDate(b.start_at) >= today).length,
-    done: dateFilteredList.filter(b => (b.checkedIn || b.earlyEnded) && !b.autoCancelled).length,
-    can:  dateFilteredList.filter(b => b.autoCancelled).length,
-  };
-
-  // 상태 필터까지 적용한 최종 목록
-  const filteredList = useMemo(() =>
-    dateFilteredList.filter(b => {
-      if (listStatus === "upcoming"  && (b.autoCancelled || tsDate(b.start_at) < today)) return false;
-      if (listStatus === "completed" && ((!b.checkedIn && !b.earlyEnded) || b.autoCancelled)) return false;
-      if (listStatus === "cancelled" && !b.autoCancelled) return false;
-      return true;
-    }).sort((a, b) => b.start_at.localeCompare(a.start_at)),
-  [dateFilteredList, listStatus, today]);
 
   return(
     <div style={{maxWidth:960,margin:"0 auto",padding:isMobile?"16px 12px":"28px 24px"}}>
@@ -173,90 +144,18 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
       </div>
 
       {/* ── 기간별 예약 조회 ── */}
-      <div className="anm" style={{background:"#fff",borderRadius:16,overflow:"hidden",marginTop:20,animationDelay:"150ms"}}>
-        <div style={{padding:isMobile?"16px 20px":"20px 28px",borderBottom:"1px solid #F1F5F9"}}>
-          <div style={{fontSize:15,fontWeight:600,color:"#111",marginBottom:14}}><span style={{display:"inline-flex",alignItems:"center",gap:6}}><ClipboardList size={15} strokeWidth={1.8}/>기간별 예약 조회</span></div>
-          {/* 날짜 필터 */}
-          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-            <div style={{flex:"1 1 140px",minWidth:120}}>
-              <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:4}}>시작일</label>
-              <input type="date" value={listFrom} onChange={e=>setListFrom(e.target.value)}
-                style={{width:"100%",padding:"8px 12px",borderRadius:10,border:"1px solid #E2E8F0",fontSize:13,background:"#fff",outline:"none"}}/>
-            </div>
-            <span style={{color:"#CBD5E1",marginTop:16}}>~</span>
-            <div style={{flex:"1 1 140px",minWidth:120}}>
-              <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:4}}>종료일</label>
-              <input type="date" value={listTo} onChange={e=>setListTo(e.target.value)}
-                style={{width:"100%",padding:"8px 12px",borderRadius:10,border:"1px solid #E2E8F0",fontSize:13,background:"#fff",outline:"none"}}/>
-            </div>
-          </div>
-          {/* 상태 필터 */}
-          <div style={{display:"flex",gap:6,marginTop:12}}>
-            {[{id:"ALL",l:"전체",c:listStats.all},{id:"upcoming",l:"예정",c:listStats.up},{id:"completed",l:"완료",c:listStats.done},{id:"cancelled",l:"취소",c:listStats.can}].map(s=>(
-              <button key={s.id} className="btn" onClick={()=>setListStatus(s.id)}
-                style={{padding:"5px 12px",fontSize:11,borderRadius:999,
-                  background:listStatus===s.id?"#111":"#F8FAFC",color:listStatus===s.id?"#fff":"#64748B",
-                  border:listStatus===s.id?"none":"1px solid #E2E8F0"}}>
-                {s.l} {s.c}
-              </button>
-            ))}
-          </div>
+      <div className="anm" style={{background:"#fff",borderRadius:16,padding:isMobile?"16px 16px 20px":"20px 28px 24px",marginTop:20,animationDelay:"150ms"}}>
+        <div style={{fontSize:15,fontWeight:600,color:"#111",marginBottom:16,display:"flex",alignItems:"center",gap:6}}>
+          <ClipboardList size={15} strokeWidth={1.8}/>기간별 예약 조회
         </div>
-
-        {/* 리스트 */}
-        <div style={{maxHeight:400,overflowY:"auto"}}>
-          {filteredList.length===0?(
-            <div style={{textAlign:"center",padding:"40px 20px",color:"#CBD5E1"}}>
-              <div style={{display:"flex",justifyContent:"center",marginBottom:8}}><Inbox size={32} strokeWidth={1.8} color="#CBD5E1"/></div>
-              <div style={{fontSize:13}}>해당 기간에 예약 내역이 없습니다</div>
-            </div>
-          ):(
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-              <thead>
-                <tr style={{background:"#F8FAFC"}}>
-                  {["날짜/시간","회의명","회의실","상태",""].map(h=>(
-                    <th key={h} style={{padding:"8px 14px",textAlign:"left",fontSize:11,fontWeight:600,color:"#94A3B8",whiteSpace:"nowrap",borderBottom:"1px solid #F1F5F9"}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredList.map(b=>{
-                  const r=allRooms.find(rm=>rm.room_id===b.room_id);
-                  const isAdminCancel = b.cancelledBy === 'admin';
-                  const isCan = b.autoCancelled;
-                  const isDone = b.checkedIn && !isCan;
-                  const isUp = !isCan && tsDate(b.start_at) >= today;
-                  const isNoshow = isCan && !b.checkedIn && !b.earlyEnded && !isAdminCancel;
-                  return(
-                    <tr key={b.id} style={{borderBottom:"1px solid #F8FAFC",cursor:"pointer"}}
-                      onClick={()=>onDetail(b)}
-                      onMouseEnter={e=>e.currentTarget.style.background="#FAFBFD"}
-                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                      <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap",fontSize:12}}>{fmtTSDateFull(b.start_at)}<br/>{fmtTSRangeFull(b.start_at,b.end_at)}</td>
-                      <td style={{padding:"10px 14px",fontWeight:600,color:"#111",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                        {b.recurGroupId && (
-                          <span style={{display:'inline-block',background:'#EEF2FF',color:'#4338CA',fontSize:9,fontWeight:600,borderRadius:4,padding:'1px 5px',marginRight:4,verticalAlign:'middle'}}>🔁</span>
-                        )}
-                        {b.user !== currentUser && (
-                          <span style={{display:'inline-block',background:'#F0FDF4',color:'#15803D',fontSize:9,fontWeight:600,borderRadius:4,padding:'1px 5px',marginRight:4,verticalAlign:'middle'}}>참석자</span>
-                        )}
-                        {b.title}
-                      </td>
-                      <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{r?.room_name ?? '?'}</td>
-                      <td style={{padding:"10px 14px"}}>
-                        <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} currentUser={currentUser} />
-                      </td>
-                      <td style={{padding:"10px 14px"}}>
-                        <button className="btn" onClick={()=>onDetail(b)}
-                          style={{background:"#F1F5F9",color:"#64748B",padding:"5px 12px",fontSize:11,borderRadius:10}}>상세</button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <BookingListTable
+          bookings={baseBookings}
+          rooms={allRooms}
+          currentUser={currentUser}
+          currentUserEmail={currentUserEmail}
+          onDetail={onDetail}
+          loading={allLoading}
+        />
       </div>
 
       {/* 월별 통계 */}
