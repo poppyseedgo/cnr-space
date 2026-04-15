@@ -14,6 +14,7 @@ import {
   countFutureBookings, manualDepartUser,
 } from '../lib/api'
 import type { Booking, Room, AppUser, DepartedUser } from '../types'
+import { ModalPortal } from '../components/common/ModalPortal'
 
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
 function addDaysStr(base: string, days: number): string {
@@ -292,6 +293,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onClose }:
 
   const meta = DETAIL_META[type]
   return (
+    <ModalPortal>
     <div style={{ position:'fixed', inset:0, zIndex:500, display:'flex', justifyContent:'flex-end' }}>
       {/* 배경 dim */}
       <div onClick={onClose} style={{ position:'absolute', inset:0, background:'rgba(15,23,42,0.4)', backdropFilter:'blur(4px)' }}/>
@@ -329,6 +331,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onClose }:
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }
 
@@ -786,7 +789,7 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
           <button className="btn" disabled={page===totalPages} onClick={()=>setPage(p=>p+1)} style={{padding:'6px 12px',fontSize:12,borderRadius:8,background:'#F1F5F9',color:page===totalPages?'#CBD5E1':'#64748B'}}>›</button>
         </div>)}
       </div>
-      {cancelModal&&(<div onClick={e=>e.target===e.currentTarget&&setCancelModal(null)} style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.55)',backdropFilter:'blur(6px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
+      {cancelModal&&(<ModalPortal><div onClick={e=>e.target===e.currentTarget&&setCancelModal(null)} style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.55)',backdropFilter:'blur(6px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
         <div className="anm" style={{background:'#fff',borderRadius:16,width:'100%',maxWidth:400,padding:'24px',boxShadow:'0 20px 60px rgba(0,0,0,0.15)'}}>
           <div style={{fontSize:16,fontWeight:600,color:'#111',marginBottom:4,display:'flex',alignItems:'center',gap:6}}><AlertTriangle size={15} strokeWidth={1.8}/>예약 강제 취소</div>
           <div style={{fontSize:13,color:'#64748B',marginBottom:16}}>"{cancelModal.title}" — {cancelModal.user}</div>
@@ -797,7 +800,7 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
             <button className="btn" onClick={()=>doCancel(cancelModal.id)} disabled={cancelling} style={{flex:1,background:'#DC2626',color:'#fff',padding:'12px',fontSize:13,fontWeight:600,borderRadius:12,opacity:cancelling?0.6:1}}>{cancelling?'처리 중...':'강제 취소'}</button>
           </div>
         </div>
-      </div>)}
+      </div></ModalPortal>)}
     </div>
   )
 }
@@ -869,7 +872,7 @@ export function AdminRooms({ showToast, isMobile }) {
           </div>
         )})}
       </div>
-      {editRoom&&(<div onClick={e=>e.target===e.currentTarget&&setEditRoom(null)} style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.55)',backdropFilter:'blur(6px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
+      {editRoom&&(<ModalPortal><div onClick={e=>e.target===e.currentTarget&&setEditRoom(null)} style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.55)',backdropFilter:'blur(6px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
         <div className="anm" style={{background:'#fff',borderRadius:16,width:'100%',maxWidth:460,maxHeight:'90vh',overflow:'auto',padding:'24px',boxShadow:'0 20px 60px rgba(0,0,0,0.15)'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
             <div style={{fontSize:16,fontWeight:600,color:'#111'}}>{editRoom?.room_id?'회의실 정보 수정':'새 회의실 추가'}</div>
@@ -900,7 +903,7 @@ export function AdminRooms({ showToast, isMobile }) {
             <button className="btn" onClick={saveEdit} style={{flex:1,background:'#111',color:'#fff',padding:'12px',fontSize:13,fontWeight:600,borderRadius:12}}>저장</button>
           </div>
         </div>
-      </div>)}
+      </div></ModalPortal>)}
     </div>
   )
 }
@@ -1264,6 +1267,7 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
           사용자 상세 모달 (드로어 → 중앙 모달)
       ══════════════════════════════════════════════════════════════════════ */}
       {editUser && (
+        <ModalPortal>
         <div onClick={closeModal}
           style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.55)', backdropFilter:'blur(6px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000, padding:16 }}>
           <div className="anm" onClick={e => e.stopPropagation()}
@@ -1331,6 +1335,7 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
               </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   )
@@ -1589,6 +1594,7 @@ export function AdminApprovals({ bookings, rooms, onApprove, onReject, showToast
 
       {/* 거절 사유 모달 */}
       {rejectModal && (
+        <ModalPortal>
         <div onClick={e => e.target === e.currentTarget && setRejectModal(null)}
           style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.55)', backdropFilter:'blur(6px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000, padding:16 }}>
           <div style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:420, padding:'24px', boxShadow:'0 20px 60px rgba(0,0,0,0.15)' }}>
@@ -1611,6 +1617,7 @@ export function AdminApprovals({ bookings, rooms, onApprove, onReject, showToast
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   )
