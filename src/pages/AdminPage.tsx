@@ -1493,24 +1493,22 @@ export function AdminApprovals({ bookings, rooms, users, onApprove, onReject, sh
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12, flexWrap:'wrap', gap:8 }}>
           <div style={{ fontSize:14, fontWeight:600, color:'#111' }}>승인 관리</div>
           <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+            <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value) }}
               style={{ height:32, border:'0.5px solid #E2E8F0', borderRadius:8, padding:'0 8px', fontSize:12, background:'#fff', color:'#111', width:108, outline:'none' }}/>
             <span style={{ fontSize:12, color:'#CBD5E1' }}>~</span>
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+            <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value) }}
               style={{ height:32, border:'0.5px solid #E2E8F0', borderRadius:8, padding:'0 8px', fontSize:12, background:'#fff', color:'#111', width:108, outline:'none' }}/>
             {[
-              { label:'이번 달', fn:():[string,string]=>[getMonthStart(0), todayStr()] },
-              { label:'지난 달', fn:():[string,string]=>[getMonthStart(-1), getMonthEnd(-1)] },
+              { label:'오늘',     fn:():[string,string]=>[todayStr(), todayStr()] },
+              { label:'지난 7일', fn:():[string,string]=>[addDaysStr(todayStr(),-6), todayStr()] },
+              { label:'이번 달',  fn:():[string,string]=>[getMonthStart(0), todayStr()] },
+              { label:'지난 달',  fn:():[string,string]=>[getMonthStart(-1), getMonthEnd(-1)] },
             ].map(p => (
               <button key={p.label} className="btn" onClick={() => { const [f,t]=p.fn(); setDateFrom(f); setDateTo(t) }}
                 style={{ height:32, padding:'0 10px', border:'0.5px solid #E2E8F0', borderRadius:8, fontSize:12, background:'#fff', color:'#64748B', cursor:'pointer', whiteSpace:'nowrap' }}>
                 {p.label}
               </button>
             ))}
-            <button className="btn" onClick={fetchRange} disabled={loadingRange}
-              style={{ display:'flex', alignItems:'center', gap:4, height:32, padding:'0 10px', borderRadius:8, background:loadingRange?'#F8FAFC':'#111', color:loadingRange?'#CBD5E1':'#fff', fontSize:11, fontWeight:600, border:'none', cursor:loadingRange?'default':'pointer' }}>
-              <RefreshCw size={11} strokeWidth={1.8}/>{loadingRange?'조회 중...':'새로고침'}
-            </button>
           </div>
         </div>
         {/* Row 2: 상태 탭 + 정렬 + 층 + 검색 */}
