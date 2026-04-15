@@ -145,23 +145,30 @@ Deno.serve(async (req) => {
         }
       }
 
-      // 참석자 인앱 알림
+      // 참석자 인앱 알림 (email 기반 → profiles에서 user_id 배치 조회)
       try {
         const { data: attendeeRows } = await supabase
           .from('booking_attendees')
-          .select('user_id')
+          .select('email')
           .eq('booking_id', b.id)
 
-        for (const att of attendeeRows ?? []) {
-          if (!att.user_id) continue
-          await supabase.from('notifications').insert({
-            user_id:    att.user_id,
-            type:       'booking_noshow',
-            title:      '참석 예약이 자동 취소되었습니다',
-            body:       inappBody,
-            booking_id: b.id,
-            is_read:    false,
-          })
+        const attendeeEmails = (attendeeRows ?? []).map(a => a.email).filter(Boolean)
+        if (attendeeEmails.length > 0) {
+          const { data: attendeeProfiles } = await supabase
+            .from('profiles')
+            .select('id, email')
+            .in('email', attendeeEmails)
+
+          for (const profile of attendeeProfiles ?? []) {
+            await supabase.from('notifications').insert({
+              user_id:    profile.id,
+              type:       'booking_noshow',
+              title:      '참석 예약이 자동 취소되었습니다',
+              body:       inappBody,
+              booking_id: b.id,
+              is_read:    false,
+            })
+          }
         }
       } catch (e) {
         console.warn('[auto-cancel] 참석자 인앱 알림 실패 (취소는 정상):', e)

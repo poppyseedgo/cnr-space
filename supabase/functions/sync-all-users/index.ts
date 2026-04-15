@@ -127,11 +127,13 @@ async function fetchAuthUserEmailMap(): Promise<Map<string, string>> {
 }
 
 // ── 퇴사자 처리 ─────────────────────────────────────────────────────────────
-async function processDeparted(departed: {
-  id: string; name: string; email: string; dept: string; employee_id: string
-}[]): Promise<void> {
+async function processDeparted(
+  departed: { id: string; name: string; email: string; dept: string; employee_id: string }[],
+  authEmailMap: Map<string, string>,
+): Promise<void> {
   if (departed.length === 0) return
 
+  // ① departed_users 이력 INSERT
   const rows = departed.map(p => ({
     id:          p.id,
     name:        p.name        ?? '',
@@ -151,12 +153,35 @@ async function processDeparted(departed: {
   )
   if (!insertRes.ok) console.error('[sync] departed_users INSERT 실패:', await insertRes.text())
 
-  const ids    = departed.map(p => `"${p.id}"`).join(',')
+  // ② profiles DELETE
+  const ids = departed.map(p => `"${p.id}"`).join(',')
   const delRes = await fetch(
     `${SUPABASE_URL}/rest/v1/profiles?id=in.(${ids})`,
     { method: 'DELETE', headers: { ...sbHeaders, 'Prefer': 'return=minimal' } }
   )
   if (!delRes.ok) console.error('[sync] profiles DELETE 실패:', await delRes.text())
+
+  // ③ auth.users DELETE — 이메일 재사용 안전 보장
+  //    동일 이메일로 신규 입사자가 로그인 시 완전히 새 계정으로 처리되도록
+  for (const p of departed) {
+    const authId = authEmailMap.get(p.email.toLowerCase())
+    if (!authId) continue  // 한 번도 로그인 안 한 퇴사자 → auth.users 없음, skip
+    const res = await fetch(
+      `${SUPABASE_URL}/auth/v1/admin/users/${authId}`,
+      {
+        method:  'DELETE',
+        headers: {
+          'apikey':        SERVICE_KEY,
+          'Authorization': `Bearer ${SERVICE_KEY}`,
+        },
+      }
+    )
+    if (!res.ok) {
+      console.error(`[sync] auth.users DELETE 실패 (${p.email}):`, await res.text())
+    } else {
+      console.log(`[sync] auth.users 삭제 완료 (${p.email})`)
+    }
+  }
 }
 
 // ── 퇴사자 미래 예약 자동 취소 ───────────────────────────────────────────────
@@ -396,7 +421,7 @@ Deno.serve(async (req) => {
     }
 
     // 5. 퇴사자 처리
-    await processDeparted(departed)
+    await processDeparted(departed, authEmailMap)
     const cancelledCount = await cancelFutureBookings(departed.map(p => p.id))
     departed.forEach(p => existingEmails.delete((p.email ?? '').toLowerCase()))
 
