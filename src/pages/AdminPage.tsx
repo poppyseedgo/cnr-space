@@ -194,7 +194,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
     })
     return Array.from(map.entries()).map(([rid, s]) => {
       const r = rooms.find(rm => rm.room_id === rid)
-      return { room_name: r?.room_name_ko || r?.room_name || rid, ...s,
+      return { room_name: r?.room_name || String(rid), ...s,
         noshow_rate: s.confirmed + s.noshow > 0 ? Math.round(s.noshow / (s.confirmed + s.noshow) * 100) : 0 }
     }).sort((a,b) => b.confirmed - a.confirmed)
   }, [filtered, rooms])
@@ -324,7 +324,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
     if (type === 'rooms') return <AggTable rows={roomAgg}
       cols={[{k:'room_name',l:'회의실'},{k:'confirmed',l:'예약'},{k:'checkin',l:'체크인'},{k:'noshow',l:'노쇼'},{k:'noshow_rate',l:'노쇼율(%)',fmt:v=>`${v}%`}]}
       onExport={() => exportCSV(roomAgg.map(r=>({회의실:r.room_name,예약:r.confirmed,체크인:r.checkin,노쇼:r.noshow,'노쇼율(%)':r.noshow_rate})), `회의실별통계_${dateFrom}_${dateTo}`)}
-      onRowClick={row => { const rm = rooms.find(r=>(r.room_name_ko||r.room_name)===row.room_name); if(rm) { setDrill({ label:row.room_name, fn:(b)=>b.room_id===rm.room_id }); setPage(1) } }}/>
+      onRowClick={row => { const rm = rooms.find(r=>r.room_name===row.room_name); if(rm) { setDrill({ label:row.room_name, fn:(b)=>b.room_id===rm.room_id }); setPage(1) } }}/>
 
     if (type === 'dept') return <AggTable rows={deptAgg}
       cols={[{k:'dept',l:'부서'},{k:'confirmed',l:'예약'},{k:'noshow',l:'노쇼'}]}
@@ -494,22 +494,40 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
 const TREE_COLORS = ['#1E1B4B','#3730A3','#4F46E5','#7C3AED','#9333EA','#A855F7','#C084FC','#DDD6FE','#EDE9FE']
 function TreemapContent(props: any) {
   const { x, y, width, height, name, size, noshow, index } = props
-  if (!width || !height || width < 2 || height < 2) return null
-  const fill = TREE_COLORS[Math.min(index ?? 0, TREE_COLORS.length - 1)]
-  const showLabel = width > 55 && height > 28
-  const showCount = width > 40 && height > 44
+  if (!width || !height || width < 4 || height < 4) return null
+  const fill  = TREE_COLORS[Math.min(index ?? 0, TREE_COLORS.length - 1)]
+  const light = (index ?? 0) >= 6   // 밝은 배경이면 어두운 텍스트
+  const textColor      = light ? 'rgba(30,27,75,0.85)'  : 'rgba(255,255,255,0.95)'
+  const subColor       = light ? 'rgba(30,27,75,0.5)'   : 'rgba(255,255,255,0.6)'
+  const showLabel      = width > 52 && height > 26
+  const showCount      = width > 44 && height > 46
+  const labelY         = showCount ? y + height / 2 - 6 : y + height / 2 + 5
+  const truncate = (s: string, maxW: number) => {
+    if (!s) return ''
+    const approxCharW = 7
+    const max = Math.floor(maxW / approxCharW)
+    return s.length > max ? s.slice(0, max - 1) + '…' : s
+  }
   return (
     <g>
       <rect x={x} y={y} width={width} height={height} fill={fill} stroke="#fff" strokeWidth={2} rx={4}/>
       {showLabel && (
-        <text x={x + 8} y={y + (showCount ? height/2 - 4 : height/2 + 4)}
-          fill="rgba(255,255,255,0.92)" fontSize={11} fontWeight={500}>
-          {name}
+        <text
+          x={x + 10} y={labelY}
+          fill={textColor}
+          fontSize={12} fontWeight="600"
+          fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+          dominantBaseline="central">
+          {truncate(name ?? '', width - 20)}
         </text>
       )}
       {showCount && (
-        <text x={x + 8} y={y + height/2 + 12}
-          fill="rgba(255,255,255,0.65)" fontSize={11}>
+        <text
+          x={x + 10} y={y + height / 2 + 13}
+          fill={subColor}
+          fontSize={11} fontWeight="400"
+          fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+          dominantBaseline="central">
           {size}건{noshow > 0 ? ` · 노쇼 ${noshow}` : ''}
         </text>
       )}
@@ -736,7 +754,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
                           onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='transparent'}>
                           <td style={{ padding:'9px 10px', fontWeight:600 }}>{b.user ?? '—'}</td>
                           <td style={{ padding:'9px 10px', color:'#64748B', fontSize:11 }}>{b.dept ?? '—'}</td>
-                          <td style={{ padding:'9px 10px', color:'#64748B', fontSize:11 }}>{(b as any).roomObj?.room_name_ko ?? (b as any).roomObj?.room_name ?? '—'}</td>
+                          <td style={{ padding:'9px 10px', color:'#64748B', fontSize:11 }}>{(b as any).roomObj?.room_name ?? '—'}</td>
                           <td style={{ padding:'9px 10px', color:'#64748B', fontSize:11, whiteSpace:'nowrap' }}>{fmtTime(tsTime(b.start_at))} ~ {fmtTime(tsTime(b.end_at))}</td>
                           <td style={{ padding:'9px 10px' }}>
                             <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color: b.checkedIn ? '#16A34A' : '#D97706', fontWeight:500 }}>
@@ -770,6 +788,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
                   dataKey="size"
                   aspectRatio={4/3}
                   stroke="#fff"
+                  isAnimationActive={false}
                   content={<TreemapContent/>}
                 >
                   <Tooltip contentStyle={CHART_STYLE} formatter={(v:any, _:any, p:any) => [`${v}건 (노쇼 ${p?.payload?.noshow ?? 0})`, p?.payload?.name ?? '']}/>
@@ -788,7 +807,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
                   <div key={r.room.room_id}>
                     <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:5 }}>
                       <span style={{ width:20, height:20, borderRadius:6, background:i===0?'#FEF2F2':'#F8FAFC', color:i===0?'#EF4444':'#94A3B8', fontSize:10, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{i+1}</span>
-                      <span style={{ flex:1, fontSize:12, fontWeight:600, color:'#374151', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.room.room_name_ko||r.room.room_name}</span>
+                      <span style={{ flex:1, fontSize:12, fontWeight:600, color:'#374151', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.room.room_name}</span>
                       <span style={{ fontSize:14, fontWeight:700, color:noswColor(r.rate), flexShrink:0 }}>{r.rate}%</span>
                     </div>
                     <div style={{ height:5, background:'#F1F5F9', borderRadius:999, overflow:'hidden' }}>
@@ -1094,7 +1113,7 @@ export function AdminRooms({ showToast, isMobile }) {
                   {!r.is_active&&<span style={{background:'#FEE2E2',color:'#DC2626',fontSize:9,fontWeight:600,padding:'2px 6px',borderRadius:999}}>비활성</span>}
                   {r.is_admin_only&&<span style={{background:'#F3E8FF',color:'#7C3AED',fontSize:9,fontWeight:600,padding:'2px 6px',borderRadius:999}}>관리자전용</span>}
                 </div>
-                <div style={{fontSize:12,color:'#64748B',marginTop:2}}>{r.room_name_ko} · {fl?.floor_name} · {r.capacity}인</div>
+                <div style={{fontSize:12,color:'#64748B',marginTop:2}}>{r.room_name} · {fl?.floor_name} · {r.capacity}인</div>
                 {(r.features??[]).length>0&&<div style={{display:'flex',gap:4,flexWrap:'wrap',marginTop:6}}>{(r.features??[]).slice(0,3).map(f=><span key={f.feature_id} style={{background:'#F0F9FF',border:'1px solid #BAE6FD',borderRadius:999,padding:'2px 7px',fontSize:10,color:'#0369A1',fontWeight:600}}>{f.feature_name}</span>)}</div>}
               </div>
             </div>
