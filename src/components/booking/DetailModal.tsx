@@ -52,6 +52,20 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
               <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} currentUser={currentUser} />
             </div>
             <div style={{fontSize: isMobile ? 17 : 20, fontWeight:600, color:"#111111", wordBreak:"break-word"}}>{b.title}</div>
+            {b.recurGroupId && (
+              <div style={{marginTop:6}}>
+                <span style={{display:'inline-flex',alignItems:'center',gap:4,background:'#EEF2FF',color:'#4338CA',fontSize:11,fontWeight:600,borderRadius:6,padding:'3px 8px'}}>
+                  🔁 반복 예약
+                </span>
+              </div>
+            )}
+            {b.user !== currentUser && (
+              <div style={{marginTop:6}}>
+                <span style={{display:'inline-flex',alignItems:'center',gap:4,background:'#F0FDF4',color:'#15803D',fontSize:11,fontWeight:600,borderRadius:6,padding:'3px 8px'}}>
+                  👤 참석자
+                </span>
+              </div>
+            )}
           </div>
           <button className="btn" onClick={onClose}
             style={{width:32,height:32,borderRadius:"50%",background:"#F1F5F9",

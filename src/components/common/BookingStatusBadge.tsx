@@ -100,8 +100,8 @@ export function BookingStatusBadge({
       {/* ⑦ 승인완료 */}
       {isApproved && <C cls="chip-approved">승인완료</C>}
 
-      {/* ⑧ 내 예약 */}
-      {isOwner && !b.autoCancelled && !isRejected && <C cls="chip-mine">내 예약</C>}
+      {/* ⑧ 내 예약 — sm 소형카드 제외, md·xs에서만 표시 */}
+      {isOwner && !b.autoCancelled && !isRejected && size !== 'sm' && <C cls="chip-mine">내 예약</C>}
 
       {/* ⑨ 진행 중 */}
       {isAct && !b.autoCancelled && (

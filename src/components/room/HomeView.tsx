@@ -10,7 +10,7 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, B
 import { RoomStatusBadge } from '../common/RoomStatusBadge'
 import { BookingStatusBadge } from '../common/BookingStatusBadge'
 
-export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearchQ, filterFloor, setFilterFloor, onBook, onDetail, onBookingDetail, onCheckIn, onEarlyEnd, onCancel, currentUser, dark}) {
+export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearchQ, filterFloor, setFilterFloor, onBook, onDetail, onBookingDetail, onCheckIn, onEarlyEnd, onCancel, currentUser, currentUserEmail='', dark}) {
   const { isMobile, isTablet } = useBreakpoint();
   const today = todayStr();
   const now   = nowMinutes();
@@ -42,11 +42,12 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
   const soon       = withStatus.filter(x => x.status.type==="SOON");
   const busy       = withStatus.filter(x => x.status.type==="BUSY");
 
-  // 오늘 내 예약 — 직접 취소만 제외, 노쇼 자동취소는 유지
+  // 오늘 내 예약 — 직접 취소만 제외, 노쇼 자동취소는 유지 (예약자 + 참석자 모두 포함)
   const myBookingsBase = bookings.filter(b =>
     tsDate(b.start_at) === today &&
-    b.user === currentUser &&
-    b.cancelledBy !== 'user'
+    b.cancelledBy !== 'user' &&
+    (b.user === currentUser ||
+     (currentUserEmail && (b.attendees ?? []).some((a: any) => a.email === currentUserEmail)))
   )
 
   const myBookings = [...myBookingsBase].sort((a, b) => {
@@ -165,6 +166,12 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
                   cursor:"pointer"}}>
                 {/* 상단 */}
                 <div>
+                  {b.recurGroupId && (
+                    <span style={{display:'inline-block',background:'#EEF2FF',color:'#4338CA',fontSize:9,fontWeight:600,borderRadius:4,padding:'1px 5px',marginBottom:3,marginRight:3}}>🔁 반복</span>
+                  )}
+                  {b.user !== currentUser && (
+                    <span style={{display:'inline-block',background:'#F0FDF4',color:'#15803D',fontSize:9,fontWeight:600,borderRadius:4,padding:'1px 5px',marginBottom:3}}>참석자</span>
+                  )}
                   <div className="text-xs font-semibold text-slate-900 dark:text-white leading-snug line-clamp-2 mb-1.5">{b.title}</div>
                   <div style={{marginBottom:4}}>
                     <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} size="sm" currentUser={currentUser} />

@@ -14,7 +14,7 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, B
 
 import { UserAvatar } from '../components/common/UserAvatar'
 
-export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail, onCheckIn, onEarlyEnd, onCancel, rooms:rp=[], users:up=[], authUserId='', avatarUrl=null}) {
+export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail, onCheckIn, onEarlyEnd, onCancel, rooms:rp=[], users:up=[], authUserId='', currentUserEmail='', avatarUrl=null}) {
   const [tab, setTab] = useState("upcoming");
   const [statYear, setStatYear] = useState(()=>new Date().getFullYear());
   const [statMonth, setStatMonth] = useState(()=>new Date().getMonth());
@@ -84,8 +84,11 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
 
   // user_id 기반 필터 (정확) → fallback: name 기반 (SSO 연동 전)
   const myBookings = useMemo(()=>
-    bookings.filter(b => b.user === currentUser),
-  [bookings, currentUser]);
+    bookings.filter(b =>
+      b.user === currentUser ||
+      (currentUserEmail && (b.attendees ?? []).some((a: any) => a.email === currentUserEmail))
+    ),
+  [bookings, currentUser, currentUserEmail]);
   const upcoming = useMemo(()=>myBookings.filter(b=>!b.autoCancelled&&(tsDate(b.start_at)>today||(tsDate(b.start_at)===today&&tsMin(b.end_at)>now))).sort((a,b)=>a.start_at.localeCompare(b.start_at)),[myBookings,today,now]);
   const completed = useMemo(()=>myBookings.filter(b=>!b.autoCancelled&&b.checkedIn&&(tsDate(b.start_at)<today||(tsDate(b.start_at)===today&&tsMin(b.end_at)<=now))).sort((a,b)=>b.start_at.localeCompare(a.start_at)),[myBookings,today,now]);
   const cancelled = useMemo(()=>myBookings.filter(b=>b.autoCancelled).sort((a,b)=>b.start_at.localeCompare(a.start_at)),[myBookings]);
@@ -230,7 +233,15 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
                       onMouseEnter={e=>e.currentTarget.style.background="#FAFBFD"}
                       onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                       <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap",fontSize:12}}>{fmtTSDateFull(b.start_at)}<br/>{fmtTSRangeFull(b.start_at,b.end_at)}</td>
-                      <td style={{padding:"10px 14px",fontWeight:600,color:"#111",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.title}</td>
+                      <td style={{padding:"10px 14px",fontWeight:600,color:"#111",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {b.recurGroupId && (
+                          <span style={{display:'inline-block',background:'#EEF2FF',color:'#4338CA',fontSize:9,fontWeight:600,borderRadius:4,padding:'1px 5px',marginRight:4,verticalAlign:'middle'}}>🔁</span>
+                        )}
+                        {b.user !== currentUser && (
+                          <span style={{display:'inline-block',background:'#F0FDF4',color:'#15803D',fontSize:9,fontWeight:600,borderRadius:4,padding:'1px 5px',marginRight:4,verticalAlign:'middle'}}>참석자</span>
+                        )}
+                        {b.title}
+                      </td>
                       <td style={{padding:"10px 14px",color:"#64748B",whiteSpace:"nowrap"}}>{r?.room_name ?? '?'}</td>
                       <td style={{padding:"10px 14px"}}>
                         <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} currentUser={currentUser} />
