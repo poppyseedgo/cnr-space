@@ -320,11 +320,11 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
 
   return (
     <div className="anm room-card bg-white dark:bg-slate-800 rounded-2xl flex flex-col"
-      style={{animationDelay:`${animDelay}ms`, overflow:"hidden"}}>
+      style={{animationDelay:`${animDelay}ms`, overflow:"hidden", cursor:"pointer"}}
+      onClick={()=>onDetail&&onDetail(r)}>
 
       {/* ── 썸네일 영역 ── */}
-      <div style={{width:"100%", height:160, overflow:"hidden", flexShrink:0, background:thumbnail?"#F3F4F8":"rgb(251, 253, 255)", position:"relative", cursor:"pointer"}}
-        onClick={()=>onDetail&&onDetail(r)}>
+      <div style={{width:"100%", height:160, overflow:"hidden", flexShrink:0, background:thumbnail?"#F3F4F8":"rgb(251, 253, 255)", position:"relative"}}>
         {thumbnail ? (
           <img src={thumbnail} alt={r.room_name}
             style={{width:"100%",height:"100%",objectFit:"cover",display:"block",
@@ -423,12 +423,12 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
       {/* ⑤ 버튼 */}
       <div style={{display:"flex", alignItems:"center", gap:8, padding:"4px 20px 20px"}}>
         {isAvail && (<>
-          <button className="btn" onClick={()=>onBook(r, status)}
+          <button className="btn" onClick={e=>{e.stopPropagation();onBook(r, status);}}
             style={{flex:1, background:"#111111", color:"#fff", fontWeight:600,
               borderRadius:12, padding:"13px", fontSize:14, textAlign:"center"}}>
             바로 예약
           </button>
-          <button className="btn" onClick={()=>onDetail(r)}
+          <button className="btn" onClick={e=>{e.stopPropagation();onDetail(r);}}
             style={{flex:1, background:"none", border:"none", color:"#64748B",
               fontWeight:600, fontSize:14, padding:"13px", cursor:"pointer", textAlign:"center"}}>
             자세히 보기
@@ -441,14 +441,14 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
               cursor:"not-allowed", border:"none"}}>
             {status.minsUntil}분 뒤 사용
           </button>
-          <button className="btn" onClick={()=>onDetail(r)}
+          <button className="btn" onClick={e=>{e.stopPropagation();onDetail(r);}}
             style={{flex:1, background:"none", border:"none", color:"#64748B",
               fontWeight:600, fontSize:14, padding:"13px", cursor:"pointer", textAlign:"center"}}>
             자세히 보기
           </button>
         </>)}
         {isBusy && (
-          <button className="btn" onClick={()=>onDetail(r)}
+          <button className="btn" onClick={e=>{e.stopPropagation();onDetail(r);}}
             style={{flex:1, background:"none", border:"none", color:"#64748B",
               fontWeight:600, fontSize:14, padding:"13px", cursor:"pointer", textAlign:"center"}}>
             자세히 보기
