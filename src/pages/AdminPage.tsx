@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react'
 import { AlertCircle, AlertTriangle, ArrowUpDown, Ban, BarChart2, Building2, Calendar, CheckCircle2, ChevronDown, Clock, Download, ImagePlus, Inbox, RefreshCw, RotateCw, Search, Trash2, Upload, Users, X } from 'lucide-react'
-import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, Treemap, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import {
   todayStr, tsDate, tsMin, tsTime, fmtTime, fmtTSDateFull, fmtTSRangeFull,
   fmt2, objToStr,
@@ -50,8 +49,6 @@ const PRESETS = [
 
 // ─── 차트 공통 ────────────────────────────────────────────────────────────────
 const PIE_COLORS  = ['#6366F1','#8B5CF6','#EC4899','#F59E0B','#10B981','#06B6D4','#3B82F6','#F97316']
-const CHART_STYLE = { borderRadius:12, border:'none', boxShadow:'0 4px 24px rgba(0,0,0,0.10)', fontSize:12 }
-const AXIS_TICK   = { fontSize:11, fill:'#94A3B8' }
 
 // ─── DateRangePicker ──────────────────────────────────────────────────────────
 function DateRangePicker({ from, to, onChangeFn, presetId, onPreset, compact = false }:
@@ -490,48 +487,167 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
   )
 }
 
-// ─── Treemap 커스텀 컨텐츠 ────────────────────────────────────────────────────
-const TREE_COLORS = ['#1E1B4B','#3730A3','#4F46E5','#7C3AED','#9333EA','#A855F7','#C084FC','#DDD6FE','#EDE9FE']
-function TreemapContent(props: any) {
-  const { x, y, width, height, name, size, noshow, index } = props
-  if (!width || !height || width < 4 || height < 4) return null
-  const fill  = TREE_COLORS[Math.min(index ?? 0, TREE_COLORS.length - 1)]
-  const light = (index ?? 0) >= 6   // 밝은 배경이면 어두운 텍스트
-  const textColor      = light ? 'rgba(30,27,75,0.85)'  : 'rgba(255,255,255,0.95)'
-  const subColor       = light ? 'rgba(30,27,75,0.5)'   : 'rgba(255,255,255,0.6)'
-  const showLabel      = width > 52 && height > 26
-  const showCount      = width > 44 && height > 46
-  const labelY         = showCount ? y + height / 2 - 6 : y + height / 2 + 5
-  const truncate = (s: string, maxW: number) => {
-    if (!s) return ''
-    const approxCharW = 7
-    const max = Math.floor(maxW / approxCharW)
-    return s.length > max ? s.slice(0, max - 1) + '…' : s
-  }
+// ─── 순수 SVG 차트 컴포넌트 ──────────────────────────────────────────────────
+
+// ① AreaChart
+function AreaChartSVG({ data }: { data:{label:string;count:number;isToday:boolean}[] }) {
+  const [hov, setHov] = useState<number|null>(null)
+  if (!data.length) return null
+  const W=700, H=160, pl=28, pr=8, pt=12, pb=24
+  const iW=W-pl-pr, iH=H-pt-pb
+  const max=Math.max(...data.map(d=>d.count),1)
+  const n=data.length
+  const px=(i:number)=>pl+i*(iW/Math.max(n-1,1))
+  const py=(v:number)=>pt+iH-(v/max*iH)
+  const lineStr=data.map((d,i)=>`${px(i)},${py(d.count)}`).join(' ')
+  const area=`M${px(0)},${py(data[0].count)}`+data.slice(1).map((d,i)=>`L${px(i+1)},${py(d.count)}`).join('')
+    +` L${px(n-1)},${pt+iH} L${px(0)},${pt+iH} Z`
+  const step=Math.max(1,Math.ceil(n/8))
   return (
-    <g>
-      <rect x={x} y={y} width={width} height={height} fill={fill} stroke="#fff" strokeWidth={2} rx={4}/>
-      {showLabel && (
-        <text
-          x={x + 10} y={labelY}
-          fill={textColor}
-          fontSize={12} fontWeight="600"
-          fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-          dominantBaseline="central">
-          {truncate(name ?? '', width - 20)}
-        </text>
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{display:'block',overflow:'visible'}}>
+      <defs>
+        <linearGradient id="ag2" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#8B5CF6" stopOpacity="0.25"/>
+          <stop offset="100%" stopColor="#7C3AED" stopOpacity="0"/>
+        </linearGradient>
+      </defs>
+      {[0,.25,.5,.75,1].map((v,i)=><line key={i} x1={pl} y1={pt+iH*(1-v)} x2={W-pr} y2={pt+iH*(1-v)} stroke="#F1F5F9" strokeWidth="1"/>)}
+      <path d={area} fill="url(#ag2)"/>
+      <polyline points={lineStr} fill="none" stroke="#7C3AED" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round"/>
+      {data.map((d,i)=>(i%step===0||i===n-1)&&<text key={i} x={px(i)} y={H-4} textAnchor="middle" fontSize="10" fill="#94A3B8">{d.label}</text>)}
+      {data.map((d,i)=>d.isToday&&<circle key={i} cx={px(i)} cy={py(d.count)} r="4" fill="#7C3AED" stroke="#fff" strokeWidth="2"/>)}
+      {hov!==null&&(
+        <>
+          <line x1={px(hov)} y1={pt} x2={px(hov)} y2={pt+iH} stroke="#7C3AED" strokeWidth="1" strokeDasharray="4 2" opacity="0.5"/>
+          <circle cx={px(hov)} cy={py(data[hov].count)} r="5" fill="#7C3AED" stroke="#fff" strokeWidth="2"/>
+          <rect x={px(hov)-26} y={py(data[hov].count)-28} width={52} height={22} rx={5} fill="#1E1B4B"/>
+          <text x={px(hov)} y={py(data[hov].count)-13} textAnchor="middle" fontSize="11" fill="#fff" fontWeight="600">{data[hov].count}건</text>
+        </>
       )}
-      {showCount && (
-        <text
-          x={x + 10} y={y + height / 2 + 13}
-          fill={subColor}
-          fontSize={11} fontWeight="400"
-          fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-          dominantBaseline="central">
-          {size}건{noshow > 0 ? ` · 노쇼 ${noshow}` : ''}
-        </text>
-      )}
-    </g>
+      {data.map((_,i)=>(
+        <rect key={i} x={px(i)-(iW/n)/2} y={pt} width={iW/n} height={iH} fill="transparent"
+          onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)}/>
+      ))}
+    </svg>
+  )
+}
+
+// ② HourBar
+function HourBarChart({ data }: { data:{hour:number;label:string;count:number}[] }) {
+  const max=Math.max(...data.map(d=>d.count),1)
+  const col=(v:number)=>v===max&&max>0?'#0E7490':v>max*.6?'#0891B2':v>max*.3?'#22D3EE':v>0?'#A5F3FC':'#F0FDFF'
+  return (
+    <div style={{display:'flex',alignItems:'flex-end',gap:3,height:200,paddingBottom:28,position:'relative'}}>
+      {data.map((h,i)=>{
+        const pct=h.count>0?Math.max(h.count/max*100,3):0
+        return (
+          <div key={i} title={`${h.label}: ${h.count}건`}
+            style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-end',height:'100%',gap:3,position:'relative'}}>
+            {h.count===max&&max>0&&<span style={{fontSize:10,color:'#0E7490',fontWeight:700,marginBottom:1}}>{h.count}</span>}
+            <div style={{width:'100%',background:col(h.count),borderRadius:'4px 4px 0 0',height:`${pct}%`,transition:'height .4s ease',minHeight:h.count>0?3:0}}/>
+            <span style={{position:'absolute',bottom:0,fontSize:10,color:'#94A3B8',whiteSpace:'nowrap'}}>{h.label}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ③ DonutChart
+function DonutSVG({ data, colors }: { data:{name:string;value:number}[]; colors:string[] }) {
+  const total=data.reduce((s,d)=>s+d.value,0)
+  if(!total) return null
+  const cx=70,cy=70,or=62,ir=42
+  let angle=-Math.PI/2
+  const slices=data.map((d,i)=>{
+    const sw=(d.value/total)*Math.PI*2
+    const x1=cx+or*Math.cos(angle),y1=cy+or*Math.sin(angle)
+    const x2=cx+or*Math.cos(angle+sw),y2=cy+or*Math.sin(angle+sw)
+    const xi1=cx+ir*Math.cos(angle),yi1=cy+ir*Math.sin(angle)
+    const xi2=cx+ir*Math.cos(angle+sw),yi2=cy+ir*Math.sin(angle+sw)
+    const p=`M${xi1},${yi1} A${or},${or} 0 ${sw>Math.PI?1:0} 1 ${x2},${y2} L${xi2},${yi2} A${ir},${ir} 0 ${sw>Math.PI?1:0} 0 ${xi1},${yi1} Z`
+    angle+=sw
+    return {...d,path:p,color:colors[i%colors.length]}
+  })
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:16}}>
+      <svg width="140" height="140" viewBox="0 0 140 140" style={{flexShrink:0}}>
+        {slices.map((s,i)=>(
+          <path key={i} d={s.path} fill={s.color} opacity="0.92" strokeWidth="1.5" stroke="#fff">
+            <title>{s.name}: {s.value}건</title>
+          </path>
+        ))}
+      </svg>
+      <div style={{flex:1,display:'flex',flexDirection:'column',gap:7}}>
+        {slices.map((s,i)=>(
+          <div key={i} style={{display:'flex',alignItems:'center',gap:6}}>
+            <span style={{width:8,height:8,borderRadius:2,background:s.color,flexShrink:0,display:'inline-block'}}/>
+            <span style={{fontSize:11,color:'#374151',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.name}</span>
+            <span style={{fontSize:11,fontWeight:600,color:'#111',flexShrink:0}}>{s.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ④ Treemap (자체 레이아웃 알고리즘)
+const TREE_COLORS = ['#1E1B4B','#3730A3','#4F46E5','#7C3AED','#9333EA','#A855F7','#C084FC','#DDD6FE','#EDE9FE']
+interface TmItem { name:string; size:number; noshow:number; idx:number }
+interface TmRect extends TmItem { x:number; y:number; w:number; h:number }
+
+function tmLayout(items:TmItem[], x:number, y:number, w:number, h:number, total:number): TmRect[] {
+  if(!items.length) return []
+  if(items.length===1) return [{...items[0],x,y,w,h}]
+  let sum=0; let split=1; const half=total/2
+  for(let i=0;i<items.length;i++){ sum+=items[i].size; if(sum>=half){ split=i+1; break } }
+  split=Math.max(1,Math.min(split,items.length-1))
+  const a=items.slice(0,split), b=items.slice(split)
+  const aSum=a.reduce((s,i)=>s+i.size,0), bSum=b.reduce((s,i)=>s+i.size,0)
+  if(w>=h){
+    const aw=w*aSum/total
+    return [...tmLayout(a,x,y,aw,h,aSum),...tmLayout(b,x+aw,y,w-aw,h,bSum)]
+  } else {
+    const ah=h*aSum/total
+    return [...tmLayout(a,x,y,w,ah,aSum),...tmLayout(b,x,y+ah,w,h-ah,bSum)]
+  }
+}
+
+function TreemapSVG({ data, colors }: { data:{name:string;size:number;noshow:number}[]; colors:string[] }) {
+  const W=500, H=260, GAP=2
+  const sorted=data.filter(d=>d.size>0).map((d,i)=>({...d,idx:i})).sort((a,b)=>b.size-a.size)
+  const total=sorted.reduce((s,d)=>s+d.size,0)
+  if(!total) return <div style={{textAlign:'center',padding:'32px 0',color:'#CBD5E1',fontSize:12}}>예약 없음</div>
+  const rects=tmLayout(sorted,0,0,W,H,total)
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{display:'block'}}>
+      {rects.map((r,i)=>{
+        const fill=colors[Math.min(r.idx,colors.length-1)]
+        const light=r.idx>=6
+        const tc=light?'rgba(30,27,75,0.9)':'rgba(255,255,255,0.95)'
+        const sc=light?'rgba(30,27,75,0.5)':'rgba(255,255,255,0.6)'
+        const rx=r.x+GAP/2, ry=r.y+GAP/2, rw=r.w-GAP, rh=r.h-GAP
+        if(rw<4||rh<4) return null
+        const showName=rw>52&&rh>26
+        const showCount=rw>44&&rh>46
+        const lx=rx+10, ly=showCount?ry+rh/2-6:ry+rh/2+5
+        const maxCh=Math.floor((rw-16)/7)
+        const label=r.name?r.name.length>maxCh?r.name.slice(0,maxCh-1)+'…':r.name:''
+        return (
+          <g key={i}>
+            <rect x={rx} y={ry} width={rw} height={rh} fill={fill} rx={4}/>
+            <rect x={rx} y={ry} width={rw} height={rh} fill="transparent" rx={4} stroke="#fff" strokeWidth={GAP}/>
+            {showName&&<text x={lx} y={ly} fill={tc} fontSize="12" fontWeight="600"
+              fontFamily="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" dominantBaseline="central">{label}</text>}
+            {showCount&&<text x={lx} y={ry+rh/2+13} fill={sc} fontSize="11"
+              fontFamily="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" dominantBaseline="central">
+              {r.size}건{r.noshow>0?` · 노쇼 ${r.noshow}`:''}
+            </text>}
+            <title>{r.name}: {r.size}건{r.noshow>0?` (노쇼 ${r.noshow})`:''}</title>
+          </g>
+        )
+      })}
+    </svg>
   )
 }
 
@@ -642,7 +758,6 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
     const count=filtered.filter(b=>!b.autoCancelled&&b.status!=='rejected'&&Math.floor(tsMin(b.start_at)/60)===h).length
     return {hour:h,label:`${h}시`,count}
   }),[filtered])
-  const maxHour = Math.max(...hourDist.map(h=>h.count),1)
 
   const roomChartData = useMemo(() => roomStats.map(s => ({
     name: s.room.room_name,   // 영어 이름
@@ -782,18 +897,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
           </div>
           {roomChartData.length === 0
             ? <div style={{ textAlign:'center', padding:'32px 0', color:'#CBD5E1', fontSize:12 }}>예약 없음</div>
-            : <ResponsiveContainer width="100%" height={260}>
-                <Treemap
-                  data={roomChartData}
-                  dataKey="size"
-                  aspectRatio={4/3}
-                  stroke="#fff"
-                  isAnimationActive={false}
-                  content={<TreemapContent/>}
-                >
-                  <Tooltip contentStyle={CHART_STYLE} formatter={(v:any, _:any, p:any) => [`${v}건 (노쇼 ${p?.payload?.noshow ?? 0})`, p?.payload?.name ?? '']}/>
-                </Treemap>
-              </ResponsiveContainer>
+            : <TreemapSVG data={roomChartData} colors={TREE_COLORS}/>
           }
         </CardShell>
 
@@ -827,24 +931,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
         <CardShell type="hours" onClick={openDetail}>
           <p style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:4 }}>시간대별 예약 분포</p>
           <p style={{ fontSize:11, color:'#94A3B8', marginBottom:16 }}>운영시간 07:00 ~ 19:00</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={hourDist} margin={{ top:8, right:4, bottom:0, left:-20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false}/>
-              <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={false}/>
-              <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false}/>
-              <Tooltip contentStyle={CHART_STYLE} formatter={(v:any)=>[`${v}건`,'예약']}/>
-              <Bar dataKey="count" radius={[4,4,0,0]} maxBarSize={32}>
-                {hourDist.map((h,i) => (
-                  <Cell key={i} fill={
-                    h.count === maxHour && maxHour > 0 ? '#0E7490' :
-                    h.count > maxHour * 0.6             ? '#0891B2' :
-                    h.count > maxHour * 0.3             ? '#22D3EE' :
-                    h.count > 0                         ? '#A5F3FC' : '#F0FDFF'
-                  }/>
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <HourBarChart data={hourDist}/>
         </CardShell>
 
         <CardShell type="dept" onClick={openDetail}>
@@ -852,26 +939,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
           <p style={{ fontSize:11, color:'#94A3B8', marginBottom:14 }}>{dateFrom} ~ {dateTo}</p>
           {deptChartData.length === 0
             ? <div style={{ textAlign:'center', padding:'32px 0', color:'#CBD5E1', fontSize:12 }}>예약 없음</div>
-            : <div style={{ display:'flex', alignItems:'center', gap:16 }}>
-                <ResponsiveContainer width="48%" height={180}>
-                  <PieChart>
-                    <Pie data={deptChartData} cx="50%" cy="50%" innerRadius={46} outerRadius={74}
-                      dataKey="value" paddingAngle={2} startAngle={90} endAngle={-270}>
-                      {deptChartData.map((_,i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]}/>)}
-                    </Pie>
-                    <Tooltip contentStyle={CHART_STYLE} formatter={(v:any, n:any)=>[`${v}건`, n]}/>
-                  </PieChart>
-                </ResponsiveContainer>
-                <div style={{ flex:1, display:'flex', flexDirection:'column', gap:7 }}>
-                  {deptChartData.map((d,i) => (
-                    <div key={d.name} style={{ display:'flex', alignItems:'center', gap:6 }}>
-                      <span style={{ width:8, height:8, borderRadius:2, background:PIE_COLORS[i % PIE_COLORS.length], flexShrink:0, display:'inline-block' }}/>
-                      <span style={{ fontSize:11, color:'#374151', flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.name}</span>
-                      <span style={{ fontSize:11, fontWeight:600, color:'#111', flexShrink:0 }}>{d.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            : <DonutSVG data={deptChartData} colors={PIE_COLORS}/>
           }
         </CardShell>
       </div>
@@ -885,22 +953,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
           </div>
           <span style={{ fontSize:13, fontWeight:600, color:'#6366F1' }}>{confirmed.length}건</span>
         </div>
-        <ResponsiveContainer width="100%" height={180}>
-          <AreaChart data={dayRange} margin={{ top:4, right:4, bottom:0, left:-20 }}>
-            <defs>
-              <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%"   stopColor="#8B5CF6" stopOpacity={0.28}/>
-                <stop offset="100%" stopColor="#6366F1" stopOpacity={0}/>
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false}/>
-            <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={false} interval="preserveStartEnd"/>
-            <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false}/>
-            <Tooltip contentStyle={CHART_STYLE} formatter={(v:any)=>[`${v}건`,'예약']}/>
-            <Area type="monotone" dataKey="count" stroke="#7C3AED" strokeWidth={2.5} fill="url(#areaGrad)" dot={false}
-              activeDot={{ r:5, fill:'#7C3AED', strokeWidth:2, stroke:'#fff' }}/>
-          </AreaChart>
-        </ResponsiveContainer>
+        <AreaChartSVG data={dayRange}/>
       </CardShell>
 
       {/* Detail Drawer */}
