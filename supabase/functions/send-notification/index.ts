@@ -511,46 +511,58 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    // ── 예약자 이메일 확보: user_id → DB 조회 우선, 없으면 payload user_email ─
-    // user_id → DB 조회가 항상 신뢰할 수 있는 방식
-    // (payload user_email은 클라이언트 상태에 의존하므로 보조 수단으로만 사용)
-    let creatorEmail = ''
-    if (booking.user_id) {
-      creatorEmail = await fetchUserEmail(booking.user_id) ?? ''
-      if (!creatorEmail) {
-        console.warn('[notify] user_id로 profiles 조회 실패:', booking.user_id)
-      }
-    }
-    if (!creatorEmail) {
-      creatorEmail = booking.user_email ?? ''
-    }
+    // ── DB 조회 병렬 실행 (예약자 이메일 + 참석자 목록 동시 조회) ───────────
+    const [resolvedCreatorEmail, attendeeList] = await Promise.all([
+      // 예약자 이메일: user_id → DB 우선, 없으면 payload fallback
+      (async () => {
+        if (booking.user_id) {
+          const email = await fetchUserEmail(booking.user_id) ?? ''
+          if (email) return email
+          console.warn('[notify] user_id로 profiles 조회 실패:', booking.user_id)
+        }
+        return booking.user_email ?? ''
+      })(),
+      // 참석자 목록: booking.id → booking_attendees + profiles
+      booking.id ? fetchAttendees(booking.id, booking.user_email ?? '') : Promise.resolve([]),
+    ])
+
+    const creatorEmail = resolvedCreatorEmail
     if (!creatorEmail) {
       console.warn('[notify] 예약자 이메일 확인 불가 — user_id, user_email 모두 없거나 조회 실패')
     }
 
-    // ── booking_attendees 테이블에서 참석자 조회 (이메일 + 이름) ─────────────
-    const attendeeList = booking.id
-      ? await fetchAttendees(booking.id, creatorEmail)
-      : []
+    // 참석자 목록에서 예약자 이메일 제외 (병렬 조회로 인한 중복 방지)
+    const filteredAttendeeList = attendeeList.filter(a => a.email !== creatorEmail)
 
-    // ── 1. 예약 생성자에게 발송 ─────────────────────────────────────────────
+    // ── 이메일 발송 전체 병렬 실행 ──────────────────────────────────────────
+    const sendTasks: Promise<void>[] = []
+
+    // 예약자 발송
     if (creatorEmail) {
-      const html = getEmailHtml(type, booking, false, attendeeList)
-      await sendEmail([creatorEmail], subject, html)
-      results.push({ to: creatorEmail, role: 'creator' })
+      const html = getEmailHtml(type, booking, false, filteredAttendeeList)
+      sendTasks.push(
+        sendEmail([creatorEmail], subject, html)
+          .then(() => { results.push({ to: creatorEmail, role: 'creator' }) })
+          .catch(e => console.error('[notify] 예약자 발송 실패:', e))
+      )
     }
 
-    // ── 2. 참석자에게 개별 발송 (이름 개인화 + 참석자 제목/배너) ────────────
-    if (attendeeList.length > 0) {
+    // 참석자 개별 발송 (이름 개인화 + 참석자 제목/배너)
+    if (filteredAttendeeList.length > 0) {
       const attendeeSubject = getSubject(type, booking, true)
-      for (const att of attendeeList) {
-        const html = getEmailHtml(type, booking, true, attendeeList, att.name)
-        await sendEmail([att.email], attendeeSubject, html)
-        results.push({ to: att.email, role: 'attendee' })
+      for (const att of filteredAttendeeList) {
+        const html = getEmailHtml(type, booking, true, filteredAttendeeList, att.name)
+        sendTasks.push(
+          sendEmail([att.email], attendeeSubject, html)
+            .then(() => { results.push({ to: att.email, role: 'attendee' }) })
+            .catch(e => console.error(`[notify] 참석자 발송 실패 (${att.email}):`, e))
+        )
       }
     }
 
-    console.log(`[notify] ${type} 발송 완료 — 예약자(${creatorEmail || '없음'}) + 참석자 ${attendeeList.length}명`)
+    await Promise.allSettled(sendTasks)
+
+    console.log(`[notify] ${type} 발송 완료 — 예약자(${creatorEmail || '없음'}) + 참석자 ${filteredAttendeeList.length}명`)
 
     return new Response(
       JSON.stringify({ success: true, sent: results.length, results }),
