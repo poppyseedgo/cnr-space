@@ -93,12 +93,16 @@ async function fetchAdminEmails(): Promise<string[]> {
   }
 }
 
-/** booking_attendees 테이블에서 참석자 이메일 조회 (생성자 제외) */
-async function fetchAttendeeEmails(bookingId: string, creatorEmail: string): Promise<string[]> {
+/** booking_attendees 테이블에서 참석자 목록 조회 (이메일 + 이름 + 아바타, 생성자 제외) */
+async function fetchAttendees(
+  bookingId: string,
+  creatorEmail: string,
+): Promise<{ email: string; name: string; avatar_url: string | null }[]> {
   if (!bookingId || !SUPABASE_URL) return []
   try {
+    // 1. booking_attendees에서 email, name 조회
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/booking_attendees?booking_id=eq.${bookingId}&select=email`,
+      `${SUPABASE_URL}/rest/v1/booking_attendees?booking_id=eq.${bookingId}&select=email,name`,
       {
         headers: {
           'apikey':        SERVICE_KEY,
@@ -108,8 +112,33 @@ async function fetchAttendeeEmails(bookingId: string, creatorEmail: string): Pro
       }
     )
     if (!res.ok) return []
-    const rows: { email: string }[] = await res.json()
-    return rows.map(r => r.email).filter(e => e && e !== creatorEmail)
+    const rows: { email: string; name: string }[] = await res.json()
+    const filtered = rows.filter(r => r.email && r.email !== creatorEmail)
+    if (filtered.length === 0) return []
+
+    // 2. profiles에서 avatar_url 배치 조회
+    const emails = filtered.map(r => `"${r.email}"`).join(',')
+    const profileRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?email=in.(${emails})&select=email,avatar_url`,
+      {
+        headers: {
+          'apikey':        SERVICE_KEY,
+          'Authorization': `Bearer ${SERVICE_KEY}`,
+          'Content-Type':  'application/json',
+        },
+      }
+    )
+    const profileMap = new Map<string, string | null>()
+    if (profileRes.ok) {
+      const profiles: { email: string; avatar_url: string | null }[] = await profileRes.json()
+      for (const p of profiles) profileMap.set(p.email.toLowerCase(), p.avatar_url ?? null)
+    }
+
+    return filtered.map(r => ({
+      email:      r.email,
+      name:       r.name ?? '',
+      avatar_url: profileMap.get(r.email.toLowerCase()) ?? null,
+    }))
   } catch (e) {
     console.warn('[notify] booking_attendees 조회 실패:', e)
     return []
@@ -117,7 +146,7 @@ async function fetchAttendeeEmails(bookingId: string, creatorEmail: string): Pro
 }
 
 // ── 이메일 템플릿 ────────────────────────────────────────────────────────────
-function getSubject(type: string, booking: any): string {
+function getSubject(type: string, booking: any, isAttendee = false): string {
   const title = booking.title
   const subjects: Record<string, string> = {
     created:          `[C&R SPACE] ✅ 예약 확정 — ${title}`,
@@ -129,15 +158,21 @@ function getSubject(type: string, booking: any): string {
     rejected:         `[C&R SPACE] ❌ 예약 반려 — ${title}`,
     attendee_removed: `[C&R SPACE] 📌 참석자 제외 알림 — ${title}`,
   }
-  return subjects[type] ?? `[C&R SPACE] 예약 알림 — ${title}`
+  const base = subjects[type] ?? `[C&R SPACE] 예약 알림 — ${title}`
+  return isAttendee ? base.replace('[C&R SPACE]', '[C&R SPACE · 참석자]') : base
 }
 
-function getEmailHtml(type: string, booking: any, isAttendee = false): string {
+function getEmailHtml(
+  type: string,
+  booking: any,
+  isAttendee = false,
+  attendeeList: { name: string; avatar_url?: string | null }[] = [],
+  recipientName = '',
+): string {
   console.log('[notify] booking.end_at:', booking.end_at, 'room_name:', booking.room_name)
   const dateStr  = fmtDate(booking.start_at)
   const startStr = fmtTime(booking.start_at)
   const endStr   = fmtTime(booking.end_at ?? booking.end_time)
-  const role     = isAttendee ? '참석자로 초대됨' : '예약자'
 
   const headerColors: Record<string, string> = {
     created:          '#4F46E5',
@@ -180,12 +215,16 @@ function getEmailHtml(type: string, booking: any, isAttendee = false): string {
             <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.8);font-weight:500;">CNR Research</p>
             <p style="margin:8px 0 0;font-size:20px;font-weight:700;color:#fff;">C&amp;R SPACE</p>
             <p style="margin:12px 0 0;font-size:14px;color:rgba(255,255,255,0.9);">${headerLabel}</p>
+            ${isAttendee ? `<div style="margin:14px 0 0;display:inline-block;background:rgba(255,255,255,0.22);border-radius:20px;padding:4px 14px;">
+              <span style="font-size:12px;color:#fff;font-weight:700;letter-spacing:0.03em;">👤 참석자로 초대된 회의입니다</span>
+            </div>` : ''}
           </td>
         </tr>
 
         <!-- 예약 정보 -->
         <tr>
           <td style="padding:28px 32px;">
+            ${isAttendee && recipientName ? `<p style="margin:0 0 16px;font-size:13px;color:#6B7280;">안녕하세요, <strong style="color:#111;">${recipientName}</strong>님. 아래 회의에 참석자로 초대되었습니다.</p>` : ''}
             <p style="margin:0 0 20px;font-size:16px;font-weight:700;color:#111;${cancelledStyle}">${booking.title}</p>
 
             <table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC;border-radius:12px;padding:16px 20px;">
@@ -213,6 +252,19 @@ function getEmailHtml(type: string, booking: any, isAttendee = false): string {
                   <span style="font-size:13px;color:#111;font-weight:500;">${booking.user_name} (${booking.user_dept})</span>
                 </td>
               </tr>
+              ${attendeeList.length > 0 ? `
+              <tr>
+                <td style="padding:6px 0;">
+                  <span style="display:inline-block;width:72px;font-size:12px;color:#6B7280;font-weight:600;vertical-align:top;padding-top:6px;">참석자</span>
+                  <span style="font-size:13px;color:#111;font-weight:500;">${attendeeList.map(a => {
+                    const initial = (a.name ?? '?')[0]
+                    const avatar = (a.avatar_url && a.avatar_url.startsWith('http'))
+                      ? `<img src="${a.avatar_url}" width="22" height="22" style="border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:5px;" />`
+                      : `<span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#C7D2FE;color:#4338CA;font-size:11px;font-weight:700;vertical-align:middle;margin-right:5px;">${initial}</span>`
+                    return `<span style="display:inline-flex;align-items:center;background:#EEF2FF;border-radius:20px;padding:3px 10px 3px 4px;margin:2px 4px 2px 0;">${avatar}<span style="font-size:12px;color:#4338CA;font-weight:500;">${a.name}</span></span>`
+                  }).join('')}</span>
+                </td>
+              </tr>` : ''}
               ${booking.memo ? `
               <tr>
                 <td style="padding:6px 0;">
@@ -416,7 +468,7 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: 'type, booking 필수' }), { status: 400, headers: corsHeaders })
     }
 
-    const subject = getSubject(type, booking)
+    const subject = getSubject(type, booking, false)  // 예약자용 제목 (참석자는 개별 발송 시 별도 적용)
     const results = []
 
     // ── Teams 알림 (비동기, 실패해도 이메일에 영향 없음) ────────────────────
@@ -476,29 +528,29 @@ Deno.serve(async (req: Request) => {
       console.warn('[notify] 예약자 이메일 확인 불가 — user_id, user_email 모두 없거나 조회 실패')
     }
 
-    // ── booking_attendees 테이블에서 참석자 조회 ────────────────────────────
-    const attendeeEmailList = booking.id
-      ? await fetchAttendeeEmails(booking.id, creatorEmail)
+    // ── booking_attendees 테이블에서 참석자 조회 (이메일 + 이름) ─────────────
+    const attendeeList = booking.id
+      ? await fetchAttendees(booking.id, creatorEmail)
       : []
 
     // ── 1. 예약 생성자에게 발송 ─────────────────────────────────────────────
     if (creatorEmail) {
-      const html = getEmailHtml(type, booking, false)
+      const html = getEmailHtml(type, booking, false, attendeeList)
       await sendEmail([creatorEmail], subject, html)
       results.push({ to: creatorEmail, role: 'creator' })
     }
 
-    // ── 2. 참석자에게 발송 (50명씩 배치) ───────────────────────────────────
-    if (attendeeEmailList.length > 0) {
-      const html = getEmailHtml(type, booking, true)
-      for (let i = 0; i < attendeeEmailList.length; i += 50) {
-        const batch = attendeeEmailList.slice(i, i + 50)
-        await sendEmail(batch, subject, html)
-        results.push({ to: batch, role: 'attendees' })
+    // ── 2. 참석자에게 개별 발송 (이름 개인화 + 참석자 제목/배너) ────────────
+    if (attendeeList.length > 0) {
+      const attendeeSubject = getSubject(type, booking, true)
+      for (const att of attendeeList) {
+        const html = getEmailHtml(type, booking, true, attendeeList, att.name)
+        await sendEmail([att.email], attendeeSubject, html)
+        results.push({ to: att.email, role: 'attendee' })
       }
     }
 
-    console.log(`[notify] ${type} 발송 완료 — 예약자(${creatorEmail || '없음'}) + 참석자 ${attendeeEmailList.length}명`)
+    console.log(`[notify] ${type} 발송 완료 — 예약자(${creatorEmail || '없음'}) + 참석자 ${attendeeList.length}명`)
 
     return new Response(
       JSON.stringify({ success: true, sent: results.length, results }),
