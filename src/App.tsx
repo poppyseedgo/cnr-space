@@ -56,6 +56,7 @@ function AppContent() {
   const [calView, setCalView]     = useState("daily");
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [modal, setModal]         = useState(null);
+  const [subModal, setSubModal]   = useState(null);
   const [toast, setToast]         = useState(null);
   const [searchQ, setSearchQ]     = useState("");
   const [homeFilterFloor, setHomeFilterFloor] = useState("ALL");
@@ -99,6 +100,9 @@ function AppContent() {
     const t = setTimeout(() => setSplashDone(true), 1600);
     return () => clearTimeout(t);
   }, []);
+
+  // modal 닫히면 subModal도 자동 클리어
+  useEffect(() => { if (!modal) setSubModal(null) }, [modal]);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
@@ -1269,10 +1273,8 @@ function AppContent() {
       {/* ── Modals ── */}
       {modal && (
         <div
-          onClick={e=>e.target===e.currentTarget&&setModal(null)}
           style={{
             position:"fixed",
-            // iOS Safari: visualViewport 기준으로 overlay 영역 정확히 잡기
             top: vvOff,
             left: 0,
             width: "100%",
@@ -1305,7 +1307,41 @@ function AppContent() {
               const e = `${fmt2(Math.floor(clampedEnd/60))}:${fmt2(clampedEnd%60)}`;
               setModal(null);
               setModal({type:"new", prefill:{room_id:modal.data.room_id, start:s, end:e}});
-            }} onDetail={b=>setModal({type:'detail',data:b})} />}
+            }} onDetail={b=>setSubModal({type:'detail',data:b})} />}
+        </div>
+      )}
+
+      {/* ── Sub Modal (RoomDetailModal 위에 올라오는 2차 모달) ── */}
+      {subModal && (
+        <div
+          style={{
+            position:"fixed",
+            top: vvOff,
+            left: 0,
+            width: "100%",
+            height: vvH,
+            background:"rgba(15,23,42,0.35)",
+            backdropFilter:"blur(3px)",
+            display:"flex",
+            alignItems: isMobile ? "flex-end" : "center",
+            justifyContent:"center",
+            zIndex:1001,
+            padding: isMobile ? 0 : 16,
+          }}>
+          {subModal.type==="detail" && <DetailModal
+            booking={subModal.data}
+            onClose={()=>setSubModal(null)}
+            onCheckIn={checkIn}
+            onCancel={cancelBooking}
+            onEdit={(b)=>{ setSubModal(null); setModal({type:"edit",data:b}); }}
+            currentUser={currentUser}
+            rooms={rooms}
+            users={users}
+            isAdmin={isAdmin}
+            onApprove={approvePendingBooking}
+            onReject={rejectPendingBooking}
+            onForceCancel={adminForceCancelBooking}
+          />}
         </div>
       )}
 
