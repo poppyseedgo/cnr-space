@@ -386,17 +386,25 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
   ]
   return (
     <div className="max-w-[1200px] mx-auto px-3 py-4 sm:px-6 sm:py-7">
-      <div className="anm flex gap-1 mb-5 bg-white rounded-xl p-1.5 overflow-x-auto" style={{ scrollbarWidth:'none', justifyContent:'flex-start' }}>
+      <div className="anm flex gap-2 mb-5 overflow-x-auto" style={{ scrollbarWidth:'none' }}>
         {tabs.map(t=>(
           <button key={t.id} className="btn" onClick={()=>setTab(t.id)}
-            style={{ flex:'1 0 0', maxWidth:120, padding:'14px 24px', fontSize:isMobile?11:13, borderRadius:10,
-              fontWeight:activeTab===t.id?700:500, background:activeTab===t.id?'#111':'transparent',
-              color:activeTab===t.id?'#fff':'#64748B', display:'flex', alignItems:'center', justifyContent:'center',
-              gap:6, whiteSpace:'nowrap' }}>
-            <span>{t.icon}</span>
+            style={{
+              flexShrink: 0,
+              padding: isMobile ? '8px 14px' : '10px 20px',
+              fontSize: isMobile ? 11 : 13,
+              borderRadius: 999,
+              fontWeight: activeTab===t.id ? 600 : 400,
+              background: activeTab===t.id ? '#111' : '#fff',
+              color: activeTab===t.id ? '#fff' : '#64748B',
+              border: activeTab===t.id ? 'none' : '1px solid #E2E8F0',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: 5, whiteSpace: 'nowrap',
+            }}>
+            {isMobile && <span style={{ display:'flex', alignItems:'center' }}>{t.icon}</span>}
             {!isMobile && t.label}
-            {(t as any).badge>0 && (
-              <span style={{ fontSize:12, fontWeight:500, color: activeTab===t.id ? 'rgba(255,255,255,0.55)' : '#94A3B8' }}>
+            {(t as any).badge > 0 && (
+              <span style={{ fontSize: 12, fontWeight: 600, color: activeTab===t.id ? 'rgba(255,255,255,0.6)' : '#E85D04' }}>
                 {(t as any).badge}
               </span>
             )}
