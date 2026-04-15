@@ -9,18 +9,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
   const floor    = getFloor(r.floor_id);
   const features = r.features ?? [];
   const today    = todayStr();
-  // 오늘 예약 현황 표시 정책:
-  //   O: 미래예약 / 진행중 / 종료 / 노쇼(system) / 조기반납 / 승인대기
-  //   X: 사용자 직접취소(user) / 강제취소(admin) / 거절(rejected)
-  const todayBks = bookings
-    .filter(b =>
-      b.room_id === r.room_id &&
-      tsDate(b.start_at) === today &&
-      b.status !== 'rejected' &&
-      b.cancelledBy !== 'user' &&
-      b.cancelledBy !== 'admin'
-    )
-    .sort((a,b) => a.start_at.localeCompare(b.start_at));
+  const todayBks = bookings.filter(b=>b.room_id===r.room_id&&tsDate(b.start_at)===today&&!b.autoCancelled).sort((a,b)=>a.start_at.localeCompare(b.start_at));
   const status   = getRoomStatus(r.room_id, bookings, today);
   const thumbnail = r.thumbnail ?? '';
 
@@ -184,51 +173,31 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
                   </div>
                 : <div style={{display:"flex",flexDirection:"column",gap:6}}>
                     {todayBks.map(b => {
-                      const bNow     = nowMinutes();
-                      const startMin = tsMin(b.start_at);
-                      const endMin   = tsMin(b.end_at);
-
-                      const isNoshow   = b.autoCancelled && b.cancelledBy === 'system' && !b.checkedIn;
-                      const isEarlyEnd = !b.autoCancelled && b.earlyEnded;
-                      const isDone     = !b.autoCancelled && !b.earlyEnded && endMin <= bNow;
-                      const isActive   = !b.autoCancelled && !b.earlyEnded && startMin <= bNow && bNow < endMin;
-                      const isPending  = !b.autoCancelled && b.status === 'pending';
-                      const dimmed     = isNoshow || isDone;
-
-                      const bg     = isActive ? "#FFF1F2" : "#F8FAFC";
-                      const border = isActive  ? "1px solid #FECDD3"
-                                   : isPending ? "1px solid #FCD34D"
-                                   : "1px solid transparent";
-
+                      const bNow = nowMinutes();
+                      const isActive = tsMin(b.start_at) <= bNow && bNow < tsMin(b.end_at);
                       return (
                         <div key={b.id} style={{
-                          background: bg, border, borderRadius:10, padding:"10px 14px",
+                          background: isActive ? "#FFF1F2" : "#F8FAFC",
+                          border: isActive ? "1px solid #FECDD3" : "1px solid transparent",
+                          borderRadius:10, padding:"10px 14px",
                           display:"flex", justifyContent:"space-between", alignItems:"center",
                           cursor:"pointer",
-                          opacity: dimmed ? 0.6 : 1,
                         }}
                           onClick={()=>onDetail&&onDetail(b)}
                           onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background=isActive?"#FFE4E6":"#F1F5F9"}}
-                          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background=bg}}
+                          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background=isActive?"#FFF1F2":"#F8FAFC"}}
                         >
                           <div style={{flex:1,minWidth:0,marginRight:10}}>
-                            {/* 상태 뱃지 */}
-                            <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:3}}>
-                              {isActive   && <span style={{width:7,height:7,borderRadius:"50%",background:"#E11D48",display:"inline-block",flexShrink:0}}/>}
-                              {isNoshow   && <span style={{fontSize:10,fontWeight:600,background:"#FEF3C7",color:"#92400E",borderRadius:4,padding:"1px 5px"}}>노쇼</span>}
-                              {isEarlyEnd && <span style={{fontSize:10,fontWeight:600,background:"#EDE9FE",color:"#7C3AED",borderRadius:4,padding:"1px 5px"}}>조기반납</span>}
-                              {isDone     && <span style={{fontSize:10,fontWeight:600,background:"#F1F5F9",color:"#94A3B8",borderRadius:4,padding:"1px 5px"}}>종료</span>}
-                              {isPending  && <span style={{fontSize:10,fontWeight:600,background:"#FEF3C7",color:"#D97706",borderRadius:4,padding:"1px 5px"}}>승인대기</span>}
-                            </div>
-                            <div style={{fontSize:13,color:dimmed?"#94A3B8":"#111111",fontWeight:600,
+                            <div style={{fontSize:13,color:"#111111",fontWeight:600,
                               overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                              {isActive && <span style={{width:7,height:7,borderRadius:"50%",background:"#E11D48",display:"inline-block",verticalAlign:"middle",flexShrink:0,marginRight:4}}/>}
                               {b.title}
                             </div>
                             <div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>{b.user} · {b.dept}</div>
                           </div>
-                          <div style={{fontSize:12,color:dimmed?"#CBD5E1":"#64748B",fontWeight:600,flexShrink:0,textAlign:"right"}}>
+                          <div style={{fontSize:12,color:"#64748B",fontWeight:600,flexShrink:0,textAlign:"right"}}>
                             {fmtTSFull(b.start_at)}<br/>
-                            <span style={{color:"#CBD5E1",fontWeight:400}}>~ {fmtTSFull(b.end_at)}</span>
+                            <span style={{color:"#94A3B8",fontWeight:400}}>~ {fmtTSFull(b.end_at)}</span>
                           </div>
                         </div>
                       );
@@ -244,7 +213,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
       <div style={{padding: isMobile ? "12px 20px 24px" : "12px 28px 20px",
         flexShrink:0, borderTop:"1px solid #F1F5F9", display:"flex", gap:8}}>
         <button className="btn" onClick={onClose}
-          style={{flex:"0 0 80px", background:"#F1F5F9", color:"#64748B", padding:"13px 8px",
+          style={{flex:1, background:"#F1F5F9", color:"#64748B", padding:"13px 8px",
             fontSize:14, fontWeight:600, borderRadius:12}}>
           닫기
         </button>
