@@ -10,7 +10,7 @@ import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView } from './components/room/HomeView'
 import { RoomDetailModal } from './components/room/RoomDetailModal'
-import { HomeSkeleton, CalendarSkeleton, MyPageSkeleton, AdminSkeleton } from './components/skeleton'
+import { CalendarSkeleton, MyPageSkeleton, AdminSkeleton } from './components/skeleton'
 import { initGlobalRipple } from './hooks/useGlobalRipple'
 import { CalendarShell } from './components/layout/CalendarShell'
 // ── 무거운 페이지는 lazy load — 초기 번들에서 제외 ─────────────────────────
@@ -986,7 +986,7 @@ function AppContent() {
     const SkeletonComp = view === 'calendar' ? CalendarSkeleton
                        : view === 'mypage'   ? MyPageSkeleton
                        : view === 'admin'    ? AdminSkeleton
-                       : HomeSkeleton;
+                       : null; // home: 헤더 스켈레톤만, 콘텐츠 영역은 비워둠
     return (
       <div style={{background:'#F3F4F8', minHeight:'100vh'}}>
         {/* 헤더 스켈레톤 — 좌:로고pill / 중:nav2개 / 우:유저pill */}
@@ -1002,7 +1002,7 @@ function AppContent() {
           {/* 우: 유저 정보 */}
           <div className="sk-block" style={{width:180, height:36, borderRadius:999, flexShrink:0}} />
         </div>
-        <SkeletonComp />
+        {SkeletonComp && <SkeletonComp />}
       </div>
     );
   }
