@@ -44,12 +44,19 @@ function fmtTime(ts: string | undefined | null): string {
 
 // ── DB 조회 유틸 ─────────────────────────────────────────────────────────────
 
-/** user_email 없을 때 user_id → profiles 테이블에서 이메일 조회 */
-async function fetchUserEmail(userId: string): Promise<string | null> {
+interface CreatorInfo {
+  email:      string
+  name:       string
+  dept:       string
+  avatar_url: string | null
+}
+
+/** user_id → profiles 테이블에서 예약자 풀 정보 조회 */
+async function fetchCreatorInfo(userId: string): Promise<CreatorInfo | null> {
   if (!userId || !SUPABASE_URL) return null
   try {
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=email&limit=1`,
+      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=email,name,dept,avatar_url&limit=1`,
       {
         headers: {
           'apikey':        SERVICE_KEY,
@@ -59,10 +66,10 @@ async function fetchUserEmail(userId: string): Promise<string | null> {
       }
     )
     if (!res.ok) return null
-    const rows: { email: string }[] = await res.json()
-    return rows[0]?.email ?? null
+    const rows: CreatorInfo[] = await res.json()
+    return rows[0] ?? null
   } catch (e) {
-    console.warn('[notify] fetchUserEmail 실패:', e)
+    console.warn('[notify] fetchCreatorInfo 실패:', e)
     return null
   }
 }
@@ -145,6 +152,37 @@ async function fetchAttendees(
   }
 }
 
+// ── 공통 렌더 헬퍼 ───────────────────────────────────────────────────────────
+
+/** 아바타 원형 (이미지 or 이니셜) */
+function renderAvatar(name: string, avatar_url: string | null | undefined, size = 28): string {
+  const initial = (name ?? '?')[0]
+  const s = `width:${size}px;height:${size}px;border-radius:50%;flex-shrink:0;`
+  if (avatar_url && avatar_url.startsWith('http')) {
+    return `<img src="${avatar_url}" width="${size}" height="${size}" style="${s}object-fit:cover;vertical-align:middle;" />`
+  }
+  return `<span style="display:inline-flex;align-items:center;justify-content:center;${s}background:#C7D2FE;color:#4338CA;font-size:${Math.floor(size * 0.46)}px;font-weight:700;vertical-align:middle;">${initial}</span>`
+}
+
+/** 예약자 칩: [아바타] 이름 (부서) */
+function renderCreatorChip(name: string, dept: string, avatar_url: string | null | undefined): string {
+  return `<span style="display:inline-flex;align-items:center;gap:7px;">
+    ${renderAvatar(name, avatar_url, 26)}
+    <span style="font-size:13px;color:#111;font-weight:500;">${name}${dept ? ` <span style="color:#6B7280;font-weight:400;">(${dept})</span>` : ''}</span>
+  </span>`
+}
+
+/** 참석자 칩 목록: [아바타]이름 [아바타]이름 ... */
+function renderAttendeesRow(list: { name: string; avatar_url?: string | null }[]): string {
+  if (list.length === 0) return ''
+  return list.map(a =>
+    `<span style="display:inline-flex;align-items:center;background:#EEF2FF;border-radius:20px;padding:3px 10px 3px 5px;margin:2px 4px 2px 0;gap:5px;">
+      ${renderAvatar(a.name, a.avatar_url, 20)}
+      <span style="font-size:12px;color:#4338CA;font-weight:500;">${a.name}</span>
+    </span>`
+  ).join('')
+}
+
 // ── 이메일 템플릿 ────────────────────────────────────────────────────────────
 function getSubject(type: string, booking: any, isAttendee = false): string {
   const title = booking.title
@@ -168,43 +206,52 @@ function getEmailHtml(
   isAttendee = false,
   attendeeList: { name: string; avatar_url?: string | null }[] = [],
   recipientName = '',
+  creatorInfo: CreatorInfo | null = null,
+  recurBookings: { start_at: string; end_at: string }[] = [],
 ): string {
-  console.log('[notify] booking.end_at:', booking.end_at, 'room_name:', booking.room_name)
-  const dateStr  = fmtDate(booking.start_at)
-  const startStr = fmtTime(booking.start_at)
-  const endStr   = fmtTime(booking.end_at ?? booking.end_time)
+  const isRecur    = recurBookings.length > 1
+  const dateStr    = fmtDate(booking.start_at)
+  const startStr   = fmtTime(booking.start_at)
+  const endStr     = fmtTime(booking.end_at ?? booking.end_time)
+  const creatorName = creatorInfo?.name  ?? booking.user_name ?? ''
+  const creatorDept = creatorInfo?.dept  ?? booking.user_dept ?? ''
+  const creatorAvatar = creatorInfo?.avatar_url ?? null
 
   const headerColors: Record<string, string> = {
-    created:          '#4F46E5',
-    updated:          '#0891B2',
-    cancelled:        '#DC2626',
-    noshow:           '#D97706',
-    pending:          '#D97706',
-    approved:         '#16A34A',
-    rejected:         '#DC2626',
-    attendee_removed: '#6B7280',
+    created: '#4F46E5', updated: '#0891B2', cancelled: '#DC2626',
+    noshow: '#D97706', pending: '#D97706', approved: '#16A34A',
+    rejected: '#DC2626', attendee_removed: '#6B7280',
   }
-  const headerColor = headerColors[type] ?? '#4F46E5'
-
   const headerLabels: Record<string, string> = {
-    created:          '예약이 확정되었습니다',
+    created:          isRecur ? `반복 예약 ${recurBookings.length}건이 확정되었습니다` : '예약이 확정되었습니다',
     updated:          '예약이 변경되었습니다',
     cancelled:        '예약이 취소되었습니다',
     noshow:           '미체크인으로 자동 취소되었습니다',
-    pending:          '에메랄드 룸 승인 요청이 접수되었습니다',
+    pending:          isRecur ? `반복 예약 ${recurBookings.length}건 승인 요청` : '에메랄드 룸 승인 요청이 접수되었습니다',
     approved:         '예약 요청이 승인되었습니다',
     rejected:         '예약 요청이 반려되었습니다',
     attendee_removed: '해당 예약의 참석자에서 제외되었습니다',
   }
+  const headerColor = headerColors[type] ?? '#4F46E5'
   const headerLabel = headerLabels[type] ?? '예약 알림'
-
   const cancelledStyle = (type === 'cancelled' || type === 'noshow' || type === 'rejected')
-    ? 'text-decoration: line-through; color: #9CA3AF;' : ''
+    ? 'text-decoration:line-through;color:#9CA3AF;' : ''
+
+  // 반복예약 일정 목록 (날짜 + 시간)
+  const recurRows = isRecur ? recurBookings.map((b, i) =>
+    `<tr>
+      <td style="padding:5px 0;">
+        <span style="display:inline-block;width:22px;font-size:11px;color:#9CA3AF;font-weight:600;">${i + 1}</span>
+        <span style="font-size:12px;color:#374151;font-weight:500;">${fmtDate(b.start_at)}</span>
+        <span style="font-size:12px;color:#6B7280;margin-left:8px;">${fmtTime(b.start_at)} – ${fmtTime(b.end_at)}</span>
+      </td>
+    </tr>`
+  ).join('') : ''
 
   return `<!DOCTYPE html>
 <html lang="ko">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background:#F8FAFC;font-family:'Pretendard','Arial','Malgun Gothic','맑은 고딕',sans-serif;">
+<body style="margin:0;padding:0;background:#F8FAFC;font-family:'Arial','Malgun Gothic','맑은 고딕',sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC;padding:32px 16px;">
     <tr><td align="center">
       <table width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
@@ -214,64 +261,66 @@ function getEmailHtml(
           <td style="background:${headerColor};padding:28px 32px;">
             <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.8);font-weight:500;">CNR Research</p>
             <p style="margin:8px 0 0;font-size:20px;font-weight:700;color:#fff;">C&amp;R SPACE</p>
-            <p style="margin:12px 0 0;font-size:14px;color:rgba(255,255,255,0.9);">${headerLabel}</p>
-            ${isAttendee ? `<div style="margin:14px 0 0;display:inline-block;background:rgba(255,255,255,0.22);border-radius:20px;padding:4px 14px;">
-              <span style="font-size:12px;color:#fff;font-weight:700;letter-spacing:0.03em;">👤 참석자로 초대된 회의입니다</span>
+            <p style="margin:10px 0 0;font-size:14px;color:rgba(255,255,255,0.9);">${headerLabel}</p>
+            ${isAttendee ? `<div style="margin:12px 0 0;display:inline-block;background:rgba(255,255,255,0.22);border-radius:20px;padding:4px 14px;">
+              <span style="font-size:12px;color:#fff;font-weight:700;">👤 참석자로 초대된 회의입니다</span>
+            </div>` : ''}
+            ${isRecur ? `<div style="margin:12px 0 0;display:inline-block;background:rgba(255,255,255,0.22);border-radius:20px;padding:4px 14px;">
+              <span style="font-size:12px;color:#fff;font-weight:700;">🔁 반복 예약 ${recurBookings.length}건</span>
             </div>` : ''}
           </td>
         </tr>
 
-        <!-- 예약 정보 -->
+        <!-- 본문 -->
         <tr>
           <td style="padding:28px 32px;">
-            ${isAttendee && recipientName ? `<p style="margin:0 0 16px;font-size:13px;color:#6B7280;">안녕하세요, <strong style="color:#111;">${recipientName}</strong>님. 아래 회의에 참석자로 초대되었습니다.</p>` : ''}
-            <p style="margin:0 0 20px;font-size:16px;font-weight:700;color:#111;${cancelledStyle}">${booking.title}</p>
 
+            ${isAttendee && recipientName ? `<p style="margin:0 0 16px;font-size:13px;color:#6B7280;">안녕하세요, <strong style="color:#111;">${recipientName}</strong>님. 아래 회의에 참석자로 초대되었습니다.</p>` : ''}
+
+            <!-- 회의 제목 -->
+            <p style="margin:0 0 4px;font-size:16px;font-weight:700;color:#111;${cancelledStyle}">${booking.title}</p>
+            <p style="margin:0 0 20px;font-size:13px;color:#6B7280;">${booking.room_name ?? ''}</p>
+
+            <!-- 예약 정보 카드 -->
             <table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC;border-radius:12px;padding:16px 20px;">
-              <tr>
-                <td style="padding:6px 0;">
-                  <span style="display:inline-block;width:72px;font-size:12px;color:#6B7280;font-weight:600;">날짜</span>
-                  <span style="font-size:13px;color:#111;font-weight:500;">${dateStr}</span>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:6px 0;">
-                  <span style="display:inline-block;width:72px;font-size:12px;color:#6B7280;font-weight:600;">시간</span>
-                  <span style="font-size:13px;color:#111;font-weight:500;">${startStr} – ${endStr}</span>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:6px 0;">
-                  <span style="display:inline-block;width:72px;font-size:12px;color:#6B7280;font-weight:600;">회의실</span>
-                  <span style="font-size:13px;color:#111;font-weight:500;">${booking.room_name ?? booking.room_id + 'F'}</span>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:6px 0;">
-                  <span style="display:inline-block;width:72px;font-size:12px;color:#6B7280;font-weight:600;">예약자</span>
-                  <span style="font-size:13px;color:#111;font-weight:500;">${booking.user_name} (${booking.user_dept})</span>
-                </td>
-              </tr>
-              ${attendeeList.length > 0 ? `
-              <tr>
-                <td style="padding:6px 0;">
-                  <span style="display:inline-block;width:72px;font-size:12px;color:#6B7280;font-weight:600;vertical-align:top;padding-top:6px;">참석자</span>
-                  <span style="font-size:13px;color:#111;font-weight:500;">${attendeeList.map(a => {
-                    const initial = (a.name ?? '?')[0]
-                    const avatar = (a.avatar_url && a.avatar_url.startsWith('http'))
-                      ? `<img src="${a.avatar_url}" width="22" height="22" style="border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:5px;" />`
-                      : `<span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#C7D2FE;color:#4338CA;font-size:11px;font-weight:700;vertical-align:middle;margin-right:5px;">${initial}</span>`
-                    return `<span style="display:inline-flex;align-items:center;background:#EEF2FF;border-radius:20px;padding:3px 10px 3px 4px;margin:2px 4px 2px 0;">${avatar}<span style="font-size:12px;color:#4338CA;font-weight:500;">${a.name}</span></span>`
-                  }).join('')}</span>
-                </td>
-              </tr>` : ''}
+
+              ${!isRecur ? `
+              <!-- 단건: 날짜 + 시간 -->
+              <tr><td style="padding:6px 0;">
+                <span style="display:inline-block;width:60px;font-size:12px;color:#6B7280;font-weight:600;">날짜</span>
+                <span style="font-size:13px;color:#111;font-weight:500;">${dateStr}</span>
+              </td></tr>
+              <tr><td style="padding:6px 0;">
+                <span style="display:inline-block;width:60px;font-size:12px;color:#6B7280;font-weight:600;">시간</span>
+                <span style="font-size:13px;color:#111;font-weight:500;">${startStr} – ${endStr}</span>
+              </td></tr>` : `
+              <!-- 반복예약: 일정 목록 -->
+              <tr><td style="padding:6px 0 10px;">
+                <span style="display:block;font-size:12px;color:#6B7280;font-weight:600;margin-bottom:6px;">반복 일정</span>
+                <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;padding:8px 12px;">
+                  ${recurRows}
+                </table>
+              </td></tr>`}
+
               ${booking.memo ? `
-              <tr>
-                <td style="padding:6px 0;">
-                  <span style="display:inline-block;width:72px;font-size:12px;color:#6B7280;font-weight:600;">메모</span>
-                  <span style="font-size:13px;color:#374151;">${booking.memo}</span>
-                </td>
-              </tr>` : ''}
+              <tr><td style="padding:6px 0;">
+                <span style="display:inline-block;width:60px;font-size:12px;color:#6B7280;font-weight:600;vertical-align:top;padding-top:2px;">메모</span>
+                <span style="font-size:13px;color:#374151;">${booking.memo}</span>
+              </td></tr>` : ''}
+
+              <!-- 예약자: 아바타 + 이름 + 부서 -->
+              <tr><td style="padding:8px 0 6px;border-top:1px solid #E5E7EB;margin-top:4px;">
+                <span style="display:inline-block;width:60px;font-size:12px;color:#6B7280;font-weight:600;vertical-align:middle;">예약자</span>
+                ${renderCreatorChip(creatorName, creatorDept, creatorAvatar)}
+              </td></tr>
+
+              ${attendeeList.length > 0 ? `
+              <!-- 참석자: 아바타 + 이름 칩 -->
+              <tr><td style="padding:6px 0;">
+                <span style="display:inline-block;width:60px;font-size:12px;color:#6B7280;font-weight:600;vertical-align:top;padding-top:6px;">참석자</span>
+                <span>${renderAttendeesRow(attendeeList)}</span>
+              </td></tr>` : ''}
+
             </table>
 
             ${type === 'noshow' ? `
@@ -279,11 +328,12 @@ function getEmailHtml(
               <p style="margin:0;font-size:13px;color:#92400E;font-weight:600;">⚠️ 체크인 미완료로 예약이 자동 취소되었습니다.</p>
               <p style="margin:6px 0 0;font-size:12px;color:#B45309;">예약 시작 후 10분 이내에 체크인이 없으면 자동 취소됩니다.</p>
             </div>` : ''}
+
             ${type === 'pending' ? `
             <div style="margin:20px 0 0;padding:14px 16px;background:#FEF3C7;border-radius:10px;border-left:4px solid #D97706;">
               <p style="margin:0;font-size:13px;color:#92400E;font-weight:600;">📋 AdminPage → 승인 관리 탭에서 승인 또는 거절해 주세요.</p>
-              <p style="margin:6px 0 0;font-size:12px;color:#B45309;">승인/거절 시 신청자에게 자동으로 결과가 통보됩니다.</p>
             </div>` : ''}
+
             ${type === 'rejected' ? `
             ${booking.reject_reason ? `
             <div style="margin:20px 0 0;padding:14px 16px;background:#FEF2F2;border-radius:10px;border-left:4px solid #DC2626;">
@@ -291,21 +341,17 @@ function getEmailHtml(
               <p style="margin:6px 0 0;font-size:13px;color:#DC2626;">${booking.reject_reason}</p>
             </div>` : ''}
             <div style="margin:16px 0 0;padding:14px 16px;background:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0;">
-              <p style="margin:0;font-size:13px;color:#475569;font-weight:600;">📌 안내</p>
-              <p style="margin:6px 0 0;font-size:12px;color:#64748B;line-height:1.6;">반려된 예약은 자동으로 취소 처리됩니다.<br>새로운 예약을 생성하여 다시 승인 요청해 주세요.</p>
+              <p style="margin:0;font-size:12px;color:#64748B;line-height:1.6;">반려된 예약은 자동으로 취소 처리됩니다.<br>새로운 예약을 생성하여 다시 승인 요청해 주세요.</p>
             </div>
             <div style="margin:16px 0 0;text-align:center;">
-              <a href="${APP_URL}" style="display:inline-block;background:#4F46E5;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;">
-                새 예약 만들기 →
-              </a>
+              <a href="${APP_URL}" style="display:inline-block;background:#4F46E5;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;">새 예약 만들기 →</a>
             </div>` : ''}
 
-            ${(type === 'created' || type === 'updated' || type === 'approved' || type === 'pending') ? `
+            ${(type === 'created' || type === 'updated' || type === 'approved') ? `
             <div style="margin:20px 0 0;text-align:center;">
-              <a href="${APP_URL}" style="display:inline-block;background:#4F46E5;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;">
-                예약 확인하기 →
-              </a>
+              <a href="${APP_URL}" style="display:inline-block;background:#4F46E5;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;">예약 확인하기 →</a>
             </div>` : ''}
+
           </td>
         </tr>
 
@@ -313,8 +359,7 @@ function getEmailHtml(
         <tr>
           <td style="padding:16px 32px 24px;border-top:1px solid #F1F5F9;">
             <p style="margin:0;font-size:11px;color:#9CA3AF;text-align:center;">
-              이 메일은 C&R SPACE에서 자동 발송됩니다.<br>
-              문의: 총무팀 (HR)
+              이 메일은 C&R SPACE에서 자동 발송됩니다.<br>문의: 총무팀 (HR)
             </p>
           </td>
         </tr>
@@ -511,35 +556,29 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    // ── DB 조회 병렬 실행 (예약자 이메일 + 참석자 목록 동시 조회) ───────────
-    const [resolvedCreatorEmail, attendeeList] = await Promise.all([
-      // 예약자 이메일: user_id → DB 우선, 없으면 payload fallback
-      (async () => {
-        if (booking.user_id) {
-          const email = await fetchUserEmail(booking.user_id) ?? ''
-          if (email) return email
-          console.warn('[notify] user_id로 profiles 조회 실패:', booking.user_id)
-        }
-        return booking.user_email ?? ''
-      })(),
-      // 참석자 목록: booking.id → booking_attendees + profiles
+    // ── DB 조회 병렬 실행 (예약자 풀 정보 + 참석자 목록 동시 조회) ──────────
+    const [creatorInfo, attendeeList] = await Promise.all([
+      booking.user_id ? fetchCreatorInfo(booking.user_id) : Promise.resolve(null),
       booking.id ? fetchAttendees(booking.id, booking.user_email ?? '') : Promise.resolve([]),
     ])
 
-    const creatorEmail = resolvedCreatorEmail
+    const creatorEmail = creatorInfo?.email ?? booking.user_email ?? ''
     if (!creatorEmail) {
       console.warn('[notify] 예약자 이메일 확인 불가 — user_id, user_email 모두 없거나 조회 실패')
     }
 
-    // 참석자 목록에서 예약자 이메일 제외 (병렬 조회로 인한 중복 방지)
+    // 참석자 목록에서 예약자 중복 제거
     const filteredAttendeeList = attendeeList.filter(a => a.email !== creatorEmail)
+
+    // recurBookings: payload에 포함된 반복예약 전체 일정
+    const recurBookings: { start_at: string; end_at: string }[] = booking.recurBookings ?? []
 
     // ── 이메일 발송 전체 병렬 실행 ──────────────────────────────────────────
     const sendTasks: Promise<void>[] = []
 
     // 예약자 발송
     if (creatorEmail) {
-      const html = getEmailHtml(type, booking, false, filteredAttendeeList)
+      const html = getEmailHtml(type, booking, false, filteredAttendeeList, '', creatorInfo, recurBookings)
       sendTasks.push(
         sendEmail([creatorEmail], subject, html)
           .then(() => { results.push({ to: creatorEmail, role: 'creator' }) })
@@ -551,7 +590,7 @@ Deno.serve(async (req: Request) => {
     if (filteredAttendeeList.length > 0) {
       const attendeeSubject = getSubject(type, booking, true)
       for (const att of filteredAttendeeList) {
-        const html = getEmailHtml(type, booking, true, filteredAttendeeList, att.name)
+        const html = getEmailHtml(type, booking, true, filteredAttendeeList, att.name, creatorInfo, recurBookings)
         sendTasks.push(
           sendEmail([att.email], attendeeSubject, html)
             .then(() => { results.push({ to: att.email, role: 'attendee' }) })

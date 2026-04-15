@@ -377,19 +377,18 @@ function AppContent() {
           room: rooms.find(r => r.room_id === form.room_id),
           floor: getFloor(rooms.find(r => r.room_id === form.room_id)?.floor_id),
         }});
-        // 반복 예약 이메일 알림 — 각 건별 발송
+        // 반복 예약 이메일 알림 — 1회 발송 (recurBookings에 전체 일정 포함)
         const notifType = isAdminOnlyRoom ? 'pending' : 'created'
-        for (const bk of newBookings) {
-          const bkRoom = rooms.find(r => r.room_id === bk.room_id)
-          sendNotification(notifType, {
-            ...bk,
-            user_id:    authUser?.user_id ?? '',
-            user_name:  currentUser,
-            user_email: authUser?.email ?? '',
-            user_dept:  currentDept,
-            room_name:  bkRoom?.room_name_ko ?? bkRoom?.room_name ?? String(bk.room_id) + 'F',
-          })
-        }
+        const bkRoom = rooms.find(r => r.room_id === form.room_id)
+        sendNotification(notifType, {
+          ...newBookings[0],
+          user_id:      authUser?.user_id ?? '',
+          user_name:    currentUser,
+          user_email:   authUser?.email ?? '',
+          user_dept:    currentDept,
+          room_name:    bkRoom?.room_name_ko ?? bkRoom?.room_name ?? String(newBookings[0].room_id) + 'F',
+          recurBookings: newBookings.map(bk => ({ start_at: bk.start_at, end_at: bk.end_at })),
+        })
       }
       // Audit log + 인앱 알림
       for (const bk of newBookings) {
