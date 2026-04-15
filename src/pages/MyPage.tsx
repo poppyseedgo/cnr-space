@@ -29,41 +29,77 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   const [allMyBookings, setAllMyBookings] = useState<Booking[]>([]);
   const [allLoading, setAllLoading] = useState(false);
 
+  // ── 내 예약 전체 fetch (예약자 + 참석자 모두 포함) ──────────────────────────
+  // 정책: 내가 예약자이거나 참석자로 등록된 예약 모두 = 내 예약
   useEffect(() => {
     if (!authUserId) return;
     setAllLoading(true);
-    supabase
-      .from('bookings')
-      .select('*, booking_attendees(email, name)')
-      .eq('user_id', authUserId)
-      .order('start_at', { ascending: false })
-      .then(({ data, error }) => {
-        if (!error && data) {
-          setAllMyBookings(data.map((row: any) => ({
-            id:            row.id,
-            room_id:       row.room_id,
-            title:         row.title,
-            memo:          row.memo ?? '',
-            attendees:     (row.booking_attendees ?? []).map((a: any) => ({
-              email: a.email ?? '',
-              name:  a.name  ?? '',
-            })),
-            start_at:      row.start_at,
-            end_at:        row.end_at,
-            user:          row.user_name,
-            dept:          row.user_dept,
-            checkedIn:     row.checked_in,
-            autoCancelled: row.auto_cancelled,
-            cancelledBy:   row.cancelled_by ?? null,
-            status:        row.status ?? 'confirmed',
-            earlyEnded:    row.early_ended ?? false,
-            recurGroupId:  row.recur_group_id ?? null,
-            createdAt:     new Date(row.created_at).getTime(),
-          })));
+
+    const mapRow = (row: any) => ({
+      id:            row.id,
+      room_id:       row.room_id,
+      title:         row.title,
+      memo:          row.memo ?? '',
+      attendees:     (row.booking_attendees ?? []).map((a: any) => ({
+        email: a.email ?? '',
+        name:  a.name  ?? '',
+      })),
+      start_at:      row.start_at,
+      end_at:        row.end_at,
+      user:          row.user_name,
+      dept:          row.user_dept,
+      checkedIn:     row.checked_in,
+      autoCancelled: row.auto_cancelled,
+      cancelledBy:   row.cancelled_by ?? null,
+      status:        row.status ?? 'confirmed',
+      earlyEnded:    row.early_ended ?? false,
+      recurGroupId:  row.recur_group_id ?? null,
+      createdAt:     new Date(row.created_at).getTime(),
+    });
+
+    Promise.all([
+      // ① 내가 예약자인 예약
+      supabase
+        .from('bookings')
+        .select('*, booking_attendees(email, name)')
+        .eq('user_id', authUserId)
+        .order('start_at', { ascending: false }),
+
+      // ② 내가 참석자인 예약 ID 목록
+      currentUserEmail
+        ? supabase
+            .from('booking_attendees')
+            .select('booking_id')
+            .eq('email', currentUserEmail)
+        : Promise.resolve({ data: [] as any[], error: null }),
+    ]).then(async ([bookerRes, attendeeRes]) => {
+      const bookerRows   = bookerRes.data ?? [];
+      const attendeeIds  = (attendeeRes.data ?? []).map((a: any) => a.booking_id);
+
+      // ③ 참석자 예약 상세 조회 (예약자 목록과 중복 제거)
+      let attendeeRows: any[] = [];
+      if (attendeeIds.length > 0) {
+        const bookerSet = new Set(bookerRows.map((r: any) => r.id));
+        const idsToFetch = attendeeIds.filter((id: string) => !bookerSet.has(id));
+        if (idsToFetch.length > 0) {
+          const { data } = await supabase
+            .from('bookings')
+            .select('*, booking_attendees(email, name)')
+            .in('id', idsToFetch)
+            .order('start_at', { ascending: false });
+          attendeeRows = data ?? [];
         }
-        setAllLoading(false);
-      });
-  }, [authUserId]);
+      }
+
+      // ④ 합치고 날짜 내림차순 정렬
+      const merged = [...bookerRows, ...attendeeRows]
+        .sort((a: any, b: any) => b.start_at.localeCompare(a.start_at));
+
+      setAllMyBookings(merged.map(mapRow));
+      setAllLoading(false);
+    });
+
+  }, [authUserId, currentUserEmail]);
 
   const cancelBooking = async (id) => {
     // 낙관적 UI 업데이트 (즉시 반영)
