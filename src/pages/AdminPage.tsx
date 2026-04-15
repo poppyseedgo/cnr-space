@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react'
 import { AlertCircle, AlertTriangle, ArrowUpDown, Ban, BarChart2, Building2, Calendar, CheckCircle2, ChevronDown, Clock, Download, ImagePlus, Inbox, RefreshCw, RotateCw, Search, Trash2, Upload, Users, X } from 'lucide-react'
-import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, Treemap, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import {
   todayStr, tsDate, tsMin, tsTime, fmtTime, fmtTSDateFull, fmtTSRangeFull,
   fmt2, objToStr,
@@ -427,6 +427,33 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
   )
 }
 
+// ─── Treemap 커스텀 컨텐츠 ────────────────────────────────────────────────────
+const TREE_COLORS = ['#312E81','#3730A3','#4338CA','#4F46E5','#6366F1','#818CF8','#A5B4FC']
+function TreemapContent(props: any) {
+  const { x, y, width, height, name, size, noshow, index } = props
+  if (!width || !height || width < 2 || height < 2) return null
+  const fill = TREE_COLORS[Math.min(index ?? 0, TREE_COLORS.length - 1)]
+  const showLabel = width > 55 && height > 28
+  const showCount = width > 40 && height > 44
+  return (
+    <g>
+      <rect x={x} y={y} width={width} height={height} fill={fill} stroke="#fff" strokeWidth={2} rx={4}/>
+      {showLabel && (
+        <text x={x + 8} y={y + (showCount ? height/2 - 4 : height/2 + 4)}
+          fill="rgba(255,255,255,0.92)" fontSize={11} fontWeight={500}>
+          {name}
+        </text>
+      )}
+      {showCount && (
+        <text x={x + 8} y={y + height/2 + 12}
+          fill="rgba(255,255,255,0.65)" fontSize={11}>
+          {size}건{noshow > 0 ? ` · 노쇼 ${noshow}` : ''}
+        </text>
+      )}
+    </g>
+  )
+}
+
 // ─── CardShell: AdminDashboard 카드 래퍼 (외부 정의 → re-render 시 unmount 방지) ──
 // 내부 정의 시 AdminDashboard re-render마다 새 컴포넌트 참조 → anm 애니메이션 재실행 → 깜빡거림
 const CardShell = memo(function CardShell({ children, type: ct, onClick }: {
@@ -525,8 +552,9 @@ export function AdminDashboard({ bookings, rooms, users, isMobile }) {
   const maxHour = Math.max(...hourDist.map(h=>h.count),1)
 
   const roomChartData = useMemo(() => roomStats.map(s => ({
-    name: (s.room.room_name_ko || s.room.room_name).slice(0, 11),
-    confirmed: s.confirmed, noshow: s.noshow,
+    name: s.room.room_name,   // 영어 이름
+    size: s.confirmed,
+    noshow: s.noshow,
   })), [roomStats])
 
   const deptChartData = useMemo(() => deptStats.slice(0,6).map(d => ({
@@ -647,27 +675,22 @@ export function AdminDashboard({ bookings, rooms, users, isMobile }) {
       <div className={`grid gap-3 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
 
         <CardShell type="rooms" onClick={openDetail}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-            <div>
-              <p style={{ fontSize:14, fontWeight:600, color:'#111' }}>회의실별 예약 현황</p>
-              <p style={{ fontSize:11, color:'#94A3B8', marginTop:2 }}>{dateFrom} ~ {dateTo}</p>
-            </div>
-            <div style={{ display:'flex', gap:12 }}>
-              <span style={{ fontSize:10, color:'#64748B', display:'flex', alignItems:'center', gap:4 }}><span style={{ width:8, height:8, borderRadius:2, background:'#1E293B', display:'inline-block' }}/>예약</span>
-              <span style={{ fontSize:10, color:'#EF4444', display:'flex', alignItems:'center', gap:4 }}><span style={{ width:8, height:8, borderRadius:2, background:'#EF4444', display:'inline-block' }}/>노쇼</span>
-            </div>
+          <div style={{ marginBottom:12 }}>
+            <p style={{ fontSize:14, fontWeight:600, color:'#111' }}>회의실별 예약 현황</p>
+            <p style={{ fontSize:11, color:'#94A3B8', marginTop:2 }}>{dateFrom} ~ {dateTo}</p>
           </div>
           {roomChartData.length === 0
             ? <div style={{ textAlign:'center', padding:'32px 0', color:'#CBD5E1', fontSize:12 }}>예약 없음</div>
-            : <ResponsiveContainer width="100%" height={Math.max(roomChartData.length * 36, 180)}>
-                <BarChart data={roomChartData} layout="vertical" margin={{ top:0, right:16, bottom:0, left:0 }} barGap={2}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false}/>
-                  <XAxis type="number" tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false}/>
-                  <YAxis type="category" dataKey="name" tick={AXIS_TICK} tickLine={false} axisLine={false} width={90}/>
-                  <Tooltip contentStyle={CHART_STYLE} formatter={(v:any, n:any)=>[`${v}건`, n==='confirmed'?'예약':'노쇼']}/>
-                  <Bar dataKey="confirmed" name="예약" fill="#1E293B" radius={[0,4,4,0]} barSize={9}/>
-                  <Bar dataKey="noshow"    name="노쇼"  fill="#EF4444" radius={[0,4,4,0]} barSize={9}/>
-                </BarChart>
+            : <ResponsiveContainer width="100%" height={260}>
+                <Treemap
+                  data={roomChartData}
+                  dataKey="size"
+                  aspectRatio={4/3}
+                  stroke="#fff"
+                  content={<TreemapContent/>}
+                >
+                  <Tooltip contentStyle={CHART_STYLE} formatter={(v:any, _:any, p:any) => [`${v}건 (노쇼 ${p?.payload?.noshow ?? 0})`, p?.payload?.name ?? '']}/>
+                </Treemap>
               </ResponsiveContainer>
           }
         </CardShell>
