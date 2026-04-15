@@ -985,6 +985,7 @@ function AppContent() {
     // 현재 뷰에 맞는 스켈레톤 렌더
     const SkeletonComp = view === 'calendar' ? CalendarSkeleton
                        : view === 'mypage'   ? MyPageSkeleton
+                       : view === 'admin'    ? AdminSkeleton
                        : HomeSkeleton;
     return (
       <div style={{background:'#F3F4F8', minHeight:'100vh'}}>
