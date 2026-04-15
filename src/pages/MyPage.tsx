@@ -116,45 +116,37 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   };
 
   // user_id 기반 필터 (정확) → fallback: name 기반 (SSO 연동 전)
-  const myBookings = useMemo(()=>
-    bookings.filter(b =>
-      b.user === currentUser ||
-      (currentUserEmail && (b.attendees ?? []).some((a: any) => a.email === currentUserEmail))
-    ),
-  [bookings, currentUser, currentUserEmail]);
-  const upcoming = useMemo(()=>myBookings.filter(b=>!b.autoCancelled&&(tsDate(b.start_at)>today||(tsDate(b.start_at)===today&&tsMin(b.end_at)>now))).sort((a,b)=>a.start_at.localeCompare(b.start_at)),[myBookings,today,now]);
-  const completed = useMemo(()=>myBookings.filter(b=>!b.autoCancelled&&b.checkedIn&&(tsDate(b.start_at)<today||(tsDate(b.start_at)===today&&tsMin(b.end_at)<=now))).sort((a,b)=>b.start_at.localeCompare(a.start_at)),[myBookings,today,now]);
-  const cancelled = useMemo(()=>myBookings.filter(b=>b.autoCancelled).sort((a,b)=>b.start_at.localeCompare(a.start_at)),[myBookings]);
+  // ─────────────────────────────────────────────────────────────────────────
+  // ⚠️  참석자 정책 (절대 변경 금지)
+  //   "내 예약" = 내가 예약자(user_id)이거나 참석자(booking_attendees.email)인 예약
+  //   allMyBookings 가 이 두 조건을 모두 포함해서 fetch함 (위 useEffect 참고)
+  //   아래 모든 통계·목록은 allMyBookings 단일 소스 사용 — fallback/분기 없음
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // 실시간 탭 뷰 (예정/완료/취소)
+  const upcoming  = useMemo(()=>allMyBookings.filter(b=>!b.autoCancelled&&(tsDate(b.start_at)>today||(tsDate(b.start_at)===today&&tsMin(b.end_at)>now))).sort((a,b)=>a.start_at.localeCompare(b.start_at)),[allMyBookings,today,now]);
+  const completed = useMemo(()=>allMyBookings.filter(b=>!b.autoCancelled&&b.checkedIn&&(tsDate(b.start_at)<today||(tsDate(b.start_at)===today&&tsMin(b.end_at)<=now))).sort((a,b)=>b.start_at.localeCompare(a.start_at)),[allMyBookings,today,now]);
+  const cancelled = useMemo(()=>allMyBookings.filter(b=>b.autoCancelled).sort((a,b)=>b.start_at.localeCompare(a.start_at)),[allMyBookings]);
   const tabData = tab==="upcoming"?upcoming:tab==="completed"?completed:cancelled;
 
-  // 월별 통계 — allMyBookings(전체 이력) 기준
+  // 월별 통계
   const monthStats = useMemo(()=>{
-    const base = allMyBookings.length > 0 ? allMyBookings : myBookings;
     const prefix=`${statYear}-${fmt2(statMonth+1)}`;
-    const mb=base.filter(b=>tsDate(b.start_at).startsWith(prefix));
+    const mb=allMyBookings.filter(b=>tsDate(b.start_at).startsWith(prefix));
     const total=mb.length, ci=mb.filter(b=>(b.checkedIn||b.earlyEnded)&&!b.autoCancelled).length, can=mb.filter(b=>b.autoCancelled).length;
     const rate=total>0?Math.round((ci/total)*100):0;
-    const rc={};mb.filter(b=>!b.autoCancelled).forEach(b=>{rc[b.room_id]=(rc[b.room_id]||0)+1;});
+    const rc: Record<number,number>={};mb.filter(b=>!b.autoCancelled).forEach(b=>{rc[b.room_id]=(rc[b.room_id]||0)+1;});
     const top=Object.entries(rc).sort((a,b)=>(b[1] as number)-(a[1] as number))[0];
-  const topRoom=top?(allRooms.find(r=>r.room_id===Number(top[0])) ?? null):null;
+    const topRoom=top?(allRooms.find(r=>r.room_id===Number(top[0]))??null):null;
     return{total,checkedIn:ci,cancelled:can,rate,topRoom,topCount:top?top[1]:0};
-  },[allMyBookings,myBookings,statYear,statMonth]);
+  },[allMyBookings,statYear,statMonth]);
 
-  // 이번달 요약 — allMyBookings(전체 이력) 기준
-  const thisPrefix=`${new Date().getFullYear()}-${fmt2(new Date().getMonth()+1)}`;
-  const baseForStats = allMyBookings.length > 0 ? allMyBookings : myBookings;
-  const thisBks = baseForStats.filter(b => tsDate(b.start_at).startsWith(thisPrefix));
-  // 체크인율: 이미 지난 예약만 분모로 (미래 예약 제외)
-  const thisPastBks = thisBks.filter(b =>
-    tsDate(b.start_at) < today ||
-    (tsDate(b.start_at) === today && tsMin(b.end_at) <= now)
-  );
-  const thisCI = thisPastBks.filter(b => b.checkedIn).length;
-  const thisRate = thisPastBks.length > 0 ? Math.round((thisCI / thisPastBks.length) * 100) : 0;
-
-  // 기간별 조회 리스트 — BookingListTable 컴포넌트에 위임
-  // baseBookings: allMyBookings(전체) 기반, 없으면 myBookings fallback
-  const baseBookings = allMyBookings.length > 0 ? allMyBookings : myBookings;
+  // 이번달 요약
+  const thisPrefix  = `${new Date().getFullYear()}-${fmt2(new Date().getMonth()+1)}`;
+  const thisBks     = allMyBookings.filter(b=>tsDate(b.start_at).startsWith(thisPrefix));
+  const thisPastBks = thisBks.filter(b=>tsDate(b.start_at)<today||(tsDate(b.start_at)===today&&tsMin(b.end_at)<=now));
+  const thisCI      = thisPastBks.filter(b=>b.checkedIn).length;
+  const thisRate    = thisPastBks.length>0?Math.round((thisCI/thisPastBks.length)*100):0;
 
   return(
     <div style={{maxWidth:960,margin:"0 auto",padding:isMobile?"16px 12px":"28px 24px"}}>
@@ -185,7 +177,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
           <ClipboardList size={15} strokeWidth={1.8}/>기간별 예약 조회
         </div>
         <BookingListTable
-          bookings={baseBookings}
+          bookings={allMyBookings}
           rooms={allRooms}
           users={allUsers}
           currentUser={currentUser}
