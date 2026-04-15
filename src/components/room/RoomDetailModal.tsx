@@ -9,9 +9,9 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
   const floor    = getFloor(r.floor_id);
   const features = r.features ?? [];
   const today    = todayStr();
-  // 오늘 예약 현황 정책:
-  //   표시 O — 미래 예약 / 진행중 / 종료 / 노쇼(system 자동취소) / 조기반납 / 승인대기
-  //   표시 X — 사용자 직접 취소(user) / 강제취소(admin) / 거절(rejected)
+  // 오늘 예약 현황 표시 정책:
+  //   O: 미래예약 / 진행중 / 종료 / 노쇼(system) / 조기반납 / 승인대기
+  //   X: 사용자 직접취소(user) / 강제취소(admin) / 거절(rejected)
   const todayBks = bookings
     .filter(b =>
       b.room_id === r.room_id &&
@@ -184,37 +184,32 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
                   </div>
                 : <div style={{display:"flex",flexDirection:"column",gap:6}}>
                     {todayBks.map(b => {
-                      const bNow = nowMinutes();
+                      const bNow     = nowMinutes();
                       const startMin = tsMin(b.start_at);
                       const endMin   = tsMin(b.end_at);
 
-                      // ── 상태 분류 ────────────────────────────────────────
-                      const isNoshow    = b.autoCancelled && b.cancelledBy === 'system' && !b.checkedIn;
-                      const isEarlyEnd  = !b.autoCancelled && b.earlyEnded;
-                      const isDone      = !b.autoCancelled && !b.earlyEnded && endMin <= bNow;
-                      const isActive    = !b.autoCancelled && !b.earlyEnded && startMin <= bNow && bNow < endMin;
-                      const isFuture    = !b.autoCancelled && !b.earlyEnded && startMin > bNow;
-                      const isPending   = !b.autoCancelled && b.status === 'pending';
+                      const isNoshow   = b.autoCancelled && b.cancelledBy === 'system' && !b.checkedIn;
+                      const isEarlyEnd = !b.autoCancelled && b.earlyEnded;
+                      const isDone     = !b.autoCancelled && !b.earlyEnded && endMin <= bNow;
+                      const isActive   = !b.autoCancelled && !b.earlyEnded && startMin <= bNow && bNow < endMin;
+                      const isPending  = !b.autoCancelled && b.status === 'pending';
+                      const dimmed     = isNoshow || isDone;
 
-                      // ── 카드 스타일 ──────────────────────────────────────
-                      const bg     = isActive  ? "#FFF1F2"
-                                   : isNoshow  ? "#F8FAFC"
-                                   : "#F8FAFC";
+                      const bg     = isActive ? "#FFF1F2" : "#F8FAFC";
                       const border = isActive  ? "1px solid #FECDD3"
                                    : isPending ? "1px solid #FCD34D"
                                    : "1px solid transparent";
-                      const dimmed = isNoshow || isDone;
 
                       return (
                         <div key={b.id} style={{
                           background: bg, border, borderRadius:10, padding:"10px 14px",
                           display:"flex", justifyContent:"space-between", alignItems:"center",
-                          cursor: dimmed ? "default" : "pointer",
+                          cursor:"pointer",
                           opacity: dimmed ? 0.6 : 1,
                         }}
-                          onClick={()=> !dimmed && onDetail && onDetail(b)}
-                          onMouseEnter={e=>{ if(!dimmed) (e.currentTarget as HTMLElement).style.background = isActive ? "#FFE4E6" : "#F1F5F9" }}
-                          onMouseLeave={e=>{ if(!dimmed) (e.currentTarget as HTMLElement).style.background = bg }}
+                          onClick={()=>onDetail&&onDetail(b)}
+                          onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background=isActive?"#FFE4E6":"#F1F5F9"}}
+                          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background=bg}}
                         >
                           <div style={{flex:1,minWidth:0,marginRight:10}}>
                             {/* 상태 뱃지 */}
@@ -225,11 +220,8 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
                               {isDone     && <span style={{fontSize:10,fontWeight:600,background:"#F1F5F9",color:"#94A3B8",borderRadius:4,padding:"1px 5px"}}>종료</span>}
                               {isPending  && <span style={{fontSize:10,fontWeight:600,background:"#FEF3C7",color:"#D97706",borderRadius:4,padding:"1px 5px"}}>승인대기</span>}
                             </div>
-                            <div style={{
-                              fontSize:13, fontWeight:600,
-                              color: dimmed ? "#94A3B8" : "#111111",
-                              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-                            }}>
+                            <div style={{fontSize:13,color:dimmed?"#94A3B8":"#111111",fontWeight:600,
+                              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                               {b.title}
                             </div>
                             <div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>{b.user} · {b.dept}</div>
