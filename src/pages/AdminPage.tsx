@@ -11,6 +11,7 @@ import {
   toggleRoomActive, saveRoomFeatures, loadFeatures, updateProfile,
   loadAllRooms, loadBookingsByRange, expirePendingBooking,
   syncAllUsers, loadUsers, loadDepartedUsers, type SyncResult,
+  countFutureBookings, manualDepartUser,
 } from '../lib/api'
 import type { Booking, Room, AppUser, DepartedUser } from '../types'
 
@@ -908,21 +909,27 @@ export function AdminRooms({ showToast, isMobile }) {
 import { UserAvatar } from '../components/common/UserAvatar'
 
 export function AdminUsers({ users, setUsers, showToast, isMobile }) {
-  type FilterType = 'all' | 'admin' | 'unlogged' | 'departed'
+  type FilterType = 'all' | 'admin' | 'logged' | 'unlogged' | 'departed'
+
   const [filter,     setFilter]     = useState<FilterType>('all')
   const [searchQ,    setSearchQ]    = useState('')
-  const [editUser,   setEditUser]   = useState<any>(null)
+  // 사용자 상세 모달
+  const [editUser,   setEditUser]   = useState<AppUser | null>(null)
   const [form,       setForm]       = useState<Record<string,any>>({})
+  const [saving,     setSaving]     = useState(false)
+  // Azure AD 동기화
   const [syncing,    setSyncing]    = useState(false)
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null)
+  // 퇴사자 목록
   const [departed,   setDeparted]   = useState<DepartedUser[]>([])
+  // 수동 퇴사 처리 — API 구현 완료, UI 버튼은 미노출 (기술검증 완료)
+  // countFutureBookings / manualDepartUser 함수는 api.ts에 존재
 
-  // 퇴사자 목록 로드
   useEffect(() => {
     loadDepartedUsers().then(setDeparted).catch(() => {})
   }, [])
 
-  // 동기화 로그
+  // ── 동기화 이력
   const SYNC_LOG_KEY = 'cnr_sync_logs'
   const loadSyncLogs = (): SyncResult[] => {
     try { return JSON.parse(localStorage.getItem(SYNC_LOG_KEY) ?? '[]') } catch { return [] }
@@ -933,22 +940,24 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
   const [syncLogs, setSyncLogs] = useState<SyncResult[]>(loadSyncLogs)
   const [showLogs, setShowLogs] = useState(false)
 
-  // 필터 카운트
+  // ── 카운트
   const counts = {
     all:      users.length,
     admin:    users.filter(u => u.role === 'ADMIN').length,
+    logged:   users.filter(u => !!u.dept).length,        // dept 있으면 로그인 완료
     unlogged: users.filter(u => !u.dept).length,
     departed: departed.length,
   }
 
-  // 검색 + 필터 적용
+  // ── 검색 + 필터
   const filteredUsers = users.filter(u => {
     if (filter === 'admin'    && u.role !== 'ADMIN') return false
-    if (filter === 'unlogged' && u.dept)             return false
+    if (filter === 'logged'   && !u.dept)            return false
+    if (filter === 'unlogged' && !!u.dept)           return false
     if (!searchQ) return true
     const q = searchQ.toLowerCase()
     return u.name.toLowerCase().includes(q)
-        || u.dept.toLowerCase().includes(q)
+        || (u.dept ?? '').toLowerCase().includes(q)
         || u.email.toLowerCase().includes(q)
   })
 
@@ -956,11 +965,35 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
     if (!searchQ) return true
     const q = searchQ.toLowerCase()
     return u.name.toLowerCase().includes(q)
-        || u.dept.toLowerCase().includes(q)
+        || (u.dept ?? '').toLowerCase().includes(q)
         || u.email.toLowerCase().includes(q)
   })
 
-  // 권한 토글
+  const openDetail = (u: AppUser) => {
+    setForm({ name: u.name, dept: u.dept, email: u.email, role: u.role })
+    setEditUser(u)
+  }
+
+  const closeModal = () => setEditUser(null)
+
+  // ── 저장
+  const saveEdit = async () => {
+    if (!editUser?.user_id) return
+    if (!form.name.trim()) { showToast('이름은 필수입니다.', 'error'); return }
+    setSaving(true)
+    const prev = users.find(u => u.user_id === editUser.user_id)
+    setUsers(users.map(u => u.user_id === editUser.user_id ? { ...u, ...form } : u))
+    try {
+      await updateProfile(editUser.user_id, { name: form.name, dept: form.dept, role: form.role })
+      showToast('수정되었습니다.')
+      closeModal()
+    } catch (err: any) {
+      if (prev) setUsers(users.map(u => u.user_id === editUser.user_id ? prev : u))
+      showToast(err.message, 'error')
+    } finally { setSaving(false) }
+  }
+
+  // ── 권한 토글
   const toggleRole = async (uid: string) => {
     const prev = users.find(u => u.user_id === uid)?.role
     const next = prev === 'ADMIN' ? 'USER' : 'ADMIN'
@@ -974,52 +1007,27 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
     }
   }
 
-  const openEdit = (u: any) => {
-    setForm({ name: u.name, dept: u.dept, email: u.email, role: u.role })
-    setEditUser(u)
-  }
-
-  const saveEdit = async () => {
-    if (!editUser?.user_id) return
-    if (!form.name.trim()) { showToast('이름은 필수입니다.', 'error'); return }
-    const prev = users.find(u => u.user_id === editUser.user_id)
-    setUsers(users.map(u => u.user_id === editUser.user_id ? { ...u, ...form } : u))
-    try {
-      await updateProfile(editUser.user_id, { name: form.name, dept: form.dept, role: form.role })
-      showToast('수정되었습니다.')
-      setEditUser(null)
-    } catch (err: any) {
-      if (prev) setUsers(users.map(u => u.user_id === editUser.user_id ? prev : u))
-      showToast(err.message, 'error')
-    }
-  }
-
-  // Azure AD 동기화
+  // ── Azure AD 동기화
   const handleSync = async () => {
-    setSyncing(true)
-    setSyncResult(null)
+    setSyncing(true); setSyncResult(null)
     try {
       const result = await syncAllUsers()
-      setSyncResult(result)
-      saveSyncLog(result)
-      setSyncLogs(loadSyncLogs())
+      setSyncResult(result); saveSyncLog(result); setSyncLogs(loadSyncLogs())
       const [refreshed, refreshedDeparted] = await Promise.all([loadUsers(), loadDepartedUsers()])
-      setUsers(refreshed)
-      setDeparted(refreshedDeparted)
+      setUsers(refreshed); setDeparted(refreshedDeparted)
       showToast(`동기화 완료 — ${result.synced}명 반영`, 'info')
     } catch (err: any) {
       showToast(err.message ?? 'Azure AD 동기화 실패', 'error')
-    } finally {
-      setSyncing(false)
-    }
+    } finally { setSyncing(false) }
   }
 
-  // 필터 탭 목록
-  const filterTabs: { id: FilterType; label: string; color?: string }[] = [
-    { id: 'all',      label: `전체 ${counts.all}` },
-    { id: 'admin',    label: `Admin ${counts.admin}` },
-    { id: 'unlogged', label: `미로그인 ${counts.unlogged}`, color: '#92400E' },
-    { id: 'departed', label: `퇴사자 ${counts.departed}`, color: '#DC2626' },
+  // ── 필터 탭
+  const FILTER_TABS: { id: FilterType; label: string }[] = [
+    { id: 'all',      label: '전체' },
+    { id: 'admin',    label: 'Admin' },
+    { id: 'logged',   label: '로그인' },
+    { id: 'unlogged', label: '미로그인' },
+    { id: 'departed', label: '퇴사자' },
   ]
 
   return (
@@ -1095,15 +1103,19 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
 
       {/* ── 필터 탭 ── */}
       <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' }}>
-        {filterTabs.map(t => (
+        {FILTER_TABS.map(t => (
           <button key={t.id} className="btn" onClick={() => setFilter(t.id)}
             style={{
-              padding:'5px 14px', borderRadius:999, fontSize:12, fontWeight:600, cursor:'pointer',
+              display:'flex', alignItems:'center', gap:5,
+              padding:'5px 12px', borderRadius:999, fontSize:12, fontWeight:600, cursor:'pointer',
               background: filter === t.id ? '#111' : '#F8FAFC',
-              color:      filter === t.id ? '#fff' : (t.color ?? '#374151'),
-              border:     filter === t.id ? 'none' : `1px solid ${t.color ? '#E2E8F0' : '#E2E8F0'}`,
+              color:      filter === t.id ? '#fff' : '#374151',
+              border:     filter === t.id ? 'none' : '1px solid #E2E8F0',
             }}>
-            {t.label}
+            <span>{t.label}</span>
+            <span style={{ fontWeight:700 }}>
+              {counts[t.id]}
+            </span>
           </button>
         ))}
       </div>
@@ -1125,9 +1137,14 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
       {filter !== 'departed' && (
         <div style={{ background:'#fff', borderRadius:16, overflow:'hidden' }}>
           {isMobile ? (
+            // 모바일: 카드 리스트
             <div>
               {filteredUsers.map(u => (
-                <div key={u.user_id} style={{ padding:'14px 20px', borderBottom:'1px solid #F8FAFC', display:'flex', alignItems:'center', gap:12 }}>
+                <div key={u.user_id}
+                  onClick={() => openDetail(u)}
+                  style={{ padding:'14px 20px', borderBottom:'1px solid #F8FAFC', display:'flex', alignItems:'center', gap:12, cursor:'pointer' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#FAFBFD')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                   <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={36} bgColor={u.role==='ADMIN'?'#111':'#E2E8F0'} textColor={u.role==='ADMIN'?'#fff':'#64748B'} />
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
@@ -1139,32 +1156,33 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
                     </div>
                     <div style={{ fontSize:11, color:'#94A3B8', marginTop:1 }}>{u.email}</div>
                   </div>
-                  <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-                    <button className="btn" onClick={() => toggleRole(u.user_id)}
-                      style={{ padding:'4px 10px', fontSize:10, borderRadius:999, fontWeight:600, background:u.role==='ADMIN'?'#111':'#F8FAFC', color:u.role==='ADMIN'?'#fff':'#64748B', border:u.role==='ADMIN'?'none':'1px solid #E2E8F0' }}>
-                      {u.role}
-                    </button>
-                    <button className="btn" onClick={() => openEdit(u)} style={{ background:'#F1F5F9', color:'#64748B', padding:'4px 10px', fontSize:10, borderRadius:999 }}>수정</button>
-                  </div>
+                  <span style={{
+                    padding:'3px 9px', borderRadius:999, fontSize:10, fontWeight:600,
+                    background: u.role==='ADMIN' ? '#111' : '#F8FAFC',
+                    color:      u.role==='ADMIN' ? '#fff' : '#64748B',
+                  }}>{u.role}</span>
                 </div>
               ))}
             </div>
           ) : (
+            // 데스크탑: 테이블 (관리 컬럼 없음, row 전체 클릭)
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
               <thead>
                 <tr style={{ background:'#F8FAFC' }}>
-                  {['', '이름', '부서', '이메일', '권한', '관리'].map(h => (
+                  {['', '이름', '부서', '이메일', '권한'].map(h => (
                     <th key={h} style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:600, color:'#94A3B8', borderBottom:'1px solid #F1F5F9' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filteredUsers.map(u => (
-                  <tr key={u.user_id} style={{ borderBottom:'1px solid #F8FAFC' }}
+                  <tr key={u.user_id}
+                    onClick={() => openDetail(u)}
+                    style={{ borderBottom:'1px solid #F8FAFC', cursor:'pointer' }}
                     onMouseEnter={e => (e.currentTarget.style.background = '#FAFBFD')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                    <td style={{ padding:'10px 14px', width:48 }}>
-                      <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={32} bgColor={u.role==='ADMIN'?'#111':'#E2E8F0'} textColor={u.role==='ADMIN'?'#fff':'#64748B'} />
+                    <td style={{ padding:'10px 14px', width:44 }}>
+                      <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={30} bgColor={u.role==='ADMIN'?'#111':'#E2E8F0'} textColor={u.role==='ADMIN'?'#fff':'#64748B'} />
                     </td>
                     <td style={{ padding:'10px 14px', fontWeight:600, color:'#111' }}>{u.name}</td>
                     <td style={{ padding:'10px 14px', color:'#64748B' }}>
@@ -1172,13 +1190,12 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
                     </td>
                     <td style={{ padding:'10px 14px', color:'#64748B' }}>{u.email}</td>
                     <td style={{ padding:'10px 14px' }}>
-                      <button className="btn" onClick={() => toggleRole(u.user_id)}
-                        style={{ padding:'4px 12px', fontSize:11, borderRadius:999, fontWeight:600, background:u.role==='ADMIN'?'#111':'#F8FAFC', color:u.role==='ADMIN'?'#fff':'#64748B', border:u.role==='ADMIN'?'none':'1px solid #E2E8F0' }}>
-                        {u.role}
-                      </button>
-                    </td>
-                    <td style={{ padding:'10px 14px' }}>
-                      <button className="btn" onClick={() => openEdit(u)} style={{ background:'#F1F5F9', color:'#64748B', padding:'6px 14px', fontSize:11, borderRadius:10 }}>수정</button>
+                      <span style={{
+                        padding:'3px 10px', borderRadius:999, fontSize:11, fontWeight:600,
+                        background: u.role==='ADMIN' ? '#111' : '#F8FAFC',
+                        color:      u.role==='ADMIN' ? '#fff' : '#64748B',
+                        border:     u.role==='ADMIN' ? 'none' : '1px solid #E2E8F0',
+                      }}>{u.role}</span>
                     </td>
                   </tr>
                 ))}
@@ -1223,8 +1240,8 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
                   <tr key={u.id} style={{ borderBottom:'1px solid #F8FAFC', opacity:0.75 }}
                     onMouseEnter={e => (e.currentTarget.style.background = '#FFF5F5')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                    <td style={{ padding:'10px 14px', width:48 }}>
-                      <div style={{ width:32, height:32, borderRadius:'50%', background:'#FEE2E2', color:'#DC2626', fontSize:12, fontWeight:600, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    <td style={{ padding:'10px 14px', width:44 }}>
+                      <div style={{ width:30, height:30, borderRadius:'50%', background:'#FEE2E2', color:'#DC2626', fontSize:11, fontWeight:600, display:'flex', alignItems:'center', justifyContent:'center' }}>
                         {u.name.charAt(0)}
                       </div>
                     </td>
@@ -1243,65 +1260,81 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
         </div>
       )}
 
-      {/* ── 편집 드로어 ── */}
-      <div onClick={() => setEditUser(null)}
-        style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.4)', backdropFilter:'blur(2px)', zIndex:900, opacity: editUser ? 1 : 0, pointerEvents: editUser ? 'auto' : 'none', transition:'opacity 0.25s' }}
-      />
-      <div style={{ position:'fixed', top:0, right:0, bottom:0, width: isMobile ? '100%' : 380, background:'#fff', boxShadow:'-8px 0 40px rgba(0,0,0,0.12)', zIndex:910, display:'flex', flexDirection:'column', transform: editUser ? 'translateX(0)' : 'translateX(100%)', transition:'transform 0.28s cubic-bezier(0.32,0.72,0,1)' }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'20px 24px', borderBottom:'1px solid #F1F5F9', flexShrink:0 }}>
-          <div>
-            <div style={{ fontSize:16, fontWeight:600, color:'#111' }}>사용자 수정</div>
-            {editUser?.email && <div style={{ fontSize:11, color:'#94A3B8', marginTop:2 }}>{editUser.email}</div>}
-          </div>
-          <button className="btn" onClick={() => setEditUser(null)} style={{ width:32, height:32, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:'50%', background:'#F1F5F9', color:'#64748B' }}>
-            <X size={14} strokeWidth={1.8}/>
-          </button>
-        </div>
-        <div style={{ flex:1, overflowY:'auto', padding:'24px' }}>
-          {editUser && (
-            <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:24, padding:'16px', background:'#F8FAFC', borderRadius:12 }}>
-              <UserAvatar name={form.name || '?'} avatarUrl={editUser?.avatar_url ?? null} size={44} bgColor={form.role==='ADMIN'?'#111':'#E2E8F0'} textColor={form.role==='ADMIN'?'#fff':'#64748B'} />
-              <div>
-                <div style={{ fontSize:14, fontWeight:600, color:'#111' }}>{form.name || '이름 없음'}</div>
-                <div style={{ fontSize:11, color:'#94A3B8', marginTop:2 }}>{form.dept || '부서 미입력'}</div>
+      {/* ══════════════════════════════════════════════════════════════════════
+          사용자 상세 모달 (드로어 → 중앙 모달)
+      ══════════════════════════════════════════════════════════════════════ */}
+      {editUser && (
+        <div onClick={closeModal}
+          style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.55)', backdropFilter:'blur(6px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000, padding:16 }}>
+          <div className="anm" onClick={e => e.stopPropagation()}
+            style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:480, maxHeight:'88vh', overflowY:'auto', boxShadow:'0 20px 60px rgba(0,0,0,0.15)', display:'flex', flexDirection:'column' }}>
+
+            {/* ── 모달 헤더 */}
+            <div style={{ padding:'20px 24px', borderBottom:'1px solid #F1F5F9', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                <UserAvatar name={editUser.name} avatarUrl={(editUser as any).avatar_url ?? null} size={40} bgColor={editUser.role==='ADMIN'?'#111':'#E2E8F0'} textColor={editUser.role==='ADMIN'?'#fff':'#64748B'} />
+                <div>
+                  <div style={{ fontSize:15, fontWeight:600, color:'#111' }}>{editUser.name}</div>
+                  <div style={{ fontSize:11, color:'#94A3B8', marginTop:1 }}>{editUser.email}</div>
+                </div>
               </div>
+              <button className="btn" onClick={closeModal} style={{ width:32, height:32, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:'50%', background:'#F1F5F9', color:'#64748B' }}>
+                <X size={14} strokeWidth={1.8}/>
+              </button>
             </div>
-          )}
-          {[{ k:'name', l:'이름 *', ph:'이름을 입력하세요' }, { k:'dept', l:'부서', ph:'부서를 입력하세요' }].map(f => (
-            <div key={f.k} style={{ marginBottom:16 }}>
-              <label style={{ fontSize:11, fontWeight:600, color:'#94A3B8', display:'block', marginBottom:6 }}>{f.l}</label>
-              <input value={form[f.k] || ''} onChange={e => setForm(p => ({ ...p, [f.k]: e.target.value }))}
-                placeholder={f.ph}
-                style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1px solid #E2E8F0', fontSize:14, background:'#fff', outline:'none', boxSizing:'border-box' }}
-                onFocus={e => e.target.style.borderColor='#111'}
-                onBlur={e => e.target.style.borderColor='#E2E8F0'}/>
-            </div>
-          ))}
-          <div style={{ marginBottom:16 }}>
-            <label style={{ fontSize:11, fontWeight:600, color:'#94A3B8', display:'block', marginBottom:6 }}>이메일</label>
-            <input value={form.email || ''} readOnly style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1px solid #F1F5F9', fontSize:14, background:'#F8FAFC', outline:'none', color:'#94A3B8', boxSizing:'border-box' }}/>
-          </div>
-          <div style={{ marginBottom:16 }}>
-            <label style={{ fontSize:11, fontWeight:600, color:'#94A3B8', display:'block', marginBottom:6 }}>권한</label>
-            <div style={{ display:'flex', gap:8 }}>
-              {['USER','ADMIN'].map(r => (
-                <button key={r} className="btn" onClick={() => setForm(p => ({ ...p, role: r }))}
-                  style={{ flex:1, padding:'11px', borderRadius:10, fontSize:13, fontWeight:600, border:`1.5px solid ${form.role===r?'#111':'#E2E8F0'}`, background: form.role===r?'#111':'#F8FAFC', color: form.role===r?'#fff':'#64748B', cursor:'pointer' }}>
-                  {r}
-                </button>
-              ))}
-            </div>
+
+            {/* ── 기본 정보 편집 뷰 */}
+            <div style={{ padding:'20px 24px', flex:1 }}>
+                {/* 이름 */}
+                <div style={{ marginBottom:14 }}>
+                  <label style={{ fontSize:11, fontWeight:600, color:'#94A3B8', display:'block', marginBottom:5 }}>이름 *</label>
+                  <input value={form.name || ''} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
+                    style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:'1px solid #E2E8F0', fontSize:14, background:'#fff', outline:'none', boxSizing:'border-box' }}
+                    onFocus={e => e.target.style.borderColor='#111'} onBlur={e => e.target.style.borderColor='#E2E8F0'}/>
+                </div>
+                {/* 부서 */}
+                <div style={{ marginBottom:14 }}>
+                  <label style={{ fontSize:11, fontWeight:600, color:'#94A3B8', display:'block', marginBottom:5 }}>부서</label>
+                  <input value={form.dept || ''} onChange={e => setForm(p => ({ ...p, dept: e.target.value }))}
+                    style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:'1px solid #E2E8F0', fontSize:14, background:'#fff', outline:'none', boxSizing:'border-box' }}
+                    onFocus={e => e.target.style.borderColor='#111'} onBlur={e => e.target.style.borderColor='#E2E8F0'}/>
+                </div>
+                {/* 이메일 (읽기 전용) */}
+                <div style={{ marginBottom:14 }}>
+                  <label style={{ fontSize:11, fontWeight:600, color:'#94A3B8', display:'block', marginBottom:5 }}>이메일</label>
+                  <input value={form.email || ''} readOnly style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:'1px solid #F1F5F9', fontSize:14, background:'#F8FAFC', outline:'none', color:'#94A3B8', boxSizing:'border-box' }}/>
+                </div>
+                {/* 권한 */}
+                <div style={{ marginBottom:20 }}>
+                  <label style={{ fontSize:11, fontWeight:600, color:'#94A3B8', display:'block', marginBottom:8 }}>권한</label>
+                  <div style={{ display:'flex', gap:8 }}>
+                    {['USER','ADMIN'].map(r => (
+                      <button key={r} className="btn" onClick={() => setForm(p => ({ ...p, role: r }))}
+                        style={{ flex:1, padding:'10px', borderRadius:10, fontSize:13, fontWeight:600,
+                          border:`1.5px solid ${form.role===r?'#111':'#E2E8F0'}`,
+                          background: form.role===r?'#111':'#F8FAFC',
+                          color:      form.role===r?'#fff':'#64748B', cursor:'pointer' }}>
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 저장 / 취소 */}
+                <div style={{ display:'flex', gap:8, marginBottom:24 }}>
+                  <button className="btn" onClick={closeModal} style={{ flex:1, background:'#F1F5F9', color:'#64748B', padding:'12px', fontSize:13, borderRadius:12 }}>취소</button>
+                  <button className="btn" onClick={saveEdit} disabled={saving}
+                    style={{ flex:2, background:'#111', color:'#fff', padding:'12px', fontSize:13, fontWeight:600, borderRadius:12, opacity:saving?0.6:1 }}>
+                    {saving ? '저장 중...' : '저장'}
+                  </button>
+                </div>
+              </div>
           </div>
         </div>
-        <div style={{ padding:'16px 24px 28px', borderTop:'1px solid #F1F5F9', display:'flex', gap:8, flexShrink:0 }}>
-          <button className="btn" onClick={() => setEditUser(null)} style={{ flex:1, background:'#F1F5F9', color:'#64748B', padding:'13px', fontSize:14, borderRadius:12 }}>취소</button>
-          <button className="btn" onClick={saveEdit} style={{ flex:2, background:'#111', color:'#fff', padding:'13px', fontSize:14, fontWeight:600, borderRadius:12 }}>저장</button>
-        </div>
-      </div>
+      )}
     </div>
   )
 }
-
 // ─── AdminApprovals ────────────────────────────────────────────────────────────
 // 승인 정책:
 //   - 승인/거절 가능 시간: start_at 1분 전까지 (nowMs < startMs - 60000)

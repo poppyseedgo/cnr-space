@@ -745,3 +745,73 @@ export function subscribeNotifications(onNew: (payload: any) => void, userId?: s
     .subscribe()
   return () => { supabase.removeChannel(channel) }
 }
+
+/** 특정 유저의 미래 예약 건수 조회 (취소되지 않은 것만) */
+export async function countFutureBookings(userId: string): Promise<number> {
+  try {
+    const { count, error } = await supabase
+      .from('bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gt('start_at', new Date().toISOString())
+      .eq('auto_cancelled', false)
+    if (error) throw error
+    return count ?? 0
+  } catch (e) {
+    console.error('[api] countFutureBookings 실패:', e)
+    return 0
+  }
+}
+
+/** 수동 퇴사 처리
+ *  1. 미래 예약 auto_cancelled → true (cancelled_by: 'system')
+ *  2. departed_users INSERT
+ *  3. profiles DELETE
+ */
+export async function manualDepartUser(
+  userId: string,
+  userInfo: { name: string; email: string; dept: string; employee_id: string }
+): Promise<{ cancelledCount: number }> {
+  // 1. 미래 예약 목록 조회
+  const { data: futureBks, error: bkErr } = await supabase
+    .from('bookings')
+    .select('id')
+    .eq('user_id', userId)
+    .gt('start_at', new Date().toISOString())
+    .eq('auto_cancelled', false)
+  if (bkErr) throw new Error(bkErr.message)
+
+  const cancelledCount = futureBks?.length ?? 0
+
+  // 2. 미래 예약 일괄 취소
+  if (cancelledCount > 0) {
+    const ids = futureBks!.map((b: any) => b.id)
+    const { error: cancelErr } = await supabase
+      .from('bookings')
+      .update({ auto_cancelled: true, cancelled_by: 'system' })
+      .in('id', ids)
+    if (cancelErr) throw new Error(cancelErr.message)
+  }
+
+  // 3. departed_users INSERT (중복 시 무시)
+  const { error: departErr } = await supabase
+    .from('departed_users')
+    .upsert({
+      id:          userId,
+      name:        userInfo.name,
+      email:       userInfo.email,
+      dept:        userInfo.dept,
+      employee_id: userInfo.employee_id,
+      departed_at: new Date().toISOString(),
+    }, { onConflict: 'id' })
+  if (departErr) throw new Error(departErr.message)
+
+  // 4. profiles DELETE
+  const { error: deleteErr } = await supabase
+    .from('profiles')
+    .delete()
+    .eq('id', userId)
+  if (deleteErr) throw new Error(deleteErr.message)
+
+  return { cancelledCount }
+}
