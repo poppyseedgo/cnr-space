@@ -386,16 +386,20 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
   ]
   return (
     <div className="max-w-[1200px] mx-auto px-3 py-4 sm:px-6 sm:py-7">
-      <div className="anm flex gap-1 mb-5 bg-white rounded-xl p-1.5 overflow-x-auto" style={{ scrollbarWidth:'none' }}>
+      <div className="anm flex gap-1 mb-5 bg-white rounded-xl p-1.5 overflow-x-auto" style={{ scrollbarWidth:'none', justifyContent:'flex-start' }}>
         {tabs.map(t=>(
           <button key={t.id} className="btn" onClick={()=>setTab(t.id)}
-            style={{ flex:1, minWidth:isMobile?40:80, padding:isMobile?'9px 6px':'10px', fontSize:isMobile?11:13, borderRadius:10,
+            style={{ flex:'1 0 0', maxWidth:120, padding:'14px 24px', fontSize:isMobile?11:13, borderRadius:10,
               fontWeight:activeTab===t.id?700:500, background:activeTab===t.id?'#111':'transparent',
               color:activeTab===t.id?'#fff':'#64748B', display:'flex', alignItems:'center', justifyContent:'center',
-              gap:5, position:'relative', whiteSpace:'nowrap' }}>
+              gap:6, whiteSpace:'nowrap' }}>
             <span>{t.icon}</span>
             {!isMobile && t.label}
-            {(t as any).badge>0 && <span style={{ position:'absolute', top:4, right:4, background:'#EF4444', color:'#fff', fontSize:9, fontWeight:600, borderRadius:999, padding:'1px 5px', lineHeight:1.4 }}>{(t as any).badge}</span>}
+            {(t as any).badge>0 && (
+              <span style={{ fontSize:12, fontWeight:500, color: activeTab===t.id ? 'rgba(255,255,255,0.55)' : '#94A3B8' }}>
+                {(t as any).badge}
+              </span>
+            )}
           </button>
         ))}
       </div>
