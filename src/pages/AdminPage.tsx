@@ -49,7 +49,7 @@ const PRESETS = [
 ]
 
 // ─── 차트 공통 ────────────────────────────────────────────────────────────────
-const PIE_COLORS  = ['#6366F1','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#F97316','#EC4899']
+const PIE_COLORS  = ['#6366F1','#8B5CF6','#EC4899','#F59E0B','#10B981','#06B6D4','#3B82F6','#F97316']
 const CHART_STYLE = { borderRadius:12, border:'none', boxShadow:'0 4px 24px rgba(0,0,0,0.10)', fontSize:12 }
 const AXIS_TICK   = { fontSize:11, fill:'#94A3B8' }
 
@@ -149,8 +149,8 @@ const DETAIL_META: Record<DetailType, { title: string; icon: React.ReactNode }> 
   users:    { title: '사용자 예약 현황',   icon: <Users size={16} strokeWidth={1.8}/> },
 }
 
-function DetailDrawer({ type, rooms, users, initFrom, initTo, onClose }:
-  { type: DetailType; rooms: Room[]; users: AppUser[]; initFrom: string; initTo: string; onClose: ()=>void }) {
+function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose }:
+  { type: DetailType; rooms: Room[]; users: AppUser[]; initFrom: string; initTo: string; onDetail?: (b:Booking)=>void; onClose: ()=>void }) {
   const [presetId, setPresetId] = useState('custom')
   const [dateFrom, setDateFrom] = useState(initFrom)
   const [dateTo,   setDateTo]   = useState(initTo)
@@ -159,6 +159,8 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onClose }:
   const [page,     setPage]     = useState(1)
   const [sortKey,  setSortKey]  = useState('start_at')
   const [sortAsc,  setSortAsc]  = useState(false)
+  // 드릴다운: 집계 행 클릭 → 해당 필터로 예약 목록 표시
+  const [drill, setDrill] = useState<{ label: string; fn: (b:Booking)=>boolean } | null>(null)
   const PER = 30
 
   const fetchData = useCallback(async () => {
@@ -226,14 +228,9 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onClose }:
   }, [filtered])
 
   // 테이블 렌더
-  const renderTable = () => {
-    if (loading) return <div style={{ textAlign:'center', padding:40, color:'#94A3B8', fontSize:13 }}><RefreshCw size={20} strokeWidth={1.8}/> 불러오는 중...</div>
-    if (type === 'rooms') return <AggTable rows={roomAgg} cols={[{k:'room_name',l:'회의실'},{k:'confirmed',l:'예약'},{k:'checkin',l:'체크인'},{k:'noshow',l:'노쇼'},{k:'noshow_rate',l:'노쇼율(%)',fmt:v=>`${v}%`}]} onExport={() => exportCSV(roomAgg.map(r=>({회의실:r.room_name,예약:r.confirmed,체크인:r.checkin,노쇼:r.noshow,'노쇼율(%)':r.noshow_rate})), `회의실별통계_${dateFrom}_${dateTo}`)} />
-    if (type === 'dept')  return <AggTable rows={deptAgg} cols={[{k:'dept',l:'부서'},{k:'confirmed',l:'예약'},{k:'noshow',l:'노쇼'}]} onExport={() => exportCSV(deptAgg.map(r=>({부서:r.dept,예약:r.confirmed,노쇼:r.noshow})), `부서별통계_${dateFrom}_${dateTo}`)} />
-    if (type === 'hours') return <AggTable rows={hourAgg} cols={[{k:'hour',l:'시간대'},{k:'count',l:'예약 건수'}]} onExport={() => exportCSV(hourAgg.map(r=>({시간대:r.hour,예약건수:r.count})), `시간대별분포_${dateFrom}_${dateTo}`)} />
-    if (type === 'users') return <AggTable rows={userAgg} cols={[{k:'name',l:'이름'},{k:'dept',l:'부서'},{k:'count',l:'예약'},{k:'noshow',l:'노쇼'}]} onExport={() => exportCSV(userAgg.map(r=>({이름:r.name,부서:r.dept,예약:r.count,노쇼:r.noshow})), `사용자별통계_${dateFrom}_${dateTo}`)} />
-    // bookings / noshow / pending → 행 테이블
-    const sorted = [...filtered].sort((a,b) => {
+  // 공통 예약 목록 렌더 (drill-down 시에도 재사용)
+  const renderBookingList = (source: Booking[], drillLabel?: string) => {
+    const sorted = [...source].sort((a,b) => {
       const av = a[sortKey as keyof Booking] ?? '', bv = b[sortKey as keyof Booking] ?? ''
       return sortAsc ? (av<bv?-1:av>bv?1:0) : (av>bv?-1:av<bv?1:0)
     })
@@ -245,9 +242,20 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onClose }:
     })
     return (
       <>
+        {/* 드릴다운 브레드크럼 */}
+        {drillLabel && (
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14, padding:'8px 12px', background:'#F5F5FF', borderRadius:8 }}>
+            <button className="btn" onClick={() => { setDrill(null); setPage(1) }}
+              style={{ display:'flex', alignItems:'center', gap:4, fontSize:12, color:'#6366F1', padding:'4px 8px', borderRadius:6, background:'#fff', border:'1px solid #C7D2FE' }}>
+              ← 전체 보기
+            </button>
+            <span style={{ fontSize:12, color:'#6366F1', fontWeight:600 }}>{drillLabel}</span>
+            <span style={{ fontSize:11, color:'#94A3B8' }}>예약 {total}건</span>
+          </div>
+        )}
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
           <div style={{ fontSize:12, color:'#64748B' }}>총 <b style={{ color:'#111' }}>{total}</b>건</div>
-          <button className="btn" onClick={() => exportCSV(csvRows, `${DETAIL_META[type].title}_${dateFrom}_${dateTo}`)}
+          <button className="btn" onClick={() => exportCSV(csvRows, `${drillLabel??DETAIL_META[type].title}_${dateFrom}_${dateTo}`)}
             style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', borderRadius:8, background:'#F8FAFC', border:'1px solid #E2E8F0', fontSize:11, fontWeight:600, color:'#374151' }}>
             <Download size={11} strokeWidth={1.8}/> CSV 내보내기
           </button>
@@ -257,9 +265,9 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onClose }:
             <thead>
               <tr style={{ background:'#F8FAFC' }}>
                 {[{k:'title',l:'회의명'},{k:'room_id',l:'회의실'},{k:'start_at',l:'날짜'},{k:'start_at',l:'시간'},{k:'user',l:'예약자'},{k:'',l:'상태'}].map((h,i) => (
-                  <th key={i} onClick={()=>{if(h.k){setSortKey(h.k);setSortAsc(s=>sortKey===h.k?!s:false)}}}
+                  <th key={i} onClick={() => { if(h.k){ setSortKey(h.k); setSortAsc(s => sortKey===h.k?!s:false) } }}
                     style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600, color:'#94A3B8', whiteSpace:'nowrap', borderBottom:'1px solid #F1F5F9', cursor:h.k?'pointer':'default' }}>
-                    {h.l}{h.k&&<ArrowUpDown size={9} strokeWidth={1.8}/>}
+                    {h.l}{h.k && <ArrowUpDown size={9} strokeWidth={1.8}/>}
                   </th>
                 ))}
               </tr>
@@ -267,16 +275,23 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onClose }:
             <tbody>
               {paged.map(b => {
                 const r = rooms.find(rm => rm.room_id === b.room_id)
-                const status = b.status==='pending'?{l:'승인대기',c:'#D97706',bg:'#FEF3C7'}:b.autoCancelled&&!b.checkedIn&&!b.earlyEnded?{l:'노쇼',c:'#D97706',bg:'#FEF3C7'}:b.autoCancelled?{l:'취소',c:'#94A3B8',bg:'#F1F5F9'}:b.checkedIn||b.earlyEnded?{l:'완료',c:'#16A34A',bg:'#DCFCE7'}:{l:'예정',c:'#3B82F6',bg:'#EFF6FF'}
+                const status = b.status==='pending'?{l:'승인대기',c:'#D97706',bg:'#FEF3C7'}:b.autoCancelled&&!b.checkedIn&&!b.earlyEnded?{l:'노쇼',c:'#DC2626',bg:'#FEF2F2'}:b.autoCancelled?{l:'취소',c:'#94A3B8',bg:'#F1F5F9'}:b.checkedIn||b.earlyEnded?{l:'완료',c:'#16A34A',bg:'#DCFCE7'}:{l:'예정',c:'#3B82F6',bg:'#EFF6FF'}
                 return (
-                  <tr key={b.id} style={{ borderBottom:'1px solid #F8FAFC' }}
-                    onMouseEnter={e=>e.currentTarget.style.background='#FAFBFD'}
-                    onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                  <tr key={b.id}
+                    onClick={() => { onDetail?.(b) }}
+                    style={{ borderBottom:'1px solid #F8FAFC', cursor: onDetail ? 'pointer' : 'default' }}
+                    onMouseEnter={e => e.currentTarget.style.background = onDetail ? '#F0F4FF' : '#FAFBFD'}
+                    onMouseLeave={e => { e.currentTarget.style.background='transparent' }}>
                     <td style={{ padding:'8px 12px', fontWeight:600, color:'#111', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{b.title}</td>
                     <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{r?.room_name??''}</td>
                     <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{fmtTSDateFull(b.start_at)}</td>
                     <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{fmtTSRangeFull(b.start_at,b.end_at)}</td>
-                    <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}><div style={{display:'flex',alignItems:'center',gap:6}}><div style={{width:22,height:22,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:500,flexShrink:0,background:'#F1EFE8',color:'#444441'}}>{(b.user??'?')[0]}</div><span style={{fontSize:12,fontWeight:500,color:'#111'}}>{b.user}</span></div></td>
+                    <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                        <div style={{ width:22, height:22, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:500, flexShrink:0, background:'#F1EFE8', color:'#444441' }}>{(b.user??'?')[0]}</div>
+                        <span style={{ fontSize:12, fontWeight:500, color:'#111' }}>{b.user}</span>
+                      </div>
+                    </td>
                     <td style={{ padding:'8px 12px' }}><span style={{ background:status.bg, color:status.c, fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:999 }}>{status.l}</span></td>
                   </tr>
                 )
@@ -284,17 +299,52 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onClose }:
             </tbody>
           </table>
         </div>
-        {pages>1 && (
+        {pages > 1 && (
           <div style={{ display:'flex', justifyContent:'center', gap:4, paddingTop:12 }}>
-            <button className="btn" disabled={page===1} onClick={()=>setPage(p=>p-1)} style={{ padding:'5px 10px', fontSize:11, borderRadius:7, background:'#F1F5F9', color:page===1?'#CBD5E1':'#64748B' }}>‹</button>
-            {Array.from({length:Math.min(pages,7)},(_,i)=>{const p=pages<=7?i+1:page<=4?i+1:page>=pages-3?pages-6+i:page-3+i;
-              return <button key={p} className="btn" onClick={()=>setPage(p)} style={{ padding:'5px 9px', fontSize:11, borderRadius:7, minWidth:28, background:page===p?'#111':'#F8FAFC', color:page===p?'#fff':'#64748B', fontWeight:page===p?700:400 }}>{p}</button>})}
-            <button className="btn" disabled={page===pages} onClick={()=>setPage(p=>p+1)} style={{ padding:'5px 10px', fontSize:11, borderRadius:7, background:'#F1F5F9', color:page===pages?'#CBD5E1':'#64748B' }}>›</button>
+            <button className="btn" disabled={page===1} onClick={() => setPage(p=>p-1)} style={{ padding:'5px 10px', fontSize:11, borderRadius:7, background:'#F1F5F9', color:page===1?'#CBD5E1':'#64748B' }}>‹</button>
+            {Array.from({length:Math.min(pages,7)},(_,i)=>{const p=pages<=7?i+1:page<=4?i+1:page>=pages-3?pages-6+i:page-3+i
+              return <button key={p} className="btn" onClick={() => setPage(p)} style={{ padding:'5px 9px', fontSize:11, borderRadius:7, minWidth:28, background:page===p?'#111':'#F8FAFC', color:page===p?'#fff':'#64748B', fontWeight:page===p?700:400 }}>{p}</button>})}
+            <button className="btn" disabled={page===pages} onClick={() => setPage(p=>p+1)} style={{ padding:'5px 10px', fontSize:11, borderRadius:7, background:'#F1F5F9', color:page===pages?'#CBD5E1':'#64748B' }}>›</button>
           </div>
         )}
       </>
     )
   }
+
+  const renderTable = () => {
+    if (loading) return <div style={{ textAlign:'center', padding:40, color:'#94A3B8', fontSize:13 }}><RefreshCw size={20} strokeWidth={1.8}/> 불러오는 중...</div>
+
+    // drill-down 활성화 시 → 예약 목록 표시
+    if (drill) {
+      const drillData = filtered.filter(drill.fn)
+      return renderBookingList(drillData, drill.label)
+    }
+
+    // 집계 테이블 타입 (드릴다운 콜백 포함)
+    if (type === 'rooms') return <AggTable rows={roomAgg}
+      cols={[{k:'room_name',l:'회의실'},{k:'confirmed',l:'예약'},{k:'checkin',l:'체크인'},{k:'noshow',l:'노쇼'},{k:'noshow_rate',l:'노쇼율(%)',fmt:v=>`${v}%`}]}
+      onExport={() => exportCSV(roomAgg.map(r=>({회의실:r.room_name,예약:r.confirmed,체크인:r.checkin,노쇼:r.noshow,'노쇼율(%)':r.noshow_rate})), `회의실별통계_${dateFrom}_${dateTo}`)}
+      onRowClick={row => { const rm = rooms.find(r=>(r.room_name_ko||r.room_name)===row.room_name); if(rm) { setDrill({ label:row.room_name, fn:(b)=>b.room_id===rm.room_id }); setPage(1) } }}/>
+
+    if (type === 'dept') return <AggTable rows={deptAgg}
+      cols={[{k:'dept',l:'부서'},{k:'confirmed',l:'예약'},{k:'noshow',l:'노쇼'}]}
+      onExport={() => exportCSV(deptAgg.map(r=>({부서:r.dept,예약:r.confirmed,노쇼:r.noshow})), `부서별통계_${dateFrom}_${dateTo}`)}
+      onRowClick={row => { setDrill({ label:row.dept, fn:(b)=>b.dept===row.dept }); setPage(1) }}/>
+
+    if (type === 'hours') return <AggTable rows={hourAgg}
+      cols={[{k:'hour',l:'시간대'},{k:'count',l:'예약 건수'}]}
+      onExport={() => exportCSV(hourAgg.map(r=>({시간대:r.hour,예약건수:r.count})), `시간대별분포_${dateFrom}_${dateTo}`)}
+      onRowClick={row => { const h = parseInt(row.hour); setDrill({ label:row.hour, fn:(b)=>Math.floor(tsMin(b.start_at)/60)===h }); setPage(1) }}/>
+
+    if (type === 'users') return <AggTable rows={userAgg}
+      cols={[{k:'name',l:'이름'},{k:'dept',l:'부서'},{k:'count',l:'예약'},{k:'noshow',l:'노쇼'}]}
+      onExport={() => exportCSV(userAgg.map(r=>({이름:r.name,부서:r.dept,예약:r.count,노쇼:r.noshow})), `사용자별통계_${dateFrom}_${dateTo}`)}
+      onRowClick={row => { setDrill({ label:row.name, fn:(b)=>b.user===row.name }); setPage(1) }}/>
+
+    // bookings / noshow / pending → 개별 예약 목록
+    return renderBookingList(filtered)
+  }
+
 
   const meta = DETAIL_META[type]
   return (
@@ -341,12 +391,20 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onClose }:
 }
 
 // 집계 테이블 컴포넌트
-function AggTable({ rows, cols, onExport }: { rows: any[]; cols:{k:string;l:string;fmt?:(v:any)=>string}[]; onExport:()=>void }) {
+function AggTable({ rows, cols, onExport, onRowClick }: {
+  rows: any[]
+  cols: {k:string;l:string;fmt?:(v:any)=>string}[]
+  onExport: () => void
+  onRowClick?: (row: any) => void
+}) {
   if (!rows.length) return <div style={{ textAlign:'center', padding:40, color:'#CBD5E1', fontSize:12 }}>데이터 없음</div>
+  const canDrill = !!onRowClick
   return (
     <>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-        <div style={{ fontSize:12, color:'#64748B' }}>총 <b style={{ color:'#111' }}>{rows.length}</b>개</div>
+        <div style={{ fontSize:12, color:'#64748B' }}>총 <b style={{ color:'#111' }}>{rows.length}</b>개
+          {canDrill && <span style={{ marginLeft:8, fontSize:11, color:'#6366F1' }}>행 클릭 → 예약 목록</span>}
+        </div>
         <button className="btn" onClick={onExport}
           style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', borderRadius:8, background:'#F8FAFC', border:'1px solid #E2E8F0', fontSize:11, fontWeight:600, color:'#374151' }}>
           <Download size={11} strokeWidth={1.8}/> CSV 내보내기
@@ -356,12 +414,16 @@ function AggTable({ rows, cols, onExport }: { rows: any[]; cols:{k:string;l:stri
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
           <thead><tr style={{ background:'#F8FAFC' }}>
             {cols.map(c => <th key={c.k} style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:600, color:'#94A3B8', borderBottom:'1px solid #F1F5F9', whiteSpace:'nowrap' }}>{c.l}</th>)}
+            {canDrill && <th style={{ width:24, borderBottom:'1px solid #F1F5F9' }}/>}
           </tr></thead>
           <tbody>{rows.map((r,i) => (
-            <tr key={i} style={{ borderBottom:'1px solid #F8FAFC' }}
-              onMouseEnter={e=>e.currentTarget.style.background='#FAFBFD'}
-              onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-              {cols.map(c => <td key={c.k} style={{ padding:'10px 14px', color:'#374151', fontWeight: i===0&&c.k!==cols[0].k?700:400 }}>{c.fmt ? c.fmt(r[c.k]) : r[c.k]}</td>)}
+            <tr key={i}
+              onClick={() => onRowClick?.(r)}
+              style={{ borderBottom:'1px solid #F8FAFC', cursor: canDrill ? 'pointer' : 'default' }}
+              onMouseEnter={e => { e.currentTarget.style.background = canDrill ? '#F5F5FF' : '#FAFBFD' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+              {cols.map(c => <td key={c.k} style={{ padding:'10px 14px', color:'#374151' }}>{c.fmt ? c.fmt(r[c.k]) : r[c.k]}</td>)}
+              {canDrill && <td style={{ padding:'10px 14px', color:'#A5B4FC', fontSize:14 }}>›</td>}
             </tr>
           ))}</tbody>
         </table>
@@ -369,6 +431,7 @@ function AggTable({ rows, cols, onExport }: { rows: any[]; cols:{k:string;l:stri
     </>
   )
 }
+
 
 // ─── AdminView ─────────────────────────────────────────────────────────────────
 export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject, onForceCancel, onDetail }) {
@@ -418,7 +481,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
           </button>
         ))}
       </div>
-      {activeTab==='dashboard' && <AdminDashboard bookings={bookings} rooms={rooms} users={users} isMobile={isMobile}/>}
+      {activeTab==='dashboard' && <AdminDashboard bookings={bookings} rooms={rooms} users={users} isMobile={isMobile} onDetail={onDetail}/>}
       {activeTab==='bookings'  && <AdminBookings  bookings={bookings} setBookings={setBookings} rooms={rooms} onForceCancel={onForceCancel} showToast={showToast} isMobile={isMobile} PER_PAGE={PER_PAGE} onDetail={onDetail}/>}
       {activeTab==='approvals' && <AdminApprovals bookings={bookings} rooms={rooms} users={users} onApprove={onApprove} onReject={onReject} showToast={showToast} isMobile={isMobile} onDetail={onDetail}/>}
       {activeTab==='rooms'     && <AdminRooms     showToast={showToast} isMobile={isMobile}/>}
@@ -428,7 +491,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
 }
 
 // ─── Treemap 커스텀 컨텐츠 ────────────────────────────────────────────────────
-const TREE_COLORS = ['#312E81','#3730A3','#4338CA','#4F46E5','#6366F1','#818CF8','#A5B4FC']
+const TREE_COLORS = ['#1E1B4B','#3730A3','#4F46E5','#7C3AED','#9333EA','#A855F7','#C084FC','#DDD6FE','#EDE9FE']
 function TreemapContent(props: any) {
   const { x, y, width, height, name, size, noshow, index } = props
   if (!width || !height || width < 2 || height < 2) return null
@@ -472,23 +535,35 @@ const CardShell = memo(function CardShell({ children, type: ct, onClick }: {
 })
 
 // ─── AdminDashboard ────────────────────────────────────────────────────────────
-export function AdminDashboard({ bookings, rooms, users, isMobile }) {
-  const [dateFrom, setDateFrom] = useState(addDaysStr(todayStr(), -29))
-  const [dateTo,   setDateTo]   = useState(todayStr())
-  const [detail,   setDetail]   = useState<DetailType|null>(null)
-  const [openLog,  setOpenLog]  = useState(false)
-  const [nowMs,    setNowMs]    = useState(Date.now())
+export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
+  const [dateFrom,     setDateFrom]     = useState(addDaysStr(todayStr(), -29))
+  const [dateTo,       setDateTo]       = useState(todayStr())
+  const [detail,       setDetail]       = useState<DetailType|null>(null)
+  const [openLog,      setOpenLog]      = useState(false)
+  const [nowMs,        setNowMs]        = useState(Date.now())
+  const [rangeData,    setRangeData]    = useState<Booking[]>([])
+  const [loadingChart, setLoadingChart] = useState(false)
 
   useEffect(() => {
     const iv = setInterval(() => setNowMs(Date.now()), 30_000)
     return () => clearInterval(iv)
   }, [])
 
+  // 날짜 범위 변경 시 Supabase에서 직접 fetch (bookings prop은 실시간 상태용)
+  const fetchRange = useCallback(async () => {
+    setLoadingChart(true)
+    try { setRangeData(await loadBookingsByRange(dateFrom, dateTo)) }
+    catch (e) { console.error(e) }
+    finally { setLoadingChart(false) }
+  }, [dateFrom, dateTo])
+
+  useEffect(() => { fetchRange() }, [fetchRange])
+
   const td = todayStr()
-  const filtered  = useMemo(() => bookings.filter(b => { const d = tsDate(b.start_at); return d >= dateFrom && d <= dateTo }), [bookings, dateFrom, dateTo])
+  const filtered  = useMemo(() => rangeData, [rangeData])
   const past      = useMemo(() => filtered.filter(b => tsDate(b.start_at) < td && b.status !== 'pending'), [filtered, td])
   const isNoshow  = (b: Booking) => b.autoCancelled && !b.checkedIn && !b.earlyEnded
-  const confirmed = filtered.filter(b => !b.autoCancelled && b.status !== 'rejected')
+  const confirmed = useMemo(() => filtered.filter(b => !b.autoCancelled && b.status !== 'rejected'), [filtered])
   const noshowRate   = past.length > 0 ? Math.round(past.filter(isNoshow).length / past.length * 100) : 0
   const pendingCount = bookings.filter(b => b.status === 'pending' && !b.autoCancelled).length
 
@@ -561,7 +636,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile }) {
     name: d.dept, value: d.count,
   })), [deptStats])
 
-  const noswColor = (rate:number) => rate >= 20 ? '#EF4444' : rate >= 10 ? '#F59E0B' : '#10B981'
+  const noswColor = (rate:number) => rate >= 20 ? '#F43F5E' : rate >= 10 ? '#F59E0B' : '#14B8A6'
   const openDetail = useCallback((type: DetailType) => setDetail(type), [])
 
   const KPI = [
@@ -594,6 +669,14 @@ export function AdminDashboard({ bookings, rooms, users, isMobile }) {
           ))}
         </div>
       </div>
+
+      {/* 차트 데이터 로딩 인디케이터 */}
+      {loadingChart && (
+        <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 16px', background:'#F5F5FF', borderRadius:10, fontSize:12, color:'#6366F1' }}>
+          <RefreshCw size={13} strokeWidth={1.8} style={{ animation:'spin 1s linear infinite' }}/>
+          통계 데이터를 불러오는 중…
+        </div>
+      )}
 
       {/* ── KPI 3개 ── */}
       <div className={`grid gap-3 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
@@ -734,10 +817,10 @@ export function AdminDashboard({ bookings, rooms, users, isMobile }) {
               <Bar dataKey="count" radius={[4,4,0,0]} maxBarSize={32}>
                 {hourDist.map((h,i) => (
                   <Cell key={i} fill={
-                    h.count === maxHour && maxHour > 0 ? '#6366F1' :
-                    h.count > maxHour * 0.6             ? '#818CF8' :
-                    h.count > maxHour * 0.3             ? '#A5B4FC' :
-                    h.count > 0                         ? '#C7D2FE' : '#F1F5F9'
+                    h.count === maxHour && maxHour > 0 ? '#0E7490' :
+                    h.count > maxHour * 0.6             ? '#0891B2' :
+                    h.count > maxHour * 0.3             ? '#22D3EE' :
+                    h.count > 0                         ? '#A5F3FC' : '#F0FDFF'
                   }/>
                 ))}
               </Bar>
@@ -787,7 +870,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile }) {
           <AreaChart data={dayRange} margin={{ top:4, right:4, bottom:0, left:-20 }}>
             <defs>
               <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%"   stopColor="#6366F1" stopOpacity={0.22}/>
+                <stop offset="0%"   stopColor="#8B5CF6" stopOpacity={0.28}/>
                 <stop offset="100%" stopColor="#6366F1" stopOpacity={0}/>
               </linearGradient>
             </defs>
@@ -795,8 +878,8 @@ export function AdminDashboard({ bookings, rooms, users, isMobile }) {
             <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={false} interval="preserveStartEnd"/>
             <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false}/>
             <Tooltip contentStyle={CHART_STYLE} formatter={(v:any)=>[`${v}건`,'예약']}/>
-            <Area type="monotone" dataKey="count" stroke="#6366F1" strokeWidth={2} fill="url(#areaGrad)" dot={false}
-              activeDot={{ r:5, fill:'#6366F1', strokeWidth:2, stroke:'#fff' }}/>
+            <Area type="monotone" dataKey="count" stroke="#7C3AED" strokeWidth={2.5} fill="url(#areaGrad)" dot={false}
+              activeDot={{ r:5, fill:'#7C3AED', strokeWidth:2, stroke:'#fff' }}/>
           </AreaChart>
         </ResponsiveContainer>
       </CardShell>
@@ -805,6 +888,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile }) {
       {detail && (
         <DetailDrawer type={detail} rooms={rooms} users={users}
           initFrom={dateFrom} initTo={dateTo}
+          onDetail={onDetail}
           onClose={()=>setDetail(null)}/>
       )}
     </div>
@@ -1656,12 +1740,6 @@ export function AdminApprovals({ bookings, rooms, users, onApprove, onReject, sh
               {s==='latest' ? '최신순' : '과거순'}
             </button>
           ))}
-          <select value={floorFilter === 'ALL' ? 'ALL' : String(floorFilter)}
-            onChange={e => setFloorFilter(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
-            style={{ height:32, border:'0.5px solid #E2E8F0', borderRadius:8, padding:'0 8px', fontSize:12, background:'#fff', color:'#64748B', outline:'none' }}>
-            <option value="ALL">전체 층</option>
-            {floors.map(f => <option key={f} value={String(f)}>{f}층</option>)}
-          </select>
           <div style={{ position:'relative', minWidth:140, maxWidth:200 }}>
             <svg style={{ position:'absolute', left:8, top:'50%', transform:'translateY(-50%)', opacity:.35, pointerEvents:'none' }} width="13" height="13" viewBox="0 0 16 16" fill="none">
               <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5"/>
