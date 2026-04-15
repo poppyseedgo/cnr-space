@@ -181,7 +181,12 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
                           border: isActive ? "1px solid #FECDD3" : "1px solid transparent",
                           borderRadius:10, padding:"10px 14px",
                           display:"flex", justifyContent:"space-between", alignItems:"center",
-                        }}>
+                          cursor:"pointer",
+                        }}
+                          onClick={()=>onDetail&&onDetail(b)}
+                          onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background=isActive?"#FFE4E6":"#F1F5F9"}}
+                          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background=isActive?"#FFF1F2":"#F8FAFC"}}
+                        >
                           <div style={{flex:1,minWidth:0,marginRight:10}}>
                             <div style={{fontSize:13,color:"#111111",fontWeight:600,
                               overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
@@ -206,9 +211,14 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
 
       {/* ── 버튼 footer ── */}
       <div style={{padding: isMobile ? "12px 20px 24px" : "12px 28px 20px",
-        flexShrink:0, borderTop:"1px solid #F1F5F9"}}>
+        flexShrink:0, borderTop:"1px solid #F1F5F9", display:"flex", gap:8}}>
+        <button className="btn" onClick={onClose}
+          style={{flex:"0 0 80px", background:"#F1F5F9", color:"#64748B", padding:"13px 8px",
+            fontSize:14, fontWeight:600, borderRadius:12}}>
+          닫기
+        </button>
         <button className="btn" onClick={()=>onBook(status)}
-          style={{width:"100%", background:"#111111", color:"#fff", padding:"13px 8px",
+          style={{flex:1, background:"#111111", color:"#fff", padding:"13px 8px",
             fontSize:14, fontWeight:600, borderRadius:12}}>
           이 회의실 예약하기
         </button>
