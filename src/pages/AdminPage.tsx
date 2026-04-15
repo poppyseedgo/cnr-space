@@ -565,25 +565,6 @@ export function AdminDashboard({ bookings, rooms, users, isMobile }) {
         ))}
       </div>
 
-      {/* 예약 추이 */}
-      <CardShell type="bookings" onClick={openDetail}>
-        <div style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:2 }}>예약 추이</div>
-        <div style={{ fontSize:11, color:'#94A3B8', marginBottom:16 }}>{dateFrom} ~ {dateTo} · {dayRange.length > 31 ? '주간 집계' : '일간 집계'}</div>
-        <div style={{ display:'flex', alignItems:'flex-end', gap:dayRange.length>20?2:4, height:80 }}>
-          {dayRange.map((d,i)=>(
-            <div key={i} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
-              {d.count>0&&dayRange.length<=20&&<div style={{ fontSize:8, color:d.isToday?'#111':'#94A3B8', fontWeight:600 }}>{d.count}</div>}
-              <div style={{ width:'100%', borderRadius:'2px 2px 0 0', height:Math.max(d.count/maxDay*60,d.count>0?3:1), background:d.isToday?'#111':d.count>0?'#CBD5E1':'#F1F5F9', transition:'height 0.3s' }}/>
-              {!isMobile&&dayRange.length<=20&&<div style={{ fontSize:7, color:d.isToday?'#111':'#CBD5E1', fontWeight:d.isToday?700:400 }}>{d.label}</div>}
-            </div>
-          ))}
-        </div>
-        {(isMobile||dayRange.length>20)&&<div style={{ display:'flex', justifyContent:'space-between', marginTop:4 }}>
-          <span style={{ fontSize:9, color:'#94A3B8' }}>{dayRange[0]?.label}</span>
-          <span style={{ fontSize:9, color:'#94A3B8' }}>{dayRange[dayRange.length-1]?.label}</span>
-        </div>}
-      </CardShell>
-
       <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr':'1fr 1fr', gap:16 }}>
         {/* 회의실별 */}
         <CardShell type="rooms" onClick={openDetail}>
@@ -663,23 +644,6 @@ export function AdminDashboard({ bookings, rooms, users, isMobile }) {
         </CardShell>
       </div>
 
-      {/* 사용자 현황 */}
-      <CardShell type="users" onClick={openDetail}>
-        <div style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:16 }}>사용자 현황</div>
-        <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr 1fr':'repeat(4,1fr)', gap:12 }}>
-          {[
-            {label:'전체 사용자', value:users.length, color:'#111'},
-            {label:'ADMIN',      value:users.filter(u=>u.role==='ADMIN').length, color:'#7C3AED'},
-            {label:'기간 내 예약자', value:new Set(confirmed.map(b=>b.user)).size, color:'#2563EB'},
-            {label:'활성 부서',   value:new Set(confirmed.map(b=>b.dept).filter(Boolean)).size, color:'#0891B2'},
-          ].map((s,i)=>(
-            <div key={i} style={{ background:'#F8FAFC', borderRadius:12, padding:'14px 16px' }}>
-              <div style={{ fontSize:10, fontWeight:600, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>{s.label}</div>
-              <div style={{ fontSize:24, fontWeight:600, color:s.color }}>{s.value}</div>
-            </div>
-          ))}
-        </div>
-      </CardShell>
 
       {/* Detail Drawer */}
       {detail && (
@@ -880,8 +844,8 @@ export function AdminRooms({ showToast, isMobile }) {
       <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:12}}>
         {rooms.map(r=>{const fl=getFloor(r.floor_id);return(
           <div key={r.room_id} className="anm" style={{background:'#fff',borderRadius:16,overflow:'hidden',opacity:r.is_active?1:0.6}}>
-            <div style={{display:'flex',gap:16,padding:'16px 20px'}}>
-              <div style={{width:72,height:72,borderRadius:10,overflow:'hidden',flexShrink:0,background:'#F8FAFC'}}>
+            <div style={{display:'flex',gap:16,padding:'20px 20px 16px'}}>
+              <div style={{width:88,height:88,borderRadius:12,overflow:'hidden',flexShrink:0,background:'#F8FAFC'}}>
                 {r.thumbnail?<img src={r.thumbnail} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center'}}><Building2 size={24} strokeWidth={1.8} color="#CBD5E1"/></div>}
               </div>
               <div style={{flex:1,minWidth:0}}>
@@ -902,7 +866,7 @@ export function AdminRooms({ showToast, isMobile }) {
         )})}
       </div>
       {editRoom&&(<ModalPortal><div onClick={e=>e.target===e.currentTarget&&setEditRoom(null)} style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.55)',backdropFilter:'blur(6px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
-        <div className="anm" style={{background:'#fff',borderRadius:16,width:'100%',maxWidth:460,maxHeight:'90vh',overflow:'auto',padding:'24px',boxShadow:'0 20px 60px rgba(0,0,0,0.15)'}}>
+        <div className="anm" style={{background:'#fff',borderRadius:16,width:'100%',maxWidth:460,maxHeight:'88vh',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(0,0,0,0.15)'}}>\n          <div style={{overflowY:'auto',flex:1,padding:'24px'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
             <div style={{fontSize:16,fontWeight:600,color:'#111'}}>{editRoom?.room_id?'회의실 정보 수정':'새 회의실 추가'}</div>
             <button className="btn" onClick={()=>setEditRoom(null)} style={{width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:'50%',background:'#F1F5F9',color:'#64748B'}}><X size={14} strokeWidth={1.8}/></button>
@@ -927,7 +891,9 @@ export function AdminRooms({ showToast, isMobile }) {
               <input ref={galleryRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={handleGalleryUpload}/><button className="btn" onClick={()=>galleryRef.current?.click()} disabled={uploading} style={{width:'100%',padding:'10px',borderRadius:10,border:'1.5px dashed #CBD5E1',background:'#F8FAFC',color:'#64748B',fontSize:12,fontWeight:600,display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><ImagePlus size={13} strokeWidth={1.8}/>{uploading?'업로드 중...':'갤러리 이미지 추가'}</button>
             </div>
           </>)}
-          <div style={{display:'flex',gap:8,marginTop:20}}>
+          </div>
+          {/* sticky footer */}
+          <div style={{display:'flex',gap:8,padding:'12px 24px 20px',borderTop:'1px solid #F1F5F9',flexShrink:0}}>
             <button className="btn" onClick={()=>setEditRoom(null)} style={{flex:1,background:'#F1F5F9',color:'#64748B',padding:'12px',fontSize:13,borderRadius:12}}>취소</button>
             <button className="btn" onClick={saveEdit} style={{flex:1,background:'#111',color:'#fff',padding:'12px',fontSize:13,fontWeight:600,borderRadius:12}}>저장</button>
           </div>
