@@ -9,7 +9,18 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
   const floor    = getFloor(r.floor_id);
   const features = r.features ?? [];
   const today    = todayStr();
-  const todayBks = bookings.filter(b=>b.room_id===r.room_id&&tsDate(b.start_at)===today&&!b.autoCancelled&&!b.earlyEnded).sort((a,b)=>a.start_at.localeCompare(b.start_at));
+  // 오늘 예약 현황 정책:
+  //   표시 O — 미래 예약 / 진행중 / 종료 / 노쇼(system 자동취소) / 조기반납 / 승인대기
+  //   표시 X — 사용자 직접 취소(user) / 강제취소(admin) / 거절(rejected)
+  const todayBks = bookings
+    .filter(b =>
+      b.room_id === r.room_id &&
+      tsDate(b.start_at) === today &&
+      b.status !== 'rejected' &&
+      b.cancelledBy !== 'user' &&
+      b.cancelledBy !== 'admin'
+    )
+    .sort((a,b) => a.start_at.localeCompare(b.start_at));
   const status   = getRoomStatus(r.room_id, bookings, today);
   const thumbnail = r.thumbnail ?? '';
 
@@ -174,30 +185,58 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
                 : <div style={{display:"flex",flexDirection:"column",gap:6}}>
                     {todayBks.map(b => {
                       const bNow = nowMinutes();
-                      const isActive = tsMin(b.start_at) <= bNow && bNow < tsMin(b.end_at);
+                      const startMin = tsMin(b.start_at);
+                      const endMin   = tsMin(b.end_at);
+
+                      // ── 상태 분류 ────────────────────────────────────────
+                      const isNoshow    = b.autoCancelled && b.cancelledBy === 'system' && !b.checkedIn;
+                      const isEarlyEnd  = !b.autoCancelled && b.earlyEnded;
+                      const isDone      = !b.autoCancelled && !b.earlyEnded && endMin <= bNow;
+                      const isActive    = !b.autoCancelled && !b.earlyEnded && startMin <= bNow && bNow < endMin;
+                      const isFuture    = !b.autoCancelled && !b.earlyEnded && startMin > bNow;
+                      const isPending   = !b.autoCancelled && b.status === 'pending';
+
+                      // ── 카드 스타일 ──────────────────────────────────────
+                      const bg     = isActive  ? "#FFF1F2"
+                                   : isNoshow  ? "#F8FAFC"
+                                   : "#F8FAFC";
+                      const border = isActive  ? "1px solid #FECDD3"
+                                   : isPending ? "1px solid #FCD34D"
+                                   : "1px solid transparent";
+                      const dimmed = isNoshow || isDone;
+
                       return (
                         <div key={b.id} style={{
-                          background: isActive ? "#FFF1F2" : "#F8FAFC",
-                          border: isActive ? "1px solid #FECDD3" : "1px solid transparent",
-                          borderRadius:10, padding:"10px 14px",
+                          background: bg, border, borderRadius:10, padding:"10px 14px",
                           display:"flex", justifyContent:"space-between", alignItems:"center",
-                          cursor:"pointer",
+                          cursor: dimmed ? "default" : "pointer",
+                          opacity: dimmed ? 0.6 : 1,
                         }}
-                          onClick={()=>onDetail&&onDetail(b)}
-                          onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background=isActive?"#FFE4E6":"#F1F5F9"}}
-                          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background=isActive?"#FFF1F2":"#F8FAFC"}}
+                          onClick={()=> !dimmed && onDetail && onDetail(b)}
+                          onMouseEnter={e=>{ if(!dimmed) (e.currentTarget as HTMLElement).style.background = isActive ? "#FFE4E6" : "#F1F5F9" }}
+                          onMouseLeave={e=>{ if(!dimmed) (e.currentTarget as HTMLElement).style.background = bg }}
                         >
                           <div style={{flex:1,minWidth:0,marginRight:10}}>
-                            <div style={{fontSize:13,color:"#111111",fontWeight:600,
-                              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                              {isActive && <span style={{width:7,height:7,borderRadius:"50%",background:"#E11D48",display:"inline-block",verticalAlign:"middle",flexShrink:0,marginRight:4}}/>}
+                            {/* 상태 뱃지 */}
+                            <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:3}}>
+                              {isActive   && <span style={{width:7,height:7,borderRadius:"50%",background:"#E11D48",display:"inline-block",flexShrink:0}}/>}
+                              {isNoshow   && <span style={{fontSize:10,fontWeight:600,background:"#FEF3C7",color:"#92400E",borderRadius:4,padding:"1px 5px"}}>노쇼</span>}
+                              {isEarlyEnd && <span style={{fontSize:10,fontWeight:600,background:"#EDE9FE",color:"#7C3AED",borderRadius:4,padding:"1px 5px"}}>조기반납</span>}
+                              {isDone     && <span style={{fontSize:10,fontWeight:600,background:"#F1F5F9",color:"#94A3B8",borderRadius:4,padding:"1px 5px"}}>종료</span>}
+                              {isPending  && <span style={{fontSize:10,fontWeight:600,background:"#FEF3C7",color:"#D97706",borderRadius:4,padding:"1px 5px"}}>승인대기</span>}
+                            </div>
+                            <div style={{
+                              fontSize:13, fontWeight:600,
+                              color: dimmed ? "#94A3B8" : "#111111",
+                              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                            }}>
                               {b.title}
                             </div>
                             <div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>{b.user} · {b.dept}</div>
                           </div>
-                          <div style={{fontSize:12,color:"#64748B",fontWeight:600,flexShrink:0,textAlign:"right"}}>
+                          <div style={{fontSize:12,color:dimmed?"#CBD5E1":"#64748B",fontWeight:600,flexShrink:0,textAlign:"right"}}>
                             {fmtTSFull(b.start_at)}<br/>
-                            <span style={{color:"#94A3B8",fontWeight:400}}>~ {fmtTSFull(b.end_at)}</span>
+                            <span style={{color:"#CBD5E1",fontWeight:400}}>~ {fmtTSFull(b.end_at)}</span>
                           </div>
                         </div>
                       );
