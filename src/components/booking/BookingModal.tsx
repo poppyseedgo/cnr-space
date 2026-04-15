@@ -884,7 +884,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               취소
             </button>
             <button className="btn" onClick={()=>setStep(2)} disabled={!canGoStep2}
-              style={{flex:2,padding:"13px",fontSize:14,fontWeight:600,borderRadius:12,
+              style={{flex:1,padding:"13px",fontSize:14,fontWeight:600,borderRadius:12,
                 background:canGoStep2?"#111111":"#E2E8F0",
                 color:canGoStep2?"#fff":"#94A3B8",
                 cursor:canGoStep2?"pointer":"not-allowed"}}>
@@ -913,7 +913,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   setIsSubmitting(false);
                 }
               }}
-              style={{flex:2,padding:"15px",fontSize:15,fontWeight:600,borderRadius:14,
+              style={{flex:1,padding:"15px",fontSize:15,fontWeight:600,borderRadius:14,
                 background:canSubmit?"#111111":"#E2E8F0",
                 color:canSubmit?"#fff":"#94A3B8",
                 cursor:canSubmit?"pointer":"not-allowed",

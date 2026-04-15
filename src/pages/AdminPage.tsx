@@ -1348,7 +1348,7 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
                 <div style={{ display:'flex', gap:8, marginBottom:24 }}>
                   <button className="btn" onClick={closeModal} style={{ flex:1, background:'#F1F5F9', color:'#64748B', padding:'12px', fontSize:13, borderRadius:12 }}>취소</button>
                   <button className="btn" onClick={saveEdit} disabled={saving}
-                    style={{ flex:2, background:'#111', color:'#fff', padding:'12px', fontSize:13, fontWeight:600, borderRadius:12, opacity:saving?0.6:1 }}>
+                    style={{ flex:1, background:'#111', color:'#fff', padding:'12px', fontSize:13, fontWeight:600, borderRadius:12, opacity:saving?0.6:1 }}>
                     {saving ? '저장 중...' : '저장'}
                   </button>
                 </div>

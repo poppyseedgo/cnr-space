@@ -164,8 +164,8 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         const BtnClose    = () => <button className="btn" onClick={onClose} style={{flex:1,background:"#F1F5F9",color:"#64748B",padding:"13px 8px",borderRadius:12}}>닫기</button>
         const BtnCancel   = () => <button className="btn" onClick={()=>onCancel(b.id)} style={{flex:1,background:"#FEF2F2",border:"1px solid #FCA5A5",color:"#DC2626",padding:"13px 8px",fontSize:isMobile?12:13,borderRadius:12}}>예약 취소</button>
         const BtnEdit     = () => <button className="btn" onClick={()=>{onClose();onEdit(b);}} style={{flex:1,background:"#EFF6FF",border:"1px solid #BFDBFE",color:"#1D4ED8",padding:"13px 8px",fontSize:isMobile?12:13,fontWeight:600,borderRadius:12}}>예약 변경</button>
-        const BtnCheckin  = () => <button className="btn" onClick={()=>{onCheckIn(b.id);onClose();}} style={{flex:2,background:"#16A34A",color:"#fff",padding:"13px 8px",fontSize:isMobile?13:14,fontWeight:600,borderRadius:12}}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><CheckCircle2 size={14} strokeWidth={1.8}/>체크인하기</span></button>
-        const BtnApprove  = () => <button className="btn" onClick={()=>{onApprove(b.id);onClose();}} style={{flex:2,background:"#16A34A",color:"#fff",padding:"13px 8px",fontSize:isMobile?13:14,fontWeight:600,borderRadius:12}}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><ShieldCheck size={14} strokeWidth={1.8}/>승인</span></button>
+        const BtnCheckin  = () => <button className="btn" onClick={()=>{onCheckIn(b.id);onClose();}} style={{flex:1,background:"#16A34A",color:"#fff",padding:"13px 8px",fontSize:isMobile?13:14,fontWeight:600,borderRadius:12}}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><CheckCircle2 size={14} strokeWidth={1.8}/>체크인하기</span></button>
+        const BtnApprove  = () => <button className="btn" onClick={()=>{onApprove(b.id);onClose();}} style={{flex:1,background:"#16A34A",color:"#fff",padding:"13px 8px",fontSize:isMobile?13:14,fontWeight:600,borderRadius:12}}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><ShieldCheck size={14} strokeWidth={1.8}/>승인</span></button>
         const BtnReject   = () => <button className="btn" onClick={()=>setShowRejectInput(true)} style={{flex:1,background:"#FEF2F2",border:"1px solid #FCA5A5",color:"#DC2626",padding:"13px 8px",fontSize:isMobile?12:13,borderRadius:12}}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><ShieldX size={13} strokeWidth={1.8}/>거절</span></button>
         const BtnForce    = () => <button className="btn" onClick={()=>{onForceCancel(b.id,'관리자 강제취소');onClose();}} style={{flex:1,background:"#FEF2F2",border:"1px solid #FCA5A5",color:"#DC2626",padding:"13px 8px",fontSize:isMobile?12:13,borderRadius:12}}>강제취소</button>
 
@@ -187,7 +187,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
                 </div>
                 <div style={{display:"flex",gap:8,marginBottom:8}}>
                   <button className="btn" onClick={()=>{setShowRejectInput(false);setRejectReasonInput('');}} style={{flex:1,background:"#F1F5F9",color:"#64748B",padding:"10px 8px",borderRadius:10,fontSize:12}}>취소</button>
-                  <button className="btn" onClick={()=>{onReject(b.id,rejectReasonInput||'');setShowRejectInput(false);setRejectReasonInput('');onClose();}} style={{flex:2,background:"#DC2626",color:"#fff",padding:"10px 8px",borderRadius:10,fontSize:12,fontWeight:600}}>거절 확정</button>
+                  <button className="btn" onClick={()=>{onReject(b.id,rejectReasonInput||'');setShowRejectInput(false);setRejectReasonInput('');onClose();}} style={{flex:1,background:"#DC2626",color:"#fff",padding:"10px 8px",borderRadius:10,fontSize:12,fontWeight:600}}>거절 확정</button>
                 </div>
               </div>
             </div>
