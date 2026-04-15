@@ -37,7 +37,7 @@ export function BookingStatusBadge({
   const isRejected       = b.status === 'rejected'
   const isExpiredPending = b.status === 'pending' && b.autoCancelled
   const isAdminCancel    = b.autoCancelled && b.cancelledBy === 'admin' && !isRejected
-  const isNoshow         = b.autoCancelled && b.cancelledBy === 'system' && !isRejected
+  const isNoshow         = b.autoCancelled && b.cancelledBy === 'system' && !isRejected && b.status !== 'pending'
   const isUserCancel     = b.autoCancelled && b.cancelledBy === 'user'
 
   // ── 진행 상태 판별 ──────────────────────────────────────────────
