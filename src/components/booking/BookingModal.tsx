@@ -1085,7 +1085,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               <div ref={attendeeRef} style={{position:"relative"}}>
                 <input value={attendeeQ} onChange={e=>{setAttendeeQ(e.target.value);setAttendeeFocus(true);}}
                   onFocus={()=>setAttendeeFocus(true)}
-                  placeholder="참석자에게 메일이 발송됩니다"
+                  placeholder="팀즈에 등록된 이름으로 검색"
                   style={{width:"100%",background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
                     color:"#111",padding:"12px 16px",fontSize:13,outline:"none"}}/>
                 {attendeeFocus && attendeeSuggestions.length > 0 && (
