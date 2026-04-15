@@ -151,6 +151,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
         <BookingListTable
           bookings={baseBookings}
           rooms={allRooms}
+          users={allUsers}
           currentUser={currentUser}
           currentUserEmail={currentUserEmail}
           onDetail={onDetail}

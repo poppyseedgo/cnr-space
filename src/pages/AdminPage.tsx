@@ -401,7 +401,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
       </div>
       {activeTab==='dashboard' && <AdminDashboard bookings={bookings} rooms={rooms} users={users} isMobile={isMobile}/>}
       {activeTab==='bookings'  && <AdminBookings  bookings={bookings} setBookings={setBookings} rooms={rooms} onForceCancel={onForceCancel} showToast={showToast} isMobile={isMobile} PER_PAGE={PER_PAGE} onDetail={onDetail}/>}
-      {activeTab==='approvals' && <AdminApprovals bookings={bookings} rooms={rooms} onApprove={onApprove} onReject={onReject} showToast={showToast} isMobile={isMobile} onDetail={onDetail}/>}
+      {activeTab==='approvals' && <AdminApprovals bookings={bookings} rooms={rooms} users={users} onApprove={onApprove} onReject={onReject} showToast={showToast} isMobile={isMobile} onDetail={onDetail}/>}
       {activeTab==='rooms'     && <AdminRooms     showToast={showToast} isMobile={isMobile}/>}
       {activeTab==='users'     && <AdminUsers     users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile}/>}
     </div>
@@ -515,10 +515,27 @@ export function AdminDashboard({ bookings, rooms, users, isMobile }) {
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-      {/* 전역 기간 선택 */}
+      {/* 통계 기간 */}
       <div style={{ background:'#fff', borderRadius:14, padding:'14px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
         <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>📊 통계 대시보드</div>
-        <DateRangePicker from={dateFrom} to={dateTo} presetId={presetId} onChangeFn={(f,t)=>{setDateFrom(f);setDateTo(t)}} onPreset={handlePreset}/>
+        <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+            style={{ height:34, border:'0.5px solid #E2E8F0', borderRadius:8, padding:'0 8px', fontSize:12, background:'#fff', color:'#111', width:112, outline:'none' }}/>
+          <span style={{ fontSize:12, color:'#CBD5E1' }}>~</span>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+            style={{ height:34, border:'0.5px solid #E2E8F0', borderRadius:8, padding:'0 8px', fontSize:12, background:'#fff', color:'#111', width:112, outline:'none' }}/>
+          {[
+            { label:'7일',    fn:():[string,string]=>[addDaysStr(todayStr(),-6), todayStr()] },
+            { label:'30일',   fn:():[string,string]=>[addDaysStr(todayStr(),-29), todayStr()] },
+            { label:'이번 달',fn:():[string,string]=>[getMonthStart(0), todayStr()] },
+            { label:'지난 달',fn:():[string,string]=>[getMonthStart(-1), getMonthEnd(-1)] },
+          ].map(p => (
+            <button key={p.label} className="btn" onClick={() => { const [f,t]=p.fn(); setDateFrom(f); setDateTo(t) }}
+              style={{ height:34, padding:'0 11px', border:'0.5px solid #E2E8F0', borderRadius:8, fontSize:12, background:'#fff', color:'#64748B', cursor:'pointer', whiteSpace:'nowrap' }}>
+              {p.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* KPI */}
@@ -1342,32 +1359,29 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
 // ─── AdminApprovals ────────────────────────────────────────────────────────────
 // 승인 정책:
 //   - 승인/거절 가능 시간: start_at 1분 전까지 (nowMs < startMs - 60000)
-//   - 기한 초과: status='pending' && autoCancelled=true (App.tsx tick에서 자동 처리)
-//   - 거절: status='rejected' && autoCancelled=true (관리자가 명시적 거절)
+//   - 기한 초과: status='pending' && autoCancelled=true
+//   - 거절: status='rejected' && autoCancelled=true
 //   - 승인 완료: status='confirmed'
-export function AdminApprovals({ bookings, rooms, onApprove, onReject, showToast, isMobile, onDetail }) {
+import { BookingListTable } from '../components/common/BookingListTable'
+
+export function AdminApprovals({ bookings, rooms, users, onApprove, onReject, showToast, isMobile, onDetail }) {
   const [filterStatus, setFilterStatus] = useState<'pending'|'confirmed'|'rejected'|'expired'|'all'>('pending')
   const [rejectModal,  setRejectModal]  = useState<{id:string;title:string;user:string}|null>(null)
   const [rejectReason, setRejectReason] = useState('')
   const [processing,   setProcessing]   = useState<string|null>(null)
   const [nowMs,        setNowMs]        = useState(Date.now())
-  // 기간 조회 (완료/거절/기한초과 이력)
-  const [presetId,     setPresetId]     = useState('thisMonth')
   const [dateFrom,     setDateFrom]     = useState(getMonthStart(0))
   const [dateTo,       setDateTo]       = useState(todayStr())
   const [rangeData,    setRangeData]    = useState<Booking[]>([])
   const [loadingRange, setLoadingRange] = useState(false)
 
-  // 1분마다 nowMs 갱신 (승인 가능 시간 잔여 표시용)
   useEffect(() => {
     const iv = setInterval(() => setNowMs(Date.now()), 10000)
     return () => clearInterval(iv)
   }, [])
 
-  // admin_only 방 ID 목록
   const adminRoomIds = useMemo(() => new Set(rooms.filter(r => r.is_admin_only).map(r => r.room_id)), [rooms])
 
-  // 기간 조회
   const fetchRange = useCallback(async () => {
     setLoadingRange(true)
     try {
@@ -1379,8 +1393,6 @@ export function AdminApprovals({ bookings, rooms, onApprove, onReject, showToast
 
   useEffect(() => { fetchRange() }, [fetchRange])
 
-  // 병합: admin 방 실시간 전체 예약 + 기간 조회 이력
-  // liveIds를 admin 방 전체로 확장해야 승인 후 rangeData 구버전이 mergedData에 부활하지 않음
   const mergedData = useMemo(() => {
     const liveAll = bookings.filter(b => adminRoomIds.has(b.room_id))
     const liveIds = new Set(liveAll.map(b => b.id))
@@ -1388,12 +1400,11 @@ export function AdminApprovals({ bookings, rooms, onApprove, onReject, showToast
     return [...liveAll, ...historical].sort((a,b) => b.start_at.localeCompare(a.start_at))
   }, [bookings, rangeData, adminRoomIds])
 
-  // 상태 분류
   const classify = (b: Booking) => {
-    if (b.status === 'pending' && b.autoCancelled) return 'expired'   // 기한 초과 자동취소
-    if (b.status === 'pending' && !b.autoCancelled) return 'pending'  // 대기 중
-    if (b.status === 'confirmed') return 'confirmed'                   // 승인 완료
-    if (b.status === 'rejected')  return 'rejected'                    // 거절
+    if (b.status === 'pending' && b.autoCancelled)  return 'expired'
+    if (b.status === 'pending' && !b.autoCancelled) return 'pending'
+    if (b.status === 'confirmed') return 'confirmed'
+    if (b.status === 'rejected')  return 'rejected'
     return 'other'
   }
 
@@ -1402,7 +1413,6 @@ export function AdminApprovals({ bookings, rooms, onApprove, onReject, showToast
     return mergedData.filter(b => classify(b) === filterStatus)
   }, [mergedData, filterStatus])
 
-  // 탭 카운트
   const counts = useMemo(() => ({
     pending:   mergedData.filter(b => classify(b) === 'pending').length,
     confirmed: mergedData.filter(b => classify(b) === 'confirmed').length,
@@ -1411,15 +1421,8 @@ export function AdminApprovals({ bookings, rooms, onApprove, onReject, showToast
     all:       mergedData.length,
   }), [mergedData])
 
-  // 승인 가능 여부 (start_at 1분 전까지)
-  const canApprove = (b: Booking) =>
-    nowMs < new Date(b.start_at).getTime() - 60_000
-
-  // 남은 승인 가능 시간 (분)
-  const minsLeft = (b: Booking) => {
-    const diff = Math.floor((new Date(b.start_at).getTime() - 60_000 - nowMs) / 60_000)
-    return Math.max(0, diff)
-  }
+  const canApprove = (b: Booking) => nowMs < new Date(b.start_at).getTime() - 60_000
+  const minsLeft   = (b: Booking) => Math.max(0, Math.floor((new Date(b.start_at).getTime() - 60_000 - nowMs) / 60_000))
 
   const doApprove = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -1440,158 +1443,86 @@ export function AdminApprovals({ bookings, rooms, onApprove, onReject, showToast
   }
 
   const TABS = [
-    { id:'pending',   label:`대기`, count:counts.pending,   color:'#D97706', activeBg:'#FEF3C7' },
-    { id:'confirmed', label:`승인완료`, count:counts.confirmed, color:'#16A34A', activeBg:'#DCFCE7' },
-    { id:'rejected',  label:`거절`, count:counts.rejected,  color:'#DC2626', activeBg:'#FEF2F2' },
-    { id:'expired',   label:`기한초과`, count:counts.expired,  color:'#94A3B8', activeBg:'#F1F5F9' },
-    { id:'all',       label:`전체`, count:counts.all,       color:'#111',    activeBg:'#F1F5F9' },
+    { id:'pending',   label:'대기',    count:counts.pending,   color:'#D97706', activeBg:'#FEF3C7' },
+    { id:'confirmed', label:'승인완료', count:counts.confirmed, color:'#16A34A', activeBg:'#DCFCE7' },
+    { id:'rejected',  label:'거절',    count:counts.rejected,  color:'#DC2626', activeBg:'#FEF2F2' },
+    { id:'expired',   label:'기한초과', count:counts.expired,   color:'#94A3B8', activeBg:'#F1F5F9' },
+    { id:'all',       label:'전체',    count:counts.all,       color:'#111',    activeBg:'#F1F5F9' },
   ] as const
 
   return (
     <div className="anm">
-      {/* 헤더: 탭 + 기간 선택 */}
+      {/* 인라인 날짜 필터 */}
       <div style={{ background:'#fff', borderRadius:14, padding:'14px 16px', marginBottom:12 }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12, flexWrap:'wrap', gap:8 }}>
           <div style={{ fontSize:14, fontWeight:600, color:'#111' }}>승인 관리</div>
-          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <DateRangePicker from={dateFrom} to={dateTo} presetId={presetId} compact
-              onChangeFn={(f,t) => { setDateFrom(f); setDateTo(t) }}
-              onPreset={(id,f,t) => { setPresetId(id); setDateFrom(f); setDateTo(t) }}/>
+          <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              style={{ height:32, border:'0.5px solid #E2E8F0', borderRadius:8, padding:'0 8px', fontSize:12, background:'#fff', color:'#111', width:108, outline:'none' }}/>
+            <span style={{ fontSize:12, color:'#CBD5E1' }}>~</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              style={{ height:32, border:'0.5px solid #E2E8F0', borderRadius:8, padding:'0 8px', fontSize:12, background:'#fff', color:'#111', width:108, outline:'none' }}/>
+            {[
+              { label:'이번 달', fn:():[string,string]=>[getMonthStart(0), todayStr()] },
+              { label:'지난 달', fn:():[string,string]=>[getMonthStart(-1), getMonthEnd(-1)] },
+            ].map(p => (
+              <button key={p.label} className="btn" onClick={() => { const [f,t]=p.fn(); setDateFrom(f); setDateTo(t) }}
+                style={{ height:32, padding:'0 10px', border:'0.5px solid #E2E8F0', borderRadius:8, fontSize:12, background:'#fff', color:'#64748B', cursor:'pointer', whiteSpace:'nowrap' }}>
+                {p.label}
+              </button>
+            ))}
             <button className="btn" onClick={fetchRange} disabled={loadingRange}
-              style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 10px', borderRadius:8, background:loadingRange?'#F8FAFC':'#111', color:loadingRange?'#CBD5E1':'#fff', fontSize:11, fontWeight:600, border:'none' }}>
+              style={{ display:'flex', alignItems:'center', gap:4, height:32, padding:'0 10px', borderRadius:8, background:loadingRange?'#F8FAFC':'#111', color:loadingRange?'#CBD5E1':'#fff', fontSize:11, fontWeight:600, border:'none', cursor:loadingRange?'default':'pointer' }}>
               <RefreshCw size={11} strokeWidth={1.8}/>{loadingRange?'조회 중...':'새로고침'}
             </button>
           </div>
         </div>
-        {/* 필터 탭 */}
         <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
           {TABS.map(t => (
             <button key={t.id} className="btn" onClick={() => setFilterStatus(t.id as any)}
-              style={{ padding:'6px 12px', fontSize:11, borderRadius:999, fontWeight:filterStatus===t.id?700:500,
+              style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', fontSize:11, borderRadius:999,
+                fontWeight: filterStatus===t.id ? 700 : 500,
                 background: filterStatus===t.id ? t.activeBg : '#F8FAFC',
-                color: filterStatus===t.id ? t.color : '#64748B',
-                border: filterStatus===t.id ? `1.5px solid ${t.color}40` : '1px solid #E2E8F0' }}>
-              {t.label}
-              {t.count > 0 && <span style={{ marginLeft:5, background: filterStatus===t.id ? t.color : '#E2E8F0', color: filterStatus===t.id ? '#fff' : '#64748B', borderRadius:999, padding:'1px 6px', fontSize:10, fontWeight:600 }}>{t.count}</span>}
+                color:      filterStatus===t.id ? t.color    : '#64748B',
+                border:     filterStatus===t.id ? `1.5px solid ${t.color}40` : '1px solid #E2E8F0' }}>
+              <span>{t.label}</span>
+              {t.count > 0 && <span style={{ background: filterStatus===t.id ? t.color : '#E2E8F0', color: filterStatus===t.id ? '#fff' : '#64748B', borderRadius:999, padding:'1px 6px', fontSize:10, fontWeight:600 }}>{t.count}</span>}
             </button>
           ))}
         </div>
       </div>
 
-      {/* 카드 목록 */}
-      {displayData.length === 0 ? (
-        <div style={{ textAlign:'center', padding:'60px 0', color:'#94A3B8' }}>
-          <div style={{ fontSize:32, marginBottom:8 }}>
-            {filterStatus==='pending'?'✅':filterStatus==='confirmed'?'📋':filterStatus==='rejected'?'🚫':filterStatus==='expired'?'⏰':'📂'}
-          </div>
-          <div style={{ fontSize:14, fontWeight:600 }}>
-            {filterStatus==='pending'?'대기 중인 승인 요청이 없습니다':
-             filterStatus==='confirmed'?'승인된 예약이 없습니다':
-             filterStatus==='rejected'?'거절된 예약이 없습니다':
-             filterStatus==='expired'?'기한 초과된 예약이 없습니다':'해당 기간 내 예약이 없습니다'}
-          </div>
-        </div>
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          {displayData.map(b => {
-            const r = rooms.find(rm => rm.room_id === b.room_id)
+      <BookingListTable
+        bookings={bookings}
+        rooms={rooms}
+        users={users ?? []}
+        currentUser=""
+        onDetail={onDetail ?? (() => {})}
+        loading={loadingRange}
+        controlled={displayData}
+        actionColumn={{
+          header: '처리',
+          render: (b: Booking) => {
             const status = classify(b)
             const isProc = processing === b.id
-            const canAct = status === 'pending' && canApprove(b)
-            const mins = status === 'pending' && !b.autoCancelled ? minsLeft(b) : 0
-            const isExpiredSoon = status === 'pending' && !b.autoCancelled && mins <= 30 && canApprove(b)
-
-            // 카드 스타일
-            const cardStyle: React.CSSProperties = {
-              background: '#fff', borderRadius: 14, padding: '16px 20px',
-              border: status === 'pending' && !b.autoCancelled
-                ? `1.5px solid ${isExpiredSoon ? '#FCA5A5' : '#FCD34D'}`
-                : status === 'confirmed' ? '1.5px solid #86EFAC'
-                : status === 'rejected'  ? '1.5px solid #FCA5A5'
-                : '1.5px solid #E2E8F0',
-              opacity: (status === 'expired') ? 0.75 : 1,
-              cursor: 'pointer',
-            }
-
+            if (status !== 'pending' || b.autoCancelled) return null
+            if (!canApprove(b)) return <span style={{ fontSize:11, color:'#94A3B8', padding:'4px 8px', background:'#F8FAFC', borderRadius:8 }}>마감</span>
+            const mins = minsLeft(b)
             return (
-              <div key={b.id} onClick={() => onDetail && onDetail(b)} style={cardStyle}>
-                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    {/* 배지 행 */}
-                    <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8, flexWrap:'wrap' }}>
-                      {status === 'pending' && !b.autoCancelled && (
-                        <span style={{ background:'#FEF3C7', color:'#92400E', fontSize:11, fontWeight:600, padding:'3px 10px', borderRadius:999, display:'flex', alignItems:'center', gap:4 }}>
-                          <Clock size={10} strokeWidth={1.8}/> 승인 대기
-                        </span>
-                      )}
-                      {status === 'confirmed' && (
-                        <span style={{ background:'#DCFCE7', color:'#15803D', fontSize:11, fontWeight:600, padding:'3px 10px', borderRadius:999, display:'flex', alignItems:'center', gap:4 }}>
-                          <CheckCircle2 size={10} strokeWidth={1.8}/> 승인 완료
-                        </span>
-                      )}
-                      {status === 'rejected' && (
-                        <span style={{ background:'#FEF2F2', color:'#DC2626', fontSize:11, fontWeight:600, padding:'3px 10px', borderRadius:999, display:'flex', alignItems:'center', gap:4 }}>
-                          <Ban size={10} strokeWidth={1.8}/> 거절됨
-                        </span>
-                      )}
-                      {status === 'expired' && (
-                        <span style={{ background:'#F1F5F9', color:'#94A3B8', fontSize:11, fontWeight:600, padding:'3px 10px', borderRadius:999, display:'flex', alignItems:'center', gap:4 }}>
-                          <AlertCircle size={10} strokeWidth={1.8}/> 승인 기한 초과
-                        </span>
-                      )}
-                      <span style={{ fontSize:12, color:'#94A3B8' }}>{r?.room_name_ko ?? r?.room_name}</span>
-                      {/* 잔여 시간 경고 */}
-                      {isExpiredSoon && (
-                        <span style={{ background:'#FEF2F2', color:'#DC2626', fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:999 }}>
-                          {mins > 0 ? `${mins}분 후 마감` : '곧 마감'}
-                        </span>
-                      )}
-                    </div>
-
-                    <div style={{ fontSize:15, fontWeight:600, color: status==='expired'?'#94A3B8':'#111', marginBottom:4 }}>{b.title}</div>
-                    <div style={{ fontSize:12, color:'#64748B' }}>신청자: {b.user} ({b.dept})</div>
-                    <div style={{ fontSize:12, color:'#64748B', marginTop:2 }}>{fmtTSDateFull(b.start_at)} · {fmtTSRangeFull(b.start_at, b.end_at)}</div>
-                    {b.memo && <div style={{ fontSize:11, color:'#94A3B8', marginTop:4 }}>메모: {b.memo}</div>}
-
-                    {/* 기한 초과 안내 */}
-                    {status === 'expired' && (
-                      <div style={{ marginTop:8, fontSize:11, color:'#94A3B8', background:'#F8FAFC', borderRadius:8, padding:'6px 10px' }}>
-                        ⏰ 승인 가능한 시간이 지나 예약이 자동 취소되었습니다
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 승인/거절 버튼 (pending + canApprove) */}
-                  {status === 'pending' && !b.autoCancelled && (
-                    <div style={{ display:'flex', gap:8, flexShrink:0 }} onClick={e => e.stopPropagation()}>
-                      {canAct ? (
-                        <>
-                          <button className="btn" onClick={e => doApprove(b.id, e)} disabled={isProc}
-                            style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:10, background:'#16A34A', color:'#fff', opacity:isProc?0.6:1 }}>
-                            {isProc ? '처리 중...' : '승인'}
-                          </button>
-                          <button className="btn"
-                            onClick={e => { e.stopPropagation(); setRejectModal({id:b.id,title:b.title,user:b.user}) }}
-                            disabled={isProc}
-                            style={{ padding:'8px 16px', fontSize:12, fontWeight:600, borderRadius:10, background:'#FEF2F2', color:'#DC2626', border:'1px solid #FCA5A5', opacity:isProc?0.6:1 }}>
-                            거절
-                          </button>
-                        </>
-                      ) : (
-                        <div style={{ fontSize:11, color:'#94A3B8', padding:'8px 12px', background:'#F8FAFC', borderRadius:10, border:'1px solid #E2E8F0' }}>
-                          승인 시간 마감
-                        </div>
-                      )}
-                    </div>
-                  )}
+              <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                <div style={{ display:'flex', gap:5 }}>
+                  <button onClick={e => doApprove(b.id, e)} disabled={isProc}
+                    style={{ padding:'5px 10px', fontSize:11, fontWeight:600, borderRadius:8, background:'#16A34A', color:'#fff', border:'none', cursor:isProc?'default':'pointer', opacity:isProc?0.6:1 }}>승인</button>
+                  <button onClick={e => { e.stopPropagation(); setRejectModal({id:b.id,title:b.title,user:b.user}) }} disabled={isProc}
+                    style={{ padding:'5px 10px', fontSize:11, fontWeight:600, borderRadius:8, background:'#FEF2F2', color:'#DC2626', border:'1px solid #FCA5A5', cursor:isProc?'default':'pointer', opacity:isProc?0.6:1 }}>거절</button>
                 </div>
+                {mins <= 30 && <span style={{ fontSize:10, color:'#DC2626', fontWeight:600 }}>{mins > 0 ? `${mins}분 후 마감` : '곧 마감'}</span>}
               </div>
             )
-          })}
-        </div>
-      )}
+          }
+        }}
+      />
 
-      {/* 거절 사유 모달 */}
       {rejectModal && (
         <ModalPortal>
         <div onClick={e => e.target === e.currentTarget && setRejectModal(null)}
@@ -1602,15 +1533,13 @@ export function AdminApprovals({ bookings, rooms, onApprove, onReject, showToast
             <div style={{ fontSize:11, color:'#D97706', background:'#FFFBEB', borderRadius:8, padding:'8px 12px', marginBottom:14 }}>
               ⚠️ 거절 시 예약은 즉시 취소되며 신청자에게 알림이 발송됩니다
             </div>
-            <label style={{ fontSize:11, fontWeight:600, color:'#94A3B8', display:'block', marginBottom:6 }}>거절 사유 (신청자에게 전달됩니다)</label>
+            <label style={{ fontSize:11, fontWeight:600, color:'#94A3B8', display:'block', marginBottom:6 }}>거절 사유</label>
             <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} rows={3}
               placeholder="거절 사유를 입력하세요 (선택)"
               style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:'1px solid #E2E8F0', fontSize:13, outline:'none', resize:'none', background:'#F8FAFC', boxSizing:'border-box' }}/>
             <div style={{ display:'flex', gap:8, marginTop:16 }}>
-              <button className="btn" onClick={() => setRejectModal(null)}
-                style={{ flex:1, background:'#F1F5F9', color:'#64748B', padding:'12px', fontSize:13, borderRadius:12 }}>취소</button>
-              <button className="btn" onClick={doReject} disabled={!!processing}
-                style={{ flex:1, background:'#DC2626', color:'#fff', padding:'12px', fontSize:13, fontWeight:600, borderRadius:12, opacity:processing?0.6:1 }}>
+              <button className="btn" onClick={() => setRejectModal(null)} style={{ flex:1, background:'#F1F5F9', color:'#64748B', padding:'12px', fontSize:13, borderRadius:12 }}>취소</button>
+              <button className="btn" onClick={doReject} disabled={!!processing} style={{ flex:1, background:'#DC2626', color:'#fff', padding:'12px', fontSize:13, fontWeight:600, borderRadius:12, opacity:processing?0.6:1 }}>
                 {processing ? '처리 중...' : '거절 확정'}
               </button>
             </div>
