@@ -181,7 +181,12 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
                           border: isActive ? "1px solid #FECDD3" : "1px solid transparent",
                           borderRadius:10, padding:"10px 14px",
                           display:"flex", justifyContent:"space-between", alignItems:"center",
-                        }}>
+                          cursor: onDetail ? "pointer" : "default",
+                        }}
+                          onClick={()=>onDetail&&onDetail(b)}
+                          onMouseEnter={e=>{ if(onDetail)(e.currentTarget as HTMLElement).style.background=isActive?"#FFE4E6":"#F1F5F9" }}
+                          onMouseLeave={e=>{ (e.currentTarget as HTMLElement).style.background=isActive?"#FFF1F2":"#F8FAFC" }}
+                        >
                           <div style={{flex:1,minWidth:0,marginRight:10}}>
                             <div style={{fontSize:13,color:"#111111",fontWeight:600,
                               overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
