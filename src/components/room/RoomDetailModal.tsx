@@ -9,7 +9,16 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
   const floor    = getFloor(r.floor_id);
   const features = r.features ?? [];
   const today    = todayStr();
-  const todayBks = bookings.filter(b=>b.room_id===r.room_id&&tsDate(b.start_at)===today&&!b.autoCancelled).sort((a,b)=>a.start_at.localeCompare(b.start_at));
+  // ← 필터 정책: rejected·사용자취소(user)·강제취소(admin) 제외, 노쇼(system)·승인대기(pending) 포함
+  const todayBks = bookings
+    .filter(b =>
+      b.room_id === r.room_id &&
+      tsDate(b.start_at) === today &&
+      b.status !== 'rejected' &&
+      b.cancelledBy !== 'user' &&
+      b.cancelledBy !== 'admin'
+    )
+    .sort((a, b) => a.start_at.localeCompare(b.start_at));
   const status   = getRoomStatus(r.room_id, bookings, today);
   const thumbnail = r.thumbnail ?? '';
 
@@ -173,25 +182,56 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
                   </div>
                 : <div style={{display:"flex",flexDirection:"column",gap:6}}>
                     {todayBks.map(b => {
-                      const bNow = nowMinutes();
-                      const isActive = tsMin(b.start_at) <= bNow && bNow < tsMin(b.end_at);
+                      const bNow     = nowMinutes();
+                      const startMin = tsMin(b.start_at);
+                      const endMin   = tsMin(b.end_at);
+
+                      // ← 상태 분기 (설계 정책)
+                      const isNoshow   = b.autoCancelled && b.cancelledBy === 'system' && !b.checkedIn;
+                      const isPending  = !b.autoCancelled && b.status === 'pending';
+                      const isEarlyEnd = !b.autoCancelled && b.earlyEnded;
+                      const isActive   = !b.autoCancelled && !b.earlyEnded && startMin <= bNow && bNow < endMin;
+                      const isDone     = !b.autoCancelled && !b.earlyEnded && endMin <= bNow;
+                      const dimmed     = isNoshow || isDone; // ← 흐리게 표시
+
+                      // ← 상태별 카드 배경색
+                      const cardBg = isActive   ? "#FFF1F2"
+                                   : isPending  ? "#FFFBEB"
+                                   : isEarlyEnd ? "#F0F9FF"
+                                   : "#F8FAFC";
+                      const cardBorder = isActive   ? "1px solid #FECDD3"
+                                       : isPending  ? "1px solid #FEF3C7"
+                                       : isEarlyEnd ? "1px solid #BAE6FD"
+                                       : "1px solid transparent";
+                      const hoverBg   = isActive   ? "#FFE4E6"
+                                      : isPending  ? "#FEF9C3"
+                                      : isEarlyEnd ? "#E0F2FE"
+                                      : "#F1F5F9";
+
                       return (
                         <div key={b.id} style={{
-                          background: isActive ? "#FFF1F2" : "#F8FAFC",
-                          border: isActive ? "1px solid #FECDD3" : "1px solid transparent",
+                          background: cardBg,
+                          border: cardBorder,
                           borderRadius:10, padding:"10px 14px",
                           display:"flex", justifyContent:"space-between", alignItems:"center",
                           cursor:"pointer",
+                          opacity: dimmed ? 0.5 : 1,
                         }}
                           onClick={()=>onDetail&&onDetail(b)}
-                          onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background=isActive?"#FFE4E6":"#F1F5F9"}}
-                          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background=isActive?"#FFF1F2":"#F8FAFC"}}
+                          onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background=hoverBg}}
+                          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background=cardBg}}
                         >
                           <div style={{flex:1,minWidth:0,marginRight:10}}>
                             <div style={{fontSize:13,color:"#111111",fontWeight:600,
-                              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                              {isActive && <span style={{width:7,height:7,borderRadius:"50%",background:"#E11D48",display:"inline-block",verticalAlign:"middle",flexShrink:0,marginRight:4}}/>}
-                              {b.title}
+                              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",
+                              display:"flex",alignItems:"center",gap:5}}>
+                              {/* ← 상태 인디케이터 */}
+                              {isActive   && <span style={{width:7,height:7,borderRadius:"50%",background:"#E11D48",display:"inline-block",flexShrink:0}}/>}
+                              {isPending  && <span style={{fontSize:10,fontWeight:600,color:"#92400E",background:"#FEF3C7",borderRadius:4,padding:"1px 5px",flexShrink:0}}>승인대기</span>}
+                              {isNoshow   && <span style={{fontSize:10,fontWeight:600,color:"#6B7280",background:"#F1F5F9",borderRadius:4,padding:"1px 5px",flexShrink:0}}>노쇼</span>}
+                              {isEarlyEnd && <span style={{fontSize:10,fontWeight:600,color:"#0369A1",background:"#E0F2FE",borderRadius:4,padding:"1px 5px",flexShrink:0}}>조기반납</span>}
+                              {isDone     && <span style={{fontSize:10,fontWeight:600,color:"#94A3B8",background:"#F1F5F9",borderRadius:4,padding:"1px 5px",flexShrink:0}}>종료</span>}
+                              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.title}</span>
                             </div>
                             <div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>{b.user} · {b.dept}</div>
                           </div>
