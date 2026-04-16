@@ -514,8 +514,9 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
 
                 {/* 노쇼 슬롯 */}
                 {rBksCancelled.map(b => {
-                  const sm = tsMin(b.start_at), em = tsMin(b.end_at)
-                  const left = ((sm-7*60)/60)*CW+2, width = Math.max(((em-sm)/60)*CW-4, 20)
+                  const sm = tsMin(b.start_at)
+                  const left = ((sm-7*60)/60)*CW+2
+                  const width = (15/60)*CW-4  // ← 노쇼: 15분 고정 폭 (원래 예약 시간 무시)
                   return (
                     <div key={b.id} onClick={e => { e.stopPropagation(); onBlockClick(b) }}
                       style={{ position: 'absolute', top: 6, bottom: 6, left, width,
