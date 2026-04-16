@@ -158,7 +158,7 @@ async function fetchAttendees(
 function renderAvatar(name: string, avatar_url: string | null | undefined, size = 28): string {
   const initial = (name ?? '?')[0]
   const s = `width:${size}px;height:${size}px;border-radius:50%;flex-shrink:0;`
-  if (avatar_url && avatar_url.startsWith('http')) {
+  if (avatar_url && avatar_url.startsWith('https://')) {
     return `<img src="${avatar_url}" width="${size}" height="${size}" style="${s}object-fit:cover;vertical-align:middle;" />`
   }
   return `<span style="display:inline-flex;align-items:center;justify-content:center;${s}background:#C7D2FE;color:#4338CA;font-size:${Math.floor(size * 0.46)}px;font-weight:700;vertical-align:middle;">${initial}</span>`
@@ -190,11 +190,11 @@ function getSubject(type: string, booking: any, isAttendee = false): string {
     created:          `[C&R SPACE] ✅ 예약 확정 — ${title}`,
     updated:          `[C&R SPACE] 📝 예약 변경 — ${title}`,
     cancelled:        `[C&R SPACE] ❌ 예약 취소 — ${title}`,
-    noshow:           `[C&R SPACE] ⚠️ 미체크인 자동취소 — ${title}`,
-    pending:          `[C&R SPACE] 📋 에메랄드 승인 요청 — ${title}`,
+    noshow:           `[C&R SPACE] ⚠️ 미체크인 경고 — ${title}`,
+    pending:          `[C&R SPACE] 💎 에메랄드 승인 요청 — ${title}`,
     approved:         `[C&R SPACE] ✅ 예약 승인 — ${title}`,
-    rejected:         `[C&R SPACE] ❌ 예약 반려 — ${title}`,
-    attendee_removed:  `[C&R SPACE] 📌 참석자 제외 알림 — ${title}`,
+    rejected:         `[C&R SPACE] ❌ 승인 거절 — ${title}`,
+    attendee_removed:  `[C&R SPACE] 참석자 제외 알림 — ${title}`,
     pending_expiring:  `[C&R SPACE] ⏰ 승인 기한 10분 전 — ${title}`,
     pending_expired:   `[C&R SPACE] ❌ 승인 기한 초과 자동 취소 — ${title}`,
   }
@@ -230,10 +230,10 @@ function getEmailHtml(
     created:          isRecur ? `반복 예약 ${recurBookings.length}건이 확정되었습니다` : '예약이 확정되었습니다',
     updated:          '예약이 변경되었습니다',
     cancelled:        '예약이 취소되었습니다',
-    noshow:           '미체크인으로 자동 취소되었습니다',
+    noshow:           '노쇼로 예약이 자동 취소되었습니다',
     pending:          isRecur ? `반복 예약 ${recurBookings.length}건 승인 요청` : '에메랄드 룸 승인 요청이 접수되었습니다',
     approved:         '예약 요청이 승인되었습니다',
-    rejected:         '예약 요청이 반려되었습니다',
+    rejected:         '승인 요청이 거절되었습니다',
     attendee_removed: '해당 예약의 참석자에서 제외되었습니다',
     pending_expiring: '에메랄드 룸 승인 기한이 10분 후 만료됩니다',
     pending_expired:  '승인 기한 초과로 예약이 자동 취소되었습니다',
