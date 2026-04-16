@@ -6,7 +6,8 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../../utils/time'
 import { getFloor } from '../../data/floors'
-import { searchGraphUsers } from '../../lib/api'
+// [2026-04-17 Step 3] searchGraphUsers import 제거 — 참석자 검색을 DB 호출에서 메모리 필터링(usersProp 기반)으로 전환
+// import { searchGraphUsers } from '../../lib/api'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
 import { UserAvatar } from '../common/UserAvatar'
@@ -77,9 +78,25 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   const [isSearching,   setIsSearching]   = useState(false);
   const [searchedQuery, setSearchedQuery] = useState("");
 
-  // attendeeQ debounce 200ms → Graph API 검색
+  // [2026-04-17 Step 3] 참석자 검색: DB 호출 → 메모리 필터링으로 전환
+  // ────────────────────────────────────────────────────────────────────
+  // 변경 이유:
+  //   - 기존: searchGraphUsers(q) → profiles 테이블 ILIKE %q% 쿼리
+  //           → 인덱스 활용 불가 → 매 키스트로크마다 profiles 529행 Full Scan
+  //           → BookingModal 열 때마다 3~5회 DB 호출 발생
+  //   - 변경: usersProp(앱 시작 시 1회 로드된 전체 users)에서 로컬 필터링
+  //           → DB 호출 0회 + 즉시 반응 + 디바운스 불필요
+  //
+  // 설계 원칙: 마스터 데이터(users 500명)는 앱 시작 시 1회만 로드,
+  //            검색/필터링은 메모리에서 처리 (rooms 패턴과 동일)
+  //
+  // UX 호환성:
+  //   - "길동"으로 "홍길동" 검색 가능 (includes 사용 — ILIKE %q% 와 동일)
+  //   - 이름·이메일·부서 3개 필드 중 하나라도 매칭 (기존 동일)
+  //   - 최대 8개 결과 (기존 LIMIT 8 과 동일)
+  //   - 본인 제외, 퇴사자(is_active=false) 제외 (기존 동일)
   useEffect(() => {
-    const q = attendeeQ.trim();
+    const q = attendeeQ.trim().toLowerCase();  // ← [변경] 대소문자 무시 위해 lowercase 통일
     // 입력값 없으면 즉시 동기 초기화 (리스트 잔존 방지)
     if (q.length < 1) {
       setGraphUsers([]);
@@ -87,18 +104,25 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       setSearchedQuery("");
       return;
     }
-    // 검색 중 표시를 debounce 전에 즉시 세팅 (깜빡임 방지)
-    setIsSearching(true);
-    const timer = setTimeout(async () => {
-      const results = await searchGraphUsers(q, currentUserEmail || undefined);
-      setGraphUsers(results);
-      setSearchedQuery(q);
-      setIsSearching(false);
-    }, 200);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [attendeeQ, currentUserEmail]);
+    // [변경] 디바운스 제거 — 메모리 검색이라 즉시 실행 (DB 부담 없음)
+    // usersProp에서 로컬 필터링
+    const results = (usersProp as AppUser[])
+      .filter(u => {
+        // 본인 제외 (currentUserEmail 있을 때만)
+        if (currentUserEmail && u.email === currentUserEmail) return false;
+        // 비활성 유저(퇴사자) 제외
+        if (u.is_active === false) return false;
+        // 이름/이메일/부서 중 하나라도 포함되면 매칭 (ILIKE %q% 동등)
+        const name  = (u.name  ?? '').toLowerCase();
+        const email = (u.email ?? '').toLowerCase();
+        const dept  = (u.dept  ?? '').toLowerCase();
+        return name.includes(q) || email.includes(q) || dept.includes(q);
+      })
+      .slice(0, 8);  // 기존 LIMIT 8 동등
+    setGraphUsers(results);
+    setSearchedQuery(attendeeQ.trim());  // 원본 query (UI 렌더링에서 trim된 값과 비교하므로)
+    setIsSearching(false);  // 동기 실행이라 항상 false
+  }, [attendeeQ, currentUserEmail, usersProp]);
 
 
   useEffect(() => {
