@@ -4,7 +4,7 @@ import {
   todayStr, tsDate, tsTime, fmtTime, fmtDateFullWithDay, objToStr,
 } from '../../utils/time'
 import { BookingStatusBadge } from './BookingStatusBadge'
-import { UserAvatar } from './UserAvatar'
+import { UserChip } from './UserChip'
 import type { Booking, Room, AppUser } from '../../types'
 
 // ─── 노쇼 판별 ───────────────────────────────────────────────────────────────
@@ -311,20 +311,13 @@ export function BookingListTable({
                         {room?.room_name ?? '—'}
                       </td>
 
-                      {/* 예약자: Avatar + 이름 */}
+                      {/* 예약자: UserChip sm */}
                       <td style={{ padding: '10px 14px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                          <UserAvatar
-                            name={b.user ?? '?'}
-                            avatarUrl={avatarUrl}
-                            size={26}
-                            bgColor={isMe ? '#E6F1FB' : '#F1EFE8'}
-                            textColor={isMe ? '#185FA5' : '#444441'}
-                          />
-                          <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {b.user ?? '—'}
-                          </span>
-                        </div>
+                        <UserChip
+                          name={b.user ?? '?'}
+                          avatarUrl={avatarUrl}
+                          variant="sm"
+                        />
                       </td>
 
                       {/* 상태 */}

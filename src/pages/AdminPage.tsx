@@ -1239,6 +1239,7 @@ export function AdminRooms({ showToast, isMobile }) {
 
 // ─── AdminUsers ────────────────────────────────────────────────────────────────
 import { UserAvatar } from '../components/common/UserAvatar'
+import { UserChip } from '../components/common/UserChip'
 
 export function AdminUsers({ users, setUsers, showToast, isMobile }) {
   type FilterType = 'all' | 'admin' | 'logged' | 'unlogged' | 'departed'
@@ -1863,10 +1864,7 @@ export function AdminApprovals({ bookings, rooms, users, onApprove, onReject, sh
                 <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
                   <span style={{ fontSize:11, fontWeight:600, color:'#16A34A', background:'#DCFCE7', padding:'2px 8px', borderRadius:20 }}>승인 완료</span>
                   {b.processedByName && (
-                    <span style={{ display:'inline-flex', alignItems:'center', gap:5 }}>
-                      <UserAvatar name={b.processedByName} avatarUrl={b.processedByAvatar ?? null} size={18} />
-                      <span style={{ fontSize:11, color:'#374151' }}>{b.processedByName}</span>
-                    </span>
+                    <UserChip name={b.processedByName} avatarUrl={b.processedByAvatar ?? null} variant="sm" isAdmin />
                   )}
                 </div>
               )
@@ -1878,10 +1876,7 @@ export function AdminApprovals({ bookings, rooms, users, onApprove, onReject, sh
                 <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
                   <span style={{ fontSize:11, fontWeight:600, color:'#DC2626', background:'#FEE2E2', padding:'2px 8px', borderRadius:20 }}>거절</span>
                   {b.processedByName && (
-                    <span style={{ display:'inline-flex', alignItems:'center', gap:5 }}>
-                      <UserAvatar name={b.processedByName} avatarUrl={b.processedByAvatar ?? null} size={18} />
-                      <span style={{ fontSize:11, color:'#374151' }}>{b.processedByName}</span>
-                    </span>
+                    <UserChip name={b.processedByName} avatarUrl={b.processedByAvatar ?? null} variant="sm" isAdmin />
                   )}
                 </div>
               )

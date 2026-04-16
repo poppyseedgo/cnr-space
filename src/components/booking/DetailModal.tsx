@@ -9,6 +9,7 @@ import { getFloor } from '../../data/floors'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
 import { AttendeeChip } from '../common/AttendeeChip'
+import { UserChip } from '../common/UserChip'
 import { BookingStatusBadge } from '../common/BookingStatusBadge'
 
 export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser, rooms:rp=[], users:up=[], isAdmin=false, onApprove=null, onReject=null, onForceCancel=null}: any) {
@@ -99,7 +100,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
             </div>
           ))}
 
-          {/* 예약자 — AttendeeChip 통일 */}
+          {/* 예약자 */}
           {(()=>{
             const owner = (up as any[]).find(u => u.user_id === b.user_id)
             return (
@@ -108,10 +109,10 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
                   <User size={11} strokeWidth={1.8}/>예약자
                 </div>
                 <div style={{display:"flex",alignItems:"center"}}>
-                  <AttendeeChip
+                  <UserChip
                     name={b.user}
                     avatarUrl={owner?.avatar_url ?? null}
-                    userInfo={owner}
+                    variant="md"
                   />
                 </div>
               </div>
