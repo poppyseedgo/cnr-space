@@ -1858,28 +1858,16 @@ export function AdminApprovals({ bookings, rooms, users, onApprove, onReject, sh
             const status = classify(b)
             const isProc = processing === b.id
 
-            // 승인완료 — 처리한 관리자 칩
+            // 승인완료 — 처리한 관리자 칩 (데이터 없으면 빈칸)
             if (status === 'confirmed') {
-              return (
-                <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-                  <span style={{ fontSize:11, fontWeight:600, color:'#16A34A', background:'#DCFCE7', padding:'2px 8px', borderRadius:20 }}>승인 완료</span>
-                  {b.processedByName && (
-                    <UserChip name={b.processedByName} avatarUrl={b.processedByAvatar ?? null} variant="sm" isAdmin />
-                  )}
-                </div>
-              )
+              if (!b.processedByName) return null
+              return <UserChip name={b.processedByName} avatarUrl={b.processedByAvatar ?? null} variant="sm" isAdmin />
             }
 
-            // 거절 — 처리한 관리자 칩
+            // 거절 — 처리한 관리자 칩 (데이터 없으면 빈칸)
             if (status === 'rejected') {
-              return (
-                <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-                  <span style={{ fontSize:11, fontWeight:600, color:'#DC2626', background:'#FEE2E2', padding:'2px 8px', borderRadius:20 }}>거절</span>
-                  {b.processedByName && (
-                    <UserChip name={b.processedByName} avatarUrl={b.processedByAvatar ?? null} variant="sm" isAdmin />
-                  )}
-                </div>
-              )
+              if (!b.processedByName) return null
+              return <UserChip name={b.processedByName} avatarUrl={b.processedByAvatar ?? null} variant="sm" isAdmin />
             }
 
             // 기한초과 — 라벨만
