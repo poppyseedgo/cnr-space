@@ -6,7 +6,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../../utils/time'
 import { getFloor } from '../../data/floors'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
-import { UserAvatar } from '../common/UserAvatar'
+import { UserChip } from '../common/UserChip'
 import { AttendeeChip } from '../common/AttendeeChip'
 
 export function BookingDoneModal({booking:b, onClose, rooms:rp=[], users:up=[]}) {
@@ -64,12 +64,8 @@ export function BookingDoneModal({booking:b, onClose, rooms:rp=[], users:up=[]})
               <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0,paddingTop:1,display:"flex",alignItems:"center",gap:4}}>
                 <User size={11} strokeWidth={1.8}/>예약자
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <UserAvatar name={b.user} avatarUrl={owner?.avatar_url ?? null} size={24} />
-                <div>
-                  <div style={{fontSize:13,color:"#111111",fontWeight:600}}>{b.user}</div>
-                  <div style={{fontSize:11,color:"#94A3B8",marginTop:1}}>{b.dept}</div>
-                </div>
+              <div style={{display:"flex",alignItems:"center"}}>
+                <UserChip name={b.user} avatarUrl={owner?.avatar_url ?? null} variant="md" />
               </div>
             </div>
           )
