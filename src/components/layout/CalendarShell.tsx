@@ -523,6 +523,8 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                         padding: '2px 5px', cursor: 'pointer', opacity: 0.5, overflow: 'hidden', zIndex: 1 }}>
                       <span style={{ display: 'inline-block', background: '#FEF3C7', color: '#92400E',
                         fontSize: 8, fontWeight:600, padding: '1px 4px', borderRadius: 2 }}>노쇼</span>
+                      {b.user && <span style={{ display: 'block', fontSize: 8, color: '#9CA3AF', marginTop: 2,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.user}</span>}
                     </div>
                   )
                 })}
