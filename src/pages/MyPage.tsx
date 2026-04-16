@@ -29,6 +29,22 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   const [allMyBookings, setAllMyBookings] = useState<Booking[]>([]);
   const [allLoading, setAllLoading] = useState(false);
 
+  // 딥링크 처리: #booking-{id} 로 진입 시 해당 예약 모달 자동 오픈
+  useEffect(() => {
+    const hash = window.location.hash.replace('#', '')
+    const raw = hash.startsWith('booking-')
+      ? hash
+      : (sessionStorage.getItem('cnr_deeplink') ?? '')
+    if (!raw.startsWith('booking-')) return
+    const bookingId = raw.replace('booking-', '')
+    const target = allMyBookings.find((b: any) => b.id === bookingId)
+    if (target) {
+      onDetail(target)
+      window.location.hash = 'mypage'
+      sessionStorage.removeItem('cnr_deeplink')
+    }
+  }, [allMyBookings])
+
   // ── 내 예약 전체 fetch (예약자 + 참석자 모두 포함) ──────────────────────────
   // 정책: 내가 예약자이거나 참석자로 등록된 예약 모두 = 내 예약
   useEffect(() => {

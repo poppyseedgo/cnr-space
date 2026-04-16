@@ -43,9 +43,11 @@ function AppContent() {
     const hash = window.location.hash.replace('#', '')
     if (hash.startsWith('admin-tab-')) return 'admin'
     if (hash.startsWith('admin-booking-')) return 'admin'
+    if (hash.startsWith('booking-')) return 'mypage'
     // OAuth 리다이렉트 후 해시가 소실된 경우 sessionStorage에서 복원
     const saved = sessionStorage.getItem('cnr_deeplink')
     if (saved?.startsWith('admin-booking-')) return 'admin'
+    if (saved?.startsWith('booking-')) return 'mypage'
     return ['home','calendar','mypage','admin'].includes(hash) ? hash : 'home'
   }
   const [view, setViewState] = useState<string>(getViewFromHash);
@@ -128,6 +130,7 @@ function AppContent() {
     const isValidHash = ['home','calendar','mypage','admin'].includes(currentHash)
       || currentHash.startsWith('admin-tab-')
       || currentHash.startsWith('admin-booking-')
+      || currentHash.startsWith('booking-')
       || !!sessionStorage.getItem('cnr_deeplink'); // OAuth 후 deeplink 복원 중이면 홈 이동 차단
     if (!isValidHash) {
       setView('home');
@@ -171,7 +174,7 @@ function AppContent() {
   // admin-booking- 딥링크 해시를 sessionStorage에 저장 (OAuth 리다이렉트 시 소실 방지)
   useEffect(() => {
     const hash = window.location.hash.replace('#', '')
-    if (hash.startsWith('admin-booking-')) {
+    if (hash.startsWith('admin-booking-') || hash.startsWith('booking-')) {
       sessionStorage.setItem('cnr_deeplink', hash)
     }
   }, [])
