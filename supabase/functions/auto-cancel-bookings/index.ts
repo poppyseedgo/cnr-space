@@ -12,24 +12,30 @@
  *   - pending_expiring: 승인 기한 10분 전 Admin 알림 추가
  *   - pending_expired:  승인 기한 초과 자동 취소 + Admin/예약자/참석자 알림 추가
  *   - approvalReminderSent 플래그로 10분 알림 중복 방지
+ *   - DB 컬럼명 snake_case 정확히 적용 (checked_in, auto_cancelled, cancelled_by, approval_reminder_sent)
  */
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')              ?? ''
 const SERVICE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+const ANON_KEY      = Deno.env.get('SUPABASE_ANON_KEY')         ?? ''
 
+// DB 조작: SERVICE_KEY (Service Role Key)
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
 
 // ── send-notification 호출 헬퍼 ──────────────────────────────────────────────
+// ⚠️ Edge Function → Edge Function 호출 시 반드시 ANON_KEY 사용
+//    SERVICE_KEY를 Bearer로 쓰면 API Gateway에서 JWT 파싱 오류(401) 발생
+//    send-notification은 verify_jwt:false 이므로 ANON_KEY로 충분
 async function callSendNotification(type: string, booking: any): Promise<void> {
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/send-notification`, {
       method: 'POST',
       headers: {
         'Content-Type':  'application/json',
-        'Authorization': `Bearer ${SERVICE_KEY}`,
-        'apikey':        SERVICE_KEY,
+        'Authorization': `Bearer ${ANON_KEY}`,
+        'apikey':        ANON_KEY,
       },
       body: JSON.stringify({ type, booking }),
     })
@@ -53,12 +59,13 @@ async function getRoomName(roomId: string): Promise<string> {
 
 // ── 예약 페이로드 조립 ────────────────────────────────────────────────────────
 // DB에서 온 booking row → send-notification이 기대하는 필드명으로 정규화
+// DB 컬럼: user_name, user_dept (api.ts bookingToRow 기준)
 async function buildPayload(booking: any): Promise<any> {
   const roomName = await getRoomName(booking.room_id)
   return {
     ...booking,
-    user_name: booking.user ?? booking.user_name ?? '',
-    user_dept: booking.dept ?? booking.user_dept ?? '',
+    user_name: booking.user_name ?? '',
+    user_dept: booking.user_dept ?? '',
     room_name: roomName,
   }
 }
@@ -83,8 +90,8 @@ Deno.serve(async () => {
       .from('bookings')
       .select('*')
       .eq('status', 'confirmed')
-      .eq('checkedIn', false)       // ← DB 컬럼명: 프로젝트 스키마 확인 필요 (checkedIn or checked_in)
-      .eq('autoCancelled', false)   // ← DB 컬럼명: 프로젝트 스키마 확인 필요
+      .eq('checked_in', false)
+      .eq('auto_cancelled', false)
       .lt('start_at', noshowCutoff)
 
     if (noshowErr) {
@@ -95,7 +102,7 @@ Deno.serve(async () => {
       // DB 업데이트 — 노쇼 취소 처리
       const { error: upErr } = await supabase
         .from('bookings')
-        .update({ autoCancelled: true })
+        .update({ auto_cancelled: true, cancelled_by: 'system' })
         .eq('id', booking.id)
 
       if (upErr) {
@@ -119,7 +126,7 @@ Deno.serve(async () => {
       .from('bookings')
       .select('*')
       .eq('status', 'pending')
-      .eq('approvalReminderSent', false)   // ← 신규 컬럼 (migration 필요)
+      .eq('approval_reminder_sent', false)
       .gte('start_at', reminderWindowStart)
       .lte('start_at', reminderWindowEnd)
 
@@ -131,11 +138,11 @@ Deno.serve(async () => {
       // 중복 발송 방지 플래그 먼저 세팅 (알림 실패해도 재발송 없음 — 의도된 설계)
       const { error: flagErr } = await supabase
         .from('bookings')
-        .update({ approvalReminderSent: true })
+        .update({ approval_reminder_sent: true })
         .eq('id', booking.id)
 
       if (flagErr) {
-        console.error(`[auto-cancel] approvalReminderSent 업데이트 실패 (${booking.id}):`, flagErr)
+        console.error(`[auto-cancel] approval_reminder_sent 업데이트 실패 (${booking.id}):`, flagErr)
         continue
       }
 
@@ -154,6 +161,7 @@ Deno.serve(async () => {
       .from('bookings')
       .select('*')
       .eq('status', 'pending')
+      .eq('auto_cancelled', false)
       .lt('start_at', expireDeadline)
 
     if (expiredErr) {
@@ -165,9 +173,9 @@ Deno.serve(async () => {
       const { error: upErr } = await supabase
         .from('bookings')
         .update({
-          status:        'cancelled',
-          autoCancelled: true,
-          cancelledBy:   'system',
+          status:         'cancelled',
+          auto_cancelled: true,
+          cancelled_by:   'system',
         })
         .eq('id', booking.id)
 
