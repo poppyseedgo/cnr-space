@@ -70,6 +70,47 @@ async function buildPayload(booking: any): Promise<any> {
   }
 }
 
+// ── 인앱 알림 insert 헬퍼 ────────────────────────────────────────────────────
+async function insertInAppNotification(params: {
+  userId: string; type: string; title: string; body?: string; bookingId: string
+}): Promise<void> {
+  const { error } = await supabase.from('notifications').insert({
+    user_id:    params.userId,
+    type:       params.type,
+    title:      params.title,
+    body:       params.body ?? null,
+    booking_id: params.bookingId,
+    is_read:    false,
+  })
+  if (error) console.warn('[auto-cancel] 인앱 알림 insert 실패:', error.message)
+}
+
+// ── Admin user_id 목록 조회 ──────────────────────────────────────────────────
+async function fetchAdminUserIds(): Promise<string[]> {
+  const { data } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('role', 'ADMIN')
+    .eq('is_active', true)
+  return (data ?? []).map((r: any) => r.id).filter(Boolean)
+}
+
+// ── 참석자 user_id 목록 조회 (본인 제외) ────────────────────────────────────
+async function fetchAttendeeUserIds(bookingId: string, creatorUserId: string): Promise<string[]> {
+  const { data: attendees } = await supabase
+    .from('booking_attendees')
+    .select('email')
+    .eq('booking_id', bookingId)
+  const emails = (attendees ?? []).map((a: any) => a.email).filter(Boolean)
+  if (emails.length === 0) return []
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id')
+    .in('email', emails)
+    .neq('id', creatorUserId)
+  return (profiles ?? []).map((p: any) => p.id).filter(Boolean)
+}
+
 // ── 메인 핸들러 ──────────────────────────────────────────────────────────────
 Deno.serve(async () => {
   const corsHeaders = {
@@ -110,9 +151,32 @@ Deno.serve(async () => {
         continue
       }
 
-      // 알림 발송
+      // 이메일 알림
       const payload = await buildPayload(booking)
       await callSendNotification('noshow', payload)
+
+      // 인앱 알림 — 예약자
+      if (booking.user_id) {
+        await insertInAppNotification({
+          userId:    booking.user_id,
+          type:      'booking_noshow',
+          title:     '미체크인으로 예약이 자동 취소되었습니다',
+          body:      `${booking.title} · ${payload.room_name}`,
+          bookingId: booking.id,
+        })
+      }
+      // 인앱 알림 — 참석자
+      const noshowAttendeeIds = await fetchAttendeeUserIds(booking.id, booking.user_id ?? '')
+      for (const uid of noshowAttendeeIds) {
+        await insertInAppNotification({
+          userId:    uid,
+          type:      'booking_noshow',
+          title:     '참석 예약이 노쇼로 자동 취소되었습니다',
+          body:      `${booking.title} · ${payload.room_name}`,
+          bookingId: booking.id,
+        })
+      }
+
       stats.noshow++
       console.log(`[auto-cancel] noshow 처리: ${booking.id} (${booking.title})`)
     }
@@ -148,6 +212,19 @@ Deno.serve(async () => {
 
       const payload = await buildPayload(booking)
       await callSendNotification('pending_expiring', payload)
+
+      // 인앱 알림 — Admin 전원
+      const expiringAdminIds = await fetchAdminUserIds()
+      for (const uid of expiringAdminIds) {
+        await insertInAppNotification({
+          userId:    uid,
+          type:      'booking_pending_expiring',
+          title:     '에메랄드 룸 승인 기한이 10분 후 만료됩니다',
+          body:      `${booking.title} · ${payload.room_name} · 신청자: ${booking.user_name}`,
+          bookingId: booking.id,
+        })
+      }
+
       stats.reminderSent++
       console.log(`[auto-cancel] pending_expiring 발송: ${booking.id} (${booking.title})`)
     }
@@ -184,9 +261,43 @@ Deno.serve(async () => {
         continue
       }
 
-      // 알림 발송 (Admin + 예약자 + 참석자 — send-notification 내부에서 분기 처리)
+      // 이메일 알림 (Admin + 예약자 + 참석자 — send-notification 내부에서 분기 처리)
       const payload = await buildPayload(booking)
       await callSendNotification('pending_expired', payload)
+
+      // 인앱 알림 — Admin 전원
+      const expiredAdminIds = await fetchAdminUserIds()
+      for (const uid of expiredAdminIds) {
+        await insertInAppNotification({
+          userId:    uid,
+          type:      'booking_pending_expired',
+          title:     '승인 기한 초과로 예약이 자동 취소되었습니다',
+          body:      `${booking.title} · ${payload.room_name} · 신청자: ${booking.user_name}`,
+          bookingId: booking.id,
+        })
+      }
+      // 인앱 알림 — 예약자
+      if (booking.user_id) {
+        await insertInAppNotification({
+          userId:    booking.user_id,
+          type:      'booking_pending_expired',
+          title:     '에메랄드 룸 예약이 기한 초과로 자동 취소되었습니다',
+          body:      `${booking.title} · ${payload.room_name}`,
+          bookingId: booking.id,
+        })
+      }
+      // 인앱 알림 — 참석자
+      const expiredAttendeeIds = await fetchAttendeeUserIds(booking.id, booking.user_id ?? '')
+      for (const uid of expiredAttendeeIds) {
+        await insertInAppNotification({
+          userId:    uid,
+          type:      'booking_pending_expired',
+          title:     '참석 예약이 기한 초과로 자동 취소되었습니다',
+          body:      `${booking.title} · ${payload.room_name}`,
+          bookingId: booking.id,
+        })
+      }
+
       stats.pendingExpired++
       console.log(`[auto-cancel] pending_expired 처리: ${booking.id} (${booking.title})`)
     }
