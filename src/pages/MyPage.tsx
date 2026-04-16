@@ -14,6 +14,7 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, B
 
 import { UserAvatar } from '../components/common/UserAvatar'
 import { BookingListTable } from '../components/common/BookingListTable'
+import { Button } from '../components/common/Button' 
 
 export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail, onCheckIn, onEarlyEnd, onCancel, rooms:rp=[], users:up=[], authUserId='', currentUserEmail='', avatarUrl=null}) {
   const [tab, setTab] = useState("upcoming");
@@ -362,8 +363,8 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
                     </button>
                   )}
                   {isCancellable && (
-                    <button className="btn text-[11px] font-semibold rounded-xl py-2 px-2.5 text-slate-500" style={{background:"#F3F4F8"}}
-                      onClick={e=>{e.stopPropagation(); onCancel(b.id);}}>취소</button>
+                    <Button variant="ghost" size="sm" style={{borderRadius:12}}
+                      onClick={e=>{e.stopPropagation(); onCancel(b.id);}}>취소</Button>
                   )}
                 </div>
               </div>
@@ -387,8 +388,8 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
             style={{padding:"7px 14px", fontSize:20, background:"#F8FAFC", lineHeight:1}}
             onClick={()=>goWeek(1)}>›</button>
           {selectedDate !== today && (
-            <button className="btn rounded-lg" style={{padding:"5px 10px", fontSize:11, background:"#111111", color:"#fff", marginLeft:4}}
-              onClick={()=>setSelectedDate(today)}>오늘</button>
+            <Button variant="primary" size="sm" style={{marginLeft:4}}
+              onClick={()=>setSelectedDate(today)}>오늘</Button>
           )}
         </div>
 

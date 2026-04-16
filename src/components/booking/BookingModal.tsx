@@ -11,6 +11,7 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, B
 
 import { UserAvatar } from '../common/UserAvatar'
 import { AttendeeChip } from '../common/AttendeeChip'
+import { Button } from '../common/Button' 
 
 export function BookingModal({prefill, date:initDate, editBooking=null, onClose, onSubmit, onUpdate, bookings, isAdmin=false, currentUser="홍길동", currentUserEmail="", rooms:roomsProp=[], users:usersProp=[]}) {
   // ── 모든 hooks를 최상단에 선언 ──────────────────────────────────────────────
@@ -879,17 +880,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
           borderTop:"1px solid #F1F5F9",
           display:"flex",gap:8,background:"#fff",marginTop:"auto"}}>
           {step===1 ? (<>
-            <button className="btn" onClick={onClose}
-              style={{flex:1,background:"#F1F5F9",color:"#64748B",padding:"13px",fontSize:14,borderRadius:12}}>
-              취소
-            </button>
-            <button className="btn" onClick={()=>setStep(2)} disabled={!canGoStep2}
-              style={{flex:1,padding:"13px",fontSize:14,fontWeight:600,borderRadius:12,
-                background:canGoStep2?"#111111":"#E2E8F0",
-                color:canGoStep2?"#fff":"#94A3B8",
-                cursor:canGoStep2?"pointer":"not-allowed"}}>
-              다음 → 회의실 선택
-            </button>
+            <Button variant="ghost"   flex onClick={onClose}>취소</Button>
+            <Button variant="primary" flex onClick={()=>setStep(2)} disabled={!canGoStep2}>다음 → 회의실 선택</Button>
           </>) : (<>
             {isApprovalRoom && (
               <div style={{width:"100%",marginBottom:8,padding:"10px 14px",borderRadius:10,
@@ -898,11 +890,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 관리자 승인 후 예약이 확정됩니다. 에메랄드 룸은 사전 승인이 필요합니다.
               </div>
             )}
-            <button className="btn" onClick={()=>setStep(1)}
-              style={{flex:1,background:"#F1F5F9",color:"#64748B",padding:"15px",fontSize:14,borderRadius:14,minHeight:52}}>
-              ← 이전
-            </button>
-            <button className="btn" disabled={!canSubmit}
+            <Button variant="ghost"   flex onClick={()=>setStep(1)} style={{minHeight:52}}>← 이전</Button>
+            <Button variant="primary" flex disabled={!canSubmit} loading={isSubmitting} style={{minHeight:52}}
               onClick={async ()=>{
                 if(!canSubmit)return;
                 submitTimerRef.current = setTimeout(()=>setIsSubmitting(true), 250);
@@ -912,14 +901,9 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   if(submitTimerRef.current) clearTimeout(submitTimerRef.current);
                   setIsSubmitting(false);
                 }
-              }}
-              style={{flex:1,padding:"15px",fontSize:15,fontWeight:600,borderRadius:14,
-                background:canSubmit?"#111111":"#E2E8F0",
-                color:canSubmit?"#fff":"#94A3B8",
-                cursor:canSubmit?"pointer":"not-allowed",
-                minHeight:52}}>
+              }}>
               {editBooking ? "변경 저장" : isApprovalRoom ? "승인 요청" : "예약 확정"}
-            </button>
+            </Button>
           </>)}
         </div>
       </>) : (
@@ -1202,11 +1186,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
 
         {/* ── 하단 버튼 (모달 전체 너비) ── */}
         <div style={{display:"flex",gap:10,padding:"16px 28px 20px",borderTop:"1px solid #F1F5F9",flexShrink:0,background:"#fff"}}>
-          <button className="btn" onClick={onClose}
-            style={{flex:1,background:"#F1F5F9",color:"#64748B",padding:"14px",fontSize:14,borderRadius:12}}>
-            취소
-          </button>
-          <button className="btn" disabled={!canSubmit}
+          <Button variant="ghost"   flex onClick={onClose}>취소</Button>
+          <Button variant="primary" flex disabled={!canSubmit} loading={isSubmitting}
             onClick={async ()=>{
                 if(!canSubmit)return;
                 submitTimerRef.current = setTimeout(()=>setIsSubmitting(true), 250);
@@ -1216,13 +1197,9 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   if(submitTimerRef.current) clearTimeout(submitTimerRef.current);
                   setIsSubmitting(false);
                 }
-              }}
-            style={{flex:1,padding:"14px",fontSize:14,fontWeight:600,borderRadius:12,
-              background:canSubmit?"#111":"#E2E8F0",
-              color:canSubmit?"#fff":"#94A3B8",
-              cursor:canSubmit?"pointer":"not-allowed"}}>
+              }}>
             {editBooking ? "변경 저장" : isApprovalRoom ? "승인 요청" : "예약 확정"}
-          </button>
+          </Button>
         </div>
       </div>
       )}

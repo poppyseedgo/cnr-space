@@ -8,6 +8,7 @@ import { getFloor } from '../../data/floors'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 import { UserChip } from '../common/UserChip'
 import { AttendeeChip } from '../common/AttendeeChip'
+import { Button } from '../common/Button' 
 
 export function BookingDoneModal({booking:b, onClose, rooms:rp=[], users:up=[]}) {
   const { isMobile } = useBreakpoint();
@@ -107,10 +108,7 @@ export function BookingDoneModal({booking:b, onClose, rooms:rp=[], users:up=[]})
       {/* 버튼 */}
       <div style={{padding: isMobile?"12px 20px 24px":"12px 24px 20px",
         borderTop:"1px solid #F1F5F9",display:"flex",gap:8,flexShrink:0}}>
-        <button className="btn" onClick={onClose}
-          style={{flex:1,background:"#111111",color:"#fff",padding:"13px",fontSize:14,fontWeight:600,borderRadius:12}}>
-          확인
-        </button>
+        <Button variant="primary" fullWidth onClick={onClose}>확인</Button>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import { Circle, X } from 'lucide-react'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { todayStr, nowMinutes, tsDate, tsMin, fmtTimeFull, fmtTSFull, getRoomStatus } from '../../utils/time'
 import { getFloor } from '../../data/floors'
+import { Button } from '../common/Button' 
 
 export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {room:any,bookings:any[],onClose:any,onBook:any,onDetail?:any}) {
   const { isMobile } = useBreakpoint();
@@ -252,16 +253,8 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
       {/* ── 버튼 footer ── */}
       <div style={{padding: isMobile ? "12px 20px 24px" : "12px 28px 20px",
         flexShrink:0, borderTop:"1px solid #F1F5F9", display:"flex", gap:8}}>
-        <button className="btn" onClick={onClose}
-          style={{flex:1, background:"#F1F5F9", color:"#64748B", padding:"13px 8px",
-            fontSize:14, fontWeight:600, borderRadius:12}}>
-          닫기
-        </button>
-        <button className="btn" onClick={()=>onBook(status)}
-          style={{flex:1, background:"#111111", color:"#fff", padding:"13px 8px",
-            fontSize:14, fontWeight:600, borderRadius:12}}>
-          이 회의실 예약하기
-        </button>
+        <Button variant="ghost"   flex onClick={onClose}>닫기</Button>
+        <Button variant="primary" flex onClick={()=>onBook(status)}>이 회의실 예약하기</Button>
       </div>
     </div>
     </>
