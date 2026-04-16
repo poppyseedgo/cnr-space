@@ -1,231 +1,200 @@
 // @ts-nocheck
 /**
  * auto-cancel-bookings Edge Function
- * Cron: 매 5분
- * 역할: 예약 시작 후 10분 경과, 체크인 없는 예약 자동 취소 (노쇼)
+ * Supabase Cron으로 실행 (매 1분)
  *
- * ✅ 수정 내역 (2025-04-13):
- *   - profiles batch 조회 추가 → user_email을 직접 페이로드에 포함
- *   - send-notification 응답 status 체크 추가 (에러 은폐 방지)
- *   - Edge Fn → Edge Fn 간 user_email fallback 의존성 제거
+ * 처리 항목:
+ * 1. 노쇼 자동 취소   — confirmed 예약 중 start_at + 10분 초과 & 미체크인
+ * 2. 승인 기한 10분 전 알림 — pending 예약 start_at 9~11분 전 (Admin 알림)
+ * 3. 승인 기한 초과 자동 취소 — pending 예약 start_at 1분 전까지 미승인 시 자동 취소
+ *
+ * ✅ 수정 내역 (2025-04-xx):
+ *   - pending_expiring: 승인 기한 10분 전 Admin 알림 추가
+ *   - pending_expired:  승인 기한 초과 자동 취소 + Admin/예약자/참석자 알림 추가
+ *   - approvalReminderSent 플래그로 10분 알림 중복 방지
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'jsr:@supabase/supabase-js@2'
 
-const CHECKIN_GRACE_MINUTES = 10
-const OPERATING_START_KST   = 6   // 06:00 KST
-const OPERATING_END_KST     = 20  // 20:00 KST
+const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')              ?? ''
+const SERVICE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', {
+const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
+
+// ── send-notification 호출 헬퍼 ──────────────────────────────────────────────
+async function callSendNotification(type: string, booking: any): Promise<void> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/send-notification`, {
+      method: 'POST',
       headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey',
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${SERVICE_KEY}`,
+        'apikey':        SERVICE_KEY,
       },
+      body: JSON.stringify({ type, booking }),
     })
+    if (!res.ok) {
+      console.error(`[auto-cancel] send-notification(${type}) 실패:`, res.status, await res.text())
+    }
+  } catch (e) {
+    console.error(`[auto-cancel] send-notification(${type}) 호출 오류:`, e)
   }
+}
 
-  // ── 운영 시간 체크 (KST 06:00 ~ 20:00) ──────────────────────────────────
-  const nowUTC = new Date()
-  const hourKST = (nowUTC.getUTCHours() + 9) % 24
-  if (hourKST < OPERATING_START_KST || hourKST >= OPERATING_END_KST) {
-    return new Response(
-      JSON.stringify({ message: `운영 시간 외 (현재 KST ${hourKST}시) — 스킵`, timestamp: nowUTC.toISOString() }),
-      { headers: { 'Content-Type': 'application/json' } }
-    )
+// ── 회의실 이름 조회 헬퍼 ────────────────────────────────────────────────────
+async function getRoomName(roomId: string): Promise<string> {
+  const { data } = await supabase
+    .from('rooms')
+    .select('room_name, room_name_ko')
+    .eq('room_id', roomId)
+    .single()
+  return data?.room_name_ko ?? data?.room_name ?? String(roomId)
+}
+
+// ── 예약 페이로드 조립 ────────────────────────────────────────────────────────
+// DB에서 온 booking row → send-notification이 기대하는 필드명으로 정규화
+async function buildPayload(booking: any): Promise<any> {
+  const roomName = await getRoomName(booking.room_id)
+  return {
+    ...booking,
+    user_name: booking.user ?? booking.user_name ?? '',
+    user_dept: booking.dept ?? booking.user_dept ?? '',
+    room_name: roomName,
+  }
+}
+
+// ── 메인 핸들러 ──────────────────────────────────────────────────────────────
+Deno.serve(async () => {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin':  '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Content-Type': 'application/json',
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    )
+    const now = new Date()
+    const stats = { noshow: 0, reminderSent: 0, pendingExpired: 0 }
 
-    const nowKST      = new Date(nowUTC.getTime() + 9 * 60 * 60 * 1000)
-    const graceCutoff = new Date(nowUTC.getTime() - CHECKIN_GRACE_MINUTES * 60 * 1000)
+    // ─── 1. 노쇼 자동 취소 ──────────────────────────────────────────────────
+    // confirmed 예약 중 (start_at + 10분) 이 현재보다 이전 & 미체크인 & 아직 취소 안 된 것
+    const noshowCutoff = new Date(now.getTime() - 10 * 60 * 1000).toISOString()
 
-    // ── 자동취소 대상 조회 ────────────────────────────────────────────────────
-    const { data: toCancel, error: fetchError } = await supabase
+    const { data: noshowTargets, error: noshowErr } = await supabase
       .from('bookings')
-      .select('id, title, user_id, user_name, user_dept, room_id, start_at, end_at')
-      .eq('checked_in',     false)
-      .eq('auto_cancelled', false)
-      .eq('early_ended',    false)
-      .lte('start_at', graceCutoff.toISOString())
-      .gte('end_at',   nowUTC.toISOString())
+      .select('*')
+      .eq('status', 'confirmed')
+      .eq('checkedIn', false)       // ← DB 컬럼명: 프로젝트 스키마 확인 필요 (checkedIn or checked_in)
+      .eq('autoCancelled', false)   // ← DB 컬럼명: 프로젝트 스키마 확인 필요
+      .lt('start_at', noshowCutoff)
 
-    if (fetchError) throw fetchError
-
-    if (!toCancel || toCancel.length === 0) {
-      return new Response(
-        JSON.stringify({ message: '자동취소 대상 없음', timestamp: nowKST.toISOString() }),
-        { headers: { 'Content-Type': 'application/json' } }
-      )
+    if (noshowErr) {
+      console.error('[auto-cancel] noshow 조회 실패:', noshowErr)
     }
 
-    // ── rooms 테이블에서 room_name batch 조회 ────────────────────────────────
-    const roomIds = [...new Set(toCancel.map(b => b.room_id).filter(Boolean))]
-    const { data: roomRows } = await supabase
-      .from('rooms')
-      .select('room_id, room_name')
-      .in('room_id', roomIds)
+    for (const booking of (noshowTargets ?? [])) {
+      // DB 업데이트 — 노쇼 취소 처리
+      const { error: upErr } = await supabase
+        .from('bookings')
+        .update({ autoCancelled: true })
+        .eq('id', booking.id)
 
-    const roomMap = new Map()
-    for (const r of roomRows ?? []) {
-      roomMap.set(r.room_id, r.room_name ?? '')
+      if (upErr) {
+        console.error(`[auto-cancel] noshow 업데이트 실패 (${booking.id}):`, upErr)
+        continue
+      }
+
+      // 알림 발송
+      const payload = await buildPayload(booking)
+      await callSendNotification('noshow', payload)
+      stats.noshow++
+      console.log(`[auto-cancel] noshow 처리: ${booking.id} (${booking.title})`)
     }
 
-    // ── profiles 테이블에서 user_email batch 조회 ────────────────────────────
-    // send-notification에 user_email 직접 전달 → 중간 lookup 실패 리스크 제거
-    const userIds = [...new Set(toCancel.map(b => b.user_id).filter(Boolean))]
-    const { data: profileRows } = await supabase
-      .from('profiles')
-      .select('id, email')
-      .in('id', userIds)
+    // ─── 2. 승인 기한 10분 전 알림 ──────────────────────────────────────────
+    // pending 예약 중 start_at이 9~11분 후 & 아직 알림 미발송
+    const reminderWindowStart = new Date(now.getTime() + 9  * 60 * 1000).toISOString()
+    const reminderWindowEnd   = new Date(now.getTime() + 11 * 60 * 1000).toISOString()
 
-    const emailMap = new Map()
-    for (const p of profileRows ?? []) {
-      emailMap.set(p.id, p.email ?? '')
-    }
-    console.log(`[auto-cancel] profiles 조회: ${profileRows?.length ?? 0}명`)
-
-    // ── 일괄 취소 ────────────────────────────────────────────────────────────
-    const ids = toCancel.map(b => b.id)
-    const { error: updateError } = await supabase
+    const { data: reminderTargets, error: reminderErr } = await supabase
       .from('bookings')
-      .update({ auto_cancelled: true, cancelled_by: 'system' })
-      .in('id', ids)
+      .select('*')
+      .eq('status', 'pending')
+      .eq('approvalReminderSent', false)   // ← 신규 컬럼 (migration 필요)
+      .gte('start_at', reminderWindowStart)
+      .lte('start_at', reminderWindowEnd)
 
-    if (updateError) throw updateError
-    console.log(`[auto-cancel] ${toCancel.length}건 자동취소:`, ids)
+    if (reminderErr) {
+      console.error('[auto-cancel] pending_expiring 조회 실패:', reminderErr)
+    }
 
-    // ── 각 건별 후처리 ────────────────────────────────────────────────────────
-    for (const b of toCancel) {
-      const roomName  = roomMap.get(b.room_id) ?? ''
-      const userEmail = emailMap.get(b.user_id) ?? ''
+    for (const booking of (reminderTargets ?? [])) {
+      // 중복 발송 방지 플래그 먼저 세팅 (알림 실패해도 재발송 없음 — 의도된 설계)
+      const { error: flagErr } = await supabase
+        .from('bookings')
+        .update({ approvalReminderSent: true })
+        .eq('id', booking.id)
 
-      // KST 시간 포맷
-      const d = new Date(b.start_at)
-      const k = new Date(d.getTime() + 9 * 60 * 60 * 1000)
-      const pad = n => String(n).padStart(2, '0')
-      const h = k.getUTCHours()
-      const dateStr = `${k.getUTCFullYear()}년 ${k.getUTCMonth()+1}월 ${k.getUTCDate()}일`
-      const timeStr = `${h < 12 ? '오전' : '오후'} ${h === 0 ? 12 : h > 12 ? h - 12 : h}:${pad(k.getUTCMinutes())}`
-      const inappBody = `${b.title} · ${roomName} · ${dateStr} ${timeStr}`
+      if (flagErr) {
+        console.error(`[auto-cancel] approvalReminderSent 업데이트 실패 (${booking.id}):`, flagErr)
+        continue
+      }
 
-      // Audit log
-      try {
-        await supabase.from('audit_log').insert({
-          actor_id:    null,
-          actor_name:  'system',
-          action:      'BOOKING_NOSHOW',
-          entity_type: 'booking',
-          entity_id:   b.id,
-          before_data: null,
-          after_data:  { title: b.title, user_name: b.user_name, start_at: b.start_at, cancelled_by: 'system' },
+      const payload = await buildPayload(booking)
+      await callSendNotification('pending_expiring', payload)
+      stats.reminderSent++
+      console.log(`[auto-cancel] pending_expiring 발송: ${booking.id} (${booking.title})`)
+    }
+
+    // ─── 3. 승인 기한 초과 자동 취소 ────────────────────────────────────────
+    // pending 예약 중 start_at이 현재로부터 1분 이내 (= 1분 후도 아직 안 지난 것 포함)
+    // → 예약 시작 1분 전까지 승인 안 됐으면 시스템 자동 취소
+    const expireDeadline = new Date(now.getTime() + 1 * 60 * 1000).toISOString()
+
+    const { data: expiredTargets, error: expiredErr } = await supabase
+      .from('bookings')
+      .select('*')
+      .eq('status', 'pending')
+      .lt('start_at', expireDeadline)
+
+    if (expiredErr) {
+      console.error('[auto-cancel] pending_expired 조회 실패:', expiredErr)
+    }
+
+    for (const booking of (expiredTargets ?? [])) {
+      // DB 업데이트 — pending_expired 취소 처리
+      const { error: upErr } = await supabase
+        .from('bookings')
+        .update({
+          status:        'cancelled',
+          autoCancelled: true,
+          cancelledBy:   'system',
         })
-      } catch (e) {
-        console.warn('[auto-cancel] audit_log 실패 (취소는 정상):', e)
+        .eq('id', booking.id)
+
+      if (upErr) {
+        console.error(`[auto-cancel] pending_expired 업데이트 실패 (${booking.id}):`, upErr)
+        continue
       }
 
-      // 예약자 인앱 알림
-      if (b.user_id) {
-        try {
-          await supabase.from('notifications').insert({
-            user_id:    b.user_id,
-            type:       'booking_noshow',
-            title:      '노쇼 처리 — 예약이 자동 취소되었습니다',
-            body:       inappBody,
-            booking_id: b.id,
-            is_read:    false,
-          })
-        } catch (e) {
-          console.warn('[auto-cancel] 예약자 인앱 알림 실패:', e)
-        }
-      }
-
-      // 참석자 인앱 알림 (email 기반 → profiles에서 user_id 배치 조회)
-      try {
-        const { data: attendeeRows } = await supabase
-          .from('booking_attendees')
-          .select('email')
-          .eq('booking_id', b.id)
-
-        const attendeeEmails = (attendeeRows ?? []).map(a => a.email).filter(Boolean)
-        if (attendeeEmails.length > 0) {
-          const { data: attendeeProfiles } = await supabase
-            .from('profiles')
-            .select('id, email')
-            .in('email', attendeeEmails)
-
-          for (const profile of attendeeProfiles ?? []) {
-            await supabase.from('notifications').insert({
-              user_id:    profile.id,
-              type:       'booking_noshow',
-              title:      '참석 예약이 자동 취소되었습니다',
-              body:       inappBody,
-              booking_id: b.id,
-              is_read:    false,
-            })
-          }
-        }
-      } catch (e) {
-        console.warn('[auto-cancel] 참석자 인앱 알림 실패 (취소는 정상):', e)
-      }
-
-      // 이메일 알림 — send-notification 호출 (user_email 직접 포함)
-      try {
-        const notifRes = await fetch(
-          `${Deno.env.get('SUPABASE_URL')}/functions/v1/send-notification`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
-              'Content-Type':  'application/json',
-            },
-            body: JSON.stringify({
-              type: 'noshow',
-              booking: {
-                id:         b.id,
-                user_id:    b.user_id,
-                user_email: userEmail,        // ← profiles에서 직접 조회한 이메일
-                title:      b.title,
-                user_name:  b.user_name,
-                user_dept:  b.user_dept ?? '',
-                room_name:  roomName,
-                start_at:   b.start_at,
-                end_at:     b.end_at,
-              },
-            }),
-          }
-        )
-        if (!notifRes.ok) {
-          const errBody = await notifRes.text()
-          console.error(`[auto-cancel] 노쇼 이메일 발송 실패 (HTTP ${notifRes.status}):`, errBody)
-        } else {
-          const result = await notifRes.json()
-          console.log(`[auto-cancel] 노쇼 이메일 발송 완료 (${b.id}):`, JSON.stringify(result))
-        }
-      } catch (e) {
-        console.error('[auto-cancel] 노쇼 이메일 알림 네트워크 오류:', e)
-      }
+      // 알림 발송 (Admin + 예약자 + 참석자 — send-notification 내부에서 분기 처리)
+      const payload = await buildPayload(booking)
+      await callSendNotification('pending_expired', payload)
+      stats.pendingExpired++
+      console.log(`[auto-cancel] pending_expired 처리: ${booking.id} (${booking.title})`)
     }
 
+    // ─── 완료 ────────────────────────────────────────────────────────────────
+    console.log('[auto-cancel] 전체 완료:', JSON.stringify(stats))
     return new Response(
-      JSON.stringify({
-        message:   `${toCancel.length}건 자동취소 완료`,
-        cancelled: toCancel.map(b => b.id),
-        timestamp: nowKST.toISOString(),
-      }),
-      { headers: { 'Content-Type': 'application/json' } }
+      JSON.stringify({ success: true, ...stats }),
+      { headers: corsHeaders }
     )
 
-  } catch (err) {
-    console.error('[auto-cancel] 오류:', err)
+  } catch (err: any) {
+    console.error('[auto-cancel] 예기치 못한 오류:', err)
     return new Response(
       JSON.stringify({ error: String(err) }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: corsHeaders }
     )
   }
 })

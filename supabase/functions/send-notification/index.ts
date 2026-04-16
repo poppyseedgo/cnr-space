@@ -194,7 +194,9 @@ function getSubject(type: string, booking: any, isAttendee = false): string {
     pending:          `[C&R SPACE] 📋 에메랄드 승인 요청 — ${title}`,
     approved:         `[C&R SPACE] ✅ 예약 승인 — ${title}`,
     rejected:         `[C&R SPACE] ❌ 예약 반려 — ${title}`,
-    attendee_removed: `[C&R SPACE] 📌 참석자 제외 알림 — ${title}`,
+    attendee_removed:  `[C&R SPACE] 📌 참석자 제외 알림 — ${title}`,
+    pending_expiring:  `[C&R SPACE] ⏰ 승인 기한 10분 전 — ${title}`,
+    pending_expired:   `[C&R SPACE] ❌ 승인 기한 초과 자동 취소 — ${title}`,
   }
   const base = subjects[type] ?? `[C&R SPACE] 예약 알림 — ${title}`
   return isAttendee ? base.replace('[C&R SPACE]', '[C&R SPACE · 참석자]') : base
@@ -208,6 +210,7 @@ function getEmailHtml(
   recipientName = '',
   creatorInfo: CreatorInfo | null = null,
   recurBookings: { start_at: string; end_at: string }[] = [],
+  isAdminRecipient = false,
 ): string {
   const isRecur    = recurBookings.length > 1
   const dateStr    = fmtDate(booking.start_at)
@@ -221,6 +224,7 @@ function getEmailHtml(
     created: '#4F46E5', updated: '#0891B2', cancelled: '#DC2626',
     noshow: '#D97706', pending: '#D97706', approved: '#16A34A',
     rejected: '#DC2626', attendee_removed: '#6B7280',
+    pending_expiring: '#D97706', pending_expired: '#DC2626',
   }
   const headerLabels: Record<string, string> = {
     created:          isRecur ? `반복 예약 ${recurBookings.length}건이 확정되었습니다` : '예약이 확정되었습니다',
@@ -231,10 +235,12 @@ function getEmailHtml(
     approved:         '예약 요청이 승인되었습니다',
     rejected:         '예약 요청이 반려되었습니다',
     attendee_removed: '해당 예약의 참석자에서 제외되었습니다',
+    pending_expiring: '에메랄드 룸 승인 기한이 10분 후 만료됩니다',
+    pending_expired:  '승인 기한 초과로 예약이 자동 취소되었습니다',
   }
   const headerColor = headerColors[type] ?? '#4F46E5'
   const headerLabel = headerLabels[type] ?? '예약 알림'
-  const cancelledStyle = (type === 'cancelled' || type === 'noshow' || type === 'rejected')
+  const cancelledStyle = (type === 'cancelled' || type === 'noshow' || type === 'rejected' || type === 'pending_expired')
     ? 'text-decoration:line-through;color:#9CA3AF;' : ''
 
   // 반복예약 일정 목록 (날짜 + 시간)
@@ -334,9 +340,36 @@ function getEmailHtml(
               <p style="margin:0;font-size:13px;color:#92400E;font-weight:600;">📋 AdminPage → 승인 관리 탭에서 승인 또는 거절해 주세요.</p>
             </div>` : ''}
 
-            ${type === 'rejected' ? `
-            ${booking.reject_reason ? `
+            ${type === 'pending_expiring' ? `
+            <div style="margin:20px 0 0;padding:14px 16px;background:#FEF3C7;border-radius:10px;border-left:4px solid #D97706;">
+              <p style="margin:0;font-size:13px;color:#92400E;font-weight:600;">⏰ 10분 내에 승인 또는 거절하지 않으면 예약이 자동 취소됩니다.</p>
+              <p style="margin:6px 0 0;font-size:12px;color:#B45309;">지금 바로 처리해 주세요.</p>
+            </div>
+            <div style="margin:16px 0 0;text-align:center;">
+              <a href="${APP_URL}#admin" style="display:inline-block;background:#D97706;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;">지금 승인 처리하기 →</a>
+            </div>` : ''}
+
+            ${type === 'pending_expired' ? `
             <div style="margin:20px 0 0;padding:14px 16px;background:#FEF2F2;border-radius:10px;border-left:4px solid #DC2626;">
+              ${isAdminRecipient
+                ? `<p style="margin:0;font-size:13px;color:#991B1B;font-weight:600;">❌ 예약 시작 1분 전까지 승인이 완료되지 않아 시스템이 자동 취소 처리했습니다.</p>`
+                : `<p style="margin:0;font-size:13px;color:#991B1B;font-weight:600;">❌ 예약 시작 전까지 관리자 승인이 완료되지 않아 자동 취소되었습니다.</p>
+                   <p style="margin:6px 0 0;font-size:12px;color:#B91C1C;">새 예약을 생성하여 다시 승인 요청해 주세요.</p>`
+              }
+            </div>
+            ${!isAdminRecipient ? `
+            <div style="margin:16px 0 0;text-align:center;">
+              <a href="${APP_URL}" style="display:inline-block;background:#4F46E5;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;">새 예약 만들기 →</a>
+            </div>` : ''}` : ''}
+
+            ${type === 'rejected' ? `
+            ${booking.admin_name ? `
+            <div style="margin:20px 0 0;padding:12px 16px;background:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0;">
+              <span style="font-size:12px;color:#6B7280;font-weight:600;">거절한 관리자</span>
+              <div style="margin-top:8px;">${renderCreatorChip(booking.admin_name, '', booking.admin_avatar ?? null)}</div>
+            </div>` : ''}
+            ${booking.reject_reason ? `
+            <div style="margin:16px 0 0;padding:14px 16px;background:#FEF2F2;border-radius:10px;border-left:4px solid #DC2626;">
               <p style="margin:0;font-size:13px;color:#991B1B;font-weight:600;">거절 사유</p>
               <p style="margin:6px 0 0;font-size:13px;color:#DC2626;">${booking.reject_reason}</p>
             </div>` : ''}
@@ -376,24 +409,28 @@ async function sendTeamsCard(type: string, booking: any): Promise<void> {
   if (!TEAMS_WEBHOOK_URL) return
 
   const colorMap: Record<string, string> = {
-    created:   'Good',
-    pending:   'Warning',
-    approved:  'Good',
-    rejected:  'Attention',
-    cancelled: 'Default',
-    noshow:    'Warning',
-    updated:   'Default',
+    created:          'Good',
+    pending:          'Warning',
+    approved:         'Good',
+    rejected:         'Attention',
+    cancelled:        'Default',
+    noshow:           'Warning',
+    updated:          'Default',
+    pending_expiring: 'Warning',
+    pending_expired:  'Attention',
   }
   const color = colorMap[type] ?? 'Default'
 
   const titleMap: Record<string, string> = {
-    created:   '✅ 새 예약이 생성되었습니다',
-    pending:   '📋 에메랄드 룸 승인 요청',
-    approved:  '✅ 예약이 승인되었습니다',
-    rejected:  '❌ 예약이 거절되었습니다',
-    cancelled: '❌ 예약이 취소되었습니다',
-    noshow:    '⚠️ 노쇼 자동취소',
-    updated:   '📝 예약이 변경되었습니다',
+    created:          '✅ 새 예약이 생성되었습니다',
+    pending:          '📋 에메랄드 룸 승인 요청',
+    approved:         '✅ 예약이 승인되었습니다',
+    rejected:         '❌ 예약이 거절되었습니다',
+    cancelled:        '❌ 예약이 취소되었습니다',
+    noshow:           '⚠️ 노쇼 자동취소',
+    updated:          '📝 예약이 변경되었습니다',
+    pending_expiring: '⏰ 에메랄드 룸 승인 기한 10분 전',
+    pending_expired:  '❌ 승인 기한 초과 — 자동 취소 처리됨',
   }
   const cardTitle = titleMap[type] ?? '예약 알림'
 
@@ -517,7 +554,7 @@ Deno.serve(async (req: Request) => {
     const results = []
 
     // ── Teams 알림 (비동기, 실패해도 이메일에 영향 없음) ────────────────────
-    if (['created', 'approved', 'rejected', 'cancelled', 'noshow', 'updated', 'pending'].includes(type)) {
+    if (['created', 'approved', 'rejected', 'cancelled', 'noshow', 'updated', 'pending', 'pending_expiring', 'pending_expired'].includes(type)) {
       sendTeamsCard(type, booking).catch(() => {})
     }
 
@@ -532,6 +569,72 @@ Deno.serve(async (req: Request) => {
       } else {
         console.warn('[notify] pending: admin 이메일 없음 — profiles.role=ADMIN 확인 필요')
       }
+      return new Response(
+        JSON.stringify({ success: true, sent: results.length, results }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // ── pending_expiring: Admin 전원에게만 발송 ──────────────────────────────
+    if (type === 'pending_expiring') {
+      const adminEmails = await fetchAdminEmails()
+      console.log('[notify] pending_expiring → admin 이메일:', adminEmails.length, '명')
+      if (adminEmails.length > 0) {
+        const html = getEmailHtml(type, booking, false, [], '', null, [], true)
+        await sendEmail(adminEmails, subject, html)
+        results.push({ to: adminEmails, role: 'admins' })
+      }
+      return new Response(
+        JSON.stringify({ success: true, sent: results.length, results }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // ── pending_expired: Admin(별도 내용) + 예약자 + 참석자 발송 ─────────────
+    if (type === 'pending_expired') {
+      const [adminEmails, creatorInfo, attendeeList] = await Promise.all([
+        fetchAdminEmails(),
+        booking.user_id ? fetchCreatorInfo(booking.user_id) : Promise.resolve(null),
+        booking.id ? fetchAttendees(booking.id, booking.user_email ?? '') : Promise.resolve([]),
+      ])
+      const creatorEmail = creatorInfo?.email ?? booking.user_email ?? ''
+      const filteredAttendeeList = attendeeList.filter(a => a.email !== creatorEmail)
+      const expiredTasks: Promise<void>[] = []
+
+      // Admin 전용 이메일 (isAdminRecipient=true → 관리자용 안내 메시지)
+      if (adminEmails.length > 0) {
+        const adminSubject = `[C&R SPACE · 관리자] ❌ 승인 기한 초과 자동 취소 — ${booking.title}`
+        const adminHtml = getEmailHtml(type, booking, false, [], '', null, [], true)
+        expiredTasks.push(
+          sendEmail(adminEmails, adminSubject, adminHtml)
+            .then(() => { results.push({ to: adminEmails, role: 'admins' }) })
+            .catch(e => console.error('[notify] admin 발송 실패:', e))
+        )
+      }
+
+      // 예약자 이메일
+      if (creatorEmail) {
+        const html = getEmailHtml(type, booking, false, filteredAttendeeList, '', creatorInfo, [])
+        expiredTasks.push(
+          sendEmail([creatorEmail], subject, html)
+            .then(() => { results.push({ to: creatorEmail, role: 'creator' }) })
+            .catch(e => console.error('[notify] 예약자 발송 실패:', e))
+        )
+      }
+
+      // 참석자 개별 이메일
+      const attendeeSubject = getSubject(type, booking, true)
+      for (const att of filteredAttendeeList) {
+        const html = getEmailHtml(type, booking, true, filteredAttendeeList, att.name, creatorInfo, [])
+        expiredTasks.push(
+          sendEmail([att.email], attendeeSubject, html)
+            .then(() => { results.push({ to: att.email, role: 'attendee' }) })
+            .catch(e => console.error(`[notify] 참석자 발송 실패 (${att.email}):`, e))
+        )
+      }
+
+      await Promise.allSettled(expiredTasks)
+      console.log(`[notify] pending_expired 발송 완료 — admin(${adminEmails.length}명) + 예약자(${creatorEmail || '없음'}) + 참석자(${filteredAttendeeList.length}명)`)
       return new Response(
         JSON.stringify({ success: true, sent: results.length, results }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

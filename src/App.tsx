@@ -612,6 +612,8 @@ function AppContent() {
           user_dept:     target.dept,
           room_name:     rejectedRoom?.room_name_ko ?? rejectedRoom?.room_name ?? '',
           reject_reason: reason || '관리자 거절',
+          admin_name:    currentUser,                   // 거절한 관리자 이름
+          admin_avatar:  authUser?.avatar_url ?? null,  // 관리자 아바타
         })
       }
       // 예약자 인앱 알림
