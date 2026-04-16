@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react'
 import { AlertCircle, AlertTriangle, ArrowUpDown, Ban, BarChart2, Building2, Calendar, CheckCircle2, ChevronDown, Clock, Download, ImagePlus, Inbox, RefreshCw, RotateCw, Search, Trash2, Upload, Users, X } from 'lucide-react'
+import { Button } from '../components/common/Button'
 import {
   todayStr, tsDate, tsMin, tsTime, fmtTime, fmtTSDateFull, fmtTSRangeFull,
   fmt2, objToStr,
@@ -1082,7 +1083,7 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
                   <td style={{padding:'10px 14px',color:'#64748B',whiteSpace:'nowrap'}}>{fmtTSRangeFull(b.start_at,b.end_at)}</td>
                   <td style={{padding:'10px 14px',whiteSpace:'nowrap'}}><div style={{display:'flex',alignItems:'center',gap:7}}><div style={{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:500,flexShrink:0,background:'#F1EFE8',color:'#444441'}}>{(b.user??'?')[0]}</div><span style={{fontSize:13,fontWeight:500}}>{b.user??'—'}</span></div></td>
                   <td style={{padding:'10px 14px',whiteSpace:'nowrap'}}>{getBadge(b)}</td>
-                  <td style={{padding:'10px 14px'}} onClick={e=>e.stopPropagation()}>{canCancel&&<button className="btn" onClick={()=>setCancelModal(b)} style={{background:'#FEF2F2',border:'1px solid #FCA5A5',color:'#DC2626',padding:'5px 12px',fontSize:11,borderRadius:10}}>강제 취소</button>}</td>
+                  <td style={{padding:'10px 14px'}} onClick={e=>e.stopPropagation()}>{canCancel&&<Button variant='danger-outline' size='sm' onClick={()=>setCancelModal(b)}>강제 취소</Button>}</td>
                 </tr>
               )})}</tbody>
             </table>
@@ -1101,8 +1102,8 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
           <label style={{fontSize:11,fontWeight:600,color:'#94A3B8',display:'block',marginBottom:6}}>취소 사유</label>
           <textarea value={cancelReason} onChange={e=>setCancelReason(e.target.value)} rows={3} placeholder="취소 사유를 입력하세요 (선택)" style={{width:'100%',background:'#F8FAFC',border:'1px solid #E2E8F0',borderRadius:10,padding:'10px 14px',fontSize:13,outline:'none',resize:'none'}}/>
           <div style={{display:'flex',gap:8,marginTop:16}}>
-            <button className="btn" onClick={()=>{setCancelModal(null);setCancelReason('')}} style={{flex:1,background:'#F1F5F9',color:'#64748B',padding:'12px',fontSize:13,borderRadius:12}}>돌아가기</button>
-            <button className="btn" onClick={()=>doCancel(cancelModal.id)} disabled={cancelling} style={{flex:1,background:'#DC2626',color:'#fff',padding:'12px',fontSize:13,fontWeight:600,borderRadius:12,opacity:cancelling?0.6:1}}>{cancelling?'처리 중...':'강제 취소'}</button>
+            <Button variant='ghost' flex onClick={()=>{setCancelModal(null);setCancelReason('')}}>돌아가기</Button>
+            <Button variant='danger' flex loading={cancelling} onClick={()=>doCancel(cancelModal.id)}>강제 취소</Button>
           </div>
         </div>
       </div></ModalPortal>)}
@@ -1151,7 +1152,7 @@ export function AdminRooms({ showToast, isMobile }) {
     <div className="anm">
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
         <div style={{fontSize:15,fontWeight:600,color:'#111'}}>전체 {rooms.length}개 <span style={{fontSize:12,color:'#94A3B8',fontWeight:400}}>활성 {rooms.filter(r=>r.is_active).length} · 비활성 {rooms.filter(r=>!r.is_active).length}</span></div>
-        <button className="btn" onClick={()=>openEdit(null)} style={{background:'#111',color:'#fff',padding:'8px 16px',fontSize:12,borderRadius:10}}>+ 회의실 추가</button>
+        <Button variant='primary' size='sm' onClick={()=>openEdit(null)}>+ 회의실 추가</Button>
       </div>
       <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:12}}>
         {rooms.map(r=>{const fl=getFloor(r.floor_id);return(
@@ -1171,8 +1172,8 @@ export function AdminRooms({ showToast, isMobile }) {
               </div>
             </div>
             <div style={{display:'flex',gap:8,padding:'0 20px 16px'}}>
-              <button className="btn" onClick={()=>openEdit(r)} style={{flex:1,background:'#F8FAFC',color:'#64748B',padding:'8px',fontSize:12,borderRadius:10,border:'1px solid #E2E8F0'}}>수정</button>
-              <button className="btn" onClick={()=>toggleActive(r.room_id)} style={{flex:1,background:r.is_active?'#FEF2F2':'#F0FDF4',color:r.is_active?'#DC2626':'#16A34A',padding:'8px',fontSize:12,borderRadius:10,border:`1px solid ${r.is_active?'#FCA5A5':'#86EFAC'}`}}>{r.is_active?'비활성화':'활성화'}</button>
+              <Button variant='secondary' size='sm' flex onClick={()=>openEdit(r)}>수정</Button>
+              <Button variant={r.is_active?'danger-outline':'success'} size='sm' flex onClick={()=>toggleActive(r.room_id)}>{r.is_active?'비활성화':'활성화'}</Button>
             </div>
           </div>
         )})}
@@ -1206,8 +1207,8 @@ export function AdminRooms({ showToast, isMobile }) {
           </div>
           {/* sticky footer */}
           <div style={{display:'flex',gap:8,padding:'12px 24px 20px',borderTop:'1px solid #F1F5F9',flexShrink:0}}>
-            <button className="btn" onClick={()=>setEditRoom(null)} style={{flex:1,background:'#F1F5F9',color:'#64748B',padding:'12px',fontSize:13,borderRadius:12}}>취소</button>
-            <button className="btn" onClick={saveEdit} style={{flex:1,background:'#111',color:'#fff',padding:'12px',fontSize:13,fontWeight:600,borderRadius:12}}>저장</button>
+            <Button variant='ghost' flex onClick={()=>setEditRoom(null)}>취소</Button>
+            <Button variant='primary' flex onClick={saveEdit}>저장</Button>
           </div>
         </div>
       </div></ModalPortal>)}
@@ -1633,11 +1634,8 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
 
                 {/* 저장 / 취소 */}
                 <div style={{ display:'flex', gap:8, marginBottom:24 }}>
-                  <button className="btn" onClick={closeModal} style={{ flex:1, background:'#F1F5F9', color:'#64748B', padding:'12px', fontSize:13, borderRadius:12 }}>취소</button>
-                  <button className="btn" onClick={saveEdit} disabled={saving}
-                    style={{ flex:1, background:'#111', color:'#fff', padding:'12px', fontSize:13, fontWeight:600, borderRadius:12, opacity:saving?0.6:1 }}>
-                    {saving ? '저장 중...' : '저장'}
-                  </button>
+                  <Button variant='ghost' flex onClick={closeModal}>취소</Button>
+                  <Button variant='primary' flex loading={saving} onClick={saveEdit}>저장</Button>
                 </div>
               </div>
           </div>
@@ -1870,10 +1868,8 @@ export function AdminApprovals({ bookings, rooms, users, onApprove, onReject, sh
               placeholder="거절 사유를 입력하세요 (선택)"
               style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:'1px solid #E2E8F0', fontSize:13, outline:'none', resize:'none', background:'#F8FAFC', boxSizing:'border-box' }}/>
             <div style={{ display:'flex', gap:8, marginTop:16 }}>
-              <button className="btn" onClick={() => setRejectModal(null)} style={{ flex:1, background:'#F1F5F9', color:'#64748B', padding:'12px', fontSize:13, borderRadius:12 }}>취소</button>
-              <button className="btn" onClick={doReject} disabled={!!processing} style={{ flex:1, background:'#DC2626', color:'#fff', padding:'12px', fontSize:13, fontWeight:600, borderRadius:12, opacity:processing?0.6:1 }}>
-                {processing ? '처리 중...' : '거절 확정'}
-              </button>
+              <Button variant='ghost' flex onClick={() => setRejectModal(null)}>취소</Button>
+              <Button variant='danger' flex loading={!!processing} onClick={doReject}>거절 확정</Button>
             </div>
           </div>
         </div>
