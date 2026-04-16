@@ -435,7 +435,9 @@ function AggTable({ rows, cols, onExport, onRowClick }: {
 export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject, onForceCancel, onDetail }) {
   const TABS = ['dashboard','bookings','approvals','rooms','users']
   const getTabFromHash = () => {
-    const t = window.location.hash.replace('#admin-tab-','')
+    const hash = window.location.hash.replace('#', '')
+    if (hash.startsWith('admin-booking-')) return 'approvals'  // 딥링크: 승인 관리 탭으로
+    const t = hash.replace('admin-tab-','')
     return TABS.includes(t) ? t : 'dashboard'
   }
   const [activeTab, setActiveTab] = useState(getTabFromHash)
@@ -443,6 +445,20 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
     setActiveTab(t)
     window.location.hash = `admin-tab-${t}`
   }
+
+  // 딥링크 처리: #admin-booking-{id} 로 진입 시 해당 예약 모달 자동 오픈
+  useEffect(() => {
+    const hash = window.location.hash.replace('#', '')
+    if (!hash.startsWith('admin-booking-')) return
+    const bookingId = hash.replace('admin-booking-', '')
+    const target = bookings.find((b: any) => b.id === bookingId)
+    if (target) {
+      setActiveTab('approvals')
+      onDetail(target)
+      // 해시를 승인 관리 탭으로 교체 (딥링크 재진입 방지)
+      window.location.hash = 'admin-tab-approvals'
+    }
+  }, [bookings])
   const PER_PAGE = 15
   const tabs = [
     { id:'dashboard', icon:<BarChart2 size={14} strokeWidth={1.8}/>,  label:'대시보드' },

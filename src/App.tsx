@@ -168,15 +168,20 @@ function AppContent() {
     const iv = setInterval(() => setTick(t => t+1), 10000);
 
     // ② Realtime 구독 → 다른 사람 예약/취소/체크인 시 즉시 반영
+    // 500ms 디바운스: Realtime 재연결 시 연속 호출로 인한 auth lock 경쟁 방지
+    let realtimeDebounce: ReturnType<typeof setTimeout> | null = null;
     const unsubscribe = subscribeBookings(() => {
-      loadBookings().then(fresh => {
-        setBookings(fresh)
-        setModal(prev => {
-          if (prev?.type !== 'detail') return prev
-          const updated = fresh.find((b: any) => b.id === (prev.data as any)?.id)
-          return updated ? { ...prev, data: updated } : prev
+      if (realtimeDebounce) clearTimeout(realtimeDebounce);
+      realtimeDebounce = setTimeout(() => {
+        loadBookings().then(fresh => {
+          setBookings(fresh)
+          setModal(prev => {
+            if (prev?.type !== 'detail') return prev
+            const updated = fresh.find((b: any) => b.id === (prev.data as any)?.id)
+            return updated ? { ...prev, data: updated } : prev
+          })
         })
-      })
+      }, 500);
     });
 
 
@@ -195,6 +200,7 @@ function AppContent() {
     document.addEventListener("openNewBooking", handler);
 
     return () => {
+      if (realtimeDebounce) clearTimeout(realtimeDebounce);
       clearInterval(iv);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       document.removeEventListener("openNewBooking", handler);

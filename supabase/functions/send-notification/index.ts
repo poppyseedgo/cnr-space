@@ -335,10 +335,24 @@ function getEmailHtml(
               <p style="margin:6px 0 0;font-size:12px;color:#B45309;">예약 시작 후 10분 이내에 체크인이 없으면 자동 취소됩니다.</p>
             </div>` : ''}
 
-            ${type === 'pending' ? `
-            <div style="margin:20px 0 0;padding:14px 16px;background:#FEF3C7;border-radius:10px;border-left:4px solid #D97706;">
-              <p style="margin:0;font-size:13px;color:#92400E;font-weight:600;">📋 AdminPage → 승인 관리 탭에서 승인 또는 거절해 주세요.</p>
+            ${type === 'cancelled' && booking.admin_force ? `
+            <div style="margin:20px 0 0;padding:14px 16px;background:#FEF2F2;border-radius:10px;border-left:4px solid #DC2626;">
+              <p style="margin:0;font-size:13px;color:#991B1B;font-weight:600;">관리자에 의해 강제 취소된 예약입니다.</p>
+              ${booking.cancel_reason ? `<p style="margin:6px 0 0;font-size:13px;color:#DC2626;">취소 사유: ${booking.cancel_reason}</p>` : ''}
             </div>` : ''}
+
+            ${type === 'pending' ? `
+            ${isAdminRecipient ? `
+            <div style="margin:20px 0 0;padding:14px 16px;background:#FEF3C7;border-radius:10px;border-left:4px solid #D97706;">
+              <p style="margin:0;font-size:13px;color:#92400E;font-weight:600;">📋 아래 버튼을 클릭해 승인 또는 거절해 주세요.</p>
+            </div>
+            <div style="margin:16px 0 0;text-align:center;">
+              <a href="${APP_URL}#admin-booking-${booking.id}" style="display:inline-block;background:#D97706;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;">지금 승인 처리하기 →</a>
+            </div>` : `
+            <div style="margin:20px 0 0;padding:14px 16px;background:#FEF3C7;border-radius:10px;border-left:4px solid #D97706;">
+              <p style="margin:0;font-size:13px;color:#92400E;font-weight:600;">✅ 에메랄드 룸 예약 승인 요청이 접수되었습니다.</p>
+              <p style="margin:6px 0 0;font-size:12px;color:#B45309;">관리자 검토 후 승인 또는 거절 결과를 이메일로 안내해 드립니다.</p>
+            </div>`}` : ''}
 
             ${type === 'pending_expiring' ? `
             <div style="margin:20px 0 0;padding:14px 16px;background:#FEF3C7;border-radius:10px;border-left:4px solid #D97706;">
@@ -346,7 +360,7 @@ function getEmailHtml(
               <p style="margin:6px 0 0;font-size:12px;color:#B45309;">지금 바로 처리해 주세요.</p>
             </div>
             <div style="margin:16px 0 0;text-align:center;">
-              <a href="${APP_URL}#admin" style="display:inline-block;background:#D97706;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;">지금 승인 처리하기 →</a>
+              <a href="${APP_URL}#admin-booking-${booking.id}" style="display:inline-block;background:#D97706;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;">지금 승인 처리하기 →</a>
             </div>` : ''}
 
             ${type === 'pending_expired' ? `
@@ -473,7 +487,7 @@ async function sendTeamsCard(type: string, booking: any): Promise<void> {
             actions: [{
               type: 'Action.OpenUrl',
               title: '승인 관리 페이지로 이동',
-              url: `${APP_URL}#admin`,
+              url: `${APP_URL}#admin-booking-${booking.id}`,
             }]
           }] : []),
           ...((type === 'created' || type === 'approved') ? [{
@@ -558,17 +572,53 @@ Deno.serve(async (req: Request) => {
       sendTeamsCard(type, booking).catch(() => {})
     }
 
-    // ── pending: Admin 전원에게 발송 (DB에서 직접 조회) ─────────────────────
+    // ── pending: Admin(딥링크 포함) + 예약자 + 참석자 발송 ──────────────────
     if (type === 'pending') {
-      const adminEmails = await fetchAdminEmails()
-      console.log('[notify] pending → admin 이메일:', adminEmails.length, '명')
+      const [adminEmails, creatorInfo, attendeeList] = await Promise.all([
+        fetchAdminEmails(),
+        booking.user_id ? fetchCreatorInfo(booking.user_id) : Promise.resolve(null),
+        booking.id ? fetchAttendees(booking.id, booking.user_email ?? '') : Promise.resolve([]),
+      ])
+      const creatorEmail = creatorInfo?.email ?? booking.user_email ?? ''
+      const filteredAttendeeList = attendeeList.filter(a => a.email !== creatorEmail)
+      const pendingTasks: Promise<void>[] = []
+
+      // Admin 전용 이메일 (딥링크 CTA + 관리자용 안내)
       if (adminEmails.length > 0) {
-        const html = getEmailHtml(type, booking, false)
-        await sendEmail(adminEmails, subject, html)
-        results.push({ to: adminEmails, role: 'admins' })
+        const adminSubject = `[C&R SPACE · 관리자] 📋 에메랄드 룸 승인 요청 — ${booking.title}`
+        const adminHtml = getEmailHtml(type, booking, false, [], '', null, [], true)
+        pendingTasks.push(
+          sendEmail(adminEmails, adminSubject, adminHtml)
+            .then(() => { results.push({ to: adminEmails, role: 'admins' }) })
+            .catch(e => console.error('[notify] pending admin 발송 실패:', e))
+        )
       } else {
         console.warn('[notify] pending: admin 이메일 없음 — profiles.role=ADMIN 확인 필요')
       }
+
+      // 예약자 이메일 ("승인 요청 접수됨" 안내)
+      if (creatorEmail) {
+        const html = getEmailHtml(type, booking, false, filteredAttendeeList, '', creatorInfo, [], false)
+        pendingTasks.push(
+          sendEmail([creatorEmail], subject, html)
+            .then(() => { results.push({ to: creatorEmail, role: 'creator' }) })
+            .catch(e => console.error('[notify] pending 예약자 발송 실패:', e))
+        )
+      }
+
+      // 참석자 이메일
+      const attendeeSubject = getSubject(type, booking, true)
+      for (const att of filteredAttendeeList) {
+        const html = getEmailHtml(type, booking, true, filteredAttendeeList, att.name, creatorInfo, [], false)
+        pendingTasks.push(
+          sendEmail([att.email], attendeeSubject, html)
+            .then(() => { results.push({ to: att.email, role: 'attendee' }) })
+            .catch(e => console.error(`[notify] pending 참석자 발송 실패 (${att.email}):`, e))
+        )
+      }
+
+      await Promise.allSettled(pendingTasks)
+      console.log(`[notify] pending 발송 완료 — admin(${adminEmails.length}명) + 예약자(${creatorEmail || '없음'}) + 참석자(${filteredAttendeeList.length}명)`)
       return new Response(
         JSON.stringify({ success: true, sent: results.length, results }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
