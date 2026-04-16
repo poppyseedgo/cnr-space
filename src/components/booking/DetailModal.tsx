@@ -61,7 +61,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
                 </span>
               </div>
             )}
-            {b.user !== currentUser && (
+            {b.user !== currentUser && b.attendees?.some((a: any) => a.name === currentUser) && (
               <div style={{marginTop:6}}>
                 <span style={{display:'inline-flex',alignItems:'center',gap:4,background:'#F0FDF4',color:'#15803D',fontSize:11,fontWeight:600,borderRadius:6,padding:'3px 8px'}}>
                   👤 참석자
