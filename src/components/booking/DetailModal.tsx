@@ -113,6 +113,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
                     name={b.user}
                     avatarUrl={owner?.avatar_url ?? null}
                     variant="md"
+                    userInfo={owner}
                   />
                 </div>
               </div>

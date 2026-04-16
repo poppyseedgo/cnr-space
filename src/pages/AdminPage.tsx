@@ -1861,13 +1861,15 @@ export function AdminApprovals({ bookings, rooms, users, onApprove, onReject, sh
             // 승인완료 — 처리한 관리자 칩 (데이터 없으면 빈칸)
             if (status === 'confirmed') {
               if (!b.processedByName) return null
-              return <UserChip name={b.processedByName} avatarUrl={b.processedByAvatar ?? null} variant="sm" isAdmin />
+              const processedByUser = (users ?? []).find((u: any) => u.name === b.processedByName)
+              return <UserChip name={b.processedByName} avatarUrl={b.processedByAvatar ?? null} variant="sm" isAdmin userInfo={processedByUser} />
             }
 
             // 거절 — 처리한 관리자 칩 (데이터 없으면 빈칸)
             if (status === 'rejected') {
               if (!b.processedByName) return null
-              return <UserChip name={b.processedByName} avatarUrl={b.processedByAvatar ?? null} variant="sm" isAdmin />
+              const processedByUser = (users ?? []).find((u: any) => u.name === b.processedByName)
+              return <UserChip name={b.processedByName} avatarUrl={b.processedByAvatar ?? null} variant="sm" isAdmin userInfo={processedByUser} />
             }
 
             // 기한초과 — 라벨만

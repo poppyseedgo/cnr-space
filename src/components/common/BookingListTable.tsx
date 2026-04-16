@@ -317,6 +317,7 @@ export function BookingListTable({
                           name={b.user ?? '?'}
                           avatarUrl={avatarUrl}
                           variant="sm"
+                          userInfo={users?.find((u: any) => u.user_id === b.user_id)}
                         />
                       </td>
 

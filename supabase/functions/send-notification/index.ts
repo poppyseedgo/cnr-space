@@ -592,7 +592,7 @@ Deno.serve(async (req: Request) => {
       // Admin 전용 이메일 (딥링크 CTA + 관리자용 안내)
       if (adminEmails.length > 0) {
         const adminSubject = `[C&R SPACE · 관리자] 📋 에메랄드 룸 승인 요청 — ${booking.title}`
-        const adminHtml = getEmailHtml(type, booking, false, [], '', null, [], true)
+        const adminHtml = getEmailHtml(type, booking, false, [], '', creatorInfo, [], true)
         pendingTasks.push(
           sendEmail(adminEmails, adminSubject, adminHtml)
             .then(() => { results.push({ to: adminEmails, role: 'admins' }) })
@@ -633,10 +633,13 @@ Deno.serve(async (req: Request) => {
 
     // ── pending_expiring: Admin 전원에게만 발송 ──────────────────────────────
     if (type === 'pending_expiring') {
-      const adminEmails = await fetchAdminEmails()
+      const [adminEmails, expiringCreatorInfo] = await Promise.all([
+        fetchAdminEmails(),
+        booking.user_id ? fetchCreatorInfo(booking.user_id) : Promise.resolve(null),
+      ])
       console.log('[notify] pending_expiring → admin 이메일:', adminEmails.length, '명')
       if (adminEmails.length > 0) {
-        const html = getEmailHtml(type, booking, false, [], '', null, [], true)
+        const html = getEmailHtml(type, booking, false, [], '', expiringCreatorInfo, [], true)
         await sendEmail(adminEmails, subject, html)
         results.push({ to: adminEmails, role: 'admins' })
       }
@@ -660,7 +663,7 @@ Deno.serve(async (req: Request) => {
       // Admin 전용 이메일 (isAdminRecipient=true → 관리자용 안내 메시지)
       if (adminEmails.length > 0) {
         const adminSubject = `[C&R SPACE · 관리자] ❌ 승인 기한 초과 자동 취소 — ${booking.title}`
-        const adminHtml = getEmailHtml(type, booking, false, [], '', null, [], true)
+        const adminHtml = getEmailHtml(type, booking, false, [], '', creatorInfo, [], true)
         expiredTasks.push(
           sendEmail(adminEmails, adminSubject, adminHtml)
             .then(() => { results.push({ to: adminEmails, role: 'admins' }) })

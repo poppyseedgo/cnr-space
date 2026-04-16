@@ -65,7 +65,7 @@ export function BookingDoneModal({booking:b, onClose, rooms:rp=[], users:up=[]})
                 <User size={11} strokeWidth={1.8}/>예약자
               </div>
               <div style={{display:"flex",alignItems:"center"}}>
-                <UserChip name={b.user} avatarUrl={owner?.avatar_url ?? null} variant="md" />
+                <UserChip name={b.user} avatarUrl={owner?.avatar_url ?? null} variant="md" userInfo={owner} />
               </div>
             </div>
           )
