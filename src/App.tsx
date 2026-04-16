@@ -127,7 +127,8 @@ function AppContent() {
     const currentHash = window.location.hash.replace('#', '');
     const isValidHash = ['home','calendar','mypage','admin'].includes(currentHash)
       || currentHash.startsWith('admin-tab-')
-      || currentHash.startsWith('admin-booking-');
+      || currentHash.startsWith('admin-booking-')
+      || !!sessionStorage.getItem('cnr_deeplink'); // OAuth 후 deeplink 복원 중이면 홈 이동 차단
     if (!isValidHash) {
       setView('home');
     }
