@@ -42,6 +42,10 @@ function AppContent() {
   const getViewFromHash = (): string => {
     const hash = window.location.hash.replace('#', '')
     if (hash.startsWith('admin-tab-')) return 'admin'
+    if (hash.startsWith('admin-booking-')) return 'admin'
+    // OAuth 리다이렉트 후 해시가 소실된 경우 sessionStorage에서 복원
+    const saved = sessionStorage.getItem('cnr_deeplink')
+    if (saved?.startsWith('admin-booking-')) return 'admin'
     return ['home','calendar','mypage','admin'].includes(hash) ? hash : 'home'
   }
   const [view, setViewState] = useState<string>(getViewFromHash);
@@ -122,7 +126,8 @@ function AppContent() {
     // 최초 로그인(hash 없을 때)만 홈으로 이동, 새로고침 시 현재 hash 유지
     const currentHash = window.location.hash.replace('#', '');
     const isValidHash = ['home','calendar','mypage','admin'].includes(currentHash)
-      || currentHash.startsWith('admin-tab-');
+      || currentHash.startsWith('admin-tab-')
+      || currentHash.startsWith('admin-booking-');
     if (!isValidHash) {
       setView('home');
     }
@@ -161,6 +166,14 @@ function AppContent() {
     }, authUser.user_id);
     return unsub;
   }, [authUser?.user_id]);
+
+  // admin-booking- 딥링크 해시를 sessionStorage에 저장 (OAuth 리다이렉트 시 소실 방지)
+  useEffect(() => {
+    const hash = window.location.hash.replace('#', '')
+    if (hash.startsWith('admin-booking-')) {
+      sessionStorage.setItem('cnr_deeplink', hash)
+    }
+  }, [])
 
   // 틱 타이머 + Realtime + 이벤트 리스너 + 탭 복귀 새로고침 (마운트 1회)
   useEffect(() => {

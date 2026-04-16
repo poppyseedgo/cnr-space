@@ -446,17 +446,22 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
     window.location.hash = `admin-tab-${t}`
   }
 
-  // 딥링크 처리: #admin-booking-{id} 로 진입 시 해당 예약 모달 자동 오픈
+  // 딥링크 처리: #admin-booking-{id} 또는 sessionStorage(OAuth 후 복원) 로 진입 시 예약 모달 자동 오픈
   useEffect(() => {
     const hash = window.location.hash.replace('#', '')
-    if (!hash.startsWith('admin-booking-')) return
-    const bookingId = hash.replace('admin-booking-', '')
+    // 해시에서 먼저 확인, 없으면 sessionStorage에서 복원
+    const raw = hash.startsWith('admin-booking-')
+      ? hash
+      : (sessionStorage.getItem('cnr_deeplink') ?? '')
+    if (!raw.startsWith('admin-booking-')) return
+    const bookingId = raw.replace('admin-booking-', '')
     const target = bookings.find((b: any) => b.id === bookingId)
     if (target) {
       setActiveTab('approvals')
       onDetail(target)
-      // 해시를 승인 관리 탭으로 교체 (딥링크 재진입 방지)
+      // 딥링크 소비 후 정리
       window.location.hash = 'admin-tab-approvals'
+      sessionStorage.removeItem('cnr_deeplink')
     }
   }, [bookings])
   const PER_PAGE = 15
