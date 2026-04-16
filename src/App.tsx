@@ -577,17 +577,23 @@ function AppContent() {
   // ── 에메랄드 승인/거절 ─────────────────────────────────────────────────────
   const approvePendingBooking = useCallback(async (id: string) => {
     try {
-      await approveBooking(id)
+      await approveBooking(id, currentUser, authUser?.avatar_url ?? null)
       const target = bookings.find(b => b.id === id)
-      setBookings(prev => prev.map(b => b.id===id ? {...b, status:'confirmed'} : b))
-      // 승인 이메일 — 예약자·참석자 수신자는 Edge Fn이 DB에서 조회
+      setBookings(prev => prev.map(b => b.id===id ? {
+        ...b, status:'confirmed',
+        processedByName: currentUser,
+        processedByAvatar: authUser?.avatar_url ?? null,
+      } : b))
+      // 승인 이메일 — admin_name/admin_avatar 포함
       if (target) {
         const approvedRoom = rooms.find(r => r.room_id === target.room_id)
         sendNotification('approved', {
           ...target,
-          user_name: target.user,
-          user_dept: target.dept,
-          room_name: approvedRoom?.room_name_ko ?? approvedRoom?.room_name ?? '',
+          user_name:    target.user,
+          user_dept:    target.dept,
+          room_name:    approvedRoom?.room_name_ko ?? approvedRoom?.room_name ?? '',
+          admin_name:   currentUser,
+          admin_avatar: authUser?.avatar_url ?? null,
         })
       }
       // 예약자 인앱 알림
@@ -620,9 +626,13 @@ function AppContent() {
 
   const rejectPendingBooking = useCallback(async (id: string, reason: string) => {
     try {
-      await rejectBooking(id, reason)
+      await rejectBooking(id, reason, currentUser, authUser?.avatar_url ?? null)
       const target = bookings.find(b => b.id === id)
-      setBookings(prev => prev.map(b => b.id===id ? {...b, status:'rejected', autoCancelled:true, cancelledBy:'admin'} : b))
+      setBookings(prev => prev.map(b => b.id===id ? {
+        ...b, status:'rejected', autoCancelled:true, cancelledBy:'admin',
+        processedByName: currentUser,
+        processedByAvatar: authUser?.avatar_url ?? null,
+      } : b))
       // 거절 이메일 — 예약자·참석자 수신자는 Edge Fn이 DB에서 조회
       if (target) {
         const rejectedRoom = rooms.find(r => r.room_id === target.room_id)

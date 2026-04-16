@@ -37,11 +37,13 @@ function rowToBooking(row: Record<string, any>): Booking {
     autoCancelled: row.auto_cancelled,
     cancelledBy:   row.cancelled_by ?? null,
     status:        row.status ?? 'confirmed',
+    reject_reason: row.reject_reason ?? null,
+    processedByName:   row.processed_by_name ?? null,
+    processedByAvatar: row.processed_by_avatar ?? null,
     earlyEnded:    row.early_ended ?? false,
     originalEndAt: row.original_end_at ?? null,
     recurGroupId:  row.recur_group_id ?? null,
     createdAt:     new Date(row.created_at).getTime(),
-    reject_reason: row.reject_reason ?? null,
   }
 }
 
@@ -571,29 +573,42 @@ export async function expirePendingBooking(id: string): Promise<void> {
 
 // ── 에메랄드 승인/거절 ────────────────────────────────────────────────────────
 
-/** 관리자 승인 → status: confirmed */
-export async function approveBooking(id: string): Promise<void> {
+/** 관리자 승인 → status: confirmed + 처리 관리자 기록 */
+export async function approveBooking(id: string, adminName?: string, adminAvatar?: string | null): Promise<void> {
   const { error } = await supabase
-    .from('bookings').update({ status: 'confirmed' }).eq('id', id)
+    .from('bookings')
+    .update({
+      status:              'confirmed',
+      processed_by_name:   adminName   ?? null,
+      processed_by_avatar: adminAvatar ?? null,
+    })
+    .eq('id', id)
   if (error) throw new Error(`승인 실패: ${error.message}`)
   await insertAuditLog({
     action: 'BOOKING_CREATED' as any,
     entityType: 'booking', entityId: id,
-    afterData: { status: 'confirmed', note: '관리자 승인' }
+    afterData: { status: 'confirmed', note: '관리자 승인', adminName }
   })
 }
 
-/** 관리자 거절 → status: rejected + auto_cancelled: true */
-export async function rejectBooking(id: string, reason: string): Promise<void> {
+/** 관리자 거절 → status: rejected + auto_cancelled: true + 처리 관리자 기록 */
+export async function rejectBooking(id: string, reason: string, adminName?: string, adminAvatar?: string | null): Promise<void> {
   const { error } = await supabase
     .from('bookings')
-    .update({ status: 'rejected', auto_cancelled: true, cancelled_by: 'admin', reject_reason: reason || null })
+    .update({
+      status:              'rejected',
+      auto_cancelled:      true,
+      cancelled_by:        'admin',
+      reject_reason:       reason || null,
+      processed_by_name:   adminName   ?? null,
+      processed_by_avatar: adminAvatar ?? null,
+    })
     .eq('id', id)
   if (error) throw new Error(`거절 실패: ${error.message}`)
   await insertAuditLog({
     action: 'BOOKING_CANCELLED' as any,
     entityType: 'booking', entityId: id,
-    afterData: { status: 'rejected', reason }
+    afterData: { status: 'rejected', reason, adminName }
   })
 }
 

@@ -1856,6 +1856,43 @@ export function AdminApprovals({ bookings, rooms, users, onApprove, onReject, sh
           render: (b: Booking) => {
             const status = classify(b)
             const isProc = processing === b.id
+
+            // 승인완료 — 처리한 관리자 칩
+            if (status === 'confirmed') {
+              return (
+                <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                  <span style={{ fontSize:11, fontWeight:600, color:'#16A34A', background:'#DCFCE7', padding:'2px 8px', borderRadius:20 }}>승인 완료</span>
+                  {b.processedByName && (
+                    <span style={{ display:'inline-flex', alignItems:'center', gap:5 }}>
+                      <UserAvatar name={b.processedByName} avatarUrl={b.processedByAvatar ?? null} size={18} />
+                      <span style={{ fontSize:11, color:'#374151' }}>{b.processedByName}</span>
+                    </span>
+                  )}
+                </div>
+              )
+            }
+
+            // 거절 — 처리한 관리자 칩
+            if (status === 'rejected') {
+              return (
+                <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                  <span style={{ fontSize:11, fontWeight:600, color:'#DC2626', background:'#FEE2E2', padding:'2px 8px', borderRadius:20 }}>거절</span>
+                  {b.processedByName && (
+                    <span style={{ display:'inline-flex', alignItems:'center', gap:5 }}>
+                      <UserAvatar name={b.processedByName} avatarUrl={b.processedByAvatar ?? null} size={18} />
+                      <span style={{ fontSize:11, color:'#374151' }}>{b.processedByName}</span>
+                    </span>
+                  )}
+                </div>
+              )
+            }
+
+            // 기한초과 — 라벨만
+            if (status === 'expired') {
+              return <span style={{ fontSize:11, color:'#94A3B8', padding:'4px 8px', background:'#F8FAFC', borderRadius:8 }}>기한초과</span>
+            }
+
+            // 승인 대기 — 승인/거절 버튼
             if (status !== 'pending' || b.autoCancelled) return null
             if (!canApprove(b)) return <span style={{ fontSize:11, color:'#94A3B8', padding:'4px 8px', background:'#F8FAFC', borderRadius:8 }}>마감</span>
             const mins = minsLeft(b)

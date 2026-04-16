@@ -98,6 +98,8 @@ export interface Booking {
   cancelledBy?:   'user' | 'system' | 'admin' | null  // 직접취소 | 노쇼/기한초과자동취소 | 관리자강제취소
   status?:        'confirmed' | 'pending' | 'rejected' | 'cancelled'  // 에메랄드 승인 상태
   reject_reason?: string | null  // 거절 사유
+  processedByName?:   string | null  // 승인/거절 처리한 관리자 이름
+  processedByAvatar?: string | null  // 승인/거절 처리한 관리자 아바타
   earlyEnded?: boolean
   originalEndAt?: string | null  // 조기 반납 시 원래 예약 종료 시간
   createdAt: number
