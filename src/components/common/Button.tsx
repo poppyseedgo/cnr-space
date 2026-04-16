@@ -34,8 +34,8 @@ const VARIANT_STYLES: Record<ButtonVariant, React.CSSProperties> = {
 }
 
 const SIZE_STYLES: Record<ButtonSize, React.CSSProperties> = {
-  sm: { padding: '6px 12px',  fontSize: 12, fontWeight: 600, borderRadius: 8  },
-  lg: { padding: '13px',      fontSize: 14, fontWeight: 600, borderRadius: 12 },
+  sm: { padding: '6px 12px',  fontSize: 12, fontWeight: 600, border: 0, borderRadius: 8  },
+  lg: { padding: '13px',      fontSize: 14, fontWeight: 600, border: 0, borderRadius: 12 },
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────

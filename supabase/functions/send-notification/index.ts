@@ -399,6 +399,12 @@ function getEmailHtml(
               <a href="${APP_URL}" style="display:inline-block;background:#4F46E5;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;">예약 확인하기 →</a>
             </div>` : ''}
 
+            ${type === 'approved' && booking.admin_name ? `
+            <div style="margin:16px 0 0;padding:12px 16px;background:#F0FDF4;border-radius:10px;border:1px solid #BBF7D0;">
+              <span style="font-size:12px;color:#166534;font-weight:600;">승인한 관리자</span>
+              <div style="margin-top:8px;">${renderCreatorChip(booking.admin_name, '', booking.admin_avatar ?? null)}</div>
+            </div>` : ''}
+
           </td>
         </tr>
 
