@@ -96,7 +96,7 @@ export interface Booking {
   checkedIn:         boolean
   autoCancelled:  boolean
   cancelledBy?:   'user' | 'system' | 'admin' | null  // 직접취소 | 노쇼/기한초과자동취소 | 관리자강제취소
-  status?:        'confirmed' | 'pending' | 'rejected'  // 에메랄드 승인 상태
+  status?:        'confirmed' | 'pending' | 'rejected' | 'cancelled'  // 에메랄드 승인 상태
   reject_reason?: string | null  // 거절 사유
   earlyEnded?: boolean
   originalEndAt?: string | null  // 조기 반납 시 원래 예약 종료 시간
