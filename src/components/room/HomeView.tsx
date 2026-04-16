@@ -128,11 +128,11 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
             const isPast     = tsMin(b.end_at) < now;
             const minsUntil  = tsMin(b.start_at) - now;   // 시작까지 남은 분
             const isSoon     = minsUntil > 0 && minsUntil <= 10;  // 10분 이내
-            const cardState: string = b.status === 'rejected'       ? "rejected"
-              : b.cancelledBy === 'admin'         ? "adminCancel"
-              : b.status === 'pending' && b.autoCancelled ? "pendingExpired"
-              : b.cancelledBy === 'system'        ? "noshow"
-              : b.autoCancelled                   ? "cancelled"
+            const cardState: string = b.status === 'rejected'                                  ? "rejected"
+              : b.cancelledBy === 'admin'                                                      ? "adminCancel"
+              : b.autoCancelled && b.cancelledBy === 'system' && b.status === 'cancelled'      ? "pendingExpired"
+              : b.autoCancelled && b.cancelledBy === 'system' && b.status === 'confirmed'      ? "noshow"
+              : b.autoCancelled                                                                ? "cancelled"
               : b.earlyEnded                      ? "earlyEnded"
               : b.checkedIn && isActive           ? "using"
               : b.checkedIn                       ? "done"
@@ -148,7 +148,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
               pending:    {label:"승인 대기",    btnBg:"#FEF3C7", btnColor:"#92400E", disabled:true,  action:null,                showBtn:true},
               checkin:    {label:"체크인",       btnBg:"#16A34A", btnColor:"#fff",    disabled:false, action:()=>onCheckIn(b.id), showBtn:true},
               using:      {label:"조기반납",     btnBg:"#111111", btnColor:"#fff",    disabled:false, action:()=>onEarlyEnd(b.id),showBtn:true},
-              noshow:       {label:null,           btnBg:"",        btnColor:"",        disabled:true,  action:null,                showBtn:false},
+              noshow:        {label:null,           btnBg:"",        btnColor:"",        disabled:true,  action:null,                showBtn:false},
               pendingExpired:{label:null,           btnBg:"",        btnColor:"",        disabled:true,  action:null,                showBtn:false},
               done:       {label:"종료",         btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:true},
               earlyEnded: {label:"반납됨",       btnBg:"#DBEAFE", btnColor:"#2563EB", disabled:true,  action:null,                showBtn:true},

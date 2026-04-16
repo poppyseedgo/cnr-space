@@ -35,9 +35,12 @@ export function BookingStatusBadge({
 
   // ── 취소 상태 판별 (상호 배타적) ──────────────────────────────────
   const isRejected       = b.status === 'rejected'
-  const isExpiredPending = b.status === 'pending' && b.autoCancelled
+  // 기한초과 취소: pending이었다가 시스템이 status='cancelled'로 처리
+  // (auto_cancelled=true + cancelled_by='system' + status='cancelled')
+  const isExpiredPending = b.status === 'cancelled' && b.autoCancelled && b.cancelledBy === 'system'
   const isAdminCancel    = b.autoCancelled && b.cancelledBy === 'admin' && !isRejected
-  const isNoshow         = b.autoCancelled && b.cancelledBy === 'system' && !isRejected && b.status !== 'pending'
+  // 노쇼: confirmed 예약이 미체크인으로 시스템 자동취소 (status='confirmed' 유지)
+  const isNoshow         = b.autoCancelled && b.cancelledBy === 'system' && b.status === 'confirmed'
   const isUserCancel     = b.autoCancelled && b.cancelledBy === 'user'
 
   // ── 진행 상태 판별 ──────────────────────────────────────────────
