@@ -5,6 +5,36 @@
 //   - 데스크탑(1024px+)에서만 토글 노출, 모바일/태블릿은 기존 1/2열 유지
 //   - compact 모드: 썸네일 120px, 회의실명 16px, '오늘 남은 예약' 박스 숨김
 //   - 반응형 규칙: 1024~1279px=4열, 1280px+=5열 (너무 좁게 찌그러지지 않도록)
+//
+// 2026-04-17 (2차): 반응형 breakpoint 재조정
+//   - 모바일(<640px): 1열 → 2열로 변경 + density와 무관하게 강제 compact 스타일 적용
+//     → 카드 폭 170~200px에서 comfortable 스타일(썸네일 160px, 회의실명 21px)은
+//       찌그러지므로 모바일은 항상 compact 스타일로 렌더링 (localStorage 선택값은 유지)
+//   - 5열 전환 경계점: 1280px → 1400px로 상향 (min-[1400px]: arbitrary variant)
+//     → 1024~1399px 구간은 compact=4열로 유지, 큰 데스크탑에서만 5열
+//   - "오늘 내 예약" 가로 스크롤 스트립: 모바일 42vw → 45vw (회의실 카드와 정렬)
+//
+// 2026-04-17 (3차): "오늘 내 예약" 카드를 정사각형으로 변경
+//   - 기존: width 45vw(모바일) / 160px(데스크탑), minHeight 120/140 — 세로로 길어 보임
+//   - 변경: 모바일 140×140, 데스크탑 160×160 고정 정사각형
+//   - minWidth 제거(width가 고정값이라 불필요), minHeight → height로 변경
+//   - 제목 line-clamp-2 → line-clamp-1 (정사각형 높이에 맞춰 1줄만)
+//
+// 2026-04-17 (4차): 1024px 미만 (터치 환경) 룸카드 단순화
+//   - touchLayout 개념 도입: isMobile || isTablet (< 1024px)
+//   - 썸네일 높이: 모바일만 80px로 축소, 태블릿/데스크탑 compact는 기존 120px 유지
+//   - 회의실명 폰트: 1024 미만에서 14px (기존 모바일 compact 16px → 14px)
+//   - 버튼 단순화 (1024 미만):
+//     · AVAILABLE: '바로 예약' 하나만 표시 (자세히 보기 제거)
+//     · SOON / BUSY: 버튼 영역 자체 숨김 (카드 탭으로 상세 모달 진입)
+//   - 1024 이상 데스크탑은 기존 동작 완전 동일 (comfortable 3열 / compact 4-5열)
+//
+// 2026-04-17 (5차): 터치 환경 간격/폰트 미세 조정
+//   - 회의실명 14px → 16px (가독성 개선)
+//   - 카드 내부 padding: p-4 (16px) → p-2 (8px) (여백 축소로 정보 밀도 증가)
+//   - 버튼 영역 padding: '4px 16px 16px' → '8px' (상하좌우 균일)
+//   - 룸카드 그리드 gap: gap-4 (16px) → gap-2 (8px), 1024 이상은 lg:gap-4 유지
+//   - 모두 1024 미만 (touchLayout)에만 적용, 데스크탑은 변경 없음
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Layers, Search, UsersRound, X, LayoutGrid, Grid3x3 } from 'lucide-react' // ← [그리드 토글 아이콘 추가]
@@ -131,7 +161,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
           {/* + 예약하기 첫 카드 */}
           <button onClick={()=>{/* onBook 없이 새 예약 모달 */document.dispatchEvent(new CustomEvent("openNewBooking"))}}
             className="btn flex-none flex flex-col items-center justify-center rounded-2xl text-white font-semibold"
-            style={{width:isMobile?"42vw":160, minWidth:140, minHeight:isMobile?120:140,
+            style={{width:isMobile?140:160, height:isMobile?140:160, /* ← [2026-04-17 3차] 정사각형 고정 */
               background:"#111111", flexShrink:0, gap:8}}>
             <span style={{fontSize:24, lineHeight:1}}>＋</span>
             <span style={{fontSize:isMobile?12:13}}>예약하기</span>
@@ -139,7 +169,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
 
           {myBookings.length === 0 ? (
             <div className="flex-none flex items-center justify-center rounded-2xl text-slate-300 dark:text-slate-600 text-sm"
-              style={{width:isMobile?"42vw":160, minWidth:140, minHeight:isMobile?120:140, background:"#F3F4F8"}}>
+              style={{width:isMobile?140:160, height:isMobile?140:160, background:"#F3F4F8"}}> {/* ← [2026-04-17 3차] 정사각형 고정 */}
               오늘 예약 없음
             </div>
           ) : myBookings.map(b => {
@@ -182,8 +212,9 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
             return (
               <div key={b.id} className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 rounded-2xl p-3"
                 onClick={()=>onBookingDetail&&onBookingDetail(b)}
-                style={{width:isMobile?"42vw":160, minWidth:140, minHeight:isMobile?120:140,
-                  flexShrink:0, opacity: (cardState==="cancelled"||cardState==="noshow"||cardState==="adminCancel"||cardState==="rejected"||cardState==="pendingExpired") ? 0.45 : 1,
+                style={{width:isMobile?140:160, height:isMobile?140:160, /* ← [2026-04-17 3차] 정사각형 고정 */
+                  flexShrink:0, overflow:"hidden", /* ← [2026-04-17 3차] 넘침 방지 */
+                  opacity: (cardState==="cancelled"||cardState==="noshow"||cardState==="adminCancel"||cardState==="rejected"||cardState==="pendingExpired") ? 0.45 : 1,
                   border: cardState==="pending" ? "1.5px solid #FCD34D" : "none",
                   cursor:"pointer"}}>
                 {/* 상단 */}
@@ -194,7 +225,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
                   {b.user !== currentUser && (
                     <span style={{display:'inline-block',background:'#F0FDF4',color:'#15803D',fontSize:9,fontWeight:600,borderRadius:4,padding:'1px 5px',marginBottom:3}}>참석자</span>
                   )}
-                  <div className="text-xs font-semibold text-slate-900 dark:text-white leading-snug line-clamp-2 mb-1.5">{b.title}</div>
+                  <div className="text-xs font-semibold text-slate-900 dark:text-white leading-snug line-clamp-1 mb-1.5">{b.title}</div> {/* ← [2026-04-17 3차] line-clamp-2 → line-clamp-1 */}
                   <div style={{marginBottom:4}}>
                     <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} size="sm" currentUser={currentUser} />
                   </div>
@@ -316,21 +347,28 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
           <div className="text-lg font-semibold">검색 결과가 없습니다</div>
         </div>
       ) : (
-        // ← [그리드 반응형 규칙]
-        //   모바일(~640px): 1열 (density 무관)
-        //   태블릿(640~1023px): 2열 (density 무관)
-        //   작은 데스크탑(1024~1279px): comfortable=3열 / compact=4열
-        //   큰 데스크탑(1280px+):      comfortable=3열 / compact=5열
+        // ← [그리드 반응형 규칙 - 2026-04-17 2차 수정]
+        //   모바일(~639px):         2열 (1열에서 변경)
+        //   태블릿(640~1023px):      2열 (density 무관)
+        //   작은 데스크탑(1024~1399px): comfortable=3열 / compact=4열
+        //   큰 데스크탑(1400px+):    comfortable=3열 / compact=5열
+        //   ※ min-[1400px]: arbitrary variant로 Tailwind config 수정 없이 정확한 경계 지정
+        // ← [2026-04-17 5차] gap: 1024 미만 gap-2(8px), 1024 이상 lg:gap-4(16px)
         <div className={
           gridDensity === 'compact'
-            ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4"
-            : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+            ? "grid grid-cols-2 lg:grid-cols-4 min-[1400px]:grid-cols-5 gap-2 lg:gap-4"
+            : "grid grid-cols-2 lg:grid-cols-3 gap-2 lg:gap-4"
         }>
           {withStatus.map((item,i) => (
-            // ← [density prop 전달]
+            // ← [density prop 전달 - 모바일은 강제 compact 적용]
+            //   isMobile일 때 사용자의 localStorage 선택값과 무관하게 compact 스타일 사용
+            //   이유: 모바일 2열은 카드 폭 170~200px이라 comfortable 스타일은 찌그러짐
+            //   localStorage 값은 유지되므로 데스크탑 접속 시 원래 선택값 복원됨
+            // ← [2026-04-17 4차] isMobile, isTouchLayout 추가 전달 (썸네일/폰트/버튼 분기용)
             <RoomCard key={item.room.room_id} room={item.room} status={item.status} animDelay={i*40}
               onBook={onBook} onDetail={onDetail} bookings={bookings} onCheckIn={onCheckIn} dark={dark}
-              density={gridDensity}/>
+              density={isMobile ? 'compact' : gridDensity}
+              isMobile={isMobile} isTouchLayout={isMobile || isTablet}/>
           ))}
         </div>
       )}
@@ -363,22 +401,28 @@ export function RoomGrid({items, onBook, onDetail, bookings, onCheckIn}) {
 
 // ─── Room Card ─────────────────────────────────────────────────────────────────
 // ← [density prop 추가] comfortable(기본) | compact(5그리드 시 좁은 카드)
-export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn, animDelay, dark=false, density='comfortable'}: {room:any,status:any,onBook?:any,onDetail?:any,bookings:any[],onCheckIn?:any,animDelay?:number,dark?:boolean,density?:'comfortable'|'compact'}) {
+// ← [2026-04-17 4차] isMobile, isTouchLayout prop 추가
+//    - isMobile: 모바일 전용 썸네일 80px 적용
+//    - isTouchLayout: 1024 미만에서 폰트/버튼 단순화
+export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn, animDelay, dark=false, density='comfortable', isMobile=false, isTouchLayout=false}: {room:any,status:any,onBook?:any,onDetail?:any,bookings:any[],onCheckIn?:any,animDelay?:number,dark?:boolean,density?:'comfortable'|'compact',isMobile?:boolean,isTouchLayout?:boolean}) {
   const floor    = getFloor(r.floor_id);
   const isBusy   = status.type === "BUSY";
   const isSoon   = status.type === "SOON";
   const isAvail  = status.type === "AVAILABLE";
 
   // ← [density에 따른 스타일 값 한 곳에 모음 - 유지보수 용이]
+  // ← [2026-04-17 4차] 썸네일은 isMobile만, 폰트는 isTouchLayout 기준으로 분기
+  // ← [2026-04-17 5차] 1024 미만 padding/폰트 미세조정
   const isCompact = density === 'compact';
   const D = {
-    thumbHeight: isCompact ? 120 : 160,
-    cardPadding: isCompact ? "p-4 gap-2" : "p-5 gap-3",
-    roomNameSize: isCompact ? 16 : 21,
+    thumbHeight: isMobile ? 80 : (isCompact ? 120 : 160),
+    cardPadding: isTouchLayout ? "p-2 gap-2" : (isCompact ? "p-4 gap-2" : "p-5 gap-3"),   // ← [5차] 1024 미만: p-2 (8px)
+    roomNameSize: isTouchLayout ? 16 : (isCompact ? 16 : 21),                              // ← [5차] 1024 미만: 14 → 16
     metaSize: isCompact ? 12 : 13,
     btnSize: isCompact ? 13 : 14,
     btnPadding: isCompact ? "10px" : "13px",
-    btnBottomPadding: isCompact ? "4px 16px 16px" : "4px 20px 20px",
+    btnBottomPadding: isTouchLayout ? "8px" : (isCompact ? "4px 16px 16px" : "4px 20px 20px"),  // ← [5차] 1024 미만: 상하좌우 8px 균일
+    showDetailBtn: !isTouchLayout,
   };
 
   const today   = todayStr();
@@ -502,41 +546,55 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
 
       </div>
 
-      {/* ⑤ 버튼 */}
-      <div style={{display:"flex", alignItems:"center", gap:8, padding:D.btnBottomPadding}}> {/* ← [버튼 영역 패딩 density 분기] */}
-        {isAvail && (<>
-          <button className="btn" onClick={e=>{e.stopPropagation();onBook(r, status);}}
-            style={{flex:1, background:"#111111", color:"#fff", fontWeight:600,
-              borderRadius:12, padding:D.btnPadding, fontSize:D.btnSize, textAlign:"center"}}> {/* ← [버튼 폰트/패딩 density 분기] */}
-            바로 예약
-          </button>
-          <button className="btn" onClick={e=>{e.stopPropagation();onDetail(r);}}
-            style={{flex:1, background:"none", border:"none", color:"#64748B",
-              fontWeight:600, fontSize:D.btnSize, padding:D.btnPadding, cursor:"pointer", textAlign:"center"}}> {/* ← [버튼 폰트/패딩 density 분기] */}
-            자세히 보기
-          </button>
-        </>)}
-        {isSoon && (<>
-          <button className="btn" disabled
-            style={{flex:1, background:"#FCE7F3", color:"#BE185D", fontWeight:600,
-              borderRadius:12, padding:D.btnPadding, fontSize:D.btnSize, textAlign:"center", /* ← [버튼 폰트/패딩 density 분기] */
-              cursor:"not-allowed", border:"none"}}>
-            {status.minsUntil}분 뒤 사용
-          </button>
-          <button className="btn" onClick={e=>{e.stopPropagation();onDetail(r);}}
-            style={{flex:1, background:"none", border:"none", color:"#64748B",
-              fontWeight:600, fontSize:D.btnSize, padding:D.btnPadding, cursor:"pointer", textAlign:"center"}}> {/* ← [버튼 폰트/패딩 density 분기] */}
-            자세히 보기
-          </button>
-        </>)}
-        {isBusy && (
-          <button className="btn" onClick={e=>{e.stopPropagation();onDetail(r);}}
-            style={{flex:1, background:"none", border:"none", color:"#64748B",
-              fontWeight:600, fontSize:D.btnSize, padding:D.btnPadding, cursor:"pointer", textAlign:"center"}}> {/* ← [버튼 폰트/패딩 density 분기] */}
-            자세히 보기
-          </button>
-        )}
-      </div>
+      {/* ⑤ 버튼 — [2026-04-17 4차] 터치 환경(1024 미만)에서 단순화
+          · AVAILABLE: '바로 예약' 하나만
+          · SOON/BUSY: 버튼 영역 자체 숨김 (카드 탭으로 상세 모달 진입)
+         1024 이상 데스크탑은 기존 3가지 상태별 버튼 구성 그대로 */}
+      {(() => {
+        // 터치 환경에서 SOON/BUSY는 버튼 영역 전체 숨김
+        if (isTouchLayout && !isAvail) return null;
+
+        return (
+          <div style={{display:"flex", alignItems:"center", gap:8, padding:D.btnBottomPadding}}>
+            {isAvail && (<>
+              <button className="btn" onClick={e=>{e.stopPropagation();onBook(r, status);}}
+                style={{flex:1, background:"#111111", color:"#fff", fontWeight:600,
+                  borderRadius:12, padding:D.btnPadding, fontSize:D.btnSize, textAlign:"center"}}>
+                바로 예약
+              </button>
+              {/* ← [4차] 터치 환경이 아닐 때만 '자세히 보기' 노출 */}
+              {D.showDetailBtn && (
+                <button className="btn" onClick={e=>{e.stopPropagation();onDetail(r);}}
+                  style={{flex:1, background:"none", border:"none", color:"#64748B",
+                    fontWeight:600, fontSize:D.btnSize, padding:D.btnPadding, cursor:"pointer", textAlign:"center"}}>
+                  자세히 보기
+                </button>
+              )}
+            </>)}
+            {/* 아래 isSoon / isBusy 블록은 터치 환경에서 위 early return으로 도달하지 않음 (데스크탑 전용) */}
+            {isSoon && (<>
+              <button className="btn" disabled
+                style={{flex:1, background:"#FCE7F3", color:"#BE185D", fontWeight:600,
+                  borderRadius:12, padding:D.btnPadding, fontSize:D.btnSize, textAlign:"center",
+                  cursor:"not-allowed", border:"none"}}>
+                {status.minsUntil}분 뒤 사용
+              </button>
+              <button className="btn" onClick={e=>{e.stopPropagation();onDetail(r);}}
+                style={{flex:1, background:"none", border:"none", color:"#64748B",
+                  fontWeight:600, fontSize:D.btnSize, padding:D.btnPadding, cursor:"pointer", textAlign:"center"}}>
+                자세히 보기
+              </button>
+            </>)}
+            {isBusy && (
+              <button className="btn" onClick={e=>{e.stopPropagation();onDetail(r);}}
+                style={{flex:1, background:"none", border:"none", color:"#64748B",
+                  fontWeight:600, fontSize:D.btnSize, padding:D.btnPadding, cursor:"pointer", textAlign:"center"}}>
+                자세히 보기
+              </button>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
