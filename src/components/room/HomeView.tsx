@@ -13,6 +13,12 @@
 //   - 5열 전환 경계점: 1280px → 1400px로 상향 (min-[1400px]: arbitrary variant)
 //     → 1024~1399px 구간은 compact=4열로 유지, 큰 데스크탑에서만 5열
 //   - "오늘 내 예약" 가로 스크롤 스트립: 모바일 42vw → 45vw (회의실 카드와 정렬)
+//
+// 2026-04-17 (3차): "오늘 내 예약" 카드를 정사각형으로 변경
+//   - 기존: width 45vw(모바일) / 160px(데스크탑), minHeight 120/140 — 세로로 길어 보임
+//   - 변경: 모바일 140×140, 데스크탑 160×160 고정 정사각형
+//   - minWidth 제거(width가 고정값이라 불필요), minHeight → height로 변경
+//   - 제목 line-clamp-2 → line-clamp-1 (정사각형 높이에 맞춰 1줄만)
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Layers, Search, UsersRound, X, LayoutGrid, Grid3x3 } from 'lucide-react' // ← [그리드 토글 아이콘 추가]
@@ -139,7 +145,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
           {/* + 예약하기 첫 카드 */}
           <button onClick={()=>{/* onBook 없이 새 예약 모달 */document.dispatchEvent(new CustomEvent("openNewBooking"))}}
             className="btn flex-none flex flex-col items-center justify-center rounded-2xl text-white font-semibold"
-            style={{width:isMobile?"45vw":160, minWidth:140, minHeight:isMobile?120:140,
+            style={{width:isMobile?140:160, height:isMobile?140:160, /* ← [2026-04-17 3차] 정사각형 고정 */
               background:"#111111", flexShrink:0, gap:8}}>
             <span style={{fontSize:24, lineHeight:1}}>＋</span>
             <span style={{fontSize:isMobile?12:13}}>예약하기</span>
@@ -147,7 +153,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
 
           {myBookings.length === 0 ? (
             <div className="flex-none flex items-center justify-center rounded-2xl text-slate-300 dark:text-slate-600 text-sm"
-              style={{width:isMobile?"45vw":160, minWidth:140, minHeight:isMobile?120:140, background:"#F3F4F8"}}>
+              style={{width:isMobile?140:160, height:isMobile?140:160, background:"#F3F4F8"}}> {/* ← [2026-04-17 3차] 정사각형 고정 */}
               오늘 예약 없음
             </div>
           ) : myBookings.map(b => {
@@ -190,8 +196,9 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
             return (
               <div key={b.id} className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 rounded-2xl p-3"
                 onClick={()=>onBookingDetail&&onBookingDetail(b)}
-                style={{width:isMobile?"45vw":160, minWidth:140, minHeight:isMobile?120:140,
-                  flexShrink:0, opacity: (cardState==="cancelled"||cardState==="noshow"||cardState==="adminCancel"||cardState==="rejected"||cardState==="pendingExpired") ? 0.45 : 1,
+                style={{width:isMobile?140:160, height:isMobile?140:160, /* ← [2026-04-17 3차] 정사각형 고정 */
+                  flexShrink:0, overflow:"hidden", /* ← [2026-04-17 3차] 넘침 방지 */
+                  opacity: (cardState==="cancelled"||cardState==="noshow"||cardState==="adminCancel"||cardState==="rejected"||cardState==="pendingExpired") ? 0.45 : 1,
                   border: cardState==="pending" ? "1.5px solid #FCD34D" : "none",
                   cursor:"pointer"}}>
                 {/* 상단 */}
@@ -202,7 +209,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
                   {b.user !== currentUser && (
                     <span style={{display:'inline-block',background:'#F0FDF4',color:'#15803D',fontSize:9,fontWeight:600,borderRadius:4,padding:'1px 5px',marginBottom:3}}>참석자</span>
                   )}
-                  <div className="text-xs font-semibold text-slate-900 dark:text-white leading-snug line-clamp-2 mb-1.5">{b.title}</div>
+                  <div className="text-xs font-semibold text-slate-900 dark:text-white leading-snug line-clamp-1 mb-1.5">{b.title}</div> {/* ← [2026-04-17 3차] line-clamp-2 → line-clamp-1 */}
                   <div style={{marginBottom:4}}>
                     <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} size="sm" currentUser={currentUser} />
                   </div>
