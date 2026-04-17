@@ -19,6 +19,15 @@
 //   - 변경: 모바일 140×140, 데스크탑 160×160 고정 정사각형
 //   - minWidth 제거(width가 고정값이라 불필요), minHeight → height로 변경
 //   - 제목 line-clamp-2 → line-clamp-1 (정사각형 높이에 맞춰 1줄만)
+//
+// 2026-04-17 (4차): 1024px 미만 (터치 환경) 룸카드 단순화
+//   - touchLayout 개념 도입: isMobile || isTablet (< 1024px)
+//   - 썸네일 높이: 모바일만 80px로 축소, 태블릿/데스크탑 compact는 기존 120px 유지
+//   - 회의실명 폰트: 1024 미만에서 14px (기존 모바일 compact 16px → 14px)
+//   - 버튼 단순화 (1024 미만):
+//     · AVAILABLE: '바로 예약' 하나만 표시 (자세히 보기 제거)
+//     · SOON / BUSY: 버튼 영역 자체 숨김 (카드 탭으로 상세 모달 진입)
+//   - 1024 이상 데스크탑은 기존 동작 완전 동일 (comfortable 3열 / compact 4-5열)
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Layers, Search, UsersRound, X, LayoutGrid, Grid3x3 } from 'lucide-react' // ← [그리드 토글 아이콘 추가]
@@ -347,9 +356,11 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
             //   isMobile일 때 사용자의 localStorage 선택값과 무관하게 compact 스타일 사용
             //   이유: 모바일 2열은 카드 폭 170~200px이라 comfortable 스타일은 찌그러짐
             //   localStorage 값은 유지되므로 데스크탑 접속 시 원래 선택값 복원됨
+            // ← [2026-04-17 4차] isMobile, isTouchLayout 추가 전달 (썸네일/폰트/버튼 분기용)
             <RoomCard key={item.room.room_id} room={item.room} status={item.status} animDelay={i*40}
               onBook={onBook} onDetail={onDetail} bookings={bookings} onCheckIn={onCheckIn} dark={dark}
-              density={isMobile ? 'compact' : gridDensity}/>
+              density={isMobile ? 'compact' : gridDensity}
+              isMobile={isMobile} isTouchLayout={isMobile || isTablet}/>
           ))}
         </div>
       )}
@@ -382,22 +393,27 @@ export function RoomGrid({items, onBook, onDetail, bookings, onCheckIn}) {
 
 // ─── Room Card ─────────────────────────────────────────────────────────────────
 // ← [density prop 추가] comfortable(기본) | compact(5그리드 시 좁은 카드)
-export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn, animDelay, dark=false, density='comfortable'}: {room:any,status:any,onBook?:any,onDetail?:any,bookings:any[],onCheckIn?:any,animDelay?:number,dark?:boolean,density?:'comfortable'|'compact'}) {
+// ← [2026-04-17 4차] isMobile, isTouchLayout prop 추가
+//    - isMobile: 모바일 전용 썸네일 80px 적용
+//    - isTouchLayout: 1024 미만에서 폰트/버튼 단순화
+export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn, animDelay, dark=false, density='comfortable', isMobile=false, isTouchLayout=false}: {room:any,status:any,onBook?:any,onDetail?:any,bookings:any[],onCheckIn?:any,animDelay?:number,dark?:boolean,density?:'comfortable'|'compact',isMobile?:boolean,isTouchLayout?:boolean}) {
   const floor    = getFloor(r.floor_id);
   const isBusy   = status.type === "BUSY";
   const isSoon   = status.type === "SOON";
   const isAvail  = status.type === "AVAILABLE";
 
   // ← [density에 따른 스타일 값 한 곳에 모음 - 유지보수 용이]
+  // ← [2026-04-17 4차] 썸네일은 isMobile만, 폰트는 isTouchLayout 기준으로 분기
   const isCompact = density === 'compact';
   const D = {
-    thumbHeight: isCompact ? 120 : 160,
+    thumbHeight: isMobile ? 80 : (isCompact ? 120 : 160),                      // ← [4차] 모바일 80px, 나머지는 기존
     cardPadding: isCompact ? "p-4 gap-2" : "p-5 gap-3",
-    roomNameSize: isCompact ? 16 : 21,
+    roomNameSize: isTouchLayout ? 14 : (isCompact ? 16 : 21),                   // ← [4차] 1024 미만은 14px
     metaSize: isCompact ? 12 : 13,
     btnSize: isCompact ? 13 : 14,
     btnPadding: isCompact ? "10px" : "13px",
     btnBottomPadding: isCompact ? "4px 16px 16px" : "4px 20px 20px",
+    showDetailBtn: !isTouchLayout,                                              // ← [4차] 1024 미만에선 '자세히 보기' 버튼 숨김
   };
 
   const today   = todayStr();
@@ -521,41 +537,55 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
 
       </div>
 
-      {/* ⑤ 버튼 */}
-      <div style={{display:"flex", alignItems:"center", gap:8, padding:D.btnBottomPadding}}> {/* ← [버튼 영역 패딩 density 분기] */}
-        {isAvail && (<>
-          <button className="btn" onClick={e=>{e.stopPropagation();onBook(r, status);}}
-            style={{flex:1, background:"#111111", color:"#fff", fontWeight:600,
-              borderRadius:12, padding:D.btnPadding, fontSize:D.btnSize, textAlign:"center"}}> {/* ← [버튼 폰트/패딩 density 분기] */}
-            바로 예약
-          </button>
-          <button className="btn" onClick={e=>{e.stopPropagation();onDetail(r);}}
-            style={{flex:1, background:"none", border:"none", color:"#64748B",
-              fontWeight:600, fontSize:D.btnSize, padding:D.btnPadding, cursor:"pointer", textAlign:"center"}}> {/* ← [버튼 폰트/패딩 density 분기] */}
-            자세히 보기
-          </button>
-        </>)}
-        {isSoon && (<>
-          <button className="btn" disabled
-            style={{flex:1, background:"#FCE7F3", color:"#BE185D", fontWeight:600,
-              borderRadius:12, padding:D.btnPadding, fontSize:D.btnSize, textAlign:"center", /* ← [버튼 폰트/패딩 density 분기] */
-              cursor:"not-allowed", border:"none"}}>
-            {status.minsUntil}분 뒤 사용
-          </button>
-          <button className="btn" onClick={e=>{e.stopPropagation();onDetail(r);}}
-            style={{flex:1, background:"none", border:"none", color:"#64748B",
-              fontWeight:600, fontSize:D.btnSize, padding:D.btnPadding, cursor:"pointer", textAlign:"center"}}> {/* ← [버튼 폰트/패딩 density 분기] */}
-            자세히 보기
-          </button>
-        </>)}
-        {isBusy && (
-          <button className="btn" onClick={e=>{e.stopPropagation();onDetail(r);}}
-            style={{flex:1, background:"none", border:"none", color:"#64748B",
-              fontWeight:600, fontSize:D.btnSize, padding:D.btnPadding, cursor:"pointer", textAlign:"center"}}> {/* ← [버튼 폰트/패딩 density 분기] */}
-            자세히 보기
-          </button>
-        )}
-      </div>
+      {/* ⑤ 버튼 — [2026-04-17 4차] 터치 환경(1024 미만)에서 단순화
+          · AVAILABLE: '바로 예약' 하나만
+          · SOON/BUSY: 버튼 영역 자체 숨김 (카드 탭으로 상세 모달 진입)
+         1024 이상 데스크탑은 기존 3가지 상태별 버튼 구성 그대로 */}
+      {(() => {
+        // 터치 환경에서 SOON/BUSY는 버튼 영역 전체 숨김
+        if (isTouchLayout && !isAvail) return null;
+
+        return (
+          <div style={{display:"flex", alignItems:"center", gap:8, padding:D.btnBottomPadding}}>
+            {isAvail && (<>
+              <button className="btn" onClick={e=>{e.stopPropagation();onBook(r, status);}}
+                style={{flex:1, background:"#111111", color:"#fff", fontWeight:600,
+                  borderRadius:12, padding:D.btnPadding, fontSize:D.btnSize, textAlign:"center"}}>
+                바로 예약
+              </button>
+              {/* ← [4차] 터치 환경이 아닐 때만 '자세히 보기' 노출 */}
+              {D.showDetailBtn && (
+                <button className="btn" onClick={e=>{e.stopPropagation();onDetail(r);}}
+                  style={{flex:1, background:"none", border:"none", color:"#64748B",
+                    fontWeight:600, fontSize:D.btnSize, padding:D.btnPadding, cursor:"pointer", textAlign:"center"}}>
+                  자세히 보기
+                </button>
+              )}
+            </>)}
+            {/* 아래 isSoon / isBusy 블록은 터치 환경에서 위 early return으로 도달하지 않음 (데스크탑 전용) */}
+            {isSoon && (<>
+              <button className="btn" disabled
+                style={{flex:1, background:"#FCE7F3", color:"#BE185D", fontWeight:600,
+                  borderRadius:12, padding:D.btnPadding, fontSize:D.btnSize, textAlign:"center",
+                  cursor:"not-allowed", border:"none"}}>
+                {status.minsUntil}분 뒤 사용
+              </button>
+              <button className="btn" onClick={e=>{e.stopPropagation();onDetail(r);}}
+                style={{flex:1, background:"none", border:"none", color:"#64748B",
+                  fontWeight:600, fontSize:D.btnSize, padding:D.btnPadding, cursor:"pointer", textAlign:"center"}}>
+                자세히 보기
+              </button>
+            </>)}
+            {isBusy && (
+              <button className="btn" onClick={e=>{e.stopPropagation();onDetail(r);}}
+                style={{flex:1, background:"none", border:"none", color:"#64748B",
+                  fontWeight:600, fontSize:D.btnSize, padding:D.btnPadding, cursor:"pointer", textAlign:"center"}}>
+                자세히 보기
+              </button>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
