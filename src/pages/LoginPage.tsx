@@ -120,7 +120,7 @@ export default function LoginPage() {
         <div className="text-center mb-5 overflow-hidden">
           <div className="h-5" />
           <h1 className="text-[30px] font-medium text-[#111] uppercase leading-9 tracking-tight">
-            C&R Space
+            C&R SPACE
           </h1>
           <div className="h-1.5" />
           <p className="text-xs text-[#6a7282]">
@@ -185,9 +185,9 @@ export default function LoginPage() {
         {/* 문의 링크 */}
         <div className="text-center px-8 py-6">
           <p className="text-[11px] text-[#99a1af]">
-            문의사항이 있으신가요?{' '}
+            Microsoft 365 비밀번호 분실 시{' '}
             <span className="text-[#86ccff] font-medium cursor-pointer hover:underline">
-              IT 지원팀에 연락
+              ISS 박대우 님 문의
             </span>
           </p>
         </div>
