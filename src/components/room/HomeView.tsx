@@ -28,6 +28,12 @@
 //     · AVAILABLE: '바로 예약' 하나만 표시 (자세히 보기 제거)
 //     · SOON / BUSY: 버튼 영역 자체 숨김 (카드 탭으로 상세 모달 진입)
 //   - 1024 이상 데스크탑은 기존 동작 완전 동일 (comfortable 3열 / compact 4-5열)
+//
+// 2026-04-17 (5차): 터치 환경 간격/폰트 미세 조정
+//   - 회의실명 14px → 16px (가독성 개선)
+//   - 카드 내부 padding: p-4 (16px) → p-2 (8px) (여백 축소로 정보 밀도 증가)
+//   - 버튼 영역 padding: '4px 16px 16px' → '8px' (상하좌우 균일)
+//   - 모두 1024 미만 (touchLayout)에만 적용, 데스크탑은 변경 없음
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Layers, Search, UsersRound, X, LayoutGrid, Grid3x3 } from 'lucide-react' // ← [그리드 토글 아이콘 추가]
@@ -404,16 +410,17 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
 
   // ← [density에 따른 스타일 값 한 곳에 모음 - 유지보수 용이]
   // ← [2026-04-17 4차] 썸네일은 isMobile만, 폰트는 isTouchLayout 기준으로 분기
+  // ← [2026-04-17 5차] 1024 미만 padding/폰트 미세조정
   const isCompact = density === 'compact';
   const D = {
-    thumbHeight: isMobile ? 80 : (isCompact ? 120 : 160),                      // ← [4차] 모바일 80px, 나머지는 기존
-    cardPadding: isCompact ? "p-4 gap-2" : "p-5 gap-3",
-    roomNameSize: isTouchLayout ? 14 : (isCompact ? 16 : 21),                   // ← [4차] 1024 미만은 14px
+    thumbHeight: isMobile ? 80 : (isCompact ? 120 : 160),
+    cardPadding: isTouchLayout ? "p-2 gap-2" : (isCompact ? "p-4 gap-2" : "p-5 gap-3"),   // ← [5차] 1024 미만: p-2 (8px)
+    roomNameSize: isTouchLayout ? 16 : (isCompact ? 16 : 21),                              // ← [5차] 1024 미만: 14 → 16
     metaSize: isCompact ? 12 : 13,
     btnSize: isCompact ? 13 : 14,
     btnPadding: isCompact ? "10px" : "13px",
-    btnBottomPadding: isCompact ? "4px 16px 16px" : "4px 20px 20px",
-    showDetailBtn: !isTouchLayout,                                              // ← [4차] 1024 미만에선 '자세히 보기' 버튼 숨김
+    btnBottomPadding: isTouchLayout ? "8px" : (isCompact ? "4px 16px 16px" : "4px 20px 20px"),  // ← [5차] 1024 미만: 상하좌우 8px 균일
+    showDetailBtn: !isTouchLayout,
   };
 
   const today   = todayStr();
