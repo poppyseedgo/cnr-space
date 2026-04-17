@@ -5,6 +5,14 @@
 //   - 데스크탑(1024px+)에서만 토글 노출, 모바일/태블릿은 기존 1/2열 유지
 //   - compact 모드: 썸네일 120px, 회의실명 16px, '오늘 남은 예약' 박스 숨김
 //   - 반응형 규칙: 1024~1279px=4열, 1280px+=5열 (너무 좁게 찌그러지지 않도록)
+//
+// 2026-04-17 (2차): 반응형 breakpoint 재조정
+//   - 모바일(<640px): 1열 → 2열로 변경 + density와 무관하게 강제 compact 스타일 적용
+//     → 카드 폭 170~200px에서 comfortable 스타일(썸네일 160px, 회의실명 21px)은
+//       찌그러지므로 모바일은 항상 compact 스타일로 렌더링 (localStorage 선택값은 유지)
+//   - 5열 전환 경계점: 1280px → 1400px로 상향 (min-[1400px]: arbitrary variant)
+//     → 1024~1399px 구간은 compact=4열로 유지, 큰 데스크탑에서만 5열
+//   - "오늘 내 예약" 가로 스크롤 스트립: 모바일 42vw → 45vw (회의실 카드와 정렬)
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Layers, Search, UsersRound, X, LayoutGrid, Grid3x3 } from 'lucide-react' // ← [그리드 토글 아이콘 추가]
@@ -131,7 +139,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
           {/* + 예약하기 첫 카드 */}
           <button onClick={()=>{/* onBook 없이 새 예약 모달 */document.dispatchEvent(new CustomEvent("openNewBooking"))}}
             className="btn flex-none flex flex-col items-center justify-center rounded-2xl text-white font-semibold"
-            style={{width:isMobile?"42vw":160, minWidth:140, minHeight:isMobile?120:140,
+            style={{width:isMobile?"45vw":160, minWidth:140, minHeight:isMobile?120:140,
               background:"#111111", flexShrink:0, gap:8}}>
             <span style={{fontSize:24, lineHeight:1}}>＋</span>
             <span style={{fontSize:isMobile?12:13}}>예약하기</span>
@@ -139,7 +147,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
 
           {myBookings.length === 0 ? (
             <div className="flex-none flex items-center justify-center rounded-2xl text-slate-300 dark:text-slate-600 text-sm"
-              style={{width:isMobile?"42vw":160, minWidth:140, minHeight:isMobile?120:140, background:"#F3F4F8"}}>
+              style={{width:isMobile?"45vw":160, minWidth:140, minHeight:isMobile?120:140, background:"#F3F4F8"}}>
               오늘 예약 없음
             </div>
           ) : myBookings.map(b => {
@@ -182,7 +190,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
             return (
               <div key={b.id} className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 rounded-2xl p-3"
                 onClick={()=>onBookingDetail&&onBookingDetail(b)}
-                style={{width:isMobile?"42vw":160, minWidth:140, minHeight:isMobile?120:140,
+                style={{width:isMobile?"45vw":160, minWidth:140, minHeight:isMobile?120:140,
                   flexShrink:0, opacity: (cardState==="cancelled"||cardState==="noshow"||cardState==="adminCancel"||cardState==="rejected"||cardState==="pendingExpired") ? 0.45 : 1,
                   border: cardState==="pending" ? "1.5px solid #FCD34D" : "none",
                   cursor:"pointer"}}>
@@ -316,21 +324,25 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
           <div className="text-lg font-semibold">검색 결과가 없습니다</div>
         </div>
       ) : (
-        // ← [그리드 반응형 규칙]
-        //   모바일(~640px): 1열 (density 무관)
-        //   태블릿(640~1023px): 2열 (density 무관)
-        //   작은 데스크탑(1024~1279px): comfortable=3열 / compact=4열
-        //   큰 데스크탑(1280px+):      comfortable=3열 / compact=5열
+        // ← [그리드 반응형 규칙 - 2026-04-17 2차 수정]
+        //   모바일(~639px):         2열 (1열에서 변경)
+        //   태블릿(640~1023px):      2열 (density 무관)
+        //   작은 데스크탑(1024~1399px): comfortable=3열 / compact=4열
+        //   큰 데스크탑(1400px+):    comfortable=3열 / compact=5열
+        //   ※ min-[1400px]: arbitrary variant로 Tailwind config 수정 없이 정확한 경계 지정
         <div className={
           gridDensity === 'compact'
-            ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4"
-            : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+            ? "grid grid-cols-2 lg:grid-cols-4 min-[1400px]:grid-cols-5 gap-4"
+            : "grid grid-cols-2 lg:grid-cols-3 gap-4"
         }>
           {withStatus.map((item,i) => (
-            // ← [density prop 전달]
+            // ← [density prop 전달 - 모바일은 강제 compact 적용]
+            //   isMobile일 때 사용자의 localStorage 선택값과 무관하게 compact 스타일 사용
+            //   이유: 모바일 2열은 카드 폭 170~200px이라 comfortable 스타일은 찌그러짐
+            //   localStorage 값은 유지되므로 데스크탑 접속 시 원래 선택값 복원됨
             <RoomCard key={item.room.room_id} room={item.room} status={item.status} animDelay={i*40}
               onBook={onBook} onDetail={onDetail} bookings={bookings} onCheckIn={onCheckIn} dark={dark}
-              density={gridDensity}/>
+              density={isMobile ? 'compact' : gridDensity}/>
           ))}
         </div>
       )}
