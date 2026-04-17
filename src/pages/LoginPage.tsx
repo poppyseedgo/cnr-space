@@ -133,7 +133,7 @@ export default function LoginPage() {
           style={{ boxShadow: '10px 10px 60px rgba(0,0,0,0.04)' }}>
           <div className="mb-4">
             <p className="text-xs text-[#6a7282] leading-snug">
-              사내 Microsoft 계정으로 로그인하세요
+              
             </p>
           </div>
           <button
