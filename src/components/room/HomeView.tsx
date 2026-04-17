@@ -33,6 +33,7 @@
 //   - 회의실명 14px → 16px (가독성 개선)
 //   - 카드 내부 padding: p-4 (16px) → p-2 (8px) (여백 축소로 정보 밀도 증가)
 //   - 버튼 영역 padding: '4px 16px 16px' → '8px' (상하좌우 균일)
+//   - 룸카드 그리드 gap: gap-4 (16px) → gap-2 (8px), 1024 이상은 lg:gap-4 유지
 //   - 모두 1024 미만 (touchLayout)에만 적용, 데스크탑은 변경 없음
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
@@ -352,10 +353,11 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
         //   작은 데스크탑(1024~1399px): comfortable=3열 / compact=4열
         //   큰 데스크탑(1400px+):    comfortable=3열 / compact=5열
         //   ※ min-[1400px]: arbitrary variant로 Tailwind config 수정 없이 정확한 경계 지정
+        // ← [2026-04-17 5차] gap: 1024 미만 gap-2(8px), 1024 이상 lg:gap-4(16px)
         <div className={
           gridDensity === 'compact'
-            ? "grid grid-cols-2 lg:grid-cols-4 min-[1400px]:grid-cols-5 gap-4"
-            : "grid grid-cols-2 lg:grid-cols-3 gap-4"
+            ? "grid grid-cols-2 lg:grid-cols-4 min-[1400px]:grid-cols-5 gap-2 lg:gap-4"
+            : "grid grid-cols-2 lg:grid-cols-3 gap-2 lg:gap-4"
         }>
           {withStatus.map((item,i) => (
             // ← [density prop 전달 - 모바일은 강제 compact 적용]
