@@ -48,6 +48,14 @@
 //     버튼 영역 padding도 D.btnBottomPadding 문자열로 인라인에 분산
 //   - 추출 후: RoomCard 내부 ~40줄 블록 → 1줄 컴포넌트 호출로 축소
 //   - D.btnBottomPadding 터치 환경 값: "8px" → "0.5rem" (CSS 단위 일관성)
+//
+// 2026-04-17 (8차): 버튼 padding 통일 + 태블릿 3열 + 그리드 gap 계단식
+//   - D.btnPadding: compact 10px / comfortable 13px → 전체 "14px" 통일
+//   - 그리드 breakpoint에 md:grid-cols-3 (768px+) 추가
+//     → 큰 태블릿(768~1023px)에서 2열 → 3열 (이전 태블릿 카드 486px 너무 큼)
+//     → 작은 태블릿(640~767px)은 2열 유지 (3열 시 192px 이하로 좁아짐)
+//   - gap 계단식: 모바일 gap-2(8) / 태블릿 md:gap-3(12) / 데스크탑 lg:gap-4(16)
+//   - RoomCardButtonArea.tsx 스타일 객체 BASE + override 패턴으로 정리 (46→15줄)
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Layers, Search, UsersRound, X, LayoutGrid, Grid3x3 } from 'lucide-react' // ← [그리드 토글 아이콘 추가]
@@ -361,17 +369,18 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
           <div className="text-lg font-semibold">검색 결과가 없습니다</div>
         </div>
       ) : (
-        // ← [그리드 반응형 규칙 - 2026-04-17 2차 수정]
-        //   모바일(~639px):         2열 (1열에서 변경)
-        //   태블릿(640~1023px):      2열 (density 무관)
+        // ← [그리드 반응형 규칙 - 2026-04-17 8차 수정]
+        //   모바일(~639px):         2열
+        //   작은 태블릿(640~767px):  2열 (경계 구간, 너무 좁아 3열 부적합)
+        //   큰 태블릿(768~1023px):   3열 ⬅ [8차 추가]
         //   작은 데스크탑(1024~1399px): comfortable=3열 / compact=4열
         //   큰 데스크탑(1400px+):    comfortable=3열 / compact=5열
-        //   ※ min-[1400px]: arbitrary variant로 Tailwind config 수정 없이 정확한 경계 지정
-        // ← [2026-04-17 5차] gap: 1024 미만 gap-2(8px), 1024 이상 lg:gap-4(16px)
+        //   ※ md:grid-cols-3 (768px) + min-[1400px]:grid-cols-5 (arbitrary variant)로 정확한 경계 지정
+        // ← [8차] gap: 모바일 8 / 태블릿 12 / 데스크탑 16 계단식 (md:gap-3 추가)
         <div className={
           gridDensity === 'compact'
-            ? "grid grid-cols-2 lg:grid-cols-4 min-[1400px]:grid-cols-5 gap-2 lg:gap-4"
-            : "grid grid-cols-2 lg:grid-cols-3 gap-2 lg:gap-4"
+            ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 min-[1400px]:grid-cols-5 gap-2 md:gap-3 lg:gap-4"
+            : "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-2 md:gap-3 lg:gap-4"
         }>
           {withStatus.map((item,i) => (
             // ← [density prop 전달 - 모바일은 강제 compact 적용]
@@ -434,7 +443,7 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
     roomNameSize: isTouchLayout ? 16 : (isCompact ? 16 : 21),                              // ← [5차] 1024 미만: 14 → 16
     metaSize: isCompact ? 12 : 13,
     btnSize: isCompact ? 13 : 14,
-    btnPadding: isCompact ? "10px" : "13px",
+    btnPadding: "14px",                                                                             // ← [8차] 전체 상황 14px 통일 (이전: compact 10px / comfortable 13px)
     btnBottomPadding: isTouchLayout ? "0.5rem" : (isCompact ? "4px 16px 16px" : "4px 20px 20px"),  // ← [7차] 터치 환경 0.5rem (상하좌우 균일)
     showDetailBtn: !isTouchLayout,
   };
