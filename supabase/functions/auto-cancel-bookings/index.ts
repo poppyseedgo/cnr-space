@@ -94,7 +94,9 @@ async function getRoomName(roomId: string): Promise<string> {
     .select('room_name, room_name_ko')
     .eq('room_id', roomId)
     .single()
-  return data?.room_name_ko ?? data?.room_name ?? String(roomId)
+  // ← [2026-04-18 P2 v4] 이메일 기본 표기는 영문 room_name (e.g. "2F Emerald")
+  //   한글 room_name_ko는 폴백으로만 사용
+  return data?.room_name ?? data?.room_name_ko ?? String(roomId)
 }
 
 async function buildPayload(booking: any): Promise<any> {

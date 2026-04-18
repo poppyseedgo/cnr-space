@@ -48,6 +48,44 @@ const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 const ANON_KEY     = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Supabase client (rooms 조회용)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 회의실 이름 캐시 (cron 실행당 한 번만 rooms 조회)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * room_id → 영문 room_name 매핑 로드
+ * ← [2026-04-18 P2 v4] 이메일 회의실명 한글 출력 버그 수정
+ *   · 문제: bookings 테이블에 room_name 컬럼이 없어서 booking.room_name이 undefined
+ *   · 해결: rooms 테이블에서 영문 우선으로 조회해 booking에 주입
+ *   · 캐시: cron 1회 실행 중 rooms 테이블 1번만 조회 (성능)
+ */
+let roomNameCache: Map<string, string> | null = null
+
+async function getRoomNameMap(): Promise<Map<string, string>> {
+  if (roomNameCache) return roomNameCache
+  try {
+    const { data } = await supabase
+      .from('rooms')
+      .select('room_id, room_name, room_name_ko')
+    const map = new Map<string, string>()
+    for (const r of (data ?? [])) {
+      // 영문 우선, 한글 폴백
+      map.set(r.room_id, r.room_name ?? r.room_name_ko ?? String(r.room_id))
+    }
+    roomNameCache = map
+    return map
+  } catch (e) {
+    console.warn('[checkin-reminder] rooms 조회 실패:', e)
+    return new Map()
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // send-notification HTTP 호출 헬퍼
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -55,9 +93,16 @@ const ANON_KEY     = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
  * send-notification Edge Function 호출
  * · 동일 Supabase 프로젝트 내 Edge Function 간 호출은 ANON_KEY Bearer 필수
  * · 실패해도 throw 안 함 (warn 로그만) — 한 건 실패가 전체 cron을 멈추면 안 됨
+ * · room_name을 rooms 테이블에서 조회해 booking에 주입 (영문 우선)
  */
 async function triggerNotification(type: string, booking: any): Promise<void> {
   if (!SUPABASE_URL) return
+
+  // ← [P2 v4] room_name 보강 (bookings 테이블엔 room_name 없음)
+  const roomMap  = await getRoomNameMap()
+  const roomName = roomMap.get(booking.room_id) ?? String(booking.room_id)
+  const enrichedBooking = { ...booking, room_name: roomName }
+
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/send-notification`, {
       method: 'POST',
@@ -65,7 +110,7 @@ async function triggerNotification(type: string, booking: any): Promise<void> {
         'Authorization': `Bearer ${ANON_KEY}`,   // ← [CRITICAL] ANON_KEY 사용
         'Content-Type':  'application/json',
       },
-      body: JSON.stringify({ type, booking }),
+      body: JSON.stringify({ type, booking: enrichedBooking }),
     })
     if (!res.ok) {
       console.warn(`[checkin-reminder] send-notification 실패 (${type}, booking=${booking.id}):`, res.status, await res.text())
@@ -87,8 +132,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
-
+    // ← [P2 v4] supabase client는 모듈 최상단에 이미 생성됨 (getRoomNameMap에서 공유)
     const now = new Date()
     let triggered = 0
 

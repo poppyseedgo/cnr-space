@@ -420,7 +420,7 @@ function AppContent() {
           user_name:  currentUser,
           user_email: authUser?.email ?? '',
           user_dept:  currentDept,
-          room_name:  createdRoom?.room_name_ko ?? createdRoom?.room_name ?? String(newBookings[0].room_id) + 'F',
+          room_name:  createdRoom?.room_name ?? createdRoom?.room_name_ko ?? String(newBookings[0].room_id) + 'F',
         }
         if (isAdminOnlyRoom) {
           // 승인 요청 — admin emails는 Edge Fn이 DB에서 직접 조회
@@ -445,7 +445,7 @@ function AppContent() {
           user_name:    currentUser,
           user_email:   authUser?.email ?? '',
           user_dept:    currentDept,
-          room_name:    bkRoom?.room_name_ko ?? bkRoom?.room_name ?? String(newBookings[0].room_id) + 'F',
+          room_name:    bkRoom?.room_name ?? bkRoom?.room_name_ko ?? String(newBookings[0].room_id) + 'F',
           recurBookings: newBookings.map(bk => ({ start_at: bk.start_at, end_at: bk.end_at })),
         })
       }
@@ -557,7 +557,7 @@ function AppContent() {
           ...targetBooking,
           user_name:  targetBooking.user,
           user_dept:  targetBooking.dept,
-          room_name:  cancelledRoom?.room_name_ko ?? cancelledRoom?.room_name ?? String(targetBooking.room_id) + 'F',
+          room_name:  cancelledRoom?.room_name ?? cancelledRoom?.room_name_ko ?? String(targetBooking.room_id) + 'F',
         });
       }
     } catch (err: any) {
@@ -583,7 +583,7 @@ function AppContent() {
           ...target,
           user_name:    target.user,
           user_dept:    target.dept,
-          room_name:    approvedRoom?.room_name_ko ?? approvedRoom?.room_name ?? '',
+          room_name:    approvedRoom?.room_name ?? approvedRoom?.room_name_ko ?? '',
           admin_name:   currentUser,
           admin_avatar: authUser?.avatar_url ?? null,
         })
@@ -610,7 +610,7 @@ function AppContent() {
           ...target,
           user_name:     target.user,
           user_dept:     target.dept,
-          room_name:     rejectedRoom?.room_name_ko ?? rejectedRoom?.room_name ?? '',
+          room_name:     rejectedRoom?.room_name ?? rejectedRoom?.room_name_ko ?? '',
           reject_reason: reason || '관리자 거절',
           admin_name:    currentUser,                   // 거절한 관리자 이름
           admin_avatar:  authUser?.avatar_url ?? null,  // 관리자 아바타
@@ -647,7 +647,7 @@ function AppContent() {
           ...targetB,
           user_name:     targetB.user,
           user_dept:     targetB.dept,
-          room_name:     cancelledRoom?.room_name_ko ?? cancelledRoom?.room_name ?? '',
+          room_name:     cancelledRoom?.room_name ?? cancelledRoom?.room_name_ko ?? '',
           admin_force:   true,
           cancel_reason: reason || '관리자 강제 취소',
         })
@@ -737,7 +737,7 @@ function AppContent() {
             ...prevBooking, ...changes,
             user_name:  prevBooking.user,
             user_dept:  prevBooking.dept,
-            room_name:  pendingRoom?.room_name_ko ?? pendingRoom?.room_name ?? '',
+            room_name:  pendingRoom?.room_name ?? pendingRoom?.room_name_ko ?? '',
           })
         }
       }
@@ -750,7 +750,7 @@ function AppContent() {
           ...updatedB, ...changes,
           user_name:  updatedB.user,
           user_dept:  updatedB.dept,
-          room_name:  updatedRoom?.room_name_ko ?? updatedRoom?.room_name ?? String(updatedB.room_id) + 'F',
+          room_name:  updatedRoom?.room_name ?? updatedRoom?.room_name_ko ?? String(updatedB.room_id) + 'F',
         }
 
         // 변경 알림 — 예약자·참석자 수신자는 Edge Fn이 DB에서 조회

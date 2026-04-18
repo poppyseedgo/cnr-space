@@ -41,11 +41,53 @@ const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 const ANON_KEY     = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Supabase client (rooms 조회 공용)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 회의실 이름 캐시
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * room_id → 영문 room_name 매핑 로드 (cron 1회 실행당 1번만 조회)
+ * ← [2026-04-18 P2 v4] 이메일 회의실명 한글 출력 버그 수정
+ *   · bookings 테이블엔 room_name 컬럼 없음 → rooms 테이블에서 조회 필수
+ *   · 이메일 기본 표기는 영문 (e.g. "2F Emerald")
+ */
+let roomNameCache: Map<string, string> | null = null
+
+async function getRoomNameMap(): Promise<Map<string, string>> {
+  if (roomNameCache) return roomNameCache
+  try {
+    const { data } = await supabase
+      .from('rooms')
+      .select('room_id, room_name, room_name_ko')
+    const map = new Map<string, string>()
+    for (const r of (data ?? [])) {
+      map.set(r.room_id, r.room_name ?? r.room_name_ko ?? String(r.room_id))
+    }
+    roomNameCache = map
+    return map
+  } catch (e) {
+    console.warn('[daily-reminder] rooms 조회 실패:', e)
+    return new Map()
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // send-notification HTTP 호출 헬퍼
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function triggerNotification(type: string, booking: any): Promise<boolean> {
   if (!SUPABASE_URL) return false
+
+  // ← [P2 v4] room_name 보강 (bookings 테이블엔 room_name 없음)
+  const roomMap  = await getRoomNameMap()
+  const roomName = roomMap.get(booking.room_id) ?? String(booking.room_id)
+  const enrichedBooking = { ...booking, room_name: roomName }
+
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/send-notification`, {
       method: 'POST',
@@ -53,7 +95,7 @@ async function triggerNotification(type: string, booking: any): Promise<boolean>
         'Authorization': `Bearer ${ANON_KEY}`,   // ← [CRITICAL] ANON_KEY 사용
         'Content-Type':  'application/json',
       },
-      body: JSON.stringify({ type, booking }),
+      body: JSON.stringify({ type, booking: enrichedBooking }),
     })
     if (!res.ok) {
       console.warn(`[daily-reminder] send-notification 실패 (booking=${booking.id}):`, res.status, await res.text())
@@ -72,7 +114,7 @@ async function triggerNotification(type: string, booking: any): Promise<boolean>
 
 Deno.serve(async (_req: Request) => {
   try {
-    const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
+    // ← [P2 v4] supabase client는 모듈 최상단에 이미 생성됨 (getRoomNameMap에서 공유)
 
     // KST 기준 오늘 날짜
     const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000)
