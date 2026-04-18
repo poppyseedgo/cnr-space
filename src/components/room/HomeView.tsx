@@ -66,6 +66,11 @@
 //   - 5열 전환 경계: 1400px → 1280px (Tailwind 표준 xl: breakpoint)
 //     · arbitrary variant(min-[1400px]:) 제거, xl:grid-cols-5로 단순화
 //     · 1280~1399px 구간에서도 compact 선택 시 5열 표시
+//
+// 2026-04-18 (10차): 뱃지·칩 정리 — 반복/참석자 인라인 뱃지를 MetaBadge 공통화
+//   - 기존: '오늘 내 예약' 카드에 인라인 span으로 반복(인디고)·참석자(연초록) 뱃지 직접 스타일
+//   - 변경: <MetaBadge type="recurring" size="xs" /> / <MetaBadge type="guest" size="xs" /> 사용
+//   - 효과: BookingListTable의 반복 뱃지(민트)와 색상 통일, tokens.css 단일 소스
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Layers, Search, UsersRound, X, LayoutGrid, Grid3x3 } from 'lucide-react' // ← [그리드 토글 아이콘 추가]
@@ -78,6 +83,7 @@ import { FLOORS, getFloor } from '../../data/floors'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 import { RoomStatusBadge } from '../common/RoomStatusBadge'
 import { BookingStatusBadge } from '../common/BookingStatusBadge'
+import { MetaBadge } from '../common/MetaBadge'  // ← [10차] 반복·참석자 뱃지 공통화
 import { RoomCardButtonArea } from './RoomCardButtonArea' // ← [6차] 공통 컴포넌트 추출
 
 export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearchQ, filterFloor, setFilterFloor, onBook, onDetail, onBookingDetail, onCheckIn, onEarlyEnd, onCancel, currentUser, currentUserEmail='', dark}) {
@@ -251,11 +257,18 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
                   cursor:"pointer"}}>
                 {/* 상단 */}
                 <div>
+                  {/* ← [10차] 인라인 span → MetaBadge 공통 컴포넌트
+                       반복 뱃지: 인디고 → 민트 (BookingListTable과 색 통일)
+                       참석자 뱃지: 연초록 기존 색 유지 */}
                   {b.recurGroupId && (
-                    <span style={{display:'inline-block',background:'#EEF2FF',color:'#4338CA',fontSize:9,fontWeight:600,borderRadius:4,padding:'1px 5px',marginBottom:3,marginRight:3}}>🔁 반복</span>
+                    <span style={{ marginRight: 3, marginBottom: 3, display: 'inline-block' }}>
+                      <MetaBadge type="recurring" size="xs" />
+                    </span>
                   )}
                   {b.user !== currentUser && (
-                    <span style={{display:'inline-block',background:'#F0FDF4',color:'#15803D',fontSize:9,fontWeight:600,borderRadius:4,padding:'1px 5px',marginBottom:3}}>참석자</span>
+                    <span style={{ marginBottom: 3, display: 'inline-block' }}>
+                      <MetaBadge type="guest" size="xs" />
+                    </span>
                   )}
                   <div className="text-xs font-semibold text-slate-900 dark:text-white leading-snug line-clamp-1 mb-1.5">{b.title}</div> {/* ← [2026-04-17 3차] line-clamp-2 → line-clamp-1 */}
                   <div style={{marginBottom:4}}>

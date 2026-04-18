@@ -5,6 +5,7 @@ import {
 } from '../../utils/time'
 import { BookingStatusBadge } from './BookingStatusBadge'
 import { UserChip } from './UserChip'
+import { MetaBadge } from './MetaBadge'  // ← [2026-04-18] 반복 뱃지 공통화
 import type { Booking, Room, AppUser } from '../../types'
 
 // ─── 노쇼 판별 ───────────────────────────────────────────────────────────────
@@ -297,9 +298,8 @@ export function BookingListTable({
                       {/* 회의명 */}
                       <td style={{ padding: '10px 14px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {b.recurGroupId && (
-                            <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 999, background: '#E1F5EE', color: '#0F6E56', whiteSpace: 'nowrap', flexShrink: 0 }}>반복</span>
-                          )}
+                          {/* ← [2026-04-18] 인라인 span → MetaBadge 공통 컴포넌트 (HomeView와 동일 색상) */}
+                          {b.recurGroupId && <MetaBadge type="recurring" size="sm" />}
                           <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {b.title}
                           </span>

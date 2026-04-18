@@ -1,6 +1,22 @@
 /* ─── C&R SPACE 디자인 토큰 (추가분) ────────────────────────────────────────
    기존 index.css는 그대로 유지.
    이 파일은 새 토큰 + 컴포넌트 클래스만 추가합니다.
+
+   ✅ 변경 이력
+   - [2026-04-18 스타일 정리] chip 색상 토큰 구분 확립
+     · noshow       : #FEF3C7/#92400E → #FEE2E2/#B91C1C
+       (기존 pending과 동일색 → 위반 의미 강조 위해 부드러운 빨강 계열로 분리)
+     · checkin-wait : #FFF7ED/#C2410C → #DBEAFE/#1D4ED8
+       (기존 soon과 동일색 → RoomStatusBadge에서 나란히 표시될 때 구분 안 되던 이슈 해결,
+        액션 유도 의미로 파란 계열)
+     · expired      : #F8FAFC/#94A3B8 → #E2E8F0/#64748B + opacity 0.75
+       (기존 done과 거의 동일 → "버려진" 시각적 인상 강화)
+   - [2026-04-18 스타일 정리] AttendeeChip 배경용 토큰 신규 추가
+     · --color-attendee-bg: #EEF2FF (기존 하드코딩 색상을 토큰화)
+   - [2026-04-18 신규] MetaBadge(반복/참석자) 공통 컴포넌트 토큰 및 클래스 추가
+     · --color-recurring-bg/text (민트): HomeView 인디고·BookingListTable 민트 2곳 색상 통일
+     · --color-guest-bg/text     (연초록): HomeView 기존 색 유지, 토큰화
+     · .meta-badge / .meta-badge--xs / .meta-recurring / .meta-guest 클래스 추가
 ─────────────────────────────────────────────────────────────────────────── */
 
 :root {
@@ -18,12 +34,20 @@
   --color-earlyend-bg:    #EDE9FE;  --color-earlyend-text:  #7C3AED;
   --color-countdown-bg:   #EEF2FF;  --color-countdown-text: #6366F1;
   --color-neutral-bg:     #F1F5F9;  --color-neutral-text:   #64748B;
-  --color-checkin-wait-bg: #FFF7ED; --color-checkin-wait-text: #C2410C;
+  --color-checkin-wait-bg: #DBEAFE; --color-checkin-wait-text: #1D4ED8;  /* ← [변경] soon과 구분, 파란 계열 */
   --color-done-bg:         #F1F5F9; --color-done-text:         #64748B;
-  --color-noshow-bg:       #FEF3C7; --color-noshow-text:       #92400E;
+  --color-noshow-bg:       #FEE2E2; --color-noshow-text:       #B91C1C;  /* ← [변경] pending과 구분, 부드러운 빨강 */
   --color-approved-bg:     #DCFCE7; --color-approved-text:     #166534;
-  --color-expired-bg:      #F8FAFC; --color-expired-text:      #94A3B8;
+  --color-expired-bg:      #E2E8F0; --color-expired-text:      #64748B;  /* ← [변경] done과 구분, 더 탁한 회색 */
   --color-rejected-bg:     #FEE2E2; --color-rejected-text:     #991B1B;
+
+  /* ── 참석자 칩 토큰 ── */
+  --color-attendee-bg:    #EEF2FF;  /* ← [신규] AttendeeChip 하드코딩 색상 토큰화 */
+
+  /* ── 메타 뱃지 토큰 (예약 속성 표시: 반복/참석자) ── */
+  /* ← [2026-04-18 신규] HomeView·BookingListTable 인라인 뱃지를 MetaBadge로 공통화하면서 추가 */
+  --color-recurring-bg:   #E1F5EE;  --color-recurring-text: #0F6E56;  /* 민트 — 2곳(인디고/민트) 색 통일 */
+  --color-guest-bg:       #F0FDF4;  --color-guest-text:     #15803D;  /* 연초록 — 기존 HomeView 색 유지 */
 
   --shadow-card:     0 2px 8px rgba(0,0,0,0.06);
   --shadow-card-lg:  0 8px 32px rgba(0,0,0,0.10);
@@ -55,8 +79,23 @@
 .chip-done          { background: var(--color-done-bg);          color: var(--color-done-text); }
 .chip-noshow        { background: var(--color-noshow-bg);        color: var(--color-noshow-text); }
 .chip-approved      { background: var(--color-approved-bg);      color: var(--color-approved-text); }
-.chip-expired       { background: var(--color-expired-bg);       color: var(--color-expired-text); }
+/* ← [변경] expired에 opacity 추가로 "버려진" 시각적 인상 강화 */
+.chip-expired       { background: var(--color-expired-bg);       color: var(--color-expired-text); opacity: 0.75; }
 .chip-rejected      { background: var(--color-rejected-bg);      color: var(--color-rejected-text); }
+
+/* ── 메타 뱃지 (예약 속성: 반복/참석자) ──────────────────────────────────── */
+/* ← [2026-04-18 신규] MetaBadge 공통 컴포넌트용 스타일
+    - 상태 뱃지(.chip)와 의도적으로 다른 시각 언어: 더 작고, 덜 강조됨
+    - sm (기본, 리스트·테이블용): font-size 10px / padding 2px 6px
+    - xs (HomeView 소형 카드용): font-size  9px / padding 1px 5px / radius 4px */
+.meta-badge {
+  display: inline-flex; align-items: center; flex-shrink: 0;
+  font-size: 10px; font-weight: 600; white-space: nowrap;
+  padding: 2px 6px; border-radius: var(--radius-full);
+}
+.meta-badge--xs { font-size: 9px; padding: 1px 5px; border-radius: 4px; }
+.meta-recurring { background: var(--color-recurring-bg); color: var(--color-recurring-text); }
+.meta-guest     { background: var(--color-guest-bg);     color: var(--color-guest-text); }
 
 /* 카드 호버 */
 .card-hover { transition: box-shadow 0.22s, transform 0.22s; }
