@@ -1,3 +1,24 @@
+/**
+ * App.tsx — C&R Space 루트 컴포넌트
+ *
+ * ✅ 변경 이력
+ *  - [2026-04-17 P0 fix] selectedDate stale 버그 해결 (자정 경계/탭 유지 케이스)
+ *      · 10초 tick에서 todayStr()과 비교해 과거면 강제 갱신
+ *      · visibilitychange에서 탭 복귀 시 동일 로직 적용
+ *      · 원인: useState(todayStr())가 마운트 시점에만 평가되어 탭을 밤새 유지하면 과거 날짜 고정
+ *
+ *  - [2026-04-18 P2] 인앱 알림 중복 INSERT 제거
+ *      · 배경: 배송 2에서 send-notification Edge Fn이 인앱 INSERT까지 담당하게 됨
+ *      · 그런데 App.tsx는 기존 패턴(프론트가 직접 insertNotification)을 유지
+ *        → notifications 테이블에 같은 알림이 2번 쌓이는 중복 발생
+ *      · 해결: sendNotification 호출과 쌍이 되던 insertNotification 호출 모두 제거
+ *      · 제거된 함수: addBooking(3곳), cancelBooking, approvePendingBooking(2곳),
+ *                   rejectPendingBooking(2곳), adminForceCancelBooking,
+ *                   updateBooking(2곳 + pending 전환 2곳), useEffect noshow, useEffect pending_expired(2곳)
+ *      · 유지: checkIn (POLICIES에 없음, 프론트 전용), earlyEnd (POLICIES에 없음, 프론트 전용)
+ *      · Realtime 구독(subscribeNotifications)이 INSERT 이벤트를 <100ms로 푸시하여 UX 지연 없음
+ */
+
 import React, { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react'
 import { Bell, Calendar, Home, LogOut, Settings, User } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
@@ -182,7 +203,13 @@ function AppContent() {
   // 틱 타이머 + Realtime + 이벤트 리스너 + 탭 복귀 새로고침 (마운트 1회)
   useEffect(() => {
     // ① 10초마다 tick → 시간 기반 UI 상태 즉시 반영 (체크인 대기/사용중 등)
-    const iv = setInterval(() => setTick(t => t+1), 10000);
+    // [2026-04-17 P0 fix] 자정 경계 통과 시 selectedDate 자동 갱신 — 탭을 밤새 열어둔 케이스 방어
+    const iv = setInterval(() => {
+      setTick(t => t+1);
+      // ← [2026-04-17] selectedDate가 실제 오늘보다 과거면 강제 갱신 (자정 넘긴 탭)
+      const t = todayStr();
+      setSelectedDate(prev => (prev < t ? t : prev));
+    }, 10000);
 
     // ② Realtime 구독 → 다른 사람 예약/취소/체크인 시 즉시 반영
     // 500ms 디바운스: Realtime 재연결 시 연속 호출로 인한 auth lock 경쟁 방지
@@ -204,10 +231,14 @@ function AppContent() {
 
     // ③ Page Visibility API → 탭 복귀 시 데이터 강제 새로고침
     // (자리 비운 사이 바뀐 예약 상태를 즉시 반영)
+    // [2026-04-17 P0 fix] 탭 복귀 시 selectedDate도 갱신 — 어제 열어둔 탭이 오늘 날짜로 복구됨
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         loadBookings().then(b => setBookings(b));
         setTick(t => t+1);
+        // ← [2026-04-17] 탭 복귀 시 오늘 날짜로 강제 갱신 (selectedDate stale 방지)
+        const t = todayStr();
+        setSelectedDate(prev => (prev < t ? t : prev));
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -418,52 +449,18 @@ function AppContent() {
           recurBookings: newBookings.map(bk => ({ start_at: bk.start_at, end_at: bk.end_at })),
         })
       }
-      // Audit log + 인앱 알림
+      // Audit log만 프론트에서 처리
+      // ← [2026-04-18 P2] 인앱 알림 3개 블록(예약자/관리자/참석자) 제거됨
+      //   이유: send-notification Edge Function이 이메일+인앱 모두 담당하도록 통합됨
+      //         sendNotification('created' 또는 'pending', ...) 호출 시 자동으로
+      //         booker/attendees/admins에게 인앱 알림 INSERT됨 (sendInAppForAllRoles)
+      //   결과: notifications 테이블에 같은 알림이 2번 INSERT되던 중복 문제 해결
       for (const bk of newBookings) {
         insertAuditLog({
           action: 'BOOKING_CREATED', entityType: 'booking', entityId: bk.id,
           actorName: currentUser,
           afterData: { title: bk.title, room_id: bk.room_id, start_at: bk.start_at, end_at: bk.end_at }
         }).catch(() => {})
-        if (authUser?.user_id) {
-          const notifTitle = isAdminOnlyRoom ? '승인 요청이 접수되었습니다' : '예약이 확정되었습니다'
-          const room = rooms.find(r => r.room_id === bk.room_id)
-          insertNotification({
-            userId: authUser.user_id,
-            type: isAdminOnlyRoom ? 'booking_pending' : 'booking_created',
-            title: notifTitle,
-            body: `${bk.title} · ${room?.room_name ?? ''} · ${fmtTSDateFull(bk.start_at)} ${fmtTSFull(bk.start_at)}`,
-            bookingId: bk.id,
-          }).catch(() => {})
-        }
-        // 관리자 전원 인앱 알림 — pending(admin_only 룸) 예약 시
-        if (isAdminOnlyRoom) {
-          const pendingRoom = rooms.find(r => r.room_id === bk.room_id)
-          users.filter(u => u.role === 'ADMIN').forEach(admin => {
-            if (admin.user_id && admin.user_id !== authUser?.user_id) {
-              insertNotification({
-                userId: admin.user_id,
-                type: 'booking_pending',
-                title: '새 예약 승인 요청이 접수되었습니다',
-                body: `${bk.title} · ${pendingRoom?.room_name ?? ''} · 신청자: ${currentUser} · ${fmtTSDateFull(bk.start_at)} ${fmtTSFull(bk.start_at)}`,
-                bookingId: bk.id,
-              }).catch(() => {})
-            }
-          })
-        }
-        // 참석자 인앱 알림 (user_id 있는 내부 직원만)
-        for (const att of (form.attendees ?? [])) {
-          if ((att as any).user_id && (att as any).user_id !== authUser?.user_id) {
-            const room = rooms.find(r => r.room_id === bk.room_id)
-            insertNotification({
-              userId: (att as any).user_id,
-              type: 'booking_attendee_added',
-              title: '회의 참석자로 초대되었습니다',
-              body: `${bk.title} · ${room?.room_name ?? ''} · ${fmtTSDateFull(bk.start_at)} ${fmtTSFull(bk.start_at)}`,
-              bookingId: bk.id,
-            }).catch(() => {})
-          }
-        }
       }
       return true;
     } finally {
@@ -551,15 +548,7 @@ function AppContent() {
     try {
       await apiCancelBooking(id)
     insertAuditLog({ action: 'BOOKING_CANCELLED', entityType: 'booking', entityId: id, actorName: currentUser }).catch(()=>{});
-    if (authUser?.user_id && targetBooking) {
-      const r = rooms.find(rm => rm.room_id === targetBooking.room_id)
-      insertNotification({
-        userId: authUser.user_id, type: 'booking_cancelled',
-        title: '예약이 취소되었습니다',
-        body: `${targetBooking.title} · ${r?.room_name ?? ''} · ${fmtTSDateFull(targetBooking.start_at)} ${fmtTSFull(targetBooking.start_at)}`,
-        bookingId: id,
-      }).catch(() => {})
-    }
+    // ← [2026-04-18 P2] 예약자 인앱 알림 제거 — send-notification('cancelled')이 담당
       showToast("예약이 취소되었습니다.", "info");
       // 이메일 알림 발송
       if (targetBooking) {
@@ -599,30 +588,8 @@ function AppContent() {
           admin_avatar: authUser?.avatar_url ?? null,
         })
       }
-      // 예약자 인앱 알림
-      if (target) {
-        const userProfile = users.find(u => u.name === target.user)
-        if (userProfile?.user_id) {
-          const rApprove = rooms.find(rm => rm.room_id === target.room_id)
-          insertNotification({
-            userId: userProfile.user_id, type: 'booking_approved',
-            title: '예약이 승인되었습니다',
-            body: `${target.title} · ${rApprove?.room_name ?? ''} · ${fmtTSDateFull(target.start_at)} ${fmtTSFull(target.start_at)}`,
-            bookingId: id,
-          }).catch(() => {})
-          // 참석자 인앱 알림
-          for (const att of (target.attendees ?? [])) {
-            if (att.user_id && att.user_id !== userProfile.user_id) {
-              insertNotification({
-                userId: att.user_id, type: 'booking_approved',
-                title: '참석 예약이 승인되었습니다',
-                body: `${target.title} · ${rApprove?.room_name ?? ''} · ${fmtTSDateFull(target.start_at)} ${fmtTSFull(target.start_at)}`,
-                bookingId: id,
-              }).catch(() => {})
-            }
-          }
-        }
-      }
+      // ← [2026-04-18 P2] 예약자/참석자 인앱 알림 제거
+      //   send-notification('approved')가 booker + attendees에게 자동 INSERT
       showToast('예약이 승인되었습니다.')
     } catch (err: any) { showToast(err.message, 'error') }
   }, [showToast, bookings, rooms, users, sendNotification])
@@ -649,34 +616,8 @@ function AppContent() {
           admin_avatar:  authUser?.avatar_url ?? null,  // 관리자 아바타
         })
       }
-      // 예약자 인앱 알림
-      if (target) {
-        const userProfile = users.find(u => u.name === target.user)
-        if (userProfile?.user_id) {
-          const rReject = rooms.find(rm => rm.room_id === target.room_id)
-          insertNotification({
-            userId: userProfile.user_id, type: 'booking_rejected',
-            title: '예약 요청이 거절되었습니다',
-            body: reason
-              ? `${target.title} · ${rReject?.room_name ?? ''} · 거절 사유: ${reason}`
-              : `${target.title} · ${rReject?.room_name ?? ''}`,
-            bookingId: id,
-          }).catch(() => {})
-          // 참석자 인앱 알림
-          for (const att of (target.attendees ?? [])) {
-            if (att.user_id && att.user_id !== userProfile.user_id) {
-              insertNotification({
-                userId: att.user_id, type: 'booking_rejected',
-                title: '참석 예약 요청이 거절되었습니다',
-                body: reason
-                  ? `${target.title} · ${rReject?.room_name ?? ''} · 거절 사유: ${reason}`
-                  : `${target.title} · ${rReject?.room_name ?? ''}`,
-                bookingId: id,
-              }).catch(() => {})
-            }
-          }
-        }
-      }
+      // ← [2026-04-18 P2] 예약자/참석자 인앱 알림 제거
+      //   send-notification('rejected')가 booker + attendees에게 자동 INSERT
       showToast('예약이 거절되었습니다.', 'info')
     } catch (err: any) { showToast(err.message, 'error') }
   }, [showToast, bookings, rooms, users, sendNotification])
@@ -696,20 +637,8 @@ function AppContent() {
         afterData: { reason, title: targetB?.title, user: targetB?.user },
       }).catch(() => {})
 
-      // 예약자 인앱 알림
-      const userProfile = users.find(u => u.name === targetB?.user)
-      if (userProfile?.user_id && targetB) {
-        const r = rooms.find(rm => rm.room_id === targetB.room_id)
-        insertNotification({
-          userId: userProfile.user_id,
-          type: 'booking_admin_cancelled',
-          title: '관리자에 의해 예약이 강제 취소되었습니다',
-          body: reason
-            ? `${targetB.title} · ${r?.room_name ?? ''} · ${fmtTSDateFull(targetB.start_at)} ${fmtTSFull(targetB.start_at)} · 사유: ${reason}`
-            : `${targetB.title} · ${r?.room_name ?? ''} · ${fmtTSDateFull(targetB.start_at)} ${fmtTSFull(targetB.start_at)}`,
-          bookingId: id,
-        }).catch(() => {})
-      }
+      // ← [2026-04-18 P2] 예약자 인앱 알림 제거
+      //   send-notification('cancelled' + admin_force=true)가 booker + attendees에게 자동 INSERT
 
       // 이메일 알림 — 예약자·참석자 수신자는 Edge Fn이 DB에서 조회
       if (targetB) {
@@ -785,28 +714,10 @@ function AppContent() {
         await upsertBookingAttendees(originalId, changes.attendees)
       }
 
-      // 예약 변경 인앱 알림 — 예약자
-      if (authUser?.user_id && prevBooking) {
-        const r = rooms.find(rm => rm.room_id === prevBooking.room_id)
-        insertNotification({
-          userId: authUser.user_id, type: 'booking_updated',
-          title: '예약이 변경되었습니다',
-          body: `${prevBooking.title} · ${r?.room_name ?? ''} · ${fmtTSDateFull(changes.start_at ?? prevBooking.start_at)} ${fmtTSFull(changes.start_at ?? prevBooking.start_at)}`,
-          bookingId: originalId,
-        }).catch(() => {})
-        // 참석자 인앱 알림 (유지된 참석자 대상)
-        const r2 = rooms.find(rm => rm.room_id === prevBooking.room_id)
-        for (const att of (prevBooking.attendees ?? [])) {
-          if (att.user_id && att.user_id !== authUser.user_id) {
-            insertNotification({
-              userId: att.user_id, type: 'booking_updated',
-              title: '참석 예약이 변경되었습니다',
-              body: `${prevBooking.title} · ${r2?.room_name ?? ''} · ${fmtTSDateFull(changes.start_at ?? prevBooking.start_at)} ${fmtTSFull(changes.start_at ?? prevBooking.start_at)}`,
-              bookingId: originalId,
-            }).catch(() => {})
-          }
-        }
-      }
+      // ← [2026-04-18 P2] 예약자/참석자 인앱 알림 제거
+      //   send-notification('updated')가 booker + attendees에게 자동 INSERT
+      //   pending 전환 시에도 send-notification('pending')이 자동 처리
+
       // Audit log
       insertAuditLog({
         action: 'BOOKING_UPDATED', entityType: 'booking', entityId: originalId,
@@ -819,29 +730,8 @@ function AppContent() {
       // ── 일반 → 에메랄드룸 변경으로 pending이 된 경우 → Admin 알림 ──
       if (newStatus === 'pending') {
         const pendingRoom = rooms.find(r => r.room_id === changes.room_id)
-        // 예약자 인앱 알림
-        if (authUser?.user_id) {
-          insertNotification({
-            userId: authUser.user_id,
-            type: 'booking_pending',
-            title: '승인 요청이 접수되었습니다',
-            body: `${changes.title} · ${pendingRoom?.room_name ?? ''} · ${fmtTSDateFull(changes.start_at ?? '')} ${fmtTSFull(changes.start_at ?? '')}`,
-            bookingId: originalId,
-          }).catch(() => {})
-        }
-        // Admin 전원 인앱 알림 (본인 제외)
-        users.filter(u => u.role === 'ADMIN').forEach(admin => {
-          if (admin.user_id && admin.user_id !== authUser?.user_id) {
-            insertNotification({
-              userId: admin.user_id,
-              type: 'booking_pending',
-              title: '예약 변경 승인 요청이 접수되었습니다',
-              body: `${changes.title} · ${pendingRoom?.room_name ?? ''} · 신청자: ${currentUser} · ${fmtTSDateFull(changes.start_at ?? '')} ${fmtTSFull(changes.start_at ?? '')}`,
-              bookingId: originalId,
-            }).catch(() => {})
-          }
-        })
-        // Admin 이메일 알림
+        // ← [2026-04-18 P2] 예약자/관리자 인앱 알림 제거
+        //   Admin 이메일 알림 (Edge Fn 내부에서 booker/attendees/admins 인앱 자동 INSERT)
         if (prevBooking) {
           sendNotification('pending', {
             ...prevBooking, ...changes,
@@ -890,6 +780,10 @@ function AppContent() {
   }, [bookings, showToast]);
 
   // Auto-cancel: ① 노쇼(미체크인) 자동 취소  ② pending 승인 기한 초과 자동 취소
+  //
+  // ← [2026-04-18 P2] 이 useEffect는 "프론트에서도 빠른 UI 반영"을 위한 안전망.
+  //    실제 자동 취소 처리는 auto-cancel-bookings Edge Function (cron 5분마다)이 담당.
+  //    인앱 알림도 send-notification이 자동 발송하므로 여기서는 UI 업데이트만.
   useEffect(() => {
     const now=nowMinutes(), today=todayStr(), nowMs=Date.now();
 
@@ -904,17 +798,9 @@ function AppContent() {
       const ids=new Set(toCancel.map(b=>b.id));
       setBookings(prev => prev.map(b => ids.has(b.id) ? {...b, autoCancelled:true} : b));
       Promise.all(toCancel.map(b => apiCancelBooking(b.id))).catch(console.error);
-      if (authUser?.user_id) {
-        toCancel.filter(b => b.user === currentUser).forEach(b => {
-          const r = rooms.find(rm => rm.room_id === b.room_id)
-          insertNotification({
-            userId: authUser.user_id, type: 'booking_noshow',
-            title: '노쇼 처리 — 예약이 자동 취소되었습니다',
-            body: `${b.title} · ${r?.room_name ?? ''} · ${fmtTSDateFull(b.start_at)} ${fmtTSFull(b.start_at)}`,
-            bookingId: b.id,
-          }).catch(() => {})
-        })
-      }
+      // ← [2026-04-18 P2] 예약자 인앱 알림 제거
+      //   auto-cancel-bookings Edge Fn이 5분마다 실행되며 noshow 처리 후
+      //   send-notification('noshow')가 booker + attendees에게 자동 INSERT
     }
 
     // ② pending 승인 기한 초과: start_at 1분 전 이후 경과
@@ -927,26 +813,9 @@ function AppContent() {
       setBookings(prev => prev.map(b => expiredIds.has(b.id) ? {...b, autoCancelled:true, cancelledBy:'system'} : b));
       pendingExpired.forEach(b => {
         expirePendingBooking(b.id).catch(() => {});
-        const r = rooms.find(rm => rm.room_id === b.room_id);
-        // 예약자 인앱 알림
-        const userProfile = users.find(u => u.name === b.user);
-        if(userProfile?.user_id){
-          insertNotification({
-            userId: userProfile.user_id, type: 'booking_expired',
-            title: '승인 기한이 지나 예약이 자동 취소되었습니다',
-            body: `${b.title} · ${r?.room_name ?? ''} · ${fmtTSDateFull(b.start_at)} ${fmtTSFull(b.start_at)}`,
-            bookingId: b.id,
-          }).catch(() => {});
-        }
-        // 어드민 전원 인앱 알림
-        users.filter(u => u.role === 'ADMIN').forEach(admin => {
-          insertNotification({
-            userId: admin.user_id, type: 'booking_expired',
-            title: '미승인 예약이 자동 취소되었습니다',
-            body: `${b.title} · ${r?.room_name ?? ''} · 신청자: ${b.user} · ${fmtTSDateFull(b.start_at)}`,
-            bookingId: b.id,
-          }).catch(() => {});
-        });
+        // ← [2026-04-18 P2] 예약자/관리자 인앱 알림 제거
+        //   auto-cancel-bookings Edge Fn이 pending_expired 처리 후
+        //   send-notification('pending_expired')가 booker + attendees + admins에게 자동 INSERT
       });
     }
   }, [tick]);

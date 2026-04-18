@@ -2,218 +2,83 @@
 /**
  * checkin-reminder Edge Function
  *
- * 세 가지 알림을 매 분 체크:
- *   ① 예약 시작 10분 전  → 알림만 발송 (체크인 버튼 없음)
- *   ② 예약 시작 시각     → "체크인 하러가기" 버튼 포함 알림
- *   ③ 예약 시작 후 5분   → "5분 후 자동취소" 경고
+ * 매 1분 간격 cron 실행. 예약 시간 기준 3가지 시점에 알림 발송 요청.
  *
- * ✅ 수정 내역 (2025-04-13):
- *   - booking_attendees 조인 추가 (b.attendees 구 포맷 → b.booking_attendees 신 포맷)
- *   - 참석자 이메일 발송 로직 수정
+ *   ① 예약 시작 10분 전  → type: checkin_before_10  (예약자만)
+ *   ② 예약 시작 시각     → type: checkin_start      (예약자 + 참석자)
+ *   ③ 예약 시작 후 5분   → type: checkin_warning_5  (예약자만)
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 변경 이력
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * [2025-04-13] 초기 버전
+ *   · booking_attendees 조인 추가 (구 포맷 → 신 포맷)
+ *   · 참석자 이메일 발송 로직 추가
+ *
+ * [2026-04-18 P2] 전면 리팩토링 — 336줄 → ~140줄 (58% 축소)
+ *   · 자체 HTML 템플릿 3개(makeBefore10Html/makeStartHtml/makeAfter5Html) 완전 제거
+ *   · 자체 sendEmail 제거
+ *   · 각 예약마다 send-notification Edge Function을 HTTP 호출하는 패턴으로 전환
+ *   · 이 파일은 이제 "DB 조회 + 알림 트리거" 역할만
+ *   · 실제 이메일/인앱 발송은 send-notification이 전담 (일관성 확보)
+ *   · 인앱 알림 누락 보완:
+ *       - checkin_start 참석자 인앱 알림 추가 (기존 없음)
+ *       - type 이름을 정책 표준(checkin_before_10/start/warning_5)으로 통일
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 배포 규칙
+ * ═══════════════════════════════════════════════════════════════════════════
+ *   · 이 파일 자체는 cron에서 호출되므로 --no-verify-jwt 가능
+ *   · send-notification HTTP 호출 시 Bearer: ANON_KEY 사용 (SERVICE_KEY X — 401 발생함)
  *
  * Cron: '* * * * *' (매 분)
+ * 배포: supabase functions deploy checkin-reminder --no-verify-jwt
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
-const FROM_EMAIL     = Deno.env.get('FROM_EMAIL') ?? 'C&R SPACE <onboarding@resend.dev>'
-const APP_URL        = Deno.env.get('APP_URL') ?? 'https://cnr-space.pages.dev'
+// ═══════════════════════════════════════════════════════════════════════════
+// 환경변수
+// ═══════════════════════════════════════════════════════════════════════════
 
-/** notifications 테이블에 인앱 알림 insert */
-async function insertNotification(supabase: any, params: {
-  userId: string, type: string, title: string, body?: string, bookingId?: string
-}) {
-  const { error } = await supabase.from('notifications').insert({
-    user_id:    params.userId,
-    type:       params.type,
-    title:      params.title,
-    body:       params.body ?? null,
-    booking_id: params.bookingId ?? null,
-    is_read:    false,
-  })
-  if (error) console.warn('[checkin-reminder] 인앱 알림 저장 실패:', error.message)
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
+const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+// ← [CRITICAL] send-notification 호출 시 SERVICE_KEY 아닌 ANON_KEY 사용해야 401 안 남
+const ANON_KEY     = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+
+// ═══════════════════════════════════════════════════════════════════════════
+// send-notification HTTP 호출 헬퍼
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * send-notification Edge Function 호출
+ * · 동일 Supabase 프로젝트 내 Edge Function 간 호출은 ANON_KEY Bearer 필수
+ * · 실패해도 throw 안 함 (warn 로그만) — 한 건 실패가 전체 cron을 멈추면 안 됨
+ */
+async function triggerNotification(type: string, booking: any): Promise<void> {
+  if (!SUPABASE_URL) return
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/send-notification`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${ANON_KEY}`,   // ← [CRITICAL] ANON_KEY 사용
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({ type, booking }),
+    })
+    if (!res.ok) {
+      console.warn(`[checkin-reminder] send-notification 실패 (${type}, booking=${booking.id}):`, res.status, await res.text())
+    }
+  } catch (e: any) {
+    console.warn(`[checkin-reminder] send-notification 호출 예외 (${type}, booking=${booking.id}):`, e?.message ?? String(e))
+  }
 }
 
-async function sendEmail(to: string[], subject: string, html: string) {
-  if (!RESEND_API_KEY || to.length === 0) return
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: FROM_EMAIL, to, subject, html }),
-  })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// 메인 핸들러
+// ═══════════════════════════════════════════════════════════════════════════
 
-function fmtTime(ts: string): string {
-  const d = new Date(ts)
-  const k = new Date(d.getTime() + 9 * 60 * 60 * 1000)
-  const p = (n: number) => String(n).padStart(2, '0')
-  const h = k.getUTCHours()
-  return `${h < 12 ? '오전' : '오후'} ${h === 0 ? 12 : h > 12 ? h - 12 : h}:${p(k.getUTCMinutes())}`
-}
-
-function fmtDate(ts: string): string {
-  const d = new Date(ts)
-  const k = new Date(d.getTime() + 9 * 60 * 60 * 1000)
-  const days = ['일','월','화','수','목','금','토']
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${k.getUTCFullYear()}년 ${p(k.getUTCMonth()+1)}월 ${p(k.getUTCDate())}일 (${days[k.getUTCDay()]})`
-}
-
-// ── ① 10분 전 알림 — 체크인 버튼 없음 ─────────────────────────────────────
-function makeBefore10Html(b: any, recipientName: string, isAttendee: boolean): string {
-  return `<!DOCTYPE html>
-<html lang="ko"><head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#F8FAFC;font-family:'Apple SD Gothic Neo',sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC;padding:32px 16px;">
-  <tr><td align="center">
-    <table width="100%" style="max-width:500px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-      <tr><td style="background:#0891B2;padding:22px 28px;">
-        <p style="margin:0;font-size:19px;font-weight:700;color:#fff;">⏰ 10분 후 시작합니다</p>
-        <p style="margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.85);">C&amp;R SPACE</p>
-      </td></tr>
-      <tr><td style="padding:22px 28px;">
-        <p style="margin:0 0 4px;font-size:13px;color:#6B7280;">안녕하세요, ${recipientName}님${isAttendee ? ' (참석자)' : ''} 👋</p>
-        <p style="margin:0 0 18px;font-size:14px;color:#374151;font-weight:600;">${b.title}</p>
-        <table width="100%" style="background:#F0F9FF;border-radius:10px;padding:14px 18px;">
-          <tr><td style="padding:5px 0;">
-            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">날짜</span>
-            <span style="font-size:13px;color:#111;">${fmtDate(b.start_at)}</span>
-          </td></tr>
-          <tr><td style="padding:5px 0;">
-            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">시간</span>
-            <span style="font-size:13px;color:#0E7490;font-weight:700;">${fmtTime(b.start_at)} – ${fmtTime(b.end_at)}</span>
-          </td></tr>
-          <tr><td style="padding:5px 0;">
-            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">회의실</span>
-            <span style="font-size:13px;color:#111;">${b.room_name ?? b.room_id + 'F'}</span>
-          </td></tr>
-          <tr><td style="padding:5px 0;">
-            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">예약자</span>
-            <span style="font-size:13px;color:#111;">${b.user_name}</span>
-          </td></tr>
-        </table>
-        <div style="margin:16px 0 0;padding:12px 14px;background:#F0F9FF;border-radius:8px;border-left:3px solid #0891B2;">
-          <p style="margin:0;font-size:12px;color:#075985;font-weight:600;">💡 예약 시작 시각에 체크인 알림이 별도로 발송됩니다.</p>
-          <p style="margin:5px 0 0;font-size:12px;color:#0369A1;">시작 후 10분 내 체크인하지 않으면 자동 취소됩니다.</p>
-        </div>
-      </td></tr>
-      <tr><td style="padding:14px 28px 18px;border-top:1px solid #F1F5F9;">
-        <p style="margin:0;font-size:11px;color:#9CA3AF;text-align:center;">C&R SPACE 자동 발송</p>
-      </td></tr>
-    </table>
-  </td></tr>
-</table>
-</body></html>`
-}
-
-// ── ② 예약 시작 시각 알림 — 체크인 버튼 포함 ──────────────────────────────
-function makeStartHtml(b: any, recipientName: string, isAttendee: boolean): string {
-  return `<!DOCTYPE html>
-<html lang="ko"><head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#F8FAFC;font-family:'Apple SD Gothic Neo',sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC;padding:32px 16px;">
-  <tr><td align="center">
-    <table width="100%" style="max-width:500px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-      <tr><td style="background:#16A34A;padding:22px 28px;">
-        <p style="margin:0;font-size:19px;font-weight:700;color:#fff;">🟢 회의 시작! 체크인해 주세요</p>
-        <p style="margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.85);">C&amp;R SPACE</p>
-      </td></tr>
-      <tr><td style="padding:22px 28px;">
-        <p style="margin:0 0 4px;font-size:13px;color:#6B7280;">안녕하세요, ${recipientName}님${isAttendee ? ' (참석자)' : ''} 👋</p>
-        <p style="margin:0 0 18px;font-size:14px;color:#374151;font-weight:600;">${b.title}</p>
-        <table width="100%" style="background:#F0FDF4;border-radius:10px;padding:14px 18px;">
-          <tr><td style="padding:5px 0;">
-            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">날짜</span>
-            <span style="font-size:13px;color:#111;">${fmtDate(b.start_at)}</span>
-          </td></tr>
-          <tr><td style="padding:5px 0;">
-            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">시간</span>
-            <span style="font-size:13px;color:#16A34A;font-weight:700;">${fmtTime(b.start_at)} – ${fmtTime(b.end_at)}</span>
-          </td></tr>
-          <tr><td style="padding:5px 0;">
-            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">회의실</span>
-            <span style="font-size:13px;color:#111;">${b.room_name ?? b.room_id + 'F'}</span>
-          </td></tr>
-          <tr><td style="padding:5px 0;">
-            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">예약자</span>
-            <span style="font-size:13px;color:#111;">${b.user_name}</span>
-          </td></tr>
-        </table>
-        <div style="margin:16px 0 0;padding:12px 14px;background:#FEF9C3;border-radius:8px;border-left:3px solid #EAB308;">
-          <p style="margin:0;font-size:12px;color:#854D0E;font-weight:600;">⚠️ 지금 바로 체크인해 주세요</p>
-          <p style="margin:5px 0 0;font-size:12px;color:#A16207;">10분 내 체크인하지 않으면 예약이 자동 취소됩니다.</p>
-        </div>
-        <div style="margin:18px 0 0;text-align:center;">
-          <a href="${APP_URL}" style="display:inline-block;background:#16A34A;color:#fff;padding:13px 32px;border-radius:10px;text-decoration:none;font-size:14px;font-weight:700;">
-            체크인 하러가기 →
-          </a>
-        </div>
-      </td></tr>
-      <tr><td style="padding:14px 28px 18px;border-top:1px solid #F1F5F9;">
-        <p style="margin:0;font-size:11px;color:#9CA3AF;text-align:center;">C&R SPACE 자동 발송</p>
-      </td></tr>
-    </table>
-  </td></tr>
-</table>
-</body></html>`
-}
-
-// ── ③ 시작 후 5분 경고 — 자동취소 임박 ────────────────────────────────────
-function makeAfter5Html(b: any, recipientName: string, isAttendee: boolean): string {
-  return `<!DOCTYPE html>
-<html lang="ko"><head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#F8FAFC;font-family:'Apple SD Gothic Neo',sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#F8FAFC;padding:32px 16px;">
-  <tr><td align="center">
-    <table width="100%" style="max-width:500px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-      <tr><td style="background:#DC2626;padding:22px 28px;">
-        <p style="margin:0;font-size:19px;font-weight:700;color:#fff;">⚠️ 5분 후 자동 취소됩니다</p>
-        <p style="margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.85);">C&amp;R SPACE</p>
-      </td></tr>
-      <tr><td style="padding:22px 28px;">
-        <p style="margin:0 0 4px;font-size:13px;color:#6B7280;">안녕하세요, ${recipientName}님${isAttendee ? ' (참석자)' : ''}</p>
-        <p style="margin:0 0 18px;font-size:14px;color:#374151;font-weight:600;">${b.title}</p>
-        <div style="margin:0 0 16px;padding:14px 16px;background:#FEF2F2;border-radius:10px;border:1.5px solid #FECACA;">
-          <p style="margin:0;font-size:14px;color:#991B1B;font-weight:700;">아직 체크인이 완료되지 않았습니다!</p>
-          <p style="margin:6px 0 0;font-size:13px;color:#DC2626;">지금 바로 체크인하지 않으면 <strong>5분 후 예약이 자동 취소</strong>됩니다.</p>
-        </div>
-        <table width="100%" style="background:#F8FAFC;border-radius:10px;padding:12px 16px;">
-          <tr><td style="padding:4px 0;">
-            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">날짜</span>
-            <span style="font-size:13px;color:#111;">${fmtDate(b.start_at)}</span>
-          </td></tr>
-          <tr><td style="padding:4px 0;">
-            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">시간</span>
-            <span style="font-size:13px;color:#111;">${fmtTime(b.start_at)} – ${fmtTime(b.end_at)}</span>
-          </td></tr>
-          <tr><td style="padding:4px 0;">
-            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">회의실</span>
-            <span style="font-size:13px;color:#111;">${b.room_name ?? b.room_id + 'F'}</span>
-          </td></tr>
-          <tr><td style="padding:4px 0;">
-            <span style="font-size:12px;color:#6B7280;display:inline-block;width:60px;font-weight:600;">예약자</span>
-            <span style="font-size:13px;color:#111;">${b.user_name}</span>
-          </td></tr>
-        </table>
-        <div style="margin:16px 0 0;text-align:center;">
-          <a href="${APP_URL}" style="display:inline-block;background:#DC2626;color:#fff;padding:12px 28px;border-radius:9px;text-decoration:none;font-size:14px;font-weight:700;">
-            지금 바로 체크인하기 →
-          </a>
-        </div>
-      </td></tr>
-      <tr><td style="padding:14px 28px 18px;border-top:1px solid #F1F5F9;">
-        <p style="margin:0;font-size:11px;color:#9CA3AF;text-align:center;">C&R SPACE 자동 발송</p>
-      </td></tr>
-    </table>
-  </td></tr>
-</table>
-</body></html>`
-}
-
-// ── 메인 핸들러 ────────────────────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin':  '*',
@@ -222,115 +87,79 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    )
+    const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
 
     const now = new Date()
-    let totalSent = 0
+    let triggered = 0
 
-    // ── ① 예약 시작 10분 전 알림 ─────────────────────────────────────────
-    const before10 = new Date(now.getTime() + 10 * 60 * 1000)
-    const { data: upcoming } = await supabase
+    // 공통 필터: 취소되지 않고, 조기종료 안 됐고, 아직 체크인 안 된 예약
+    // ← [P2] 메모리 규칙: start_at 범위에 lower bound 추가해 full scan 방지
+    const commonQuery = () => supabase
       .from('bookings')
-      .select('*, profiles!bookings_user_id_fkey(email, name)')
-      .gte('start_at', new Date(before10.getTime() - 30000).toISOString())
-      .lte('start_at', new Date(before10.getTime() + 30000).toISOString())
+      .select('*, booking_attendees(email, name)')    // ← send-notification에 참석자 정보 넘길 때 필요
       .eq('auto_cancelled', false)
       .eq('early_ended',    false)
       .eq('checked_in',     false)
+      .neq('status',        'cancelled')              // 취소된 예약 제외
+      .neq('status',        'pending')                // 승인 대기 중인 예약 제외
+
+    // ─── ① 예약 시작 10분 전 ────────────────────────────────────────────────
+    //     대상: start_at이 (지금+10분) ± 30초 구간
+    const before10 = new Date(now.getTime() + 10 * 60 * 1000)
+    const { data: upcoming } = await commonQuery()
+      .gte('start_at', new Date(before10.getTime() - 30_000).toISOString())
+      .lte('start_at', new Date(before10.getTime() + 30_000).toISOString())
 
     for (const b of upcoming ?? []) {
-      const userEmail = b.profiles?.email
-      const userName  = b.profiles?.name ?? b.user_name
-      if (!userEmail) continue
-      await sendEmail([userEmail], `[C&R SPACE] ⏰ 10분 후 시작 — ${b.title}`, makeBefore10Html(b, userName, false))
-      totalSent++
-      // 인앱 알림 — 예약자
-      if (b.user_id) {
-        await insertNotification(supabase, {
-          userId: b.user_id, type: 'checkin_reminder_10',
-          title: '10분 후 회의가 시작됩니다',
-          body: `${b.title} · ${b.room_name ?? ''} · ${fmtTime(b.start_at)}`,
-          bookingId: b.id,
-        })
-      }
-      // 참석자 이메일 미발송 (예약자만 수신)
+      await triggerNotification('checkin_before_10', b)
+      triggered++
     }
 
-    // ── ② 예약 시작 시각 알림 (체크인 버튼 포함) ────────────────────────
-    const { data: justStarted } = await supabase
-      .from('bookings')
-      .select('*, profiles!bookings_user_id_fkey(email, name), booking_attendees(email, name)')
-      .gte('start_at', new Date(now.getTime() - 30000).toISOString())
-      .lte('start_at', new Date(now.getTime() + 30000).toISOString())
-      .eq('auto_cancelled', false)
-      .eq('early_ended',    false)
-      .eq('checked_in',     false)
+    // ─── ② 예약 시작 시각 ──────────────────────────────────────────────────
+    //     대상: start_at이 (지금) ± 30초 구간
+    const { data: justStarted } = await commonQuery()
+      .gte('start_at', new Date(now.getTime() - 30_000).toISOString())
+      .lte('start_at', new Date(now.getTime() + 30_000).toISOString())
 
     for (const b of justStarted ?? []) {
-      const userEmail = b.profiles?.email
-      const userName  = b.profiles?.name ?? b.user_name
-      if (!userEmail) continue
-      await sendEmail([userEmail], `[C&R SPACE] 🟢 회의 시작! 체크인해 주세요 — ${b.title}`, makeStartHtml(b, userName, false))
-      totalSent++
-      // 인앱 알림 — 체크인 요청
-      if (b.user_id) {
-        await insertNotification(supabase, {
-          userId: b.user_id, type: 'checkin_required',
-          title: '회의가 시작되었습니다. 체크인해 주세요!',
-          body: `${b.title} · ${b.room_name ?? ''} · ${fmtTime(b.start_at)}`,
-          bookingId: b.id,
-        })
-      }
-      // 참석자 이메일 — booking_attendees 테이블에서 조회
-      const attendeeEmails = (b.booking_attendees ?? [])
-        .map((a: any) => a.email)
-        .filter((e: string) => e && e !== userEmail)
-      if (attendeeEmails.length > 0) {
-        await sendEmail(attendeeEmails, `[C&R SPACE] 🟢 회의 시작! 체크인해 주세요 — ${b.title}`, makeStartHtml(b, '참석자', true))
-        totalSent++
-      }
+      await triggerNotification('checkin_start', b)
+      triggered++
     }
 
-    // ── ③ 예약 시작 후 5분 경과 → 자동취소 5분 전 경고 ──────────────────
+    // ─── ③ 예약 시작 후 5분 경고 ──────────────────────────────────────────
+    //     대상: start_at이 (지금-5분) ± 30초 + 회의가 아직 안 끝난 것
     const after5 = new Date(now.getTime() - 5 * 60 * 1000)
-    const { data: started } = await supabase
-      .from('bookings')
-      .select('*, profiles!bookings_user_id_fkey(email, name)')
-      .gte('start_at', new Date(after5.getTime() - 30000).toISOString())
-      .lte('start_at', new Date(after5.getTime() + 30000).toISOString())
-      .eq('auto_cancelled', false)
-      .eq('early_ended',    false)
-      .eq('checked_in',     false)
+    const { data: started } = await commonQuery()
+      .gte('start_at', new Date(after5.getTime() - 30_000).toISOString())
+      .lte('start_at', new Date(after5.getTime() + 30_000).toISOString())
       .gt('end_at', now.toISOString())
 
     for (const b of started ?? []) {
-      const userEmail = b.profiles?.email
-      const userName  = b.profiles?.name ?? b.user_name
-      if (!userEmail) continue
-      await sendEmail([userEmail], `[C&R SPACE] ⚠️ 5분 후 자동취소 — ${b.title}`, makeAfter5Html(b, userName, false))
-      totalSent++
-      // 인앱 알림 — 자동취소 경고
-      if (b.user_id) {
-        await insertNotification(supabase, {
-          userId: b.user_id, type: 'checkin_warning',
-          title: '⚠️ 5분 후 자동취소 — 지금 바로 체크인해 주세요!',
-          body: `${b.title} · ${b.room_name ?? ''} · ${fmtTime(b.start_at)}`,
-          bookingId: b.id,
-        })
-      }
-      // 참석자 이메일 미발송 (예약자만 수신)
+      await triggerNotification('checkin_warning_5', b)
+      triggered++
     }
 
+    console.log(`[checkin-reminder] 완료 — ${triggered}건 트리거됨 (before10: ${upcoming?.length ?? 0}, start: ${justStarted?.length ?? 0}, warning5: ${started?.length ?? 0})`)
+
     return new Response(
-      JSON.stringify({ success: true, sent: totalSent, time: now.toISOString() }),
-      { headers: { 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        success:     true,
+        triggered,
+        breakdown:   {
+          before_10:   upcoming?.length ?? 0,
+          start:       justStarted?.length ?? 0,
+          warning_5:   started?.length ?? 0,
+        },
+        time: now.toISOString(),
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (err: any) {
     console.error('[checkin-reminder] 오류:', err)
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500 })
+    return new Response(
+      JSON.stringify({ error: String(err?.message ?? err) }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   }
 })
