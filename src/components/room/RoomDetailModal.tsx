@@ -3,7 +3,19 @@ import { Circle, X } from 'lucide-react'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { todayStr, nowMinutes, tsDate, tsMin, fmtTimeFull, fmtTSFull, getRoomStatus } from '../../utils/time'
 import { getFloor } from '../../data/floors'
-import { Button } from '../common/Button' 
+import { Button } from '../common/Button'
+import { RoomStatusBadge } from '../common/RoomStatusBadge'  // ← [신규] 공통 상태 뱃지 사용
+
+/**
+ * RoomDetailModal
+ *
+ * ✅ 변경 이력
+ *  - [2026-04-18 스타일 정리] 헤더 상태 chip을 인라인 하드코딩 → RoomStatusBadge로 교체
+ *    · 이유: tokens.css 색상과 불일치 (예약가능 text #111 vs 토큰 #0369A1),
+ *            공통 컴포넌트 있는데 재구현한 분산 구조 해소
+ *    · 효과: HomeView와 RoomDetailModal 간 상태 뱃지 시각·정보 일관성 확보
+ *            (체크인 대기/완료, 남은시간 등 풍부한 정보 자동 노출)
+ */
 
 export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {room:any,bookings:any[],onClose:any,onBook:any,onDetail?:any}) {
   const { isMobile } = useBreakpoint();
@@ -61,11 +73,11 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
         borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between",
         alignItems:"center", flexShrink:0}}>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
             <div style={{fontSize: isMobile ? 17 : 20, fontWeight:600, color:"#111111"}}>{r.room_name}</div>
-            {status.type==="AVAILABLE"&&<span className="chip" style={{background:"#CBECFF",color:"#111"}}>예약가능</span>}
-            {status.type==="BUSY"&&<span className="chip" style={{background:"#FEE2E2",color:"#DC2626"}}>사용중</span>}
-            {status.type==="SOON"&&<span className="chip" style={{background:"#FEF3C7",color:"#D97706"}}>곧 사용</span>}
+            {/* ← [변경] 인라인 chip 3종 → RoomStatusBadge 공통 컴포넌트
+                 HomeView와 시각·정보 일관성 확보 (체크인 상태·남은시간 자동 표기) */}
+            <RoomStatusBadge status={status} />
           </div>
           <div style={{fontSize:12,color:"#64748B"}}>{r.room_name_ko} · {floor?.floor_name} · {r.capacity}인 수용</div>
         </div>

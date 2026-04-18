@@ -1,6 +1,41 @@
 import type { Booking, Room } from '../../types'
 import { tsDate, tsMin, todayStr, nowMinutes } from '../../utils/time'
 
+/**
+ * BookingStatusBadge — 예약 상태 뱃지 묶음
+ *
+ * 사용 방식:
+ * 1) booking 자동 판별 (기본): <BookingStatusBadge booking={b} room={r} currentUser={u} />
+ *    - 예약 객체의 상태를 분석해 해당 상태 칩을 자동으로 렌더
+ *    - 기존 호출부 전부 이 방식 사용 중 (호환성 유지)
+ *
+ * 2) 명시적 타입 지정: <BookingStatusBadge booking={b} only={['pending']} />
+ *    - `only` prop에 지정한 타입만 노출 (필터)
+ *    - 예: "이 위치엔 승인 대기 뱃지만 보이기"
+ *
+ * ✅ 변경 이력
+ *  - [2026-04-18 스타일 정리]
+ *    · only prop 추가 — 특정 상태만 필터링해서 표시 가능
+ *    · BadgeType 타입 export — 외부 코드에서 상태 참조 가능
+ *    · 판별 로직은 100% 기존 유지 (회귀 위험 0)
+ */
+
+export type BadgeType =
+  | 'rejected'
+  | 'expired-pending'
+  | 'admin-cancel'
+  | 'noshow'
+  | 'user-cancel'
+  | 'pending'
+  | 'approved'
+  | 'mine'
+  | 'active'
+  | 'checkin-wait'
+  | 'checkin-done'
+  | 'past'
+  | 'early-end'
+  | 'countdown'
+
 interface BookingStatusBadgeProps {
   booking:      Booking
   room?:        Room
@@ -9,6 +44,8 @@ interface BookingStatusBadgeProps {
   currentUser?: string
   /** md = DetailModal·ListView / sm = 소형카드 / xs = 캘린더 슬롯 */
   size?:        'md' | 'sm' | 'xs'
+  /** 지정 시 해당 타입의 뱃지만 렌더. 미지정 시 전체 자동 판별. */
+  only?:        BadgeType[]
 }
 
 /** size별 chip modifier 클래스 — tokens.css 정의 */
@@ -24,6 +61,7 @@ export function BookingStatusBadge({
   isAdminRoom,
   currentUser = '',
   size = 'md',
+  only,
 }: BookingStatusBadgeProps) {
   const now     = nowMinutes()
   const isToday = tsDate(b.start_at) === todayStr()
@@ -51,21 +89,24 @@ export function BookingStatusBadge({
   const tl        = sm - now
   const isOwner   = !!currentUser && b.user === currentUser
 
+  // ── only 필터 헬퍼 ─────────────────────────────────────────────
+  const show = (t: BadgeType) => !only || only.includes(t)
+
   const hasAny =
-    isRejected ||
-    isExpiredPending ||
-    isAdminCancel ||
-    isNoshow ||
-    (isUserCancel && isOwner) ||
-    (b.status === 'pending' && !b.autoCancelled) ||
-    isApproved ||
-    (isOwner && !b.autoCancelled && !isRejected) ||
-    isAct ||
-    nci ||
-    (b.checkedIn && isAct) ||
-    isPast ||
-    b.earlyEnded ||
-    (!isAct && !b.autoCancelled && isToday && tl > 0 && tl <= 10)
+    (show('rejected')        && isRejected) ||
+    (show('expired-pending') && isExpiredPending) ||
+    (show('admin-cancel')    && isAdminCancel) ||
+    (show('noshow')          && isNoshow) ||
+    (show('user-cancel')     && isUserCancel && isOwner) ||
+    (show('pending')         && b.status === 'pending' && !b.autoCancelled) ||
+    (show('approved')        && isApproved) ||
+    (show('mine')            && isOwner && !b.autoCancelled && !isRejected) ||
+    (show('active')          && isAct) ||
+    (show('checkin-wait')    && nci) ||
+    (show('checkin-done')    && b.checkedIn && isAct) ||
+    (show('past')            && isPast) ||
+    (show('early-end')       && b.earlyEnded) ||
+    (show('countdown')       && !isAct && !b.autoCancelled && isToday && tl > 0 && tl <= 10)
 
   if (!hasAny) return null
 
@@ -79,49 +120,49 @@ export function BookingStatusBadge({
   return (
     <div style={{ display: 'inline-flex', gap, flexWrap: 'wrap', alignItems: 'center' }}>
       {/* ① 거절됨 — 최우선, 단독 표시 */}
-      {isRejected && <C cls="chip-rejected">거절됨</C>}
+      {show('rejected') && isRejected && <C cls="chip-rejected">거절됨</C>}
 
       {/* ② 기한초과 취소 (pending + autoCancelled) */}
-      {isExpiredPending && <C cls="chip-expired">기한초과 취소</C>}
+      {show('expired-pending') && isExpiredPending && <C cls="chip-expired">기한초과 취소</C>}
 
       {/* ③ 관리자 강제취소 (rejected 제외) */}
-      {isAdminCancel && <C cls="chip-admin">관리자 강제취소</C>}
+      {show('admin-cancel') && isAdminCancel && <C cls="chip-admin">관리자 강제취소</C>}
 
       {/* ④ 노쇼 (system 자동취소) */}
-      {isNoshow && <C cls="chip-noshow">노쇼</C>}
+      {show('noshow') && isNoshow && <C cls="chip-noshow">노쇼</C>}
 
       {/* ⑤ 사용자 직접 취소 — 본인 컨텍스트(MyPage)에서만 */}
-      {isUserCancel && isOwner && <C cls="chip-neutral">취소됨</C>}
+      {show('user-cancel') && isUserCancel && isOwner && <C cls="chip-neutral">취소됨</C>}
 
       {/* ── 이하 정상 상태 (취소 없는 경우) ── */}
       {/* ⑥ 승인 대기 */}
-      {b.status === 'pending' && !b.autoCancelled && <C cls="chip-pending">승인 대기</C>}
+      {show('pending') && b.status === 'pending' && !b.autoCancelled && <C cls="chip-pending">승인 대기</C>}
 
       {/* ⑦ 승인완료 */}
-      {isApproved && <C cls="chip-approved">승인완료</C>}
+      {show('approved') && isApproved && <C cls="chip-approved">승인완료</C>}
 
       {/* ⑧ 내 예약 — sm 소형카드 제외, 노쇼(생성자 박제)도 표시 */}
-      {isOwner && (!b.autoCancelled || isNoshow) && !isRejected && size !== 'sm' && <C cls="chip-mine">내 예약</C>}
+      {show('mine') && isOwner && (!b.autoCancelled || isNoshow) && !isRejected && size !== 'sm' && <C cls="chip-mine">내 예약</C>}
 
       {/* ⑨ 진행 중 */}
-      {isAct && !b.autoCancelled && (
+      {show('active') && isAct && !b.autoCancelled && (
         <span className={`chip ${sizeClass}`.trim()} style={{ background: (r?.color ?? '#6366F1') + '18', color: r?.color ?? '#6366F1' }}>
           진행 중
         </span>
       )}
 
       {/* ⑩ 체크인 대기 / 완료 */}
-      {nci && <C cls="chip-checkin-wait">체크인 대기</C>}
-      {b.checkedIn && isAct && <C cls="chip-success">체크인 완료</C>}
+      {show('checkin-wait') && nci && <C cls="chip-checkin-wait">체크인 대기</C>}
+      {show('checkin-done') && b.checkedIn && isAct && <C cls="chip-success">체크인 완료</C>}
 
       {/* ⑪ 종료 */}
-      {isPast && <C cls="chip-done">종료</C>}
+      {show('past') && isPast && <C cls="chip-done">종료</C>}
 
       {/* ⑫ 조기반납 */}
-      {b.earlyEnded && <C cls="chip-earlyend">조기반납</C>}
+      {show('early-end') && b.earlyEnded && <C cls="chip-earlyend">조기반납</C>}
 
       {/* ⑬ N분 후 카운트다운 */}
-      {!isAct && !b.autoCancelled && isToday && tl > 0 && tl <= 10 && (
+      {show('countdown') && !isAct && !b.autoCancelled && isToday && tl > 0 && tl <= 10 && (
         <C cls="chip-countdown">{tl}분 후</C>
       )}
     </div>
