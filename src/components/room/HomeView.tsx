@@ -41,6 +41,13 @@
 //   - 카드 height: 140/160 유지 — 정사각형에서 가로 약간 긴 직사각형으로 변경
 //   - border-radius: rounded-2xl(16px) → rounded-3xl(24px) — 더 부드러운 모서리
 //   - "+ 예약하기" 버튼만 font-weight 600 → 500 (예약카드/뱃지/제목은 600 유지)
+//
+// 2026-04-17 (7차): 룸카드 버튼 영역 공통 컴포넌트 추출
+//   - 새 파일: RoomCardButtonArea.tsx 생성
+//   - 기존 문제: '자세히 보기' 버튼이 AVAILABLE/SOON/BUSY 분기에서 3번 반복 렌더링,
+//     버튼 영역 padding도 D.btnBottomPadding 문자열로 인라인에 분산
+//   - 추출 후: RoomCard 내부 ~40줄 블록 → 1줄 컴포넌트 호출로 축소
+//   - D.btnBottomPadding 터치 환경 값: "8px" → "0.5rem" (CSS 단위 일관성)
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Layers, Search, UsersRound, X, LayoutGrid, Grid3x3 } from 'lucide-react' // ← [그리드 토글 아이콘 추가]
@@ -53,6 +60,7 @@ import { FLOORS, getFloor } from '../../data/floors'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 import { RoomStatusBadge } from '../common/RoomStatusBadge'
 import { BookingStatusBadge } from '../common/BookingStatusBadge'
+import { RoomCardButtonArea } from './RoomCardButtonArea' // ← [6차] 공통 컴포넌트 추출
 
 export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearchQ, filterFloor, setFilterFloor, onBook, onDetail, onBookingDetail, onCheckIn, onEarlyEnd, onCancel, currentUser, currentUserEmail='', dark}) {
   const { isMobile, isTablet } = useBreakpoint();
@@ -427,7 +435,7 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
     metaSize: isCompact ? 12 : 13,
     btnSize: isCompact ? 13 : 14,
     btnPadding: isCompact ? "10px" : "13px",
-    btnBottomPadding: isTouchLayout ? "8px" : (isCompact ? "4px 16px 16px" : "4px 20px 20px"),  // ← [5차] 1024 미만: 상하좌우 8px 균일
+    btnBottomPadding: isTouchLayout ? "0.5rem" : (isCompact ? "4px 16px 16px" : "4px 20px 20px"),  // ← [7차] 터치 환경 0.5rem (상하좌우 균일)
     showDetailBtn: !isTouchLayout,
   };
 
@@ -552,55 +560,18 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
 
       </div>
 
-      {/* ⑤ 버튼 — [2026-04-17 4차] 터치 환경(1024 미만)에서 단순화
-          · AVAILABLE: '바로 예약' 하나만
-          · SOON/BUSY: 버튼 영역 자체 숨김 (카드 탭으로 상세 모달 진입)
-         1024 이상 데스크탑은 기존 3가지 상태별 버튼 구성 그대로 */}
-      {(() => {
-        // 터치 환경에서 SOON/BUSY는 버튼 영역 전체 숨김
-        if (isTouchLayout && !isAvail) return null;
-
-        return (
-          <div style={{display:"flex", alignItems:"center", gap:8, padding:D.btnBottomPadding}}>
-            {isAvail && (<>
-              <button className="btn" onClick={e=>{e.stopPropagation();onBook(r, status);}}
-                style={{flex:1, background:"#111111", color:"#fff", fontWeight:600,
-                  borderRadius:12, padding:D.btnPadding, fontSize:D.btnSize, textAlign:"center"}}>
-                바로 예약
-              </button>
-              {/* ← [4차] 터치 환경이 아닐 때만 '자세히 보기' 노출 */}
-              {D.showDetailBtn && (
-                <button className="btn" onClick={e=>{e.stopPropagation();onDetail(r);}}
-                  style={{flex:1, background:"none", border:"none", color:"#64748B",
-                    fontWeight:600, fontSize:D.btnSize, padding:D.btnPadding, cursor:"pointer", textAlign:"center"}}>
-                  자세히 보기
-                </button>
-              )}
-            </>)}
-            {/* 아래 isSoon / isBusy 블록은 터치 환경에서 위 early return으로 도달하지 않음 (데스크탑 전용) */}
-            {isSoon && (<>
-              <button className="btn" disabled
-                style={{flex:1, background:"#FCE7F3", color:"#BE185D", fontWeight:600,
-                  borderRadius:12, padding:D.btnPadding, fontSize:D.btnSize, textAlign:"center",
-                  cursor:"not-allowed", border:"none"}}>
-                {status.minsUntil}분 뒤 사용
-              </button>
-              <button className="btn" onClick={e=>{e.stopPropagation();onDetail(r);}}
-                style={{flex:1, background:"none", border:"none", color:"#64748B",
-                  fontWeight:600, fontSize:D.btnSize, padding:D.btnPadding, cursor:"pointer", textAlign:"center"}}>
-                자세히 보기
-              </button>
-            </>)}
-            {isBusy && (
-              <button className="btn" onClick={e=>{e.stopPropagation();onDetail(r);}}
-                style={{flex:1, background:"none", border:"none", color:"#64748B",
-                  fontWeight:600, fontSize:D.btnSize, padding:D.btnPadding, cursor:"pointer", textAlign:"center"}}>
-                자세히 보기
-              </button>
-            )}
-          </div>
-        );
-      })()}
+      {/* ⑤ 버튼 영역 — [2026-04-17 7차] RoomCardButtonArea 공통 컴포넌트로 추출
+          분기 로직/스타일 전부 컴포넌트 내부로 이동. 여기서는 props만 주입. */}
+      <RoomCardButtonArea
+        status={status}
+        onBook={() => onBook(r, status)}
+        onDetail={() => onDetail(r)}
+        isTouchLayout={isTouchLayout}
+        showDetailBtn={D.showDetailBtn}
+        btnSize={D.btnSize}
+        btnPadding={D.btnPadding}
+        containerPadding={D.btnBottomPadding}
+      />
     </div>
   );
 }
