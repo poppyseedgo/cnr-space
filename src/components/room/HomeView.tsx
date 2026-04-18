@@ -56,6 +56,13 @@
 //     → 작은 태블릿(640~767px)은 2열 유지 (3열 시 192px 이하로 좁아짐)
 //   - gap 계단식: 모바일 gap-2(8) / 태블릿 md:gap-3(12) / 데스크탑 lg:gap-4(16)
 //   - RoomCardButtonArea.tsx 스타일 객체 BASE + override 패턴으로 정리 (46→15줄)
+//
+// 2026-04-18 (9차): 데스크탑 룸카드 padding 미세 조정
+//   - 컨텐츠 영역 cardPadding (comfortable): "p-5 gap-3" (20px) → "p-4 gap-3" (16px)
+//     · compact/touch는 기존값 유지 (16/8px)
+//   - 버튼 영역 btnBottomPadding: 전체 뷰포트 "0.5rem" (8px 상하좌우) 통일
+//     · 이전 비대칭 패딩("4px 20px 20px", "4px 16px 16px")을 대칭으로 단순화
+//     · 데스크탑에서도 버튼이 카드 하단 · 좌우 테두리와 동일한 여백 유지
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Layers, Search, UsersRound, X, LayoutGrid, Grid3x3 } from 'lucide-react' // ← [그리드 토글 아이콘 추가]
@@ -439,12 +446,12 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
   const isCompact = density === 'compact';
   const D = {
     thumbHeight: isMobile ? 80 : (isCompact ? 120 : 160),
-    cardPadding: isTouchLayout ? "p-2 gap-2" : (isCompact ? "p-4 gap-2" : "p-5 gap-3"),   // ← [5차] 1024 미만: p-2 (8px)
+    cardPadding: isTouchLayout ? "p-2 gap-2" : (isCompact ? "p-4 gap-2" : "p-4 gap-3"),   // ← [9차] comfortable: p-5 → p-4 (터치/compact는 기존 유지)
     roomNameSize: isTouchLayout ? 16 : (isCompact ? 16 : 21),                              // ← [5차] 1024 미만: 14 → 16
     metaSize: isCompact ? 12 : 13,
     btnSize: isCompact ? 13 : 14,
     btnPadding: "14px",                                                                             // ← [8차] 전체 상황 14px 통일 (이전: compact 10px / comfortable 13px)
-    btnBottomPadding: isTouchLayout ? "0.5rem" : (isCompact ? "4px 16px 16px" : "4px 20px 20px"),  // ← [7차] 터치 환경 0.5rem (상하좌우 균일)
+    btnBottomPadding: "0.5rem",                                                                     // ← [9차] 전체 뷰포트 상하좌우 0.5rem(8px) 통일 (이전 데스크탑 비대칭 패딩 제거)
     showDetailBtn: !isTouchLayout,
   };
 
