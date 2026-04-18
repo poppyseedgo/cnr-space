@@ -148,7 +148,18 @@ export function getAvailableRooms(allRooms, bookings, date, startTime, endTime, 
   return { available, unavailable };
 }
 
-export function getRoomStatus(roomId, bookings, date) {
+/**
+ * getRoomStatus — 특정 날짜/회의실의 현재 상태 계산
+ *
+ * ✅ 변경 이력
+ *  - [2026-04-18 타입 안전성] 반환 타입 `RoomStatus` 명시 + return 객체 `as const` 처리
+ *    · 원인: 반환 타입 미명시로 인해 { type: "BUSY" } 같은 리터럴이 string으로 추론됨
+ *    · 증상: RoomStatusBadge 같이 status 객체 전체를 타입 엄격하게 받는 컴포넌트에
+ *            넘길 때 TS2322 에러 (string → 'AVAILABLE' | 'BUSY' | 'SOON' 불일치)
+ *    · 해결: 함수 시그니처에 `: RoomStatus` 명시 + 각 return 객체를 `as const` 처리
+ *    · 기존 호출부(status.type === "BUSY" 같은 문자열 비교)는 모두 100% 호환
+ */
+export function getRoomStatus(roomId: number, bookings: Booking[], date: string): RoomStatus {
   const now = nowMinutes();
   const today = todayStr();
   const isToday = date === today;
@@ -180,7 +191,7 @@ export function getRoomStatus(roomId, bookings, date) {
     const minsLeft       = tsMin(current.end_at) - now;
     const checkinWaiting = !!currentWaiting;   // 유예기간 중
     return {
-      type: "BUSY",
+      type: "BUSY" as const,  // ← [2026-04-18] as const로 리터럴 타입 고정
       label: "사용중",
       endTime: tsTime(current.end_at),
       minsLeft,
@@ -192,7 +203,7 @@ export function getRoomStatus(roomId, bookings, date) {
   const next = dayBks.filter(b => tsMin(b.start_at) > now).sort((a,b) => a.start_at.localeCompare(b.start_at))[0];
   if (next && isToday) {
     const minsUntil = tsMin(next.start_at) - now;
-    if (minsUntil <= 15) return { type: "SOON", label: "곧 사용", nextStart: tsTime(next.start_at), minsUntil, booking: next };
+    if (minsUntil <= 15) return { type: "SOON" as const, label: "곧 사용", nextStart: tsTime(next.start_at), minsUntil, booking: next };
   }
-  return { type: "AVAILABLE", label: "예약가능", nextBooking: next };
+  return { type: "AVAILABLE" as const, label: "예약가능", nextBooking: next };
 }
