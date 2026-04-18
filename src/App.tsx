@@ -2,6 +2,21 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-04-18 P0 fix] 뷰 전환 시 흰 화면 버그 해결
+ *      · 증상: 배포 직후 캘린더 → 마이페이지/어드민 전환 시 흰 화면
+ *              (Console 에러 없음, Network 404 없음, 새로고침하면 정상)
+ *      · 근본 원인 1: lazy 선언(42, 44줄)이 일반 import 블록 사이에 섞여있어
+ *                     Rollup 프로덕션 빌드에서 청크 분할 시 로드 순서 꼬임
+ *                     → lazy 모듈의 default export가 undefined로 평가됨
+ *                     → React가 조용히 빈 컴포넌트 렌더링 (에러 없이 흰 화면)
+ *      · 근본 원인 2: AdminPage.tsx 중간 import 3개로 인한 청크 의존성 꼬임
+ *                     (AdminPage.tsx에서 별도 수정)
+ *      · 해결:
+ *        (1) 모든 import를 블록 최상단에 모으고, lazy 선언은 별도 섹션으로 분리
+ *        (2) LazyErrorBoundary 추가: ChunkLoadError 자동 감지 + 1회 리로드
+ *            (세션 플래그로 무한 리로드 루프 방지)
+ *        (3) Suspense를 LazyErrorBoundary로 감싸 안전망 확보
+ *
  *  - [2026-04-17 P0 fix] selectedDate stale 버그 해결 (자정 경계/탭 유지 케이스)
  *      · 10초 tick에서 todayStr()과 비교해 과거면 강제 갱신
  *      · visibilitychange에서 탭 복귀 시 동일 로직 적용
@@ -19,7 +34,7 @@
  *      · Realtime 구독(subscribeNotifications)이 INSERT 이벤트를 <100ms로 푸시하여 UX 지연 없음
  */
 
-import React, { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense, Component, type ErrorInfo, type ReactNode } from 'react'
 import { Bell, Calendar, Home, LogOut, Settings, User } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtTSFull, fmtTSRangeFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
@@ -34,18 +49,92 @@ import { RoomDetailModal } from './components/room/RoomDetailModal'
 import { CalendarSkeleton, MyPageSkeleton, AdminSkeleton } from './components/skeleton'
 import { initGlobalRipple } from './hooks/useGlobalRipple'
 import { CalendarShell } from './components/layout/CalendarShell'
-// ── 무거운 페이지는 lazy load — 초기 번들에서 제외 ─────────────────────────
 import { BookingDoneModal } from './components/booking/BookingDoneModal'
 import { RecurDoneModal } from './components/booking/RecurDoneModal'
 import { BookingModal } from './components/booking/BookingModal'
 import { DetailModal } from './components/booking/DetailModal'
-const MyPageView          = lazy(() => import('./pages/MyPage').then(m => ({ default: m.MyPageView })))
 import { UserAvatar } from './components/common/UserAvatar'
-const AdminView           = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminView })))
 import LoginPage from './pages/LoginPage'
 import { useBreakpoint, useVisualViewport } from './hooks/useBreakpoint'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 
+// ── lazy load — 무거운 페이지는 초기 번들에서 제외 ─────────────────────────
+// ← [2026-04-18 P0 fix] lazy 선언이 import 블록 사이에 섞여있던 것을
+//    import 블록 완료 후 별도 섹션으로 분리. ES 모듈 호이스팅 보장.
+const MyPageView = lazy(() => import('./pages/MyPage').then(m => ({ default: m.MyPageView })))
+const AdminView  = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminView })))
+
+// ─── ErrorBoundary ────────────────────────────────────────────────────────────
+// ← [2026-04-18 P0 fix] lazy chunk 로드 실패 시 흰 화면 방지용 안전망
+//    ChunkLoadError 감지 시 자동 1회 리로드 (구버전 청크 참조 문제 자동 복구)
+//    기타 렌더 에러는 사용자에게 에러 UI 표시 + 새로고침 유도
+interface ErrorBoundaryState {
+  hasError: boolean
+  error: Error | null
+  hasReloaded: boolean
+}
+class LazyErrorBoundary extends Component<{ children: ReactNode, fallback?: ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children: ReactNode, fallback?: ReactNode }) {
+    super(props)
+    // 세션 스토리지로 무한 리로드 루프 방지
+    const hasReloaded = typeof window !== 'undefined' &&
+      window.sessionStorage.getItem('__chunk_reload__') === '1'
+    this.state = { hasError: false, error: null, hasReloaded }
+  }
+  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
+    return { hasError: true, error }
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    const msg = error?.message || ''
+    const name = error?.name || ''
+    const isChunkError =
+      name === 'ChunkLoadError' ||
+      /Loading chunk [\d]+ failed/i.test(msg) ||
+      /Failed to fetch dynamically imported module/i.test(msg) ||
+      /Importing a module script failed/i.test(msg)
+
+    console.error('[LazyErrorBoundary]', error, info)
+
+    // 청크 로드 실패면 자동 1회 리로드 (무한 루프 방지용 세션 플래그)
+    if (isChunkError && !this.state.hasReloaded) {
+      try { window.sessionStorage.setItem('__chunk_reload__', '1') } catch {}
+      window.location.reload()
+    }
+  }
+  handleManualReload = () => {
+    try { window.sessionStorage.removeItem('__chunk_reload__') } catch {}
+    window.location.reload()
+  }
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback ?? (
+        <div style={{
+          display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+          minHeight:'60vh', padding:'24px', gap:'16px', textAlign:'center'
+        }}>
+          <div style={{ fontSize:'18px', fontWeight:600 }}>페이지를 불러오지 못했어요</div>
+          <div style={{ fontSize:'14px', color:'#666' }}>
+            잠시 후 다시 시도해주세요.
+          </div>
+          <button
+            onClick={this.handleManualReload}
+            style={{
+              padding:'10px 20px', borderRadius:'8px', border:'none',
+              background:'#111', color:'#fff', fontSize:'14px', cursor:'pointer'
+            }}
+          >
+            새로고침
+          </button>
+        </div>
+      )
+    }
+    // 정상 렌더에 도달하면 세션 플래그 해제 (다음 배포 시 재발 대응 가능)
+    if (typeof window !== 'undefined' && window.sessionStorage.getItem('__chunk_reload__') === '1') {
+      try { window.sessionStorage.removeItem('__chunk_reload__') } catch {}
+    }
+    return this.props.children
+  }
+}
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 function AppContent() {
@@ -1172,8 +1261,9 @@ function AppContent() {
         </div>
       )}
 
-      {view==="mypage" && <Suspense fallback={<MyPageSkeleton />}><MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={cancelBooking} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} avatarUrl={authUser?.avatar_url ?? null} /></Suspense>}
-      {view==="admin" && <Suspense fallback={<AdminSkeleton />}><AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={adminForceCancelBooking} onDetail={b=>setModal({type:'detail',data:b})} /></Suspense>}
+      {/* ← [2026-04-18 P0 fix] LazyErrorBoundary로 감싸 청크 로드 실패 시 흰 화면 방지 */}
+      {view==="mypage" && <LazyErrorBoundary><Suspense fallback={<MyPageSkeleton />}><MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={cancelBooking} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} avatarUrl={authUser?.avatar_url ?? null} /></Suspense></LazyErrorBoundary>}
+      {view==="admin" && <LazyErrorBoundary><Suspense fallback={<AdminSkeleton />}><AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={adminForceCancelBooking} onDetail={b=>setModal({type:'detail',data:b})} /></Suspense></LazyErrorBoundary>}
 
       {/* ── Modals ── */}
       {modal && (

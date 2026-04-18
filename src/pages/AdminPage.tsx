@@ -16,6 +16,13 @@ import {
 } from '../lib/api'
 import type { Booking, Room, AppUser, DepartedUser } from '../types'
 import { ModalPortal } from '../components/common/ModalPortal'
+// ← [2026-04-18 P0 fix] 파일 중간에 있던 import 3개를 최상단으로 이동
+//   원인: ES 모듈 사양상 import는 파일 최상단만 허용. Vite dev는 관대하지만
+//   Rollup 프로덕션 빌드에서 청크 분할 시 로드 순서가 꼬여 lazy export가
+//   undefined로 평가되는 현상 발생 (배포 직후 뷰 전환 시 흰 화면)
+import { UserAvatar } from '../components/common/UserAvatar'
+import { UserChip } from '../components/common/UserChip'
+import { BookingListTable } from '../components/common/BookingListTable'
 
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
 function addDaysStr(base: string, days: number): string {
@@ -1238,8 +1245,7 @@ export function AdminRooms({ showToast, isMobile }) {
 }
 
 // ─── AdminUsers ────────────────────────────────────────────────────────────────
-import { UserAvatar } from '../components/common/UserAvatar'
-import { UserChip } from '../components/common/UserChip'
+// ← [2026-04-18 P0 fix] import 제거 → 최상단으로 이동
 
 export function AdminUsers({ users, setUsers, showToast, isMobile }) {
   type FilterType = 'all' | 'admin' | 'logged' | 'unlogged' | 'departed'
@@ -1673,7 +1679,7 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
 //   - 기한 초과: status='pending' && autoCancelled=true
 //   - 거절: status='rejected' && autoCancelled=true
 //   - 승인 완료: status='confirmed'
-import { BookingListTable } from '../components/common/BookingListTable'
+// ← [2026-04-18 P0 fix] import 제거 → 최상단으로 이동
 
 export function AdminApprovals({ bookings, rooms, users, onApprove, onReject, showToast, isMobile, onDetail }) {
   const [filterStatus, setFilterStatus] = useState<'pending'|'confirmed'|'rejected'|'expired'|'all'>('pending')

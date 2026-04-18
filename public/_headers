@@ -1,0 +1,24 @@
+# Cloudflare Pages — Cache-Control 정책
+# [2026-04-18 P0 fix] 배포 직후 흰 화면 버그 보조 방지용
+#
+# 원칙:
+#  - index.html: 절대 캐싱 금지 (항상 최신 청크 해시를 참조해야 함)
+#  - /assets/*:  해시 기반 파일명이므로 영구 캐싱 (immutable)
+#  - /*.png, /*.svg: 일반 정적 자산, 1시간 캐싱
+
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
+  Pragma: no-cache
+  Expires: 0
+
+/
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.png
+  Cache-Control: public, max-age=3600
+
+/*.svg
+  Cache-Control: public, max-age=3600
