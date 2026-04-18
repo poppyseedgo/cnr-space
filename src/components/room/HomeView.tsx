@@ -57,12 +57,15 @@
 //   - gap 계단식: 모바일 gap-2(8) / 태블릿 md:gap-3(12) / 데스크탑 lg:gap-4(16)
 //   - RoomCardButtonArea.tsx 스타일 객체 BASE + override 패턴으로 정리 (46→15줄)
 //
-// 2026-04-18 (9차): 데스크탑 룸카드 padding 미세 조정
+// 2026-04-18 (9차): 데스크탑 룸카드 padding 미세 조정 + 5열 경계 재조정
 //   - 컨텐츠 영역 cardPadding (comfortable): "p-5 gap-3" (20px) → "p-4 gap-3" (16px)
 //     · compact/touch는 기존값 유지 (16/8px)
 //   - 버튼 영역 btnBottomPadding: 전체 뷰포트 "0.5rem" (8px 상하좌우) 통일
 //     · 이전 비대칭 패딩("4px 20px 20px", "4px 16px 16px")을 대칭으로 단순화
 //     · 데스크탑에서도 버튼이 카드 하단 · 좌우 테두리와 동일한 여백 유지
+//   - 5열 전환 경계: 1400px → 1280px (Tailwind 표준 xl: breakpoint)
+//     · arbitrary variant(min-[1400px]:) 제거, xl:grid-cols-5로 단순화
+//     · 1280~1399px 구간에서도 compact 선택 시 5열 표시
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Layers, Search, UsersRound, X, LayoutGrid, Grid3x3 } from 'lucide-react' // ← [그리드 토글 아이콘 추가]
@@ -376,17 +379,17 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
           <div className="text-lg font-semibold">검색 결과가 없습니다</div>
         </div>
       ) : (
-        // ← [그리드 반응형 규칙 - 2026-04-17 8차 수정]
+        // ← [그리드 반응형 규칙 - 2026-04-18 9차 수정]
         //   모바일(~639px):         2열
         //   작은 태블릿(640~767px):  2열 (경계 구간, 너무 좁아 3열 부적합)
-        //   큰 태블릿(768~1023px):   3열 ⬅ [8차 추가]
-        //   작은 데스크탑(1024~1399px): comfortable=3열 / compact=4열
-        //   큰 데스크탑(1400px+):    comfortable=3열 / compact=5열
-        //   ※ md:grid-cols-3 (768px) + min-[1400px]:grid-cols-5 (arbitrary variant)로 정확한 경계 지정
-        // ← [8차] gap: 모바일 8 / 태블릿 12 / 데스크탑 16 계단식 (md:gap-3 추가)
+        //   큰 태블릿(768~1023px):   3열
+        //   작은 데스크탑(1024~1279px): comfortable=3열 / compact=4열
+        //   큰 데스크탑(1280px+):    comfortable=3열 / compact=5열 ⬅ [9차] 경계 1400 → 1280
+        //   ※ xl:grid-cols-5 (Tailwind 표준 1280px breakpoint 사용, 이전 arbitrary variant 제거)
+        // gap: 모바일 gap-2(8) / 태블릿 md:gap-3(12) / 데스크탑 lg:gap-4(16)
         <div className={
           gridDensity === 'compact'
-            ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 min-[1400px]:grid-cols-5 gap-2 md:gap-3 lg:gap-4"
+            ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 md:gap-3 lg:gap-4"
             : "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-2 md:gap-3 lg:gap-4"
         }>
           {withStatus.map((item,i) => (
