@@ -35,6 +35,12 @@
 //   - 버튼 영역 padding: '4px 16px 16px' → '8px' (상하좌우 균일)
 //   - 룸카드 그리드 gap: gap-4 (16px) → gap-2 (8px), 1024 이상은 lg:gap-4 유지
 //   - 모두 1024 미만 (touchLayout)에만 적용, 데스크탑은 변경 없음
+//
+// 2026-04-17 (6차): "오늘 내 예약" 카드 디자인 미세 조정
+//   - 카드 width: 140→150(모바일) / 160→170(데스크탑) — 가로만 10px 확장
+//   - 카드 height: 140/160 유지 — 정사각형에서 가로 약간 긴 직사각형으로 변경
+//   - border-radius: rounded-2xl(16px) → rounded-3xl(24px) — 더 부드러운 모서리
+//   - "+ 예약하기" 버튼만 font-weight 600 → 500 (예약카드/뱃지/제목은 600 유지)
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Layers, Search, UsersRound, X, LayoutGrid, Grid3x3 } from 'lucide-react' // ← [그리드 토글 아이콘 추가]
@@ -160,16 +166,16 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
 
           {/* + 예약하기 첫 카드 */}
           <button onClick={()=>{/* onBook 없이 새 예약 모달 */document.dispatchEvent(new CustomEvent("openNewBooking"))}}
-            className="btn flex-none flex flex-col items-center justify-center rounded-2xl text-white font-semibold"
-            style={{width:isMobile?140:160, height:isMobile?140:160, /* ← [2026-04-17 3차] 정사각형 고정 */
+            className="btn flex-none flex flex-col items-center justify-center rounded-3xl text-white font-medium" /* ← [6차] rounded-2xl → rounded-3xl, font-semibold → font-medium */
+            style={{width:isMobile?150:170, height:isMobile?140:160, /* ← [6차] 가로 10px 확장 (정사각형 → 가로 긴 직사각형) */
               background:"#111111", flexShrink:0, gap:8}}>
             <span style={{fontSize:24, lineHeight:1}}>＋</span>
             <span style={{fontSize:isMobile?12:13}}>예약하기</span>
           </button>
 
           {myBookings.length === 0 ? (
-            <div className="flex-none flex items-center justify-center rounded-2xl text-slate-300 dark:text-slate-600 text-sm"
-              style={{width:isMobile?140:160, height:isMobile?140:160, background:"#F3F4F8"}}> {/* ← [2026-04-17 3차] 정사각형 고정 */}
+            <div className="flex-none flex items-center justify-center rounded-3xl text-slate-300 dark:text-slate-600 text-sm" /* ← [6차] rounded-2xl → rounded-3xl */
+              style={{width:isMobile?150:170, height:isMobile?140:160, background:"#F3F4F8"}}> {/* ← [6차] 가로 10px 확장 */}
               오늘 예약 없음
             </div>
           ) : myBookings.map(b => {
@@ -210,10 +216,10 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
             const isCancellable = cardState==="waiting" || cardState==="soon" || cardState==="pending";
 
             return (
-              <div key={b.id} className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 rounded-2xl p-3"
+              <div key={b.id} className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 rounded-3xl p-3" /* ← [6차] rounded-2xl → rounded-3xl */
                 onClick={()=>onBookingDetail&&onBookingDetail(b)}
-                style={{width:isMobile?140:160, height:isMobile?140:160, /* ← [2026-04-17 3차] 정사각형 고정 */
-                  flexShrink:0, overflow:"hidden", /* ← [2026-04-17 3차] 넘침 방지 */
+                style={{width:isMobile?150:170, height:isMobile?140:160, /* ← [6차] 가로 10px 확장 */
+                  flexShrink:0, overflow:"hidden",
                   opacity: (cardState==="cancelled"||cardState==="noshow"||cardState==="adminCancel"||cardState==="rejected"||cardState==="pendingExpired") ? 0.45 : 1,
                   border: cardState==="pending" ? "1.5px solid #FCD34D" : "none",
                   cursor:"pointer"}}>
