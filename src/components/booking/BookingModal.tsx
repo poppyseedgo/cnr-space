@@ -1,3 +1,16 @@
+/**
+ * BookingModal.tsx — 예약 생성/수정 모달
+ *
+ * ✅ 변경 이력
+ *  - [2026-04-19 P1] 과거 날짜 방어 로직 추가 (App.tsx 전역 보정 제거에 따른 이동)
+ *      · 배경: App.tsx 10초 tick에서 selectedDate를 강제로 today로 갱신하던 로직이
+ *              캘린더 과거 날짜 탐색을 막아버리는 버그를 일으켜 제거됨.
+ *              그러나 원래 방어하고자 했던 "탭 밤새 유지 후 예약" 시나리오는 여전히 유효.
+ *      · 해결: 예약 생성 플로우에 한정하여 여기서만 방어
+ *              · initDate가 과거면 today로 보정 (새 예약 한정)
+ *              · editBooking은 그 예약의 실제 날짜 그대로 유지 (과거 예약 수정 가능해야 함)
+ *              · 달력 초기 월/연도도 보정된 날짜 기준으로 계산
+ */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { AlertCircle, AlertTriangle, Ban, Calendar, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, X } from 'lucide-react'
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
@@ -23,11 +36,14 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   const maxDate = objToStr(maxDateObj);
 
   const [bookingDate, setBookingDate] = useState(
-    editBooking ? tsDate(editBooking.start_at) : (initDate || today)
+    // ← [2026-04-19 P1] editBooking이면 그 예약의 날짜 유지(과거 예약 수정 가능),
+    //   새 예약이면 initDate < today 일 때 today로 보정 (탭 밤새 유지 방어)
+    editBooking ? tsDate(editBooking.start_at) : (initDate && initDate >= today ? initDate : today)
   );
   const [showPicker,  setShowPicker]  = useState(false);
-  const [calYear,  setCalYear]  = useState(() => dateToObj(initDate||today).getFullYear());
-  const [calMonth, setCalMonth] = useState(() => dateToObj(initDate||today).getMonth());
+  // ← [2026-04-19 P1] 달력 초기 표시 월/연도도 보정된 날짜 기준으로 계산
+  const [calYear,  setCalYear]  = useState(() => dateToObj((initDate && initDate >= today) ? initDate : today).getFullYear());
+  const [calMonth, setCalMonth] = useState(() => dateToObj((initDate && initDate >= today) ? initDate : today).getMonth());
   const [form, setForm] = useState(() => {
     if (editBooking) {
       return {

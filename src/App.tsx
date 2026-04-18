@@ -2,6 +2,16 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-04-19 P1 복구] selectedDate 전역 자동 보정 제거 (과도한 스코프 되돌림)
+ *      · 증상: 캘린더뷰에서 어제/과거 날짜로 이동하면 10초 내에 오늘로 튕겨나감
+ *              → 과거 예약 탐색 불가
+ *      · 원인: [2026-04-17 P0 fix]에서 심은 `setSelectedDate(prev => prev < t ? t : prev)`가
+ *              "사용자가 의도적으로 과거로 이동한 상태"와 "stale 날짜"를 구분 못함
+ *      · 해결: 10초 tick 내부 + visibilitychange 내부의 전역 보정 제거
+ *              과거 날짜 방어는 실제로 필요한 지점(BookingModal 초기값)에서만 처리
+ *      · 교훈: 루트 레벨에서 selectedDate 같은 사용자 인터랙션 상태를 자동으로
+ *              덮어쓰는 건 근본적으로 위험. 보정이 필요하면 그게 필요한 지점(모달)에서만.
+ *
  *  - [2026-04-18 P0 fix] 뷰 전환 시 흰 화면 버그 해결
  *      · 증상: 배포 직후 캘린더 → 마이페이지/어드민 전환 시 흰 화면
  *              (Console 에러 없음, Network 404 없음, 새로고침하면 정상)
@@ -18,6 +28,7 @@
  *        (3) Suspense를 LazyErrorBoundary로 감싸 안전망 확보
  *
  *  - [2026-04-17 P0 fix] selectedDate stale 버그 해결 (자정 경계/탭 유지 케이스)
+ *      ⚠️ [2026-04-19 P1 복구로 제거됨 — 위 항목 참고]
  *      · 10초 tick에서 todayStr()과 비교해 과거면 강제 갱신
  *      · visibilitychange에서 탭 복귀 시 동일 로직 적용
  *      · 원인: useState(todayStr())가 마운트 시점에만 평가되어 탭을 밤새 유지하면 과거 날짜 고정
@@ -292,12 +303,15 @@ function AppContent() {
   // 틱 타이머 + Realtime + 이벤트 리스너 + 탭 복귀 새로고침 (마운트 1회)
   useEffect(() => {
     // ① 10초마다 tick → 시간 기반 UI 상태 즉시 반영 (체크인 대기/사용중 등)
-    // [2026-04-17 P0 fix] 자정 경계 통과 시 selectedDate 자동 갱신 — 탭을 밤새 열어둔 케이스 방어
+    // [2026-04-19 P1 복구] 자정 경계 selectedDate 갱신 로직 제거
+    //   · 문제: 사용자가 캘린더뷰에서 의도적으로 과거 날짜로 이동해도 10초마다
+    //           오늘로 튕겨나가는 치명적 버그 발생 (어제/과거 예약 탐색 불가)
+    //   · 원인: "사용자 의도 과거 이동"과 "stale 날짜"를 구분할 방법 없이
+    //           `prev < today` 조건만으로 무조건 덮어씀
+    //   · 해결: 이 전역 보정은 제거. 과거 날짜 방어는 꼭 필요한 BookingModal
+    //           내부에서만 처리 (initDate < today 일 때 today로 보정)
     const iv = setInterval(() => {
       setTick(t => t+1);
-      // ← [2026-04-17] selectedDate가 실제 오늘보다 과거면 강제 갱신 (자정 넘긴 탭)
-      const t = todayStr();
-      setSelectedDate(prev => (prev < t ? t : prev));
     }, 10000);
 
     // ② Realtime 구독 → 다른 사람 예약/취소/체크인 시 즉시 반영
@@ -320,14 +334,11 @@ function AppContent() {
 
     // ③ Page Visibility API → 탭 복귀 시 데이터 강제 새로고침
     // (자리 비운 사이 바뀐 예약 상태를 즉시 반영)
-    // [2026-04-17 P0 fix] 탭 복귀 시 selectedDate도 갱신 — 어제 열어둔 탭이 오늘 날짜로 복구됨
+    // [2026-04-19 P1 복구] 탭 복귀 시 selectedDate 갱신 제거 (위 10초 tick과 동일한 이유)
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         loadBookings().then(b => setBookings(b));
         setTick(t => t+1);
-        // ← [2026-04-17] 탭 복귀 시 오늘 날짜로 강제 갱신 (selectedDate stale 방지)
-        const t = todayStr();
-        setSelectedDate(prev => (prev < t ? t : prev));
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
