@@ -274,7 +274,11 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
     inappTitleAttendee: '참석 예약 요청이 거절되었습니다',
     inappTitleAdmin:    '',
     contextBanner: {
-      booker:   { ...BANNER_PRESETS.danger, title: '거절 사유는 본문에 표시됩니다.', body: '반려된 예약은 자동으로 취소 처리됩니다. 새로운 예약을 생성하여 다시 승인 요청해 주세요.' },
+      // ← [2026-04-18 P2 v4] 거절 정책 배너 간소화
+      //   · title 제거 ("거절 사유는 본문에 표시됩니다." 삭제) — Figma 디자인 반영
+      //   · body만 남김 (하늘색 #DFF3FF 배너에 안내문만 표시)
+      //   · 실제 거절 사유는 renderBanner에서 별도의 빨간 배너(#FFF1F1)로 분리 렌더
+      booker:   { ...BANNER_PRESETS.danger, title: '', body: '반려된 예약은 자동으로 취소 처리됩니다. 새로운 예약을 생성하여 다시 승인 요청해 주세요.' },
       attendee: { ...BANNER_PRESETS.danger, title: '참석 예정 회의가 거절되었습니다.', body: '예약자에게 사유가 안내되었습니다.' },
     },
     cta: {

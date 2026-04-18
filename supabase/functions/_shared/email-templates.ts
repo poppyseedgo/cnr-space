@@ -61,10 +61,21 @@
  *   · 이미지 차단 시 alt 텍스트에 Figma 스타일 폰트 적용 → 폴백 품질 유지
  *   · 원본 이미지: 618×88px (2x Retina), 표시 크기: 200×28px
  *
- * [2026-04-18 P2 v4] renderBanner 버그 수정 (배송 2 통합 테스트에서 발견)
- *   · 문제: 정책에 contextBanner가 없는 이벤트(cancelled/rejected 등)에서
+ * [2026-04-18 P2 v4] renderBanner 버그 수정 + 디자인 이슈 4종 수정
+ *   · 문제 1 (P2 v4 배송2): 정책에 contextBanner가 없는 이벤트(cancelled/rejected 등)에서
  *     admin_force/reject_reason 동적 컨텐츠가 있어도 배너 전체가 스킵됨
- *   · 수정: parts 수집 완료 후에만 빈 여부 판단 → 동적 배너만 있어도 렌더됨
+ *   · 수정 1: parts 수집 완료 후에만 빈 여부 판단 → 동적 배너만 있어도 렌더됨
+ *
+ *   · 문제 2 (배송 4): 프로덕션 실 발송 테스트에서 발견된 4가지 버그
+ *   · 수정 2-1: 로고 아래 여백 8px → 16px (Figma pb-[16px] 반영)
+ *   · 수정 2-2: 거절 이메일 안내 배너와 거절 사유를 2개의 독립된 박스로 분리
+ *     - 첫 박스: #DFF3FF 하늘색 (일반 안내)
+ *     - 둘째 박스: #FFF1F1 연빨강 + #EF4444 빨강 텍스트 (거절 사유만)
+ *     - 두 박스 사이 16px spacer row
+ *     - "거절 사유는 본문에 표시됩니다." 문구 제거 (POLICIES.rejected.booker.title="")
+ *   · 수정 2-3: 라벨 세로 깨짐 방지 — table-layout:fixed + min-width + white-space:nowrap
+ *   · 수정 2-4: iOS Mail 날짜/시간 자동 링크화 차단 — format-detection meta + <a>/pointer-events:none 래핑
+ *   · 수정 2-5 (보너스): 긴 부서명 줄바꿈 허용 — word-break:keep-all + white-space:nowrap 제거
  */
 
 import { POLICIES, renderUrl, type NotificationType } from './notification-types.ts'
@@ -128,7 +139,9 @@ const C = {
   TEXT_FOOTER:   '#99A1AF',
   TEXT_INVERSE:  '#FFFFFF',
   BG_PAGE:       '#FFFFFF',
-  BG_BANNER:     '#DFF3FF',       // 배지/배너 단일 색
+  BG_BANNER:     '#DFF3FF',       // 배지/배너 단일 색 (하늘색)
+  BG_REJECT:     '#FFF1F1',       // 거절 사유 배너 배경 (연빨강) — Figma node 147:225
+  TEXT_REJECT:   '#EF4444',       // 거절 사유 텍스트 (빨강)
   BG_BLACK:      '#000000',       // 아바타 + CTA 배경
   BORDER_THIN:   '#000000',       // 0.5px solid black
   AVATAR_TEXT:   '#E7E7E7',
@@ -215,6 +228,11 @@ function renderAvatar(name: string, avatarUrl: string | null | undefined): strin
  * 사용자 한 명 행 (예약자/참석자/처리자 공통)
  * [아바타] 이름 부서(회색)
  * · suffix는 처리자용 "(승인)" / "(거절)" 같은 말미 텍스트
+ *
+ * ← [2026-04-18 P2 v4] 긴 영문 부서명 줄바꿈 허용
+ *   · 문제: "Clinical Platform Research Institute" 같은 긴 부서명이 모바일 너비 초과
+ *   · 원인: 값 <td>에 white-space:nowrap이 있어 줄바꿈 안 됨
+ *   · 해결: nowrap 제거 + word-break:keep-all (한글 어절/영문 단어 단위로 자연 줄바꿈)
  */
 function renderUserRow(
   name: string,
@@ -228,11 +246,11 @@ function renderUserRow(
 
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="display:inline-table;vertical-align:middle;">` +
     `<tr>` +
-      `<td style="vertical-align:middle;padding-right:7px;">${renderAvatar(name, avatarUrl)}</td>` +
-      `<td style="vertical-align:middle;font-family:${FONT};font-size:14px;font-weight:500;line-height:1.3;white-space:nowrap;">` +
-        `<span style="color:${C.TEXT};">${nameEsc}</span>` +
+      `<td style="vertical-align:middle;padding-right:7px;white-space:nowrap;">${renderAvatar(name, avatarUrl)}</td>` +
+      `<td style="vertical-align:middle;font-family:${FONT};font-size:14px;font-weight:500;line-height:1.3;word-break:keep-all;">` +
+        `<span style="color:${C.TEXT};white-space:nowrap;">${nameEsc}</span>` +
         (deptEsc ? `&nbsp;<span style="color:${C.TEXT_SUB};">${deptEsc}</span>` : '') +
-        (suffixEsc ? `&nbsp;<span style="color:${C.TEXT_SUB};">${suffixEsc}</span>` : '') +
+        (suffixEsc ? `&nbsp;<span style="color:${C.TEXT_SUB};white-space:nowrap;">${suffixEsc}</span>` : '') +
       `</td>` +
     `</tr></table>`
 }
@@ -286,7 +304,8 @@ function renderLogoSection(input: EmailRenderInput): string {
     `style="display:block;border:0;width:200px;height:auto;max-width:200px;" />`
 
   return `<tr><td style="padding-bottom:${D.LOGO_PB};">` +
-    `<div style="margin:0 0 8px;">${logoHtml}</div>` +
+    `<div style="margin:0 0 16px;">${logoHtml}</div>` +
+    // ← [2026-04-18 P2 v4] 로고 아래 여백 8px → 16px (Figma 디자인 pb-[16px] 반영)
     `<p style="margin:0 0 4px;font-family:${FONT};font-size:16px;font-weight:500;line-height:1.4;color:${C.TEXT};">${escapeHtml(headerLabel)}</p>` +
     badge +
   `</td></tr>`
@@ -313,15 +332,21 @@ function renderTitleSection(input: EmailRenderInput): string {
  * 인포 카드 행 (공통)
  * · 라벨: 영문 대문자 12px Bold tracking 1px (왼쪽 100px 고정)
  * · 값:   14px Medium
+ *
+ * ← [2026-04-18 P2 v4] 라벨 세로 깨짐 방지
+ *   · 문제: Apple Mail iOS에서 "예약자" 라벨이 세로로 쌓임 (예/약/자)
+ *   · 원인: 좁은 뷰포트에서 width:100px가 무시되면서 라벨 <td>가 squeeze됨
+ *   · 해결: 라벨 <td>에 white-space:nowrap + min-width 추가
+ *            inner table에 table-layout:fixed 추가 (컬럼 폭 강제 유지)
  */
 function renderInfoRow(label: string, valueHtml: string, options?: { nowrap?: boolean }): string {
   const labelEsc = escapeHtml(label)
   const nowrap   = options?.nowrap ? 'white-space:nowrap;' : ''
 
   return `<tr><td style="padding:${D.ROW_PY} 0;vertical-align:top;">` +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>` +
-      `<td width="${D.LABEL_WIDTH}" style="width:${D.LABEL_WIDTH}px;vertical-align:top;font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:1px;color:${C.TEXT};line-height:1.3;padding-top:2px;">${labelEsc}</td>` +
-      `<td style="vertical-align:top;font-family:${FONT};font-size:14px;font-weight:500;color:${C.TEXT};line-height:1.3;${nowrap}">${valueHtml}</td>` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed;"><tr>` +
+      `<td width="${D.LABEL_WIDTH}" style="width:${D.LABEL_WIDTH}px;min-width:${D.LABEL_WIDTH}px;white-space:nowrap;vertical-align:top;font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:1px;color:${C.TEXT};line-height:1.3;padding-top:2px;">${labelEsc}</td>` +
+      `<td style="vertical-align:top;font-family:${FONT};font-size:14px;font-weight:500;color:${C.TEXT};line-height:1.3;word-break:keep-all;${nowrap}">${valueHtml}</td>` +
     `</tr></table>` +
   `</td></tr>`
 }
@@ -339,10 +364,16 @@ function renderInfoCard(input: EmailRenderInput): string {
   const rows: string[] = []
 
   // DATE
-  rows.push(renderInfoRow('DATE', escapeHtml(fmtDate(input.booking.start_at)), { nowrap: true }))
+  // ← [P2 v4] iOS Mail 자동 링크화 방지용 <a> 래핑 (color 강제 + pointer-events 차단)
+  //   단순 format-detection meta만으론 일부 iOS 버전에서 여전히 링크 생성됨 → <a>로 가둬 스타일 오버라이드
+  const dateStr = escapeHtml(fmtDate(input.booking.start_at))
+  const dateValue = `<a href="#" style="color:${C.TEXT};text-decoration:none;pointer-events:none;cursor:default;">${dateStr}</a>`
+  rows.push(renderInfoRow('DATE', dateValue, { nowrap: true }))
 
   // TIME
-  const timeValue = `${escapeHtml(fmtTime(input.booking.start_at))} - ${escapeHtml(fmtTime(input.booking.end_at))}`
+  const timeStartStr = escapeHtml(fmtTime(input.booking.start_at))
+  const timeEndStr   = escapeHtml(fmtTime(input.booking.end_at))
+  const timeValue = `<a href="#" style="color:${C.TEXT};text-decoration:none;pointer-events:none;cursor:default;">${timeStartStr} - ${timeEndStr}</a>`
   rows.push(renderInfoRow('TIME', timeValue, { nowrap: true }))
 
   // REPEAT (반복 예약 시)
@@ -350,8 +381,11 @@ function renderInfoCard(input: EmailRenderInput): string {
     const recurSummary = input.booking.recur_label
       ? `<div style="margin-bottom:6px;">${escapeHtml(input.booking.recur_label)}</div>`
       : `<div style="margin-bottom:6px;">총 ${input.recurBookings.length}회 반복</div>`
+    // ← [P2 v4] 반복 날짜 목록도 동일하게 자동 링크 방지
     const recurList = input.recurBookings.map(b =>
-      `<div style="margin-top:2px;color:${C.TEXT_SUB};font-size:13px;line-height:1.5;">${escapeHtml(fmtDate(b.start_at))}</div>`
+      `<div style="margin-top:2px;color:${C.TEXT_SUB};font-size:13px;line-height:1.5;">` +
+        `<a href="#" style="color:${C.TEXT_SUB};text-decoration:none;pointer-events:none;cursor:default;">${escapeHtml(fmtDate(b.start_at))}</a>` +
+      `</div>`
     ).join('')
     rows.push(renderInfoRow('REPEAT', recurSummary + recurList))
   }
@@ -391,64 +425,90 @@ function renderInfoCard(input: EmailRenderInput): string {
 }
 
 /**
- * 배너 — Figma: #DFF3FF 단일 배경, rounded-16px
- * · 정책 기반 메인 메시지 (있으면 표시)
- * · 거절 사유/강제 취소 사유가 있으면 같은 박스 내부에 통합
+ * 배너 섹션
  *
- * ← [2026-04-18 P2 버그 수정] 기존: 정책 배너 없으면 early return → 동적 배너도 스킵됨.
- *    이제 parts를 모두 수집한 후 비었을 때만 반환. 동적 배너만 있어도 렌더됨.
+ * 렌더 규칙:
+ *   1. 정책 메인 배너 (있으면)              — #DFF3FF 하늘색
+ *   2. 동적 통합: cancelled + admin_force    — 같은 하늘색 배너 안에 추가
+ *   3. 동적 분리: rejected + reject_reason   — 별도 빨간 배너(#FFF1F1) 하나 더
+ *   · 정책 배너와 거절 배너는 16px 간격으로 세로 나열
+ *
+ * ← [2026-04-18 P2 v4]
+ *   · 거절 사유 렌더링을 별도 박스로 분리 (Figma node 147:225 디자인 반영)
+ *   · 색상: #FFF1F1 배경 + #EF4444 빨강 텍스트
+ *   · 구조: 첫 배너(안내)와 두 번째 배너(거절 사유) 사이 16px gap
  */
 function renderBanner(input: EmailRenderInput): string {
   const policy = POLICIES[input.type]
-  const parts: string[] = []
+  const banners: string[] = []   // 각 요소가 하나의 <table> 블록(배너 박스)
 
-  // 1. 정책 기반 메인 배너 (있으면)
+  // ─── 1. 정책 기반 메인 배너 (#DFF3FF) ────────────────────────────
   const bannerKey = input.role === 'booker' ? 'booker' : input.role === 'attendee' ? 'attendee' : 'admin'
   const b = policy.contextBanner?.[bannerKey]
+
+  const mainParts: string[] = []
   if (b) {
-    parts.push(
-      `<p style="margin:0;font-family:${FONT};font-size:12px;font-weight:600;line-height:1.4;color:${C.TEXT};">${escapeHtml(b.title)}</p>`
-    )
+    // title이 비어있지 않을 때만 렌더 (rejected.booker의 경우 title 없음)
+    if (b.title) {
+      mainParts.push(
+        `<p style="margin:0;font-family:${FONT};font-size:12px;font-weight:600;line-height:1.4;color:${C.TEXT};">${escapeHtml(b.title)}</p>`
+      )
+    }
     if (b.body) {
-      parts.push(
-        `<p style="margin:4px 0 0;font-family:${FONT};font-size:12px;font-weight:500;line-height:1.4;color:${C.TEXT};">${escapeHtml(b.body)}</p>`
+      mainParts.push(
+        `<p style="margin:${mainParts.length > 0 ? '4px' : '0'} 0 0;font-family:${FONT};font-size:12px;font-weight:500;line-height:1.4;color:${C.TEXT};">${escapeHtml(b.body)}</p>`
       )
     }
   }
 
-  // 2. 동적 통합 — cancelled + admin_force
-  //    ← [버그 수정] 정책 배너 유무와 무관하게 렌더되도록 if (b) 블록 밖에서 처리
+  // 동적 통합 — cancelled + admin_force (메인 배너와 같은 #DFF3FF 박스에 추가)
   if (input.type === 'cancelled' && input.booking.admin_force) {
-    // 기존 parts가 있으면 간격(12px), 없으면 첫 항목이니 간격 없음
-    const topMargin = parts.length > 0 ? '12px' : '0'
-    parts.push(
+    const topMargin = mainParts.length > 0 ? '12px' : '0'
+    mainParts.push(
       `<p style="margin:${topMargin} 0 0;font-family:${FONT};font-size:12px;font-weight:600;line-height:1.4;color:${C.TEXT};">관리자에 의해 강제 취소된 예약입니다.</p>`
     )
     if (input.booking.cancel_reason) {
-      parts.push(
+      mainParts.push(
         `<p style="margin:4px 0 0;font-family:${FONT};font-size:12px;font-weight:500;line-height:1.4;color:${C.TEXT};">취소 사유: ${escapeHtml(input.booking.cancel_reason)}</p>`
       )
     }
   }
 
-  // 3. 동적 통합 — rejected + reject_reason
-  //    ← [버그 수정] 정책 배너 유무와 무관하게 렌더
-  if (input.type === 'rejected' && input.booking.reject_reason) {
-    const topMargin = parts.length > 0 ? '12px' : '0'
-    parts.push(
-      `<p style="margin:${topMargin} 0 0;font-family:${FONT};font-size:12px;font-weight:600;line-height:1.4;color:${C.TEXT};">거절 사유</p>` +
-      `<p style="margin:4px 0 0;font-family:${FONT};font-size:12px;font-weight:500;line-height:1.4;color:${C.TEXT};">${escapeHtml(input.booking.reject_reason)}</p>`
+  // 메인 배너가 내용이 있으면 박스로 감쌈
+  if (mainParts.length > 0) {
+    banners.push(
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${C.BG_BANNER};border-radius:16px;">` +
+        `<tr><td style="padding:16px;">${mainParts.join('')}</td></tr>` +
+      `</table>`
     )
   }
 
-  // 4. 수집된 parts가 비었으면 배너 자체 렌더 안 함
-  if (parts.length === 0) return ''
+  // ─── 2. 거절 사유 전용 배너 (#FFF1F1, 빨강 텍스트) ────────────────
+  //       Figma node 147:225 디자인: 메인 배너와 분리된 별도 박스
+  if (input.type === 'rejected' && input.booking.reject_reason) {
+    banners.push(
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${C.BG_REJECT};border-radius:16px;">` +
+        `<tr><td style="padding:16px;">` +
+          `<p style="margin:0;font-family:${FONT};font-size:12px;font-weight:700;line-height:1.4;color:${C.TEXT_REJECT};">거절 사유</p>` +
+          `<p style="margin:4px 0 0;font-family:${FONT};font-size:12px;font-weight:500;line-height:1.4;color:${C.TEXT_REJECT};">${escapeHtml(input.booking.reject_reason)}</p>` +
+        `</td></tr>` +
+      `</table>`
+    )
+  }
 
-  return `<tr><td>` +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${C.BG_BANNER};border-radius:16px;">` +
-      `<tr><td style="padding:16px;">${parts.join('')}</td></tr>` +
-    `</table>` +
-  `</td></tr>`
+  // 아무 배너도 없으면 빈 렌더
+  if (banners.length === 0) return ''
+
+  // 배너들을 <tr><td>로 묶어 세로 나열. 배너 간 16px 간격은 tr 사이에 spacer tr로 구현
+  //   (Outlook은 tr에 margin-bottom을 지원 안 함 — spacer row 패턴이 가장 안전)
+  const rows = banners.map((banner, idx) => {
+    const spacer = idx > 0
+      ? `<tr><td style="height:16px;line-height:16px;font-size:0;">&nbsp;</td></tr>`
+      : ''
+    return spacer + `<tr><td>${banner}</td></tr>`
+  }).join('')
+
+  return rows
 }
 
 /**
@@ -535,6 +595,8 @@ export function renderEmail(input: EmailRenderInput): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="x-apple-disable-message-reformatting">
+  <!-- ← [2026-04-18 P2 v4] iOS Mail의 날짜/시간/주소 자동 링크화 차단 (파란 밑줄 방지) -->
+  <meta name="format-detection" content="telephone=no,date=no,address=no,email=no,url=no">
   <!--[if mso]>
   <xml>
     <o:OfficeDocumentSettings>

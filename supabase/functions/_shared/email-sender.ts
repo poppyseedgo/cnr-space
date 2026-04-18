@@ -105,8 +105,8 @@ function sleep(ms: number): Promise<void> {
 async function callResendBatch(items: EmailItem[]): Promise<{ data: { id: string }[] }> {
   const payload = items.map(item => ({
     from:    FROM_EMAIL,
-    to:      [item.to],       // Resend는 to가 배열이어야 함
-    subject: item.subject,
+    to:      [item.to],                      // Resend는 to가 배열이어야 함
+    subject: encodeSubjectUtf8(item.subject), // ← [P2 v2] Outlook 한글 제목 깨짐 방지
     html:    item.html,
   }))
 
@@ -126,6 +126,34 @@ async function callResendBatch(items: EmailItem[]): Promise<{ data: { id: string
   }
 
   return await res.json()
+}
+
+/**
+ * Subject를 RFC 2047 MIME encoded-word(UTF-8, Base64)로 인코딩
+ *
+ * 배경: Outlook이 한글이 섞인 Subject 헤더를 Latin-1로 잘못 해석해
+ *      "[승인요청]..." 가 "[??인요청]..." 형태로 깨져 보이는 문제.
+ *      Resend API는 Subject를 raw 문자열 그대로 SMTP 헤더에 넣는데,
+ *      비-ASCII가 포함된 헤더는 RFC 2047에 따라 인코딩되어야 한다.
+ *
+ * 동작:
+ *   · 모든 문자가 ASCII면 인코딩 생략 (원본 반환 → 성능/가독성)
+ *   · 비-ASCII가 있으면 전체를 UTF-8 → Base64 → =?UTF-8?B?xxx?= 형식으로 감쌈
+ *   · Resend/Outlook/Gmail/Apple Mail 모두 해당 형식 해석 지원
+ *
+ * ← [2026-04-18 P2 v4] Outlook 제목 "??인요청" 인코딩 깨짐 수정
+ */
+function encodeSubjectUtf8(subject: string): string {
+  // ASCII만 있으면 그대로 (인코딩 오버헤드 회피)
+  if (/^[\x00-\x7F]*$/.test(subject)) return subject
+
+  // UTF-8 바이트 → Base64 변환 (Deno 내장 btoa는 binary string 요구)
+  const bytes = new TextEncoder().encode(subject)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  const b64 = btoa(binary)
+
+  return `=?UTF-8?B?${b64}?=`
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
