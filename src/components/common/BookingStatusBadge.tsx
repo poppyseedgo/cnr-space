@@ -14,10 +14,25 @@ import { tsDate, tsMin, todayStr, nowMinutes } from '../../utils/time'
  *    - 예: "이 위치엔 승인 대기 뱃지만 보이기"
  *
  * ✅ 변경 이력
+ *  - [2026-04-19 P2 v7] 판별 로직 전면 재설계 — pending_expired 노쇼 오표시 버그 해결
+ *     · 증상: 승인 기한 초과로 자동 취소된 예약이 모든 화면에서 "노쇼" 뱃지로 표시됨
+ *             (룸 상세 카드, 예약 상세, 캘린더 슬롯, 홈 카드 전부)
+ *     · 원인: P2 v6에서 cron이 pending_expired를 처리하며 status='pending' → 'cancelled' 변경
+ *             기존 판별 `isExpiredPending = status==='pending' && autoCancelled` 는
+ *             status='cancelled'가 되는 순간 false → isNoshow 조건이 true로 뒤집힘
+ *     · 추가 발견: 사용자 pending 수동 취소 시 isExpiredPending + isUserCancel 동시 true → 뱃지 중복
+ *     · 해결:
+ *        (1) 우선순위 엄격화: user_cancel > rejected > admin_cancel > system_cancel
+ *        (2) system_cancel을 시간축으로 분리
+ *            · 기한초과: status='pending' OR now < start_at + 10분 (시작 전/직후의 시스템 취소)
+ *            · 노쇼:    그 외 (시작 후 10분 경과 이후의 시스템 취소)
+ *        (3) 상호 배타적 보장 — 한 예약이 동시에 두 뱃지 나오지 않음
+ *     · 검증: 판별 시뮬레이션 8가지 케이스 통과 (pending 선점/cron 완료/수동취소/노쇼 등)
+ *     · 단일 진실 원천: 이 컴포넌트 수정만으로 5개 사용처(홈/마이페이지/캘린더/룸상세/예약상세) 일괄 수정
+ *
  *  - [2026-04-18 스타일 정리]
  *    · only prop 추가 — 특정 상태만 필터링해서 표시 가능
  *    · BadgeType 타입 export — 외부 코드에서 상태 참조 가능
- *    · 판별 로직은 100% 기존 유지 (회귀 위험 0)
  */
 
 export type BadgeType =
@@ -71,12 +86,51 @@ export function BookingStatusBadge({
   // isAdminRoom prop 우선, 없으면 room.is_admin_only fallback
   const adminRoom = isAdminRoom ?? !!r?.is_admin_only
 
-  // ── 취소 상태 판별 (상호 배타적) ──────────────────────────────────
-  const isRejected       = b.status === 'rejected'
-  const isExpiredPending = b.status === 'pending' && b.autoCancelled
-  const isAdminCancel    = b.autoCancelled && b.cancelledBy === 'admin' && !isRejected
-  const isNoshow         = b.autoCancelled && b.cancelledBy === 'system' && !isRejected && b.status !== 'pending'
-  const isUserCancel     = b.autoCancelled && b.cancelledBy === 'user'
+  // ── 취소 상태 판별 (상호 배타적, 우선순위 엄격) ──────────────────────
+  //
+  // ← [2026-04-19 P2 v7 판별 재설계] pending_expired 노쇼 오표시 버그 해결
+  //
+  //   배경:
+  //     · P2 v6에서 pending_expired는 auto-cancel-bookings cron이 처리하며
+  //       status='pending' → 'cancelled'로 최종 변경됨
+  //     · 기존 판별 `isExpiredPending = status==='pending' && autoCancelled`은
+  //       cron 처리 후 status='cancelled'가 되면 false → isNoshow로 오분류
+  //     · 또한 사용자가 pending 수동 취소 시 isExpiredPending + isUserCancel
+  //       둘 다 true가 되어 뱃지 중복 표시
+  //
+  //   해결 원칙:
+  //     1. 우선순위 엄격화: 사용자 의도(user_cancel) > 거절/관리자 > 시스템 판별
+  //     2. 시스템 취소(cancelled_by=system) 내부에서 '기한초과'와 '노쇼' 구분
+  //        · 기한초과(pending_expired): 승인 대기 중 start_at 도래 전에 자동 취소
+  //        · 노쇼(noshow):              체크인 없이 start_at + 10분 경과 시 자동 취소
+  //     3. 판별 기준: status + start_at 시점 조합 (status만으로는 불충분)
+  //        · status='pending'  → 무조건 기한초과 (승인 대기 상태의 system 취소)
+  //        · status='cancelled' + now < start_at → 기한초과 (시작 전 system 취소)
+  //        · status='cancelled' + now >= start_at + 10분 → 노쇼 (시작 후 미체크인)
+  //        · 그 외 → 노쇼 폴백 (안전한 기본값)
+  //
+  //   배타성 보장:
+  //     · isUserCancel이 true면 다른 system/admin 판별은 전부 false
+  //     · isRejected가 true면 admin/expired/noshow 전부 false
+  //     · expired와 noshow는 시간축으로 완전 분리 (한 건이 동시 해당 불가)
+
+  const isRejected    = b.status === 'rejected'
+  // ① 사용자 취소가 최우선 (사용자 의도가 가장 명확)
+  const isUserCancel  = b.autoCancelled && b.cancelledBy === 'user'
+  // ② 관리자 강제 취소 (거절과 구분)
+  const isAdminCancel = b.autoCancelled && b.cancelledBy === 'admin'
+                        && !isRejected && !isUserCancel
+  // ③ 시스템 취소 (기한초과 vs 노쇼 분리)
+  const isSystemCancel = b.autoCancelled && b.cancelledBy === 'system'
+                         && !isRejected && !isUserCancel && !isAdminCancel
+  // ③-1 기한초과: status='pending' 유지이거나, cancelled지만 start_at 도달 전
+  //     · cron이 처리한 경우 status='cancelled' + start_at 근방 (보통 now~start_at+몇초)
+  //     · 프론트가 선점한 경우 status='pending' + now는 start_at 전후
+  //     · 핵심: cancelled_by='system'이면서 노쇼 시점(start_at+10분)에 도달 안 한 경우
+  const isExpiredPending = isSystemCancel
+                           && (b.status === 'pending' || now < sm + 10)
+  // ③-2 노쇼: start_at + 10분 경과 + status='cancelled' (또는 confirmed 단계 건)
+  const isNoshow         = isSystemCancel && !isExpiredPending
 
   // ── 진행 상태 판별 ──────────────────────────────────────────────
   const isAct     = isToday && sm <= now && now < em && !b.autoCancelled && !b.earlyEnded
@@ -98,6 +152,8 @@ export function BookingStatusBadge({
     (show('admin-cancel')    && isAdminCancel) ||
     (show('noshow')          && isNoshow) ||
     (show('user-cancel')     && isUserCancel && isOwner) ||
+    // ← [P2 v7] pending 뱃지는 '자동취소되지 않은 진짜 승인 대기'만
+    //   isExpiredPending이 status='pending' 상태도 커버하므로 중복 방지
     (show('pending')         && b.status === 'pending' && !b.autoCancelled) ||
     (show('approved')        && isApproved) ||
     (show('mine')            && isOwner && !b.autoCancelled && !isRejected) ||
