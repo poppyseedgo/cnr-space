@@ -25,6 +25,11 @@
  *    · 단건 발송도 내부적으로 batch API 사용 (코드 경로 통일)
  *    · sendEmails(list) 단일 진입점 — list.length === 1이면 단건
  *
+ * 5. [P2 v5] FROM 헤더 브랜드 고정 + RFC 5322 준수
+ *    · 발신자는 `"C&R SPACE" <space@cnrres.com>` 로 하드코딩
+ *    · display name은 RFC 5322에 따라 큰따옴표로 감싸서 특수문자('&') 안전 처리
+ *    · 환경변수 FROM_EMAIL 있어도 무시 (정책 상수이므로 변경 불가)
+ *
  * ═══════════════════════════════════════════════════════════════════════════
  * 변경 이력
  * ═══════════════════════════════════════════════════════════════════════════
@@ -33,14 +38,44 @@
  *   · 기존 sendEmail(send-notification 내부) 분산 → 통일
  *   · rate_limit_exceeded (429) 감지 시 재시도 로직
  *   · 각 수신자별 발송 결과(id/error) 상세 반환
+ *
+ * [2026-04-19 P2 v5] FROM 헤더 display name 오표시 버그 수정
+ *   · 증상: Outlook에서 발신자가 "Note to self"로 표시되어
+ *          C&R SPACE 브랜드가 보이지 않음
+ *   · 원인: FROM_EMAIL="C&R SPACE <...>" 의 display name에
+ *          특수문자 '&' + 공백이 있음에도 큰따옴표로 감싸지 않아
+ *          RFC 5322 위반 → Outlook이 display name 파싱 실패
+ *   · 해결: FROM 헤더를 `"C&R SPACE" <space@cnrres.com>` 로 하드코딩.
+ *          display name 큰따옴표 포함하여 RFC 5322 준수.
+ *   · 배경: 2026-04-18 리팩토링에서 제목의 [C&R SPACE] 접두어 제거
+ *          (발신자 FROM으로 식별 가능하다는 전제). 그 전제가 깨진 것을
+ *          제목에서 브랜드를 빼면서 드러난 사건.
+ *   · 정책: 브랜드 식별자는 운영 상수 — 환경변수로 변경 불가능하게 고정
  */
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 1. 환경변수
+// 1. 환경변수 & 상수
 // ═══════════════════════════════════════════════════════════════════════════
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
-const FROM_EMAIL     = Deno.env.get('FROM_EMAIL') ?? 'C&R SPACE <onboarding@resend.dev>'
+
+// ← [P2 v5] FROM 헤더 하드코딩 (정책 상수)
+//   · display name "C&R SPACE" 를 큰따옴표로 감싼 형태 → RFC 5322 준수
+//   · & 특수문자가 phrase에 포함될 때는 quoted-string 필수 (없으면 Outlook "Note to self" 오표시)
+//   · 환경변수 FROM_EMAIL 이 설정돼 있어도 무시 (아래 경고 로그)
+const FROM_HEADER = '"C&R SPACE" <space@cnrres.com>'
+
+// 디버깅: 환경변수가 다른 값으로 설정돼 있으면 운영자에게 경고 (하드코딩이 우선)
+const _envFrom = Deno.env.get('FROM_EMAIL')
+if (_envFrom && _envFrom !== FROM_HEADER) {
+  console.warn(
+    `[email-sender] FROM_EMAIL 환경변수(${_envFrom})가 감지되었으나 무시됨. ` +
+    `실제 발신자는 하드코딩된 ${FROM_HEADER} 사용.`
+  )
+}
+
+// 모듈 로드 시 실제 사용되는 FROM 헤더 로깅 (추후 이슈 재발 시 진단용)
+console.log(`[email-sender] FROM 헤더: ${FROM_HEADER}`)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 2. 타입 정의
@@ -104,9 +139,9 @@ function sleep(ms: number): Promise<void> {
  */
 async function callResendBatch(items: EmailItem[]): Promise<{ data: { id: string }[] }> {
   const payload = items.map(item => ({
-    from:    FROM_EMAIL,
-    to:      [item.to],                      // Resend는 to가 배열이어야 함
-    subject: encodeSubjectUtf8(item.subject), // ← [P2 v2] Outlook 한글 제목 깨짐 방지
+    from:    FROM_HEADER,                      // ← [P2 v5] 하드코딩된 "C&R SPACE" <space@cnrres.com>
+    to:      [item.to],                        // Resend는 to가 배열이어야 함
+    subject: encodeSubjectUtf8(item.subject),  // ← [P2 v2] Outlook 한글 제목 깨짐 방지
     html:    item.html,
   }))
 
