@@ -27,6 +27,23 @@
  *   · 예약자 제목은 역할 표시 없이 최소 형태: "[예약확정]  주간회의"
  *   · attendee_removed 예외: 말머리에 '참석자' 단어가 있어 역할 표시 생략
  *     "[참석자제외]  주간회의" (중복 방지)
+ *
+ * [2026-04-19 P2 v3] 브랜드 태그 복원 (Option B: 단일 대괄호 통합)
+ *   · 증상: Outlook M365에서 발신자가 "You"/"Note to self"로 표시되는 버그
+ *   · 원인: @cnrres.com 내부 도메인 + Resend(외부 SMTP) 조합에서
+ *          Outlook의 Intelligent Sender Display 휴리스틱이 동작.
+ *          Subject에 브랜드 태그가 없으면 "외부 시스템 메일인지 불명확"으로
+ *          판단하여 display name을 무시하고 내부 주소 기반 이름으로 대체.
+ *   · 검증: 같은 리팩토링 후 코드여도 "[C&R SPACE] ⏰ 승인 기한..." 형태로
+ *          브랜드 태그가 남아있던 메일은 C&R SPACE로 정상 표시됨.
+ *   · 해결: 모든 제목의 말머리에 "C&R SPACE ·" 브랜드 식별자 통합.
+ *     before: "[승인요청 · 관리자]  에메랄드 승인 건"
+ *     after:  "[C&R SPACE · 승인요청 · 관리자]  에메랄드 승인 건"
+ *   · 설계 유지:
+ *     - subjectTag 상수 14개는 그대로 유지 (단일 진실 원천 원칙 불변)
+ *     - 브랜드 prefix는 조립 단계(getSubject)에서만 주입
+ *     - attendee_removed 예외도 그대로: "[C&R SPACE · 참석자제외]  ..."
+ *     - 폴백 경로도 브랜드 prefix 적용 ("[C&R SPACE · 예약알림]  ...")
  */
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -464,22 +481,29 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
  * @param title  회의 제목
  * @param role   수신자 역할 ('booker' | 'attendee' | 'admin')
  *
- * 제목 형식:
- *  · booker:   "{subjectTag}  {title}"
- *    예: "[예약확정]  주간회의"
- *  · attendee: "{subjectTag_with_role}  {title}"
- *    예: "[예약확정 · 참석자]  주간회의"
- *  · admin:    "{subjectTag_with_role}  {title}"
- *    예: "[승인요청 · 관리자]  주간회의"
+ * 제목 형식 (Option B: 단일 대괄호 브랜드 통합):
+ *  · booker:   "[C&R SPACE · {subjectTag_inner}]  {title}"
+ *    예: "[C&R SPACE · 예약확정]  주간회의"
+ *  · attendee: "[C&R SPACE · {subjectTag_inner} · 참석자]  {title}"
+ *    예: "[C&R SPACE · 예약확정 · 참석자]  주간회의"
+ *  · admin:    "[C&R SPACE · {subjectTag_inner} · 관리자]  {title}"
+ *    예: "[C&R SPACE · 승인요청 · 관리자]  에메랄드 승인 건"
  *
  * 규칙:
- *  · 브랜드 식별자(예: "C&R SPACE") 접두어 없음 — 발신자 FROM으로 이미 식별됨
- *  · 역할 구분자는 말머리 대괄호 내부에 " · {역할}" 형태로 삽입 (Option 4 선정)
+ *  · 브랜드 식별자 "C&R SPACE"를 단일 말머리 대괄호 맨 앞에 고정 배치
+ *    → Outlook M365 Intelligent Sender Display 휴리스틱이 "브랜드 시스템 메일"로
+ *      인식하여 발신자 display name을 정상 표시 (You/Note to self 방지)
+ *  · 역할 구분자는 이벤트 태그 뒤에 " · {역할}" 형태로 삽입
  *  · 공백 2칸으로 말머리와 제목 시각적 분리
  *
  * 예외:
- *  · attendee_removed: 말머리에 "참석자"가 이미 포함되어 있으므로 역할 표시 생략
- *    → "[참석자제외]  주간회의" (role 파라미터와 무관하게 동일)
+ *  · attendee_removed: 말머리에 "참석자제외"가 이미 포함되어 있으므로 역할 표시 생략
+ *    → "[C&R SPACE · 참석자제외]  주간회의" (role 파라미터와 무관하게 동일)
+ *
+ * 구현 설계:
+ *  · subjectTag 상수(14개)는 "[이벤트명]" 형태 그대로 유지 (단일 진실 원천)
+ *  · 이 함수에서 "[" 와 "]" 사이 문자열(inner)만 추출하여 재조립
+ *  · 방어 코드: 이미 "C&R SPACE" 포함된 태그는 prefix 중복 생략
  */
 export function getSubject(
   type: NotificationType,
@@ -487,10 +511,14 @@ export function getSubject(
   role: 'booker' | 'attendee' | 'admin',
 ): string {
   const policy = POLICIES[type]
-  if (!policy) return `[예약알림]  ${title}`
+  // ← [P2 v3] 폴백 경로에도 브랜드 prefix 적용
+  if (!policy) return `[C&R SPACE · 예약알림]  ${title}`
 
-  // ← [2026-04-18] 브랜드 식별자 제거, 역할을 말머리 대괄호 내부로 이동
-  let tag = policy.subjectTag
+  // ← [P2 v3] subjectTag에서 대괄호 내부 문자열 추출 (예: "[승인요청]" → "승인요청")
+  //   정규식 실패 시(예외적) 원본 그대로 사용 (방어적)
+  const rawTag = policy.subjectTag
+  const innerMatch = rawTag.match(/^\[(.+)\]$/)
+  let inner = innerMatch ? innerMatch[1] : rawTag
 
   // ← [2026-04-18] attendee_removed 예외: 말머리에 '참석자' 단어가 이미 있어 중복 방지
   //   (role 파라미터가 attendee로 들어와도 역할 표시 생략)
@@ -498,14 +526,21 @@ export function getSubject(
 
   if (!skipRoleLabel) {
     if (role === 'attendee') {
-      tag = tag.replace(/\]$/, ' · 참석자]')
+      inner = `${inner} · 참석자`
     } else if (role === 'admin') {
-      tag = tag.replace(/\]$/, ' · 관리자]')
+      inner = `${inner} · 관리자`
     }
-    // role === 'booker'면 원본 subjectTag 그대로 사용 (가장 기본 형태)
+    // role === 'booker'면 inner 그대로 (가장 기본 형태)
   }
 
-  return `${tag}  ${title}`
+  // ← [P2 v3] 방어 코드: 이미 "C&R SPACE" 포함 시 중복 prefix 생략
+  //   (현 코드에선 발생하지 않지만, 추후 subjectTag 수정 시 안전망)
+  if (inner.includes('C&R SPACE')) {
+    return `[${inner}]  ${title}`
+  }
+
+  // ← [P2 v3] 브랜드 통합: "[C&R SPACE · ${inner}]  ${title}"
+  return `[C&R SPACE · ${inner}]  ${title}`
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
