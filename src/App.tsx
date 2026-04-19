@@ -87,6 +87,7 @@ import { initGlobalRipple } from './hooks/useGlobalRipple'
 import { CalendarShell } from './components/layout/CalendarShell'
 import { BookingDoneModal } from './components/booking/BookingDoneModal'
 import { RecurDoneModal } from './components/booking/RecurDoneModal'
+import { ConfirmCancelModal } from './components/booking/ConfirmCancelModal'
 import { BookingModal } from './components/booking/BookingModal'
 import { DetailModal } from './components/booking/DetailModal'
 import { UserAvatar } from './components/common/UserAvatar'
@@ -740,6 +741,23 @@ function AppContent() {
     }
   }, [bookings, showToast, sendNotification]);
 
+  // ── [2026-04-19 P2 v8] 예약 취소 확인 다이얼로그 경유 헬퍼 ─────────────────
+  //   용도: DetailModal의 "예약 취소" 버튼에서 호출
+  //   정책: HomeView/MyPage 소형카드의 '취소' 버튼은 즉시 실행 유지 (cancelBooking 직접 호출)
+  //         → 예약 상세에서만 confirm dialog 거치도록 분리
+  //   구현: setModal로 ConfirmCancelModal 띄우고, 확정 시 cancelBooking 실행
+  const confirmAndCancelBooking = useCallback((id: string) => {
+    const targetBooking = bookings.find(b => b.id === id)
+    if (!targetBooking) return
+    setModal({
+      type: 'confirmCancel',
+      data: {
+        booking: targetBooking,
+        onConfirm: () => cancelBooking(id),
+      },
+    })
+  }, [bookings, cancelBooking])
+
   // ── 에메랄드 승인/거절 ─────────────────────────────────────────────────────
   const approvePendingBooking = useCallback(async (id: string) => {
     try {
@@ -1385,9 +1403,18 @@ function AppContent() {
           }}>
           {modal.type==="new"         && <BookingModal prefill={modal.prefill} date={modal.date||selectedDate} onClose={()=>setModal(null)} onSubmit={addBooking} onUpdate={()=>false} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} />}
             {modal.type==="edit"         && <BookingModal prefill={{}} editBooking={modal.data} date={tsDate(modal.data.start_at)} onClose={()=>setModal(null)} onSubmit={async ()=>false} onUpdate={(form,date)=>updateBooking(form,date,modal.data.id)} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} />}
-            {modal.type==="detail"      && <DetailModal booking={modal.data} onClose={()=>setModal(null)} onCheckIn={checkIn} onCancel={cancelBooking} onEdit={(b)=>setModal({type:"edit",data:b})} currentUser={currentUser} rooms={rooms} users={users} isAdmin={isAdmin} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={adminForceCancelBooking} />}
+            {/* ← [P2 v8] onCancel={cancelBooking} → onCancel={confirmAndCancelBooking}
+                  예약 상세에서만 confirm dialog 경유 (소형카드는 즉시 실행 유지) */}
+            {modal.type==="detail"      && <DetailModal booking={modal.data} onClose={()=>setModal(null)} onCheckIn={checkIn} onCancel={confirmAndCancelBooking} onEdit={(b)=>setModal({type:"edit",data:b})} currentUser={currentUser} rooms={rooms} users={users} isAdmin={isAdmin} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={adminForceCancelBooking} />}
             {modal.type==="bookingDone" && <BookingDoneModal booking={modal.data} onClose={()=>setModal(null)} rooms={rooms} users={users} />}
             {modal.type==="recurDone"    && <RecurDoneModal data={modal.data} onClose={()=>setModal(null)} />}
+            {/* ← [P2 v8 신규] 예약 취소 확인 다이얼로그 */}
+            {modal.type==="confirmCancel" && <ConfirmCancelModal
+              booking={modal.data.booking}
+              room={rooms.find((r: any) => r.room_id === modal.data.booking.room_id)}
+              onConfirm={modal.data.onConfirm}
+              onClose={()=>setModal(null)}
+            />}
           {modal.type==="roomDetail"  && <RoomDetailModal room={modal.data} bookings={bookings} onClose={()=>setModal(null)} onBook={(status)=>{
               const now = nowMinutes();
               const snapStart = Math.ceil((now+1)/15)*15;
@@ -1428,7 +1455,7 @@ function AppContent() {
             booking={subModal.data}
             onClose={()=>setSubModal(null)}
             onCheckIn={checkIn}
-            onCancel={cancelBooking}
+            onCancel={confirmAndCancelBooking}
             onEdit={(b)=>{ setSubModal(null); setModal({type:"edit",data:b}); }}
             currentUser={currentUser}
             rooms={rooms}

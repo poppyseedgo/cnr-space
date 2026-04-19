@@ -417,11 +417,14 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
     headerColor:        COLORS.CYAN,
     recipients:         'booker_only',
     inappType:          'checkin_before_10',
-    inappTitleBooker:   '회의 시작 10분 전 — 체크인 준비',
+    inappTitleBooker:   '회의 시작 10분 전 — 체크인 대기',
     inappTitleAttendee: '',
     inappTitleAdmin:    '',
     contextBanner: {
-      booker: { ...BANNER_PRESETS.info, title: '예약 시작 10분 전부터 체크인이 가능합니다.', body: '체크인하지 않으면 시작 10분 후 자동 취소됩니다.' },
+      // ← [2026-04-19 P2 v8] 정책 정합성 수정 — 10분 전에는 체크인 불가, '대기' 상태만
+      //   기존: "예약 시작 10분 전부터 체크인이 가능합니다." (정책 오기재)
+      //   변경: 회의 시작 안내 + 취소 유도 (진행하지 않을 예약은 미리 취소)
+      booker: { ...BANNER_PRESETS.info, title: '회의 시작 10분 전입니다. 체크인 대기해 주세요!', body: '진행하지 않는 예약이라면 미리 취소해 주세요.' },
     },
     cta: {
       booker: CTA_CHECKIN,

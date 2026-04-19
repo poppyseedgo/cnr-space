@@ -130,6 +130,7 @@ export type ModalState =
   | { type: 'bookingDone'; data: Booking }
   | { type: 'recurDone'; data: RecurDoneData }
   | { type: 'roomDetail'; data: Room }
+  | { type: 'confirmCancel'; data: { booking: Booking; onConfirm: () => Promise<void> | void } }
   | null
 
 export interface RecurDoneData {

@@ -168,9 +168,22 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         const BtnCancel   = () => <Button variant="danger-outline" flex onClick={()=>onCancel(b.id)}>예약 취소</Button>
         const BtnEdit     = () => <Button variant="info-outline"   flex onClick={()=>{onClose();onEdit(b);}}>예약 변경</Button>
         const BtnCheckin  = () => <Button variant="success"        flex onClick={()=>{onCheckIn(b.id);onClose();}} icon={<CheckCircle2 size={14} strokeWidth={1.8}/>}>체크인하기</Button>
+        // ← [2026-04-19 P2 v8] 체크인 대기 상태 버튼 (비활성화 안내용)
+        //   정책: 체크인은 '시작 후 10분 이내'만 가능 → 시작 전에는 체크인 불가
+        //   표시 조건: 본인 예약 + 시작 10분 이내 남음 + 아직 시작 안 함 + 취소/거절 안 됨 + pending 아님
+        //   UX: disabled로 시각 안내만 제공, 실제 클릭 불가 (Button.disabled → opacity 0.45 + cursor 'not-allowed')
+        const BtnCheckinWait = () => <Button variant="secondary"   flex disabled icon={<Clock size={14} strokeWidth={1.8}/>}>체크인 대기</Button>
         const BtnApprove  = () => <Button variant="success"        flex onClick={()=>{onApprove(b.id);onClose();}} icon={<ShieldCheck size={14} strokeWidth={1.8}/>}>승인</Button>
         const BtnReject   = () => <Button variant="danger-outline" flex onClick={()=>setShowRejectInput(true)} icon={<ShieldX size={13} strokeWidth={1.8}/>}>거절</Button>
         const BtnForce    = () => <Button variant="danger-outline" flex onClick={()=>{onForceCancel(b.id,'관리자 강제취소');onClose();}}>강제취소</Button>
+
+        // ── [P2 v8] 체크인 대기 표시 조건 ──────────────────────────
+        //   isFuture(시작 전) + tl <= 10 (10분 이내) + confirmed(승인된) + 취소/거절/체크인 안 됨
+        //   · pending 예약은 대기 상태 표시 안 함 (승인부터 받아야 함)
+        //   · 에메랄드 승인완료 예약에는 표시됨 (approved + 시작 임박)
+        const showCheckinWait = isOwner && isFuture && tl > 0 && tl <= 10
+                                && b.status === 'confirmed'
+                                && !b.autoCancelled && !b.earlyEnded && !b.checkedIn
 
         // ── 1. 종료/취소/노쇼/거절/조기반납 → 닫기 ─────────────────
         const isDone = b.autoCancelled || b.status === 'rejected' || b.earlyEnded || (!isFuture && !isAct)
@@ -210,6 +223,9 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
           if (adminCanApprove) return btnWrap(<>{onApprove&&<BtnApprove />}<BtnCancel /></>)
           // 진행중 미체크인 → 체크인 + 취소
           if (isAct && !b.checkedIn) return btnWrap(<><BtnCancel /><BtnCheckin /></>)
+          // ← [P2 v8] 시작 10분 이내 confirmed → 취소 + 변경 + 체크인 대기(비활성)
+          //   에메랄드룸은 변경 불가 → 취소 + 체크인 대기만
+          if (showCheckinWait) return btnWrap(<><BtnCancel />{!isApprovedAdminRoom&&<BtnEdit />}<BtnCheckinWait /></>)
           // 미래 confirmed → 변경 + 취소 (승인완료 에메랄드룸은 취소만)
           if (isFuture && b.status === 'confirmed') return btnWrap(<><BtnCancel />{!isApprovedAdminRoom&&<BtnEdit />}</>)
           return btnWrap(<BtnClose />)
@@ -219,6 +235,10 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         if (isOwner) {
           // 진행중 미체크인 → 체크인 + 취소
           if (isAct && !b.checkedIn) return btnWrap(<><BtnCancel /><BtnCheckin /></>)
+          // ← [P2 v8] 시작 10분 이내 confirmed → 취소 + 변경 + 체크인 대기(비활성)
+          //   정책: 체크인은 시작 후 10분 이내만 가능 → 지금은 '대기' 상태만 노출
+          //   에메랄드룸 승인완료도 동일 로직 (에메랄드는 변경 불가이므로 BtnEdit 제외)
+          if (showCheckinWait) return btnWrap(<><BtnCancel />{!isApprovedAdminRoom&&<BtnEdit />}<BtnCheckinWait /></>)
           // 미래 → 변경 + 취소 (승인완료 에메랄드룸은 취소만)
           if (isFuture && b.status === 'confirmed') return btnWrap(<><BtnCancel />{!isApprovedAdminRoom&&<BtnEdit />}</>)
           // pending 미래 → 취소만
