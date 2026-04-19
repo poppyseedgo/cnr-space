@@ -123,8 +123,11 @@ export function CalendarShell({
   // ← [P2 v7] 자체 판별 제거 → slotHelpers.isShownInDailyView 단일 진실 원천 사용
   //   기존: `!b.autoCancelled || (b.cancelledBy === 'system' && b.status !== 'rejected')`
   //   변경: 의미 있는 이름의 유틸 함수로 분리 (판별 규칙 변경 시 한 곳만 수정)
+  //   hotfix: isShownInDailyView가 now/isToday를 받아 '노쇼만 박제'/'기한초과 제외' 분리
+  const dailyNow     = nowMinutes()
+  const dailyIsToday = selectedDate === todayStr()
   const dailyBks = filteredBks.filter(b =>
-    tsDate(b.start_at) === selectedDate && isShownInDailyView(b)
+    tsDate(b.start_at) === selectedDate && isShownInDailyView(b, dailyNow, dailyIsToday)
   )
 
   return (
@@ -458,14 +461,16 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
         {rooms.map((room, ri) => {
           const floor = getFloor(room.floor_id)
           const rBks = bookings.filter(b => b.room_id === room.room_id && !b.autoCancelled)
-          // ← [P2 v7] 노쇼 + 기한초과 취소 모두 별도 슬롯으로 표시 (system 취소 = 버려진 예약)
-          //   기존: isNoshow만 포함 → 기한초과된 예약이 일반 슬롯으로 흘러들어 "노쇼" 뱃지 오표시
-          //   변경: slotHelpers.getSlotState로 판별 통일 (isNoshow OR isExpiredPending)
+          // ← [P2 v7 hotfix] 노쇼만 박제 표시 — 기한초과는 제외 (일반 취소와 동일 처리)
+          //   정책: 노쇼는 "이 시간에 노쇼 있었다"는 기록 목적이라 박제,
+          //         기한초과는 "승인되지 않아 일어나지 않은 약속"이라 제외
+          //   변경: isShownInDailyView가 이미 기한초과 제외하므로 rBks에서도 자동 제외됨
+          //         여기서는 isNoshow만 명시적으로 별도 슬롯 렌더
           const rBksCancelled = bookings.filter(b => {
             if (b.room_id !== room.room_id) return false
             if (!b.autoCancelled || b.status === 'rejected') return false
             const st = getSlotState(b, now, isToday, currentUser)
-            return st.isNoshow || st.isExpiredPending
+            return st.isNoshow   // 노쇼만 포함 (기한초과 제외)
           })
           const dot = getRoomDot(room.room_id)
 
@@ -519,22 +524,21 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                   )
                 })()}
 
-                {/* 노쇼 / 기한초과 슬롯 */}
-                {/* ← [P2 v7] 하드코딩 #FEF3C7 제거 → chip-noshow / chip-expired 클래스 사용 */}
-                {/*   단일 진실 원천: tokens.css의 색상 토큰이 적용됨 (노쇼 변경 시 여기도 자동 반영) */}
+                {/* 노쇼 박제 슬롯 */}
+                {/* ← [P2 v7 hotfix] 기한초과 분기 제거 — rBksCancelled가 이미 노쇼만 필터링함
+                     · 정책: 노쇼는 박제 (이 시간에 노쇼 있었다는 기록 목적)
+                     · 기한초과는 일반 취소와 동일하게 일간 뷰에서 사라짐
+                     · tokens.css의 chip-noshow 색상 토큰 자동 적용 */}
                 {rBksCancelled.map(b => {
-                  const st       = getSlotState(b, now, isToday, currentUser)
                   const sm       = tsMin(b.start_at)
                   const left     = ((sm-7*60)/60)*CW+2
                   const width    = (15/60)*CW-4  // 15분 고정 폭 (원래 예약 시간 무시)
-                  const chipCls  = st.isExpiredPending ? 'chip-expired' : 'chip-noshow'
-                  const chipText = st.isExpiredPending ? '기한초과' : '노쇼'
                   return (
                     <div key={b.id} onClick={e => { e.stopPropagation(); onBlockClick(b) }}
                       style={{ position: 'absolute', top: 6, bottom: 6, left, width,
                         background: '#F1F5F9', border: '1px dashed #D1D5DB', borderRadius: 5,
                         padding: '2px 5px', cursor: 'pointer', opacity: 0.5, overflow: 'hidden', zIndex: 1 }}>
-                      <span className={`chip chip--xs ${chipCls}`}>{chipText}</span>
+                      <span className="chip chip--xs chip-noshow">노쇼</span>
                       {b.user && <span style={{ display: 'block', fontSize: 8, color: '#9CA3AF', marginTop: 2,
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.user}</span>}
                     </div>

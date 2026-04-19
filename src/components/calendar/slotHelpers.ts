@@ -28,17 +28,31 @@ export interface SlotState {
 
 /**
  * 일간 뷰에 표시할 예약인지 판별
- * · 활성 예약 (autoCancelled=false)
- * · + 시스템 취소 (노쇼 또는 기한초과) — 이벤트 흔적을 남기기 위해 흐리게 표시
- * · 제외: 사용자/관리자 수동 취소, 관리자 거절
  *
- * ← [P2 v7] 기존 CalendarShell line 125 자체 판별 로직을 여기로 이동.
- *          판별 규칙의 단일 진실 원천 확립.
+ * 정책 (박제 정책):
+ *  · 활성 예약 (autoCancelled=false) → 표시
+ *  · 노쇼 (체크인 없이 start_at+10분 경과 후 시스템 자동 취소) → **박제 표시**
+ *    └ "이 시간에 노쇼가 있었다"는 기록을 남기기 위함
+ *  · 기한초과 (pending_expired, 시작 전 자동 취소) → **제외** (일반 취소와 동일)
+ *    └ 애초에 승인되지 않아 "일어나지 않은 약속"이므로 기록 불필요
+ *  · 사용자/관리자 수동 취소 → 제외 (기존)
+ *  · 관리자 거절 → 제외 (기존)
+ *
+ * ← [2026-04-19 P2 v7 hotfix] 기한초과가 일간 뷰에 잔존하던 버그 수정
+ *     · 기존: `cancelledBy === 'system'`이면 전부 포함 → 기한초과도 표시됨
+ *     · 수정: getSlotState로 isNoshow만 정확히 필터링 (기한초과 분리 후 제외)
+ *     · 판별 동기화: getSlotState의 시간축 분리와 완전히 일치
  */
-export function isShownInDailyView(b: Booking): boolean {
-  if (!b.autoCancelled) return true   // 활성 예약
+export function isShownInDailyView(b: Booking, now: number, isToday: boolean): boolean {
+  // 거절 → 무조건 제외 (autoCancelled 값과 무관)
   if (b.status === 'rejected') return false
-  return b.cancelledBy === 'system'   // system 취소만 포함 (user/admin 수동 취소 제외)
+  // 활성 예약 (취소 안 됨)
+  if (!b.autoCancelled) return true
+  // 취소된 예약: 사용자/관리자 수동 취소 → 제외
+  if (b.cancelledBy !== 'system') return false
+  // 시스템 취소 중: 노쇼만 박제, 기한초과는 제외
+  const st = getSlotState(b, now, isToday, '')
+  return st.isNoshow
 }
 
 export function getSlotState(
