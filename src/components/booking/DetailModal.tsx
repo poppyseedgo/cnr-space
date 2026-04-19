@@ -11,6 +11,7 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, B
 import { AttendeeChip } from '../common/AttendeeChip'
 import { UserChip } from '../common/UserChip'
 import { BookingStatusBadge } from '../common/BookingStatusBadge'
+import { MetaBadge } from '../common/MetaBadge'
 import { Button } from '../common/Button' 
 
 export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser, rooms:rp=[], users:up=[], isAdmin=false, onApprove=null, onReject=null, onForceCancel=null}: any) {
@@ -54,18 +55,17 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
               <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} currentUser={currentUser} />
             </div>
             <div style={{fontSize: isMobile ? 17 : 20, fontWeight:600, color:"#111111", wordBreak:"break-word"}}>{b.title}</div>
+            {/* ← [P2 v7] 반복/참석자 인라인 하드코딩 제거 → MetaBadge 공통 컴포넌트 사용
+                 · 이전: 🔁/👤 이모지 + 하드코딩 색상 (HomeView/BookingListTable와 불일치)
+                 · 변경: MetaBadge type='recurring'/'guest' → tokens.css 색상 토큰 자동 적용 */}
             {b.recurGroupId && (
               <div style={{marginTop:6}}>
-                <span style={{display:'inline-flex',alignItems:'center',gap:4,background:'#EEF2FF',color:'#4338CA',fontSize:11,fontWeight:600,borderRadius:6,padding:'3px 8px'}}>
-                  🔁 반복 예약
-                </span>
+                <MetaBadge type="recurring" size="sm" />
               </div>
             )}
             {b.user !== currentUser && b.attendees?.some((a: any) => a.name === currentUser) && (
               <div style={{marginTop:6}}>
-                <span style={{display:'inline-flex',alignItems:'center',gap:4,background:'#F0FDF4',color:'#15803D',fontSize:11,fontWeight:600,borderRadius:6,padding:'3px 8px'}}>
-                  👤 참석자
-                </span>
+                <MetaBadge type="guest" size="sm" />
               </div>
             )}
           </div>

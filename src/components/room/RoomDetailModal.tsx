@@ -199,13 +199,22 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
                       const startMin = tsMin(b.start_at);
                       const endMin   = tsMin(b.end_at);
 
-                      // ← 상태 분기 (설계 정책)
-                      const isNoshow   = b.autoCancelled && b.cancelledBy === 'system' && !b.checkedIn;
+                      // ← [P2 v7] 상태 분기 재정리
+                      //   기존: isNoshow 판별이 `cancelledBy='system' && !checkedIn`으로
+                      //         시간축 없음 → pending_expired도 노쇼로 오분류
+                      //   변경: pending_expired 제외하고 '진짜 노쇼'만 isNoshow로 분류
+                      //         시각적 뱃지 표시는 BookingStatusBadge 단일 소스 사용
+                      const isSystemCancel = b.autoCancelled && b.cancelledBy === 'system'
+                                             && b.status !== 'rejected'
+                      // 기한초과: status='pending' 유지 OR cancelled지만 시작 후 10분 이내
+                      const isExpired  = isSystemCancel
+                                         && (b.status === 'pending' || bNow < startMin + 10)
+                      const isNoshow   = isSystemCancel && !isExpired
                       const isPending  = !b.autoCancelled && b.status === 'pending';
                       const isEarlyEnd = !b.autoCancelled && b.earlyEnded;
                       const isActive   = !b.autoCancelled && !b.earlyEnded && startMin <= bNow && bNow < endMin;
                       const isDone     = !b.autoCancelled && !b.earlyEnded && endMin <= bNow;
-                      const dimmed     = isNoshow || isDone; // ← 흐리게 표시
+                      const dimmed     = isNoshow || isExpired || isDone; // ← 흐리게 표시
 
                       // ← 상태별 카드 배경색
                       const cardBg = isActive   ? "#FFF1F2"
@@ -238,12 +247,15 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
                             <div style={{fontSize:13,color:"#111111",fontWeight:600,
                               overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",
                               display:"flex",alignItems:"center",gap:5}}>
-                              {/* ← 상태 인디케이터 */}
+                              {/* ← [P2 v7] 인라인 하드코딩 뱃지 4개 → chip 클래스 통일
+                                    · tokens.css 색상 토큰 자동 적용 (노쇼 색상 변경 시 여기도 반영)
+                                    · pending_expired와 noshow가 명확히 구분됨 */}
                               {isActive   && <span style={{width:7,height:7,borderRadius:"50%",background:"#E11D48",display:"inline-block",flexShrink:0}}/>}
-                              {isPending  && <span style={{fontSize:10,fontWeight:600,color:"#92400E",background:"#FEF3C7",borderRadius:4,padding:"1px 5px",flexShrink:0}}>승인대기</span>}
-                              {isNoshow   && <span style={{fontSize:10,fontWeight:600,color:"#6B7280",background:"#F1F5F9",borderRadius:4,padding:"1px 5px",flexShrink:0}}>노쇼</span>}
-                              {isEarlyEnd && <span style={{fontSize:10,fontWeight:600,color:"#0369A1",background:"#E0F2FE",borderRadius:4,padding:"1px 5px",flexShrink:0}}>조기반납</span>}
-                              {isDone     && <span style={{fontSize:10,fontWeight:600,color:"#94A3B8",background:"#F1F5F9",borderRadius:4,padding:"1px 5px",flexShrink:0}}>종료</span>}
+                              {isPending  && <span className="chip chip--xs chip-pending"  style={{flexShrink:0}}>승인대기</span>}
+                              {isExpired  && <span className="chip chip--xs chip-expired"  style={{flexShrink:0}}>기한초과</span>}
+                              {isNoshow   && <span className="chip chip--xs chip-noshow"   style={{flexShrink:0}}>노쇼</span>}
+                              {isEarlyEnd && <span className="chip chip--xs chip-earlyend" style={{flexShrink:0}}>조기반납</span>}
+                              {isDone     && <span className="chip chip--xs chip-done"     style={{flexShrink:0}}>종료</span>}
                               <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.title}</span>
                             </div>
                             <div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>{b.user} · {b.dept}</div>

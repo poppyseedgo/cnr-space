@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { SlotContent } from '../calendar/SlotContent'
-import { getSlotState, getSlotColors } from '../calendar/slotHelpers'
+import { getSlotState, getSlotColors, isShownInDailyView } from '../calendar/slotHelpers'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import {
   todayStr, nowMinutes, tsDate, tsMin, fmtTS,
@@ -120,9 +120,11 @@ export function CalendarShell({
     const d = tsDate(b.start_at)
     return d >= weekStart && d <= addDays(weekStart, 6)
   })
+  // ← [P2 v7] 자체 판별 제거 → slotHelpers.isShownInDailyView 단일 진실 원천 사용
+  //   기존: `!b.autoCancelled || (b.cancelledBy === 'system' && b.status !== 'rejected')`
+  //   변경: 의미 있는 이름의 유틸 함수로 분리 (판별 규칙 변경 시 한 곳만 수정)
   const dailyBks = filteredBks.filter(b =>
-    tsDate(b.start_at) === selectedDate &&
-    (!b.autoCancelled || (b.cancelledBy === 'system' && b.status !== 'rejected'))
+    tsDate(b.start_at) === selectedDate && isShownInDailyView(b)
   )
 
   return (
@@ -456,10 +458,15 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
         {rooms.map((room, ri) => {
           const floor = getFloor(room.floor_id)
           const rBks = bookings.filter(b => b.room_id === room.room_id && !b.autoCancelled)
-          const rBksCancelled = bookings.filter(b =>
-            b.room_id === room.room_id && b.autoCancelled &&
-            b.cancelledBy === 'system' && b.status !== 'rejected'
-          )
+          // ← [P2 v7] 노쇼 + 기한초과 취소 모두 별도 슬롯으로 표시 (system 취소 = 버려진 예약)
+          //   기존: isNoshow만 포함 → 기한초과된 예약이 일반 슬롯으로 흘러들어 "노쇼" 뱃지 오표시
+          //   변경: slotHelpers.getSlotState로 판별 통일 (isNoshow OR isExpiredPending)
+          const rBksCancelled = bookings.filter(b => {
+            if (b.room_id !== room.room_id) return false
+            if (!b.autoCancelled || b.status === 'rejected') return false
+            const st = getSlotState(b, now, isToday, currentUser)
+            return st.isNoshow || st.isExpiredPending
+          })
           const dot = getRoomDot(room.room_id)
 
           return (
@@ -512,18 +519,22 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                   )
                 })()}
 
-                {/* 노쇼 슬롯 */}
+                {/* 노쇼 / 기한초과 슬롯 */}
+                {/* ← [P2 v7] 하드코딩 #FEF3C7 제거 → chip-noshow / chip-expired 클래스 사용 */}
+                {/*   단일 진실 원천: tokens.css의 색상 토큰이 적용됨 (노쇼 변경 시 여기도 자동 반영) */}
                 {rBksCancelled.map(b => {
-                  const sm = tsMin(b.start_at)
-                  const left = ((sm-7*60)/60)*CW+2
-                  const width = (15/60)*CW-4  // ← 노쇼: 15분 고정 폭 (원래 예약 시간 무시)
+                  const st       = getSlotState(b, now, isToday, currentUser)
+                  const sm       = tsMin(b.start_at)
+                  const left     = ((sm-7*60)/60)*CW+2
+                  const width    = (15/60)*CW-4  // 15분 고정 폭 (원래 예약 시간 무시)
+                  const chipCls  = st.isExpiredPending ? 'chip-expired' : 'chip-noshow'
+                  const chipText = st.isExpiredPending ? '기한초과' : '노쇼'
                   return (
                     <div key={b.id} onClick={e => { e.stopPropagation(); onBlockClick(b) }}
                       style={{ position: 'absolute', top: 6, bottom: 6, left, width,
                         background: '#F1F5F9', border: '1px dashed #D1D5DB', borderRadius: 5,
                         padding: '2px 5px', cursor: 'pointer', opacity: 0.5, overflow: 'hidden', zIndex: 1 }}>
-                      <span style={{ display: 'inline-block', background: '#FEF3C7', color: '#92400E',
-                        fontSize: 8, fontWeight:600, padding: '1px 4px', borderRadius: 2 }}>노쇼</span>
+                      <span className={`chip chip--xs ${chipCls}`}>{chipText}</span>
                       {b.user && <span style={{ display: 'block', fontSize: 8, color: '#9CA3AF', marginTop: 2,
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.user}</span>}
                     </div>
@@ -532,13 +543,17 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
 
                 {/* 예약 블록 */}
                 {rBks.map(b => {
-                  const sm = tsMin(b.start_at), em = tsMin(b.end_at)
+                  // ← [P2 v7] 자체 isNoshow 판별 제거 → slotHelpers.getSlotState 통일
+                  //   기존: `isNoshow = autoCancelled && cancelledBy==='system' && status!=='rejected'`
+                  //         → 시간축 분리 없어서 pending_expired도 noshow로 오분류됨
+                  //   이 슬롯에 오는 건 !autoCancelled이라 실제론 둘 다 false이지만
+                  //   변수명·의미·getSlotColors 인터페이스 일관성 위해 통일
+                  const st = getSlotState(b, now, isToday, currentUser)
+                  const { sm, em, isNoshow, isExpiredPending, isEnded, isAct, isMyBooking } = st
                   const left = ((sm-7*60)/60)*CW+2, width = Math.max(((em-sm)/60)*CW-4, 20)
-                  const isNoshow = b.autoCancelled && b.cancelledBy === 'system' && b.status !== 'rejected'
-                  const isEnded  = b.earlyEnded
-                  const isAct    = isToday && sm <= now && now < em && !isNoshow && !isEnded
-                  const { isMyBooking } = getSlotState(b, now, isToday, currentUser)
-                  const { titleColor, subColor } = getSlotColors({ variant: 'daily', isAct, isEnded, isNoshow })
+                  const { titleColor, subColor } = getSlotColors({
+                    variant: 'daily', isAct, isEnded, isNoshow, isExpiredPending
+                  })
                   const slotRoom = (dvRooms as any[]).find(r => r.room_id === b.room_id)
                   return (
                     <div key={b.id} onClick={e => { e.stopPropagation(); onBlockClick(b) }}
