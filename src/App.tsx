@@ -325,6 +325,47 @@ function AppContent() {
     }
   }, [])
 
+  // ── [P2 v7] booking-{id} 딥링크 → DetailModal 자동 오픈 ──────────────────
+  //
+  // 이메일 CTA 공통 규칙: "해당 예약에 대한 액션" 버튼은 해당 예약 모달 직접 연결
+  //   · 딥링크 스킴: {APP_URL}#booking-{BOOKING_ID}
+  //   · 감지 조건: bookings 로드 완료 + 예약 찾음 + 현재 모달 열려있지 않음
+  //   · 동작: mypage 탭 + DetailModal(해당 예약) 자동 오픈
+  //   · 1회성: 모달 열린 후 sessionStorage 플래그 정리 + 해시 제거
+  //
+  // 대상 이벤트: created, updated, approved, checkin_*, early_end 등
+  // 참고: admin-booking-{id}는 AdminView에서 별도 처리 (본 로직은 일반 사용자용)
+  useEffect(() => {
+    if (!authUser || loading) return
+    if (bookings.length === 0) return
+
+    // 해시 또는 sessionStorage에서 딥링크 확인
+    const hash       = window.location.hash.replace('#', '')
+    const savedHash  = sessionStorage.getItem('cnr_deeplink') ?? ''
+    const deeplink   = hash.startsWith('booking-') ? hash :
+                       savedHash.startsWith('booking-') ? savedHash : ''
+
+    if (!deeplink) return
+
+    const bookingId  = deeplink.replace('booking-', '')
+    if (!bookingId) return
+
+    const target = bookings.find(b => b.id === bookingId)
+    if (!target) {
+      // 예약이 없음 (삭제됨/권한 없음) — 조용히 딥링크 정리
+      console.warn('[deeplink] 예약을 찾을 수 없음:', bookingId)
+      sessionStorage.removeItem('cnr_deeplink')
+      if (hash.startsWith('booking-')) window.location.hash = 'mypage'
+      return
+    }
+
+    // 모달 오픈 + 딥링크 정리 (이후 새로고침에선 재오픈 안 됨)
+    setModal({ type: 'detail', data: target })
+    sessionStorage.removeItem('cnr_deeplink')
+    // hash는 mypage로 대체 (다음 뒤로가기 시 모달 닫힘 자연스럽게)
+    if (hash.startsWith('booking-')) window.location.hash = 'mypage'
+  }, [authUser?.user_id, loading, bookings.length])
+
   // 틱 타이머 + Realtime + 이벤트 리스너 + 탭 복귀 새로고침 (마운트 1회)
   useEffect(() => {
     // ① 10초마다 tick → 시간 기반 UI 상태 즉시 반영 (체크인 대기/사용중 등)
@@ -397,7 +438,7 @@ function AppContent() {
 
   // ── 이메일 알림 발송 (Fire & Forget — 실패해도 예약 로직에 영향 없음) ──
   const sendNotification = useCallback(async (
-    type: 'created' | 'updated' | 'cancelled' | 'noshow' | 'pending' | 'approved' | 'rejected' | 'attendee_removed',
+    type: 'created' | 'updated' | 'cancelled' | 'noshow' | 'pending' | 'approved' | 'rejected' | 'attendee_removed' | 'early_end',
     booking: any,
   ) => {
     try {
@@ -647,14 +688,22 @@ function AppContent() {
       });
       insertAuditLog({ action: 'BOOKING_EARLY_END', entityType: 'booking', entityId: id, actorName: currentUser }).catch(()=>{})
       showToast("사용 완료! 회의실이 반환되었습니다.");
-      if (authUser?.user_id && target) {
+
+      // ← [2026-04-19 P2 v7] 조기 반납 이메일 + 인앱 알림 발송
+      //   · 기존: App.tsx가 insertNotification 직접 호출 (프론트 전용, 이메일 없음)
+      //   · 변경: sendNotification('early_end')으로 변경 → send-notification이 이메일+인앱 전담
+      //   · 수신자: 예약자 본인만 (booker_only, POLICIES.early_end.recipients)
+      //   · 배송 3 원칙 유지: 프론트 직접 INSERT 제거, 중복 방지
+      if (target) {
         const r = rooms.find(rm => rm.room_id === target.room_id)
-        insertNotification({
-          userId: authUser.user_id, type: 'booking_early_end',
-          title: '회의실 반납 완료',
-          body: `${target.title} · ${r?.room_name ?? ''} · ${fmtTSDateFull(target.start_at)}`,
-          bookingId: id,
-        }).catch(() => {})
+        sendNotification('early_end', {
+          ...target,
+          end_at:         newEndAt,               // 실제 반납 시간으로 교체
+          original_end_at: target.end_at,         // 원래 종료 시간 (이메일 본문 참조용)
+          user_name:      target.user,
+          user_dept:      target.dept,
+          room_name:      r?.room_name ?? r?.room_name_ko ?? '',
+        })
       }
     } catch (err: any) {
       setBookings(prev => prev.map(b => b.id===id

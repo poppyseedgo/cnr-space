@@ -72,6 +72,7 @@ export type NotificationType =
   | 'checkin_before_10'       // 시작 10분 전 체크인 안내
   | 'checkin_start'           // 시작 시점 체크인 요청
   | 'checkin_warning_5'       // 시작 5분 후 미체크인 경고
+  | 'early_end'               // 회의실 조기 반납 ← [P2 v7] 2026-04-19 신규
   // 일일 리마인더
   | 'daily_reminder'          // 매일 07:00 KST 당일 예약 안내
 
@@ -170,11 +171,27 @@ const BANNER_PRESETS = {
 // ═══════════════════════════════════════════════════════════════════════════
 // 6. CTA 프리셋
 // ═══════════════════════════════════════════════════════════════════════════
+//
+// ← [2026-04-19 P2 v7] CTA 설계 공통 규칙 확립
+//   · 원칙: "해당 예약에 대한 액션" 버튼은 해당 예약 모달로 직접 연결되어야 함
+//     (생성/변경/승인/체크인/조기반납 등 — 예약 id가 유의미한 이벤트)
+//   · 딥링크 스킴:
+//      · 예약자/참석자용:    #booking-{BOOKING_ID}        → mypage 탭 + DetailModal 자동 오픈
+//      · 관리자 승인 작업용: #admin-booking-{BOOKING_ID}  → admin 탭 + 해당 예약 포커스
+//      · 이미 취소/거절된 예약, 일일 요약 등은 예외 (홈 { APP_URL } 유지)
+//
+// 프리셋 목록:
+//   · CTA_BOOKING_DETAIL → 해당 예약 모달 직접 오픈 (생성/변경/승인/조기반납)
+//   · CTA_CHECKIN        → 체크인하러 가기 (예약 모달 경유) — 이제 deeplink 사용
+//   · CTA_NEW            → 홈으로 (취소·거절된 예약에 대한 대안 제시)
+//   · CTA_APP_ROOT       → 홈으로 (일일 요약, 당일 여러 건 등 특정 예약 하나로 포커싱 안 되는 경우)
+//   · CTA_ADMIN_APPR     → 관리자 승인 화면
 
-const CTA_APP_ROOT   = { label: '예약 확인하기',      urlTemplate: '{APP_URL}',                                  color: COLORS.INDIGO }
-const CTA_NEW        = { label: '새 예약 만들기',      urlTemplate: '{APP_URL}',                                  color: COLORS.INDIGO }
-const CTA_CHECKIN    = { label: '체크인하러 가기',     urlTemplate: '{APP_URL}',                                  color: COLORS.CYAN }
-const CTA_ADMIN_APPR = { label: '지금 승인 처리하기',  urlTemplate: '{APP_URL}#admin-booking-{BOOKING_ID}',       color: COLORS.AMBER }
+const CTA_BOOKING_DETAIL = { label: '예약 확인하기',     urlTemplate: '{APP_URL}#booking-{BOOKING_ID}',       color: COLORS.INDIGO }
+const CTA_CHECKIN        = { label: '체크인하러 가기',   urlTemplate: '{APP_URL}#booking-{BOOKING_ID}',       color: COLORS.CYAN   }
+const CTA_NEW            = { label: '새 예약 만들기',    urlTemplate: '{APP_URL}',                            color: COLORS.INDIGO }
+const CTA_APP_ROOT       = { label: '예약 확인하기',     urlTemplate: '{APP_URL}',                            color: COLORS.INDIGO }
+const CTA_ADMIN_APPR     = { label: '지금 승인 처리하기', urlTemplate: '{APP_URL}#admin-booking-{BOOKING_ID}', color: COLORS.AMBER  }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 7. 정책 정의 — 이벤트별 전체 매트릭스
@@ -196,9 +213,10 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
     inappTitleAttendee: '회의 참석자로 초대되었습니다',
     inappTitleAdmin:    '',
     contextBanner:      null,
+    // ← [P2 v7] CTA 공통 규칙: 해당 예약 모달 직접 오픈
     cta: {
-      booker:   CTA_APP_ROOT,
-      attendee: CTA_APP_ROOT,
+      booker:   CTA_BOOKING_DETAIL,
+      attendee: CTA_BOOKING_DETAIL,
     },
     isCancelledStyle: false,
   },
@@ -237,9 +255,10 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
     inappTitleAttendee: '참석 예약이 변경되었습니다',
     inappTitleAdmin:    '',
     contextBanner:      null,
+    // ← [P2 v7] CTA 공통 규칙: 해당 예약 모달 직접 오픈
     cta: {
-      booker:   CTA_APP_ROOT,
-      attendee: CTA_APP_ROOT,
+      booker:   CTA_BOOKING_DETAIL,
+      attendee: CTA_BOOKING_DETAIL,
     },
     isCancelledStyle: false,
   },
@@ -319,9 +338,10 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
     inappTitleAttendee: '참석 예약이 승인되었습니다',
     inappTitleAdmin:    '',
     contextBanner:      null,  // 승인 관리자 정보는 템플릿이 booking.admin_name으로 동적 렌더
+    // ← [P2 v7] CTA 공통 규칙: 해당 예약 모달 직접 오픈
     cta: {
-      booker:   CTA_APP_ROOT,
-      attendee: CTA_APP_ROOT,
+      booker:   CTA_BOOKING_DETAIL,
+      attendee: CTA_BOOKING_DETAIL,
     },
     isCancelledStyle: false,
   },
@@ -444,6 +464,33 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
       booker: CTA_CHECKIN,
     },
     isCancelledStyle: false,
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // 조기 반납 ← [P2 v7] 2026-04-19 신규
+  // ──────────────────────────────────────────────────────────────────────
+
+  early_end: {
+    subjectTag:         '[반납완료]',
+    headerLabel:        '회의실 이용 완료 — 반납 처리되었습니다',
+    headerColor:        COLORS.INDIGO,
+    recipients:         'booker_only',                      // 예약자 본인에게만
+    inappType:          'booking_early_end',
+    inappTitleBooker:   '회의실 반납 완료',
+    inappTitleAttendee: '',                                 // 참석자 알림 없음
+    inappTitleAdmin:    '',                                 // 관리자 알림 없음
+    contextBanner: {
+      booker: {
+        ...BANNER_PRESETS.info,
+        title: '회의실 이용이 완료되어 반납 처리되었습니다.',
+        body:  '원래 종료 시간 이전에 조기 반납되었으며, 다른 사용자가 해당 시간을 예약할 수 있습니다.',
+      },
+    },
+    cta: {
+      // 해당 예약 모달 직접 오픈 (반납된 예약 상세 확인 가능)
+      booker: CTA_BOOKING_DETAIL,
+    },
+    isCancelledStyle: false,  // 취소 스타일 아님 (정상 완료)
   },
 
   // ──────────────────────────────────────────────────────────────────────
