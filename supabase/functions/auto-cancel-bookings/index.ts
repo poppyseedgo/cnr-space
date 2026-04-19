@@ -32,6 +32,21 @@
  *   · 제거된 헬퍼: insertInAppNotification, fetchAdminUserIds, fetchAttendeeUserIds
  *   · 인앱 중복 INSERT 근본 제거
  *
+ * [2026-04-19 P2 v6] pending_expired 알림 누락 버그 해결 (Race Condition)
+ *   · 증상: 승인 기한 초과로 자동 취소된 예약의 이메일/인앱 알림 완전 누락
+ *   · DB 검증: status=pending + auto_cancelled=true 행 17건 누적, pending_expired 알림 04-18 이후 0건
+ *   · 근본 원인: App.tsx의 expirePendingBooking()이 DB에 auto_cancelled=true로 선점
+ *     → 기존 쿼리 필터 `auto_cancelled=false`에 걸려 cron이 건너뜀
+ *     → send-notification('pending_expired') 호출 안 됨
+ *   · 노쇼는 정상 작동 (start_at+10분 시점 감지로 cron이 먼저 선점되는 구조)
+ *   · 해결 (pending_expired만):
+ *     (a) App.tsx: useEffect의 expirePendingBooking() 호출 제거 (단일 주체 DB 쓰기)
+ *     (b) 본 파일 쿼리: `auto_cancelled=false` 필터 제거 (프론트 선점 건 backfill)
+ *     (c) 본 파일 UPDATE: `.eq('status','pending')` + `.select('id')` 추가
+ *         → 원자적 조건부 UPDATE로 재발송 방지 (PostgreSQL row-level lock 동등)
+ *   · 노쇼 로직은 정상 작동 중이므로 건드리지 않음 (동일 패턴 방어는 필요 시 추후)
+
+ *
  * ═══════════════════════════════════════════════════════════════════════════
  * 배포 규칙
  * ═══════════════════════════════════════════════════════════════════════════
@@ -202,6 +217,20 @@ Deno.serve(async () => {
 
     // ─── 3. 승인 기한 초과 자동 취소 ───────────────────────────────────
     // pending 예약 중 start_at이 현재+1분 이내면 자동 취소 (승인 안 됨)
+    //
+    // ← [2026-04-19 P2 v6] auto_cancelled=false 필터 제거 + UPDATE 원자성 강화
+    //   배경:
+    //     · 기존: `auto_cancelled=false` 필터로만 재처리 방지 → 프론트가 선점한 건들 전부 누락
+    //     · App.tsx의 expirePendingBooking() 호출 제거(근본 해결)와 병행하는 방어막
+    //   변경:
+    //     (1) 쿼리에서 `auto_cancelled=false` 제거 — pending + start_at 조건만으로 대상 식별
+    //     (2) UPDATE에 `.eq('status', 'pending')` + `.select('id')` 추가
+    //         → 원자적 조건부 UPDATE: pending일 때만 cancelled로 바꾸고 실제 바뀐 행 수 확인
+    //         → 다른 주체가 이미 status를 바꿨다면 UPDATE 0 rows (재처리 방지)
+    //     (3) UPDATE 결과가 0 rows면 알림 발송 skip (이미 다른 주체가 처리한 건)
+    //   효과:
+    //     · 프론트가 auto_cancelled=true로 선점한 과거 17건도 cron이 다시 처리함 (backfill)
+    //     · 동시 cron 인스턴스가 같은 건을 처리해도 1건만 UPDATE 성공 (알림 중복 방지)
     // ← [2026-04-17] start_at lower bound 추가 (과거 1시간만 스캔)
     const expireDeadline     = new Date(now.getTime() + 1 * 60 * 1000).toISOString()
     const expireLowerBound   = new Date(now.getTime() - 60 * 60 * 1000).toISOString()
@@ -209,10 +238,15 @@ Deno.serve(async () => {
     const { data: expiredTargets, error: expiredErr } = await supabase
       .from('bookings')
       .select('*')
-      .eq('status',         'pending')
-      .eq('auto_cancelled', false)
-      .gte('start_at',      expireLowerBound)
-      .lt('start_at',       expireDeadline)
+      .eq('status',    'pending')
+      // ← [P2 v6] auto_cancelled=false 필터 제거 (프론트 선점 건 backfill)
+      //   · 대신 cancelled_by로 "누가 취소했는지" 구분하여 사용자/관리자 수동 취소는 제외
+      //   · 허용: cancelled_by IS NULL (정상 pending) OR 'system' (프론트 expirePendingBooking)
+      //   · 제외: cancelled_by IN ('user', 'admin') — 사용자 수동 취소 / 관리자 강제 취소
+      //   · PostgREST는 .or('cancelled_by.is.null,cancelled_by.eq.system') 형태로 표현
+      .or('cancelled_by.is.null,cancelled_by.eq.system')
+      .gte('start_at', expireLowerBound)
+      .lt('start_at',  expireDeadline)
 
     if (expiredErr) {
       console.error('[auto-cancel] pending_expired 조회 실패:', expiredErr)
@@ -221,17 +255,30 @@ Deno.serve(async () => {
     for (const booking of (expiredTargets ?? [])) {
       // ← [CRITICAL] pending_expired는 status를 cancelled로 저장해야 함
       //    (BookingStatusBadge 로직: status==='cancelled' && auto_cancelled && cancelled_by==='system')
-      const { error: upErr } = await supabase
+      //
+      // ← [P2 v6] 원자적 조건부 UPDATE
+      //   · .eq('status', 'pending')를 UPDATE 절에도 추가 → pending일 때만 바꿈
+      //   · .select('id')로 실제 UPDATE된 행 반환
+      //   · 0 rows면 다른 주체가 이미 처리한 것 → 알림 skip (재발송 방지)
+      const { data: updated, error: upErr } = await supabase
         .from('bookings')
         .update({
           status:         'cancelled',
           auto_cancelled: true,
           cancelled_by:   'system',
         })
-        .eq('id', booking.id)
+        .eq('id',     booking.id)
+        .eq('status', 'pending')   // ← [P2 v6] 원자성: pending일 때만 UPDATE
+        .select('id')
 
       if (upErr) {
         console.error(`[auto-cancel] pending_expired 업데이트 실패 (${booking.id}):`, upErr)
+        continue
+      }
+
+      // ← [P2 v6] UPDATE 0 rows → 이미 처리됨 (재발송 방지)
+      if (!updated || updated.length === 0) {
+        console.log(`[auto-cancel] pending_expired skip (이미 처리됨): ${booking.id}`)
         continue
       }
 

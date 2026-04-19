@@ -2,6 +2,31 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-04-19 P2 v6] pending_expired 알림 누락 버그 해결 (Race Condition)
+ *      · 증상: 에메랄드 룸 승인 대기 예약이 기한 초과로 자동 취소될 때
+ *              이메일/인앱 알림이 완전히 발송되지 않음
+ *      · 진단 (DB 쿼리 검증 완료):
+ *        - bookings 테이블에 status=pending + auto_cancelled=true 행 17건 누적
+ *        - notifications 테이블 pending_expired 알림 04-18 이후 0건
+ *      · 근본 원인 (Race Condition):
+ *        - App.tsx useEffect가 start_at - 1분 시점에 expirePendingBooking() 호출
+ *          → DB에 auto_cancelled=true로 저장 (status는 'pending' 유지)
+ *        - auto-cancel-bookings cron은 `auto_cancelled=false` 필터로 쿼리
+ *          → 프론트가 선점한 건들이 cron 쿼리에서 배제됨
+ *        - 결과: send-notification('pending_expired') 호출 안 됨 → 알림 누락
+ *      · 노쇼와의 차이 (노쇼는 정상 작동):
+ *        - 노쇼: start_at + 10분에 프론트 감지 → 그사이 cron이 이미 선점 (문제 없음)
+ *        - pending_expired: start_at - 1분에 프론트 감지 → 거의 항상 프론트가 선점
+ *      · 해결 (Option C: 단일 주체 DB 쓰기):
+ *        - useEffect pending_expired 블록에서 expirePendingBooking() 호출 제거
+ *        - 프론트는 낙관적 UI만 담당 (setBookings로 state만 업데이트)
+ *        - DB 상태 변경은 auto-cancel-bookings cron이 단독 수행
+ *        - Realtime 구독이 cron 결과를 프론트에 푸시하여 최종 동기화
+ *        - 노쇼는 정상 작동 중이므로 건드리지 않음
+ *      · 부수 효과: 최대 5분 지연 (cron 주기). 이미 기한 초과 상태이므로 허용 가능
+ *      · 원칙: 경쟁 조건은 "같은 DB 컬럼에 여러 주체가 쓴다"는 구조 자체가 문제.
+ *              주기를 줄이는 건 창만 좁히는 임시방편. 단일 주체로 수렴이 근본 해결.
+ *
  *  - [2026-04-19 P1 복구] selectedDate 전역 자동 보정 제거 (과도한 스코프 되돌림)
  *      · 증상: 캘린더뷰에서 어제/과거 날짜로 이동하면 10초 내에 오늘로 튕겨나감
  *              → 과거 예약 탐색 불가
@@ -52,7 +77,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from './utils/time'
 import { getFloor } from './data/floors'
-import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking, upsertBookingAttendees, getBookingAttendees, insertNotification, loadNotifications, markNotificationRead, markAllNotificationsRead, subscribeNotifications, expirePendingBooking, adminForceCancel, type AppNotification } from './lib/api'
+import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking, upsertBookingAttendees, getBookingAttendees, insertNotification, loadNotifications, markNotificationRead, markAllNotificationsRead, subscribeNotifications, adminForceCancel, type AppNotification } from './lib/api'
 import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView } from './components/room/HomeView'
@@ -904,19 +929,35 @@ function AppContent() {
     }
 
     // ② pending 승인 기한 초과: start_at 1분 전 이후 경과
+    //
+    // ← [2026-04-19 P2 v6] 프론트 DB 쓰기 제거 — Race Condition 근본 해결
+    //   문제 진단 (DB 쿼리 검증 완료):
+    //     · 프론트 useEffect가 start_at - 1분에 expirePendingBooking() 호출
+    //       → DB에 auto_cancelled=true로 저장 (status는 pending 그대로)
+    //     · auto-cancel-bookings cron은 `auto_cancelled=false` 필터로 쿼리
+    //       → 프론트가 먼저 처리한 건은 cron 쿼리에서 **완전 배제**
+    //     · 결과: send-notification('pending_expired') 호출 안 됨 → 이메일/인앱 누락
+    //     · 증거: bookings 테이블에 status=pending + auto_cancelled=true인 행 17건 누적,
+    //              notifications 테이블 pending_expired 알림 04-18 이후 0건
+    //   해결:
+    //     · 프론트는 낙관적 UI만 담당 (setBookings로 state만 업데이트)
+    //     · DB 상태 변경은 auto-cancel-bookings cron이 단독 수행
+    //     · cron이 처리 후 send-notification이 이메일+인앱 자동 발송
+    //     · Realtime 구독(subscribeBookings)이 cron 결과를 프론트에 푸시하여 최종 동기화
+    //   차이:
+    //     · 노쇼(①)는 start_at + 10분 시점에 감지 → 그사이 cron이 먼저 돌아 문제 없음
+    //     · pending_expired는 start_at - 1분 시점에 감지 → 프론트가 cron보다 먼저 선점
+    //   최악 지연: 5분 (cron 주기). 이미 기한 초과된 상태이므로 업무상 허용 가능
     const pendingExpired = bookings.filter(b =>
       b.status === 'pending' && !b.autoCancelled &&
       nowMs >= new Date(b.start_at).getTime() - 60_000
     );
     if(pendingExpired.length > 0){
       const expiredIds = new Set(pendingExpired.map(b => b.id));
+      // 낙관적 UI: state만 업데이트 (사용자에겐 즉시 "취소됨"으로 보임)
       setBookings(prev => prev.map(b => expiredIds.has(b.id) ? {...b, autoCancelled:true, cancelledBy:'system'} : b));
-      pendingExpired.forEach(b => {
-        expirePendingBooking(b.id).catch(() => {});
-        // ← [2026-04-18 P2] 예약자/관리자 인앱 알림 제거
-        //   auto-cancel-bookings Edge Fn이 pending_expired 처리 후
-        //   send-notification('pending_expired')가 booker + attendees + admins에게 자동 INSERT
-      });
+      // ← expirePendingBooking() 호출 제거
+      //   DB 쓰기는 auto-cancel-bookings cron이 단독 처리 (경쟁 조건 방지)
     }
   }, [tick]);
 
