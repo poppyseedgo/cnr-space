@@ -412,23 +412,22 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
   // ──────────────────────────────────────────────────────────────────────
 
   checkin_before_10: {
+    // ← [2026-04-20 파일럿 피드백 반영] 체크인 관련 워딩 전부 삭제
+    //   기존: 배너 body + CTA "체크인하러 가기" + 인앱 제목 "체크인 대기" 포함
+    //         → 사용자 혼란 (실제 체크인은 시작 후 10분만 가능한데 시작 전에 체크인 버튼 노출)
+    //   변경: CTA 삭제, 배너 body 삭제, 인앱 제목에서 "체크인 대기" 제거
     subjectTag:         '[회의10분전]',
     headerLabel:        '회의 시작 10분 전입니다',
     headerColor:        COLORS.CYAN,
     recipients:         'booker_only',
     inappType:          'checkin_before_10',
-    inappTitleBooker:   '회의 시작 10분 전 — 체크인 대기',
+    inappTitleBooker:   '회의 시작 10분 전입니다', // ← [수정] "체크인 대기" 워딩 제거
     inappTitleAttendee: '',
     inappTitleAdmin:    '',
     contextBanner: {
-      // ← [2026-04-19 P2 v8] 정책 정합성 수정 — 10분 전에는 체크인 불가, '대기' 상태만
-      //   기존: "예약 시작 10분 전부터 체크인이 가능합니다." (정책 오기재)
-      //   변경: 회의 시작 안내 + 취소 유도 (진행하지 않을 예약은 미리 취소)
-      booker: { ...BANNER_PRESETS.info, title: '회의 시작 10분 전입니다. 체크인 대기해 주세요!', body: '진행하지 않는 예약이라면 미리 취소해 주세요.' },
+      booker: { ...BANNER_PRESETS.info, title: '회의 시작 10분 전 입니다.' }, // ← [수정] title 변경, body 삭제
     },
-    cta: {
-      booker: CTA_CHECKIN,
-    },
+    // ← [수정] cta 필드 자체를 제거 — email-templates.ts L519의 `if (!policy.cta) return ''` 에 의해 CTA 블록 미렌더링
     isCancelledStyle: false,
   },
 
@@ -501,6 +500,11 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
   // ──────────────────────────────────────────────────────────────────────
 
   daily_reminder: {
+    // ← [2026-04-20 파일럿 피드백 반영] booker 체크인 관련 워딩 전부 삭제
+    //   기존: booker 배너 "예약 시작 10분 전부터 체크인 가능" (정책 오기재) + CTA_CHECKIN
+    //         → 아침 07:00 메일에 체크인 링크는 부적절 (실제 체크인은 시작 후 10분만 가능)
+    //   변경: booker 배너를 attendee와 동일 문구로 통일, booker CTA 제거
+    //         attendee의 배너/CTA_APP_ROOT는 그대로 유지 (체크인 워딩 아니므로)
     subjectTag:         '[오늘의예약]',
     headerLabel:        '오늘의 예약 안내',
     headerColor:        COLORS.CYAN,
@@ -510,11 +514,11 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
     inappTitleAttendee: '오늘 참석 예정 회의가 있습니다',
     inappTitleAdmin:    '',
     contextBanner: {
-      booker:   { ...BANNER_PRESETS.info, title: '예약 시작 10분 전부터 체크인이 가능합니다.', body: '체크인하지 않으면 시작 10분 후 자동 취소됩니다.' },
+      booker:   { ...BANNER_PRESETS.info, title: '회의 시작 시간에 맞춰 회의실로 이동해 주세요.' }, // ← [수정] 체크인 워딩 제거, attendee와 동일 문구
       attendee: { ...BANNER_PRESETS.info, title: '회의 시작 시간에 맞춰 회의실로 이동해 주세요.' },
     },
     cta: {
-      booker:   CTA_CHECKIN,
+      // ← [수정] booker CTA_CHECKIN 제거 — attendee CTA_APP_ROOT만 유지
       attendee: CTA_APP_ROOT,
     },
     isCancelledStyle: false,
