@@ -1,20 +1,27 @@
 import { useState } from 'react'
-import { Circle, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { todayStr, nowMinutes, tsDate, tsMin, fmtTimeFull, fmtTSFull, getRoomStatus } from '../../utils/time'
 import { getFloor } from '../../data/floors'
-import { Button } from '../common/Button'
-import { RoomStatusBadge } from '../common/RoomStatusBadge'  // ← [신규] 공통 상태 뱃지 사용
+import { RoomStatusBadge } from '../common/RoomStatusBadge'
 
 /**
  * RoomDetailModal
  *
  * ✅ 변경 이력
  *  - [2026-04-18 스타일 정리] 헤더 상태 chip을 인라인 하드코딩 → RoomStatusBadge로 교체
- *    · 이유: tokens.css 색상과 불일치 (예약가능 text #111 vs 토큰 #0369A1),
- *            공통 컴포넌트 있는데 재구현한 분산 구조 해소
- *    · 효과: HomeView와 RoomDetailModal 간 상태 뱃지 시각·정보 일관성 확보
- *            (체크인 대기/완료, 남은시간 등 풍부한 정보 자동 노출)
+ *  - [2026-04-21 피그마 디자인 전면 적용] Figma node 177:346 반영
+ *     · 모달 borderRadius: 16 → 24
+ *     · 헤더 padding 16px 20px, borderBottom 제거
+ *     · 제목 20 → 24, subtitle 12 → 14 (color #6A7282), 내용 room_name_ko만
+ *     · 닫기 버튼 배경 제거 (icon만)
+ *     · 2컬럼 padding 16, LEFT gap 16 / RIGHT gap 24
+ *     · 썸네일 borderRadius 12 → 16
+ *     · 기본 정보: 회색 박스 → border-bottom 구분선 스타일 (라벨 14 SemiBold #96A0B3 width 64, 값 14 Regular #111)
+ *     · 오늘 예약 현황: 제목 14, 카운트 chip radius 8 px8py4 fs10 Medium
+ *     · 예약 카드 배경 #F6F9FF 통일, padding 10px 12px, 시간 색 #5E636D
+ *     · 예약자/부서: 별도 span (이름 Medium #3A3F4A, 부서 Regular #A2A7B2, gap 4, 중앙점 없음)
+ *     · Footer: Button 컴포넌트 → 인라인 (p:8, gap:16, h:56, radius:16, 닫기 #F1F5F9/#64748B)
  */
 
 export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {room:any,bookings:any[],onClose:any,onBook:any,onDetail?:any}) {
@@ -57,7 +64,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
 
     <div className="anm" style={{
       background:"#fff",
-      borderRadius: isMobile ? "20px 20px 0 0" : 16,
+      borderRadius: isMobile ? "20px 20px 0 0" : 24,             // ← [피그마] 16 → 24
       width:"100%", maxWidth: isMobile ? "100%" : 760,
       maxHeight: isMobile ? "88vh" : "90vh",
       boxShadow:"0 20px 60px rgba(0,0,0,0.15)",
@@ -69,22 +76,24 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
         position:"absolute",top:8,left:"50%",transform:"translateX(-50%)",zIndex:1}}/>}
 
       {/* ── 헤더 바 ── */}
-      <div style={{padding: isMobile ? "20px 20px 14px" : "18px 28px 14px",
-        borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between",
-        alignItems:"center", flexShrink:0}}>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
-            <div style={{fontSize: isMobile ? 17 : 20, fontWeight:600, color:"#111111"}}>{r.room_name}</div>
-            {/* ← [변경] 인라인 chip 3종 → RoomStatusBadge 공통 컴포넌트
-                 HomeView와 시각·정보 일관성 확보 (체크인 상태·남은시간 자동 표기) */}
+      {/* ← [피그마] padding 18px 28px 14px → 16px 20px, borderBottom 제거 */}
+      <div style={{padding: isMobile ? "20px 20px 14px" : "16px 20px",
+        display:"flex", justifyContent:"space-between",
+        alignItems:"flex-start", flexShrink:0}}>
+        <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:4}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            {/* ← [피그마] 제목 20 → 24 (SemiBold) */}
+            <div style={{fontSize: isMobile ? 20 : 24, fontWeight:600, color:"#111111", lineHeight:1.5}}>{r.room_name}</div>
             <RoomStatusBadge status={status} />
           </div>
-          <div style={{fontSize:12,color:"#64748B"}}>{r.room_name_ko} · {floor?.floor_name} · {r.capacity}인 수용</div>
+          {/* ← [피그마] subtitle 12 #64748B → 14 #6A7282 Regular, 내용 room_name_ko만 */}
+          <div style={{fontSize:14,color:"#6A7282",fontWeight:400,lineHeight:1.5}}>{r.room_name_ko}</div>
         </div>
+        {/* ← [피그마] 닫기 버튼 배경 제거 — icon만 */}
         <button className="btn" onClick={onClose}
-          style={{width:32,height:32,borderRadius:"50%",background:"#F1F5F9",
-            color:"#64748B",flexShrink:0,
-            display:"flex",alignItems:"center",justifyContent:"center"}}><X size={14} strokeWidth={1.8}/></button>
+          style={{width:32,height:32,borderRadius:"50%",background:"transparent",
+            color:"#111",flexShrink:0,border:"none",cursor:"pointer",
+            display:"flex",alignItems:"center",justifyContent:"center"}}><X size={20} strokeWidth={1.8}/></button>
       </div>
 
       {/* ── 본문: 데스크톱 2컬럼 / 모바일 1컬럼 ── */}
@@ -97,13 +106,14 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
         }}>
 
           {/* ── LEFT: 썸네일 + 기본 정보 ── */}
+          {/* ← [피그마] padding 20px 24px → 16px, gap 12 → 16 */}
           <div style={{
-            padding: isMobile ? "16px 20px" : "20px 24px",
+            padding: 16,
             borderRight: isMobile ? "none" : "1px solid #F1F5F9",
-            display:"flex", flexDirection:"column", gap:12,
+            display:"flex", flexDirection:"column", gap:16,
           }}>
-            {/* 썸네일 */}
-            <div style={{width:"100%", height: isMobile ? 180 : 200, borderRadius:12, overflow:"hidden",
+            {/* 썸네일 — ← [피그마] borderRadius 12 → 16 */}
+            <div style={{width:"100%", height: isMobile ? 180 : 200, borderRadius:16, overflow:"hidden",
               background:thumbnail?"#F3F4F8":"rgb(251, 253, 255)", cursor: thumbnail ? "zoom-in" : "default"}}
               onClick={()=>thumbnail&&setLightbox(true)}>
               {thumbnail ? (
@@ -120,61 +130,83 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
               )}
             </div>
 
-            {/* 기본 정보 */}
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {/* 기본 정보 — ← [피그마] 완전 재설계
+                회색 박스 → border-bottom 0.5px #F1F5F9 구분선
+                컨테이너 padding 4px 8px, 각 row padding py:10
+                라벨 14 SemiBold #96A0B3 width 64
+                값 14 Regular #111 */}
+            <div style={{display:"flex",flexDirection:"column",padding:"8px 4px"}}>
               {[
-                ["수용인원", `${r.capacity}명`],
                 ["위치", floor?.floor_name ?? ""],
+                ["수용인원", `${r.capacity}명`],
               ].map(([label,val],i)=>(
-                <div key={i} style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
-                  <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0}}>{label}</div>
-                  <div style={{fontSize:13,color:"#111111",fontWeight:600}}>{val}</div>
+                <div key={i} style={{borderBottom:"0.5px solid #F1F5F9",padding:"10px 0",
+                  display:"flex",alignItems:"center"}}>
+                  <div style={{fontSize:14,color:"#96A0B3",width:64,fontWeight:600,flexShrink:0,
+                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.5}}>{label}</div>
+                  <div style={{fontSize:14,color:"#111",fontWeight:400,lineHeight:1.5}}>{val}</div>
                 </div>
               ))}
               {r.notes && (
-                <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
-                  <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0}}>설명</div>
-                  <div style={{fontSize:13,color:"#111111",fontWeight:600,wordBreak:"break-word"}}>{r.notes}</div>
+                <div style={{borderBottom:"0.5px solid #F1F5F9",padding:"10px 0",
+                  display:"flex",alignItems:"flex-start"}}>
+                  <div style={{fontSize:14,color:"#96A0B3",width:64,fontWeight:600,flexShrink:0,
+                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.5}}>설명</div>
+                  <div style={{fontSize:14,color:"#111",fontWeight:400,flex:1,minWidth:0,
+                    wordBreak:"break-word",lineHeight:1.5}}>{r.notes}</div>
                 </div>
               )}
               {features.length>0 && (
-                <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
-                  <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0}}>설비</div>
-                  <div style={{fontSize:13,color:"#111111",fontWeight:600}}>
+                <div style={{borderBottom:"0.5px solid #F1F5F9",padding:"10px 0",
+                  display:"flex",alignItems:"center"}}>
+                  <div style={{fontSize:14,color:"#96A0B3",width:64,fontWeight:600,flexShrink:0,
+                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.5}}>설비</div>
+                  <div style={{fontSize:14,color:"#111",fontWeight:400,lineHeight:1.5}}>
                     {features.map(f=>f.value_text||f.feature_name).join(", ")}
                   </div>
                 </div>
               )}
               {(r.is_admin_only) && (
-                <div style={{background:"#EEF2FF",borderRadius:10,padding:"10px 14px",
-                  display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#4338CA",fontWeight:600}}>
-                  관리자(Admin) 전용 예약 회의실
+                <div style={{borderBottom:"0.5px solid #F1F5F9",padding:"10px 0",
+                  display:"flex",alignItems:"center"}}>
+                  <div style={{fontSize:14,color:"#96A0B3",width:64,fontWeight:600,flexShrink:0,
+                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.5}}>유형</div>
+                  <div style={{fontSize:14,color:"#4338CA",fontWeight:600,lineHeight:1.5}}>
+                    관리자(Admin) 전용 예약 회의실
+                  </div>
                 </div>
               )}
             </div>
           </div>
 
           {/* ── RIGHT: 상태 + 오늘 예약 현황 ── */}
+          {/* ← [피그마] padding 20px 24px → 16px, gap 12 → 24 */}
           <div style={{
-            padding: isMobile ? "0 20px 16px" : "20px 24px",
-            display:"flex", flexDirection:"column", gap:12,
+            padding: 16,
+            display:"flex", flexDirection:"column", gap:24,
           }}>
             {status.type==="BUSY" && (
-              <div style={{background:"#FEF2F2",borderRadius:10,padding:"12px 14px"}}>
+              <div style={{background:"#FEF2F2",borderRadius:12,padding:"12px 14px"}}>
                 <div style={{fontSize:11,color:"#DC2626",fontWeight:600,marginBottom:6}}>현재 사용 중</div>
                 <div style={{fontSize:14,color:"#111111",fontWeight:600}}>{status.booking?.title}</div>
                 <div style={{fontSize:12,color:"#64748B",marginTop:4}}>{fmtTimeFull(status.endTime)}까지 · {status.minsLeft}분 남음</div>
               </div>
             )}
             {status.type==="SOON" && (
-              <div style={{background:"#FFFBEB",borderRadius:10,padding:"12px 14px"}}>
+              <div style={{background:"#FFFBEB",borderRadius:12,padding:"12px 14px"}}>
                 <div style={{fontSize:11,color:"#D97706",fontWeight:600,marginBottom:6}}>사용 예정</div>
                 <div style={{fontSize:14,color:"#111111",fontWeight:600}}>{status.minsUntil}분 후 사용 시작</div>
                 <div style={{fontSize:12,color:"#64748B",marginTop:4}}>{fmtTimeFull(status.nextStart)} 부터</div>
               </div>
             )}
-            {status.type==="AVAILABLE" && (
-              <div style={{background:"#E8F4FF",borderRadius:10,padding:"12px 14px"}}>
+            {status.type==="AVAILABLE" && r.is_admin_only && (
+              /* ← [피그마] 에메랄드 안내 메시지 (승인 후 확정) */
+              <div style={{background:"#E6FFB0",borderRadius:12,padding:"12px 14px"}}>
+                <div style={{fontSize:12,color:"#000",fontWeight:500,lineHeight:1.5}}>관리자 승인 후 예약이 확정됩니다</div>
+              </div>
+            )}
+            {status.type==="AVAILABLE" && !r.is_admin_only && (
+              <div style={{background:"#E8F4FF",borderRadius:12,padding:"12px 14px"}}>
                 <div style={{fontSize:11,color:"#0369A1",fontWeight:600,marginBottom:4}}>예약 가능</div>
                 <div style={{fontSize:13,color:"#111111",fontWeight:600}}>지금 바로 이용 가능합니다</div>
               </div>
@@ -182,87 +214,69 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
 
             {/* 오늘 예약 현황 */}
             <div>
-              <div style={{fontSize:12,fontWeight:600,color:"#111111",marginBottom:10,
-                display:"flex",alignItems:"center",gap:6}}>
-                <span>오늘 예약 현황</span>
-                <span style={{fontSize:11,color:"#fff",fontWeight:600,background:"#111",
-                  borderRadius:999,padding:"1px 7px"}}>{todayBks.length}건</span>
+              {/* ← [피그마] 제목 12 → 14, 카운트 chip radius 999 → 8 px8py4 fs10 Medium */}
+              <div style={{padding:"12px 0",
+                display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:14,fontWeight:600,color:"#000",lineHeight:1.5}}>오늘 예약 현황</span>
+                <span style={{fontSize:10,color:"#fff",fontWeight:500,background:"#000",
+                  borderRadius:8,padding:"4px 8px",lineHeight:1}}>{todayBks.length}건</span>
               </div>
               {todayBks.length===0
                 ? <div style={{background:"#F8FAFC",borderRadius:10,padding:"20px",
                     textAlign:"center",fontSize:12,color:"#CBD5E1"}}>
                     오늘 예약이 없습니다
                   </div>
-                : <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                : <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {todayBks.map(b => {
                       const bNow     = nowMinutes();
                       const startMin = tsMin(b.start_at);
                       const endMin   = tsMin(b.end_at);
 
-                      // ← [P2 v7] 상태 분기 재정리
-                      //   기존: isNoshow 판별이 `cancelledBy='system' && !checkedIn`으로
-                      //         시간축 없음 → pending_expired도 노쇼로 오분류
-                      //   변경: pending_expired 제외하고 '진짜 노쇼'만 isNoshow로 분류
-                      //         시각적 뱃지 표시는 BookingStatusBadge 단일 소스 사용
-                      const isSystemCancel = b.autoCancelled && b.cancelledBy === 'system'
-                                             && b.status !== 'rejected'
-                      // 기한초과: status='pending' 유지 OR cancelled지만 시작 후 10분 이내
-                      const isExpired  = isSystemCancel
-                                         && (b.status === 'pending' || bNow < startMin + 10)
-                      const isNoshow   = isSystemCancel && !isExpired
+                      // ← [v2.1 자연 배타성] 노쇼/기한초과 판정
+                      const isExpired  = !!r.is_admin_only && b.status === 'pending' && b.autoCancelled && startMin < bNow
+                      const isNoshow   = (b.status === 'confirmed' || b.status === 'cancelled')
+                                         && b.autoCancelled && b.cancelledBy === 'system' && !b.checkedIn
                       const isPending  = !b.autoCancelled && b.status === 'pending';
                       const isEarlyEnd = !b.autoCancelled && b.earlyEnded;
                       const isActive   = !b.autoCancelled && !b.earlyEnded && startMin <= bNow && bNow < endMin;
                       const isDone     = !b.autoCancelled && !b.earlyEnded && endMin <= bNow;
-                      const dimmed     = isNoshow || isExpired || isDone; // ← 흐리게 표시
-
-                      // ← 상태별 카드 배경색
-                      const cardBg = isActive   ? "#FFF1F2"
-                                   : isPending  ? "#FFFBEB"
-                                   : isEarlyEnd ? "#F0F9FF"
-                                   : "#F8FAFC";
-                      const cardBorder = isActive   ? "1px solid #FECDD3"
-                                       : isPending  ? "1px solid #FEF3C7"
-                                       : isEarlyEnd ? "1px solid #BAE6FD"
-                                       : "1px solid transparent";
-                      const hoverBg   = isActive   ? "#FFE4E6"
-                                      : isPending  ? "#FEF9C3"
-                                      : isEarlyEnd ? "#E0F2FE"
-                                      : "#F1F5F9";
+                      const dimmed     = isNoshow || isExpired || isDone;
 
                       return (
                         <div key={b.id} style={{
-                          background: cardBg,
-                          border: cardBorder,
-                          borderRadius:10, padding:"10px 14px",
-                          display:"flex", justifyContent:"space-between", alignItems:"center",
+                          background: "#F6F9FF",             // ← [피그마] 상태별 배경색 → 통일 #F6F9FF
+                          borderRadius:10,
+                          padding:"10px 12px",                // ← [피그마] 10px 14px → 10px 12px
+                          display:"flex", flexDirection:"column", gap:8,
                           cursor:"pointer",
                           opacity: dimmed ? 0.5 : 1,
+                          transition: "background 0.1s",
                         }}
                           onClick={()=>onDetail&&onDetail(b)}
-                          onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background=hoverBg}}
-                          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background=cardBg}}
+                          onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background="#EEF2FF"}}
+                          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background="#F6F9FF"}}
                         >
-                          <div style={{flex:1,minWidth:0,marginRight:10}}>
-                            <div style={{fontSize:13,color:"#111111",fontWeight:600,
-                              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",
-                              display:"flex",alignItems:"center",gap:5}}>
-                              {/* ← [P2 v7] 인라인 하드코딩 뱃지 4개 → chip 클래스 통일
-                                    · tokens.css 색상 토큰 자동 적용 (노쇼 색상 변경 시 여기도 반영)
-                                    · pending_expired와 noshow가 명확히 구분됨 */}
+                          {/* 1행: 상태칩 + 제목 | 시간 */}
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                            <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
                               {isActive   && <span style={{width:7,height:7,borderRadius:"50%",background:"#E11D48",display:"inline-block",flexShrink:0}}/>}
                               {isPending  && <span className="chip chip--xs chip-pending"  style={{flexShrink:0}}>승인대기</span>}
-                              {isExpired  && <span className="chip chip--xs chip-expired"  style={{flexShrink:0}}>기한초과</span>}
+                              {isExpired  && <span className="chip chip--xs chip-expired"  style={{flexShrink:0}}>승인기한초과 취소</span>}
                               {isNoshow   && <span className="chip chip--xs chip-noshow"   style={{flexShrink:0}}>노쇼</span>}
                               {isEarlyEnd && <span className="chip chip--xs chip-earlyend" style={{flexShrink:0}}>조기반납</span>}
                               {isDone     && <span className="chip chip--xs chip-done"     style={{flexShrink:0}}>종료</span>}
-                              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.title}</span>
+                              <span style={{fontSize:12,color:"#111",fontWeight:600,
+                                overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.5}}>{b.title}</span>
                             </div>
-                            <div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>{b.user} · {b.dept}</div>
+                            {/* ← [피그마] 시간 color #64748B → #5E636D Regular */}
+                            <div style={{fontSize:12,color:"#5E636D",fontWeight:400,flexShrink:0,lineHeight:1.5,whiteSpace:"nowrap"}}>
+                              {fmtTSFull(b.start_at)} - {fmtTSFull(b.end_at)}
+                            </div>
                           </div>
-                          <div style={{fontSize:12,color:"#64748B",fontWeight:600,flexShrink:0,textAlign:"right"}}>
-                            {fmtTSFull(b.start_at)}<br/>
-                            <span style={{color:"#94A3B8",fontWeight:400}}>~ {fmtTSFull(b.end_at)}</span>
+                          {/* 2행: 예약자 이름 · 부서 — ← [피그마] 별도 span, 이름 Medium #3A3F4A, 부서 Regular #A2A7B2, gap 4, 중앙점 없음 */}
+                          <div style={{display:"flex",alignItems:"center",gap:4,fontSize:11,lineHeight:1.5}}>
+                            <span style={{color:"#3A3F4A",fontWeight:500}}>{b.user}</span>
+                            <span style={{color:"#A2A7B2",fontWeight:400}}>{b.dept}</span>
                           </div>
                         </div>
                       );
@@ -275,10 +289,21 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
       </div>
 
       {/* ── 버튼 footer ── */}
-      <div style={{padding: isMobile ? "12px 20px 24px" : "12px 28px 20px",
-        flexShrink:0, borderTop:"1px solid #F1F5F9", display:"flex", gap:8}}>
-        <Button variant="ghost"   flex onClick={onClose}>닫기</Button>
-        <Button variant="primary" flex onClick={()=>onBook(status)}>이 회의실 예약하기</Button>
+      {/* ← [피그마] padding 12px 28px 20px → 8, gap 8 → 16, borderTop 제거
+          버튼 h:56 radius:16, 닫기 #F1F5F9/#64748B, primary #111/#fff */}
+      <div style={{padding:8, flexShrink:0, display:"flex", gap:16}}>
+        <button className="btn" onClick={onClose}
+          style={{flex:1,height:56,borderRadius:16,background:"#F1F5F9",
+            color:"#64748B",fontSize:14,fontWeight:600,border:"none",cursor:"pointer",
+            display:"flex",alignItems:"center",justifyContent:"center"}}>
+          닫기
+        </button>
+        <button className="btn" onClick={()=>onBook(status)}
+          style={{flex:1,height:56,borderRadius:16,background:"#111",
+            color:"#fff",fontSize:14,fontWeight:600,border:"none",cursor:"pointer",
+            display:"flex",alignItems:"center",justifyContent:"center"}}>
+          이 회의실 예약하기
+        </button>
       </div>
     </div>
     </>
