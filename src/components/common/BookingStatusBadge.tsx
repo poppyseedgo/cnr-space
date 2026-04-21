@@ -227,7 +227,7 @@ export function BookingStatusBadge({
       {show('rejected') && isRejected && <C cls="chip-rejected">거절됨</C>}
 
       {/* ② 기한초과 취소 (pending + autoCancelled) */}
-      {show('expired-pending') && isExpiredPending && <C cls="chip-expired">기한초과 취소</C>}
+      {show('expired-pending') && isExpiredPending && <C cls="chip-expired">승인기한초과 취소</C>}
 
       {/* ③ 관리자 강제취소 (rejected 제외) */}
       {show('admin-cancel') && isAdminCancel && <C cls="chip-admin">관리자 강제취소</C>}
@@ -236,7 +236,7 @@ export function BookingStatusBadge({
       {show('noshow') && isNoshow && <C cls="chip-noshow">노쇼</C>}
 
       {/* ⑤ 사용자 직접 취소 — 본인 컨텍스트(MyPage)에서만 */}
-      {show('user-cancel') && isUserCancel && isOwner && <C cls="chip-neutral">취소됨</C>}
+      {show('user-cancel') && isUserCancel && isOwner && <C cls="chip-neutral">예약자 취소</C>}
 
       {/* ── 이하 정상 상태 (취소 없는 경우) ── */}
       {/* ⑥ 승인 대기 */}

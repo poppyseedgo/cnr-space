@@ -300,10 +300,10 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
       //   isNoshow는 status='confirmed'||'cancelled'만 판정 → 기한초과(pending)와 자연 분리
       const statusLabel =
           b.status==='rejected' ? '거절'
-        : b.status==='pending'&&b.autoCancelled ? '기한초과'
+        : b.status==='pending'&&b.autoCancelled ? '승인기한초과 취소'
         : isNoshow(b) ? '노쇼'
-        : b.status==='cancelled'&&b.cancelledBy==='admin' ? '관리자강제취소'
-        : b.status==='cancelled'&&b.cancelledBy==='user' ? '취소'
+        : b.status==='cancelled'&&b.cancelledBy==='admin' ? '관리자 강제취소'
+        : b.status==='cancelled'&&b.cancelledBy==='user' ? '예약자 취소'
         : b.status==='pending' ? '승인대기'
         : b.checkedIn||b.earlyEnded ? '완료'
         : '예정'
@@ -351,11 +351,11 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
                 //   · status 값으로 구조적 분리되므로 순서 무관이지만 가독성 위해 유지
                 const status =
                     b.status === 'rejected'                                                     ? {l:'거절',    c:'#DC2626',bg:'#FEF2F2'}
-                  : b.status === 'pending'   && b.autoCancelled                                 ? {l:'기한초과', c:'#94A3B8',bg:'#F1F5F9'}
+                  : b.status === 'pending'   && b.autoCancelled                                 ? {l:'승인기한초과 취소', c:'#94A3B8',bg:'#F1F5F9'}
                   : (b.status === 'confirmed' || b.status === 'cancelled')
                     && b.autoCancelled && b.cancelledBy === 'system' && !b.checkedIn            ? {l:'노쇼',    c:'#DC2626',bg:'#FEF2F2'}
-                  : b.status === 'cancelled' && b.cancelledBy === 'admin'                       ? {l:'강제취소', c:'#111',   bg:'#F1F5F9'}
-                  : b.status === 'cancelled' && b.cancelledBy === 'user'                        ? {l:'취소',    c:'#94A3B8',bg:'#F1F5F9'}
+                  : b.status === 'cancelled' && b.cancelledBy === 'admin'                       ? {l:'관리자 강제취소', c:'#111',   bg:'#F1F5F9'}
+                  : b.status === 'cancelled' && b.cancelledBy === 'user'                        ? {l:'예약자 취소',    c:'#94A3B8',bg:'#F1F5F9'}
                   : b.status === 'pending'                                                      ? {l:'승인대기', c:'#D97706',bg:'#FEF3C7'}
                   : b.checkedIn || b.earlyEnded                                                 ? {l:'완료',    c:'#16A34A',bg:'#DCFCE7'}
                   :                                                                               {l:'예정',    c:'#3B82F6',bg:'#EFF6FF'}
@@ -1157,13 +1157,13 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
     // ① 거절 (최우선)
     if(b.status==='rejected')return<span style={{background:'#FEE2E2',color:'#DC2626',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>거절</span>
     // ② 기한초과 (status='pending' + autoCancelled) — 노쇼보다 먼저 체크 (배타성)
-    if(b.status==='pending'&&b.autoCancelled)return<span style={{background:'#F1F5F9',color:'#94A3B8',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>기한초과</span>
+    if(b.status==='pending'&&b.autoCancelled)return<span style={{background:'#F1F5F9',color:'#94A3B8',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>승인기한초과 취소</span>
     // ③ 노쇼 (cancelledBy='system') — cancelled류보다 먼저 체크 (레거시 호환)
     if(isNoshow(b))return<span style={{background:'#FEF3C7',color:'#D97706',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>노쇼</span>
     // ④ Admin 강제취소 (status='cancelled' + cancelledBy='admin')
     if(b.status==='cancelled'&&b.cancelledBy==='admin')return<span style={{background:'#111',color:'#fff',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,display:'inline-flex',alignItems:'center',gap:3}}><AlertTriangle size={9} strokeWidth={1.8}/>관리자 강제취소</span>
     // ⑤ User 취소 (status='cancelled' + cancelledBy='user')
-    if(b.status==='cancelled'&&b.cancelledBy==='user')return<span style={{background:'#F1F5F9',color:'#94A3B8',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>취소</span>
+    if(b.status==='cancelled'&&b.cancelledBy==='user')return<span style={{background:'#F1F5F9',color:'#94A3B8',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>예약자 취소</span>
     // ⑥ 승인대기
     if(b.status==='pending')return<span style={{background:'#FEF3C7',color:'#92400E',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>승인대기</span>
     // ⑦ 완료 (체크인 또는 조기종료)
@@ -1216,9 +1216,9 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
             const getStatus=(b:Booking)=>
                 b.status==='rejected' ? '거절'
               : isNoshow(b) ? '노쇼'
-              : b.status==='cancelled'&&b.cancelledBy==='admin' ? '관리자강제취소'
-              : b.status==='cancelled'&&b.cancelledBy==='user' ? '취소'
-              : b.status==='pending'&&b.autoCancelled ? '기한초과'
+              : b.status==='cancelled'&&b.cancelledBy==='admin' ? '관리자 강제취소'
+              : b.status==='cancelled'&&b.cancelledBy==='user' ? '예약자 취소'
+              : b.status==='pending'&&b.autoCancelled ? '승인기한초과 취소'
               : b.status==='pending' ? '승인대기'
               : b.checkedIn||b.earlyEnded ? '완료'
               : '예정'
@@ -2013,7 +2013,7 @@ export function AdminApprovals({ bookings, rooms, users, onApprove, onReject, sh
 
             // 기한초과 — 라벨만
             if (status === 'expired') {
-              return <span style={{ fontSize:11, color:'#94A3B8', padding:'4px 8px', background:'#F8FAFC', borderRadius:8 }}>기한초과</span>
+              return <span style={{ fontSize:11, color:'#94A3B8', padding:'4px 8px', background:'#F8FAFC', borderRadius:8 }}>승인기한초과 취소</span>
             }
 
             // 승인 대기 — 승인/거절 버튼

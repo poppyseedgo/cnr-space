@@ -116,7 +116,7 @@ function getButtonStyle(cs: CardState): ButtonStyle {
     earlyEnded:     { label: '반납됨',      btnBg: '#DBEAFE', btnColor: '#2563EB', disabled: true,  showBtn: true },
     adminCancel:    { label: '강제취소',    btnBg: '#F1F5F9', btnColor: '#94A3B8', disabled: true,  showBtn: false },
     rejected:       { label: '거절됨',      btnBg: '#F1F5F9', btnColor: '#94A3B8', disabled: true,  showBtn: false },
-    userCancel:     { label: '취소됨',      btnBg: '#F1F5F9', btnColor: '#94A3B8', disabled: true,  showBtn: true },
+    userCancel:     { label: '예약자 취소',  btnBg: '#F1F5F9', btnColor: '#94A3B8', disabled: true,  showBtn: true },
   }
   return MAP[cs]
 }
