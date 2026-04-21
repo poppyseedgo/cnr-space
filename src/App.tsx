@@ -1037,7 +1037,9 @@ function AppContent() {
       display:"flex", flexDirection:"column",
       alignItems:"center", justifyContent:"center",
       minHeight:"100vh",
-      background: "#F3F4F8",
+      /* ← [2026-04-21] LoginPage와 동일한 배경 그라디언트 적용
+           흰색 63.45%까지 → 93.75% 지점에서 연한 파랑(#B0DEFF)으로 페이드 */
+      background: "linear-gradient(180deg, #FFFFFF 63.45%, #B0DEFF 93.75%)",
       gap: 10, position:"relative", overflow:"hidden"
     }}>
       <style>{`
