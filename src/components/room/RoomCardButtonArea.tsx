@@ -13,9 +13,9 @@
 //   - spread + override 패턴으로 중복 제거 (46줄 → 15줄)
 //   - 앞으로 공통 속성(fontWeight, borderRadius 등) 변경 시 BASE 한 곳만 수정
 //
-// 2026-04-22: '자세히 보기' 버튼 fontWeight 500으로 변경 (피그마 반영)
-//   - BASE_BTN은 600 유지 (BOOK/SOON 버튼은 그대로)
-//   - DETAIL_BTN_STYLE에만 fontWeight: 500 override 추가
+// 2026-04-22: RoomCard 하단 버튼 fontWeight 500 통일 (피그마 반영)
+//   - BASE_BTN fontWeight 600 → 500
+//   - 3개 버튼(바로 예약/N분 뒤 사용/자세히 보기) 모두 동일하게 적용
 //
 // [상태별 렌더링 규칙]
 // ┌───────────┬──────────────────┬──────────────────┐
@@ -66,7 +66,7 @@ export function RoomCardButtonArea({
   //   - DETAIL: 투명 배경, 회색 글자 (ghost action)
   const BASE_BTN: React.CSSProperties = {
     flex: 1,
-    fontWeight: 600,
+    fontWeight: 500,  // ← [2026-04-22] RoomCard 하단 버튼 3개 모두 500 통일 (피그마 반영)
     fontSize: btnSize,
     padding: btnPadding,
     borderRadius: 12,
@@ -76,7 +76,7 @@ export function RoomCardButtonArea({
   }
   const BOOK_BTN_STYLE:   React.CSSProperties = { ...BASE_BTN, background: '#111111', color: '#fff' }
   const SOON_BTN_STYLE:   React.CSSProperties = { ...BASE_BTN, background: '#FCE7F3', color: '#BE185D', cursor: 'not-allowed' }
-  const DETAIL_BTN_STYLE: React.CSSProperties = { ...BASE_BTN, background: 'none',    color: '#64748B', fontWeight: 500 } // ← [2026-04-22] 자세히 보기만 500
+  const DETAIL_BTN_STYLE: React.CSSProperties = { ...BASE_BTN, background: 'none',    color: '#64748B' }
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: containerPadding }}>
