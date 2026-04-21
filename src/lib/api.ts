@@ -3,6 +3,37 @@
  *
  * 버그 수정:
  *  1. UTC→KST 변환: Supabase는 timestamptz를 UTC로 반환 → +9h 보정 필요
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 변경 이력 (v2.1)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * [2026-04-21 v2.1] auto_cancelled 설계 재정립 (설계 문서 v2.1)
+ *   배경: 기한초과 ↔ 노쇼 판정 오류 사고 (2026-04-21) 근본 해결
+ *   원칙: auto_cancelled = "cron이 자동 처리했는가?"
+ *         → cron만 true, 사람 개입(User/Admin)은 false
+ *
+ *   변경 함수:
+ *     (1) cancelBooking        : autoCancelled true→false, status='cancelled' 추가
+ *     (2) adminForceCancel     : autoCancelled true→false, status='cancelled' 추가
+ *     (3) rejectBooking        : auto_cancelled true→false (status='rejected' 유지)
+ *     (4) approveBooking       : .eq('status','pending') 원자성 가드 추가
+ *                                → 이미 처리된 예약(cancelled/rejected) 덮어쓰기 방지
+ *
+ *   변경 이유:
+ *     · User/Admin 취소도 auto_cancelled=true로 저장되던 기형 설계
+ *     · BookingStatusBadge 판정 로직이 이 기형 위에서 작동
+ *     · 판정 로직에서 cancelled_by 기반으로 명확히 구분되도록 재설계
+ *
+ *   관련 파일:
+ *     · BookingStatusBadge.tsx   — judge 함수 전면 재설계
+ *     · auto-cancel-bookings/index.ts — 섹션 3 status='pending' 유지로 변경
+ *     · HomeView.tsx             — 룸카드 취소 표시 규칙
+ *     · CalendarShell.tsx        — 노쇼 15분 슬롯
+ *     · MyPage.tsx               — 4개 탭 구조 (노쇼 별도)
+ *     · AdminPage.tsx            — 승인 대기 필터, 통계 필터
+ *     · DB 마이그레이션 SQL      — 오염 데이터 정리
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 
 import { supabase, isSupabaseEnabled } from './supabase'
@@ -249,14 +280,27 @@ export async function updateBooking(
   return rowToBooking(data[0])
 }
 
-/** 관리자 강제 취소 — cancelled_by: 'admin' 으로 저장해 일반 취소·노쇼와 구분 */
+/** 관리자 강제 취소 — cancelled_by: 'admin' 으로 저장해 일반 취소·노쇼와 구분
+ *  [v2.1] auto_cancelled=false (사람 개입), status='cancelled' 명시
+ */
 export async function adminForceCancel(id: string): Promise<void> {
-  await updateBooking(id, { autoCancelled: true, cancelledBy: 'admin' })
+  await updateBooking(id, {
+    status:        'cancelled',    // ← [v2.1 추가] cancelled 상태 명시
+    autoCancelled: false,           // ← [v2.1 변경] true→false (사람 개입이므로)
+    cancelledBy:   'admin'
+  })
 }
 
 // ── 취소 ─────────────────────────────────────────────────────────────────────
+/** 사용자 본인 취소
+ *  [v2.1] auto_cancelled=false (사람 개입), status='cancelled' 명시
+ */
 export async function cancelBooking(id: string): Promise<void> {
-  await updateBooking(id, { autoCancelled: true, cancelledBy: 'user' })
+  await updateBooking(id, {
+    status:        'cancelled',    // ← [v2.1 추가] cancelled 상태 명시
+    autoCancelled: false,           // ← [v2.1 변경] true→false (사람 개입이므로)
+    cancelledBy:   'user'
+  })
 }
 
 // ── Realtime 구독 ────────────────────────────────────────────────────────────
@@ -573,9 +617,13 @@ export async function expirePendingBooking(id: string): Promise<void> {
 
 // ── 에메랄드 승인/거절 ────────────────────────────────────────────────────────
 
-/** 관리자 승인 → status: confirmed + 처리 관리자 기록 */
+/** 관리자 승인 → status: confirmed + 처리 관리자 기록
+ *  [v2.1] 원자성 가드 추가: .eq('status', 'pending') → pending일 때만 승인 가능
+ *         · 이미 처리된 예약(cancelled/rejected/기한초과) 덮어쓰기 방지
+ *         · auto-cancel-bookings P2 v6와 동일 패턴 (원자적 조건부 UPDATE)
+ */
 export async function approveBooking(id: string, adminName?: string, adminAvatar?: string | null): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('bookings')
     .update({
       status:              'confirmed',
@@ -583,7 +631,14 @@ export async function approveBooking(id: string, adminName?: string, adminAvatar
       processed_by_avatar: adminAvatar ?? null,
     })
     .eq('id', id)
+    .eq('status', 'pending')                    // ← [v2.1 추가] 원자성 가드 (pending일 때만)
+    .eq('auto_cancelled', false)                // ← [v2.1 추가] 기한초과된 pending 제외
+    .select('id')                               // ← [v2.1 추가] 실제 UPDATE된 행 확인
   if (error) throw new Error(`승인 실패: ${error.message}`)
+  // ← [v2.1 추가] UPDATE 0 rows → 이미 다른 상태 (기한초과/취소/중복처리)
+  if (!data || data.length === 0) {
+    throw new Error('이미 처리된 예약입니다 (기한초과되었거나 다른 관리자가 처리)')
+  }
   await insertAuditLog({
     action: 'BOOKING_CREATED' as any,
     entityType: 'booking', entityId: id,
@@ -591,13 +646,15 @@ export async function approveBooking(id: string, adminName?: string, adminAvatar
   })
 }
 
-/** 관리자 거절 → status: rejected + auto_cancelled: true + 처리 관리자 기록 */
+/** 관리자 거절 → status: rejected + 처리 관리자 기록
+ *  [v2.1] auto_cancelled=false (사람 개입이므로)
+ */
 export async function rejectBooking(id: string, reason: string, adminName?: string, adminAvatar?: string | null): Promise<void> {
   const { error } = await supabase
     .from('bookings')
     .update({
       status:              'rejected',
-      auto_cancelled:      true,
+      auto_cancelled:      false,           // ← [v2.1 변경] true→false (사람 개입이므로)
       cancelled_by:        'admin',
       reject_reason:       reason || null,
       processed_by_name:   adminName   ?? null,
