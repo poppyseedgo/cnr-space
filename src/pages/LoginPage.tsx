@@ -112,37 +112,99 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10 bg-white">
+    <div
+      /* ← [2026-04-21 피그마 node 201:1108] 배경 그라디언트 교체
+           흰색 63.45%까지 유지 → 93.75% 지점에서 연한 파랑(#B0DEFF)으로 페이드
+           min-height 100vh, 세로 중앙 정렬은 그대로 */
+      className="min-h-screen flex flex-col items-center justify-center px-4 py-10"
+      style={{
+        background: 'linear-gradient(180deg, #FFFFFF 63.45%, #B0DEFF 93.75%)',
+      }}
+    >
+      {/* ← [피그마] 카드 컨테이너: width 448 (content 320 + padding) */}
+      <div style={{ width: '100%', maxWidth: 448 }}>
 
-      <div className="w-full max-w-sm">
+        {/* ← [피그마 node 201:1137] 흰색 카드
+             bg #fff, radius 24, padding 24px 24px 1px, gap 32 */}
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: 24,
+            padding: '24px 24px 24px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 32,
+          }}
+        >
 
-        {/* 로고 */}
-        <div className="text-center mb-5 overflow-hidden">
-          <div className="h-5" />
-          <h1 className="text-[30px] font-medium text-[#111] uppercase leading-9 tracking-tight">
-            C&R SPACE
-          </h1>
-          <div className="h-1.5" />
-          <p className="text-xs text-[#6a7282]">
-            C&R Research 회의실 예약 시스템
-          </p>
-        </div>
-
-        {/* ── Microsoft SSO 버튼 (메인) ── */}
-        <div className="mb-6 rounded-3xl p-6"
-          style={{ boxShadow: '10px 10px 60px rgba(0,0,0,0.04)' }}>
-          <div className="mb-4">
-            <p className="text-xs text-[#6a7282] leading-snug">
-              
-            </p>
+          {/* ① 로고 — C&R Space */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <h1
+              style={{
+                fontFamily: 'Pretendard, sans-serif',
+                fontWeight: 500,        // Medium
+                fontSize: 32,
+                lineHeight: '36px',
+                letterSpacing: '0.64px',
+                textTransform: 'uppercase',
+                color: '#111',
+                textAlign: 'center',
+                margin: 0,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              C&amp;R Space
+            </h1>
           </div>
+
+          {/* ② 설명 텍스트 */}
+          <p
+            style={{
+              fontFamily: 'Pretendard, sans-serif',
+              fontWeight: 400,          // Regular
+              fontSize: 12,
+              lineHeight: '16px',
+              color: '#171717',
+              textAlign: 'center',
+              margin: 0,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            사내 Microsoft ID로 로그인 하세요.
+          </p>
+
+          {/* ③ Sign in with Microsoft 버튼 — 피그마 node 201:1143
+               width 320, height 41, border 1px #8C8C8C, radius 10 */}
           <button
             type="button"
             onClick={handleMicrosoftLogin}
             disabled={ssoLoading}
-            className="w-full h-[46px] flex items-center rounded-[10px] border border-black/20 bg-white overflow-hidden transition-all hover:bg-slate-50 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+            style={{
+              width: 320,
+              height: 41,
+              display: 'flex',
+              alignItems: 'center',
+              background: '#fff',
+              border: '1px solid #8C8C8C',
+              borderRadius: 10,
+              padding: 1,
+              overflow: 'hidden',
+              cursor: ssoLoading ? 'not-allowed' : 'pointer',
+              opacity: ssoLoading ? 0.6 : 1,
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => { if (!ssoLoading) e.currentTarget.style.background = '#F8FAFC' }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}
           >
-            <div className="flex items-center justify-center px-3 h-full">
+            {/* 아이콘 영역 41x41 */}
+            <div
+              style={{
+                width: 41, height: 41, flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '0 10px',
+              }}
+            >
               {ssoLoading ? (
                 <div style={{
                   width: 18, height: 18,
@@ -160,38 +222,80 @@ export default function LoginPage() {
                 </svg>
               )}
             </div>
-            <div className="flex-1 text-center pr-[42px]">
-              <span className="text-[15px] font-semibold text-[#5e5e5e] tracking-[0.375px]">
+            {/* 텍스트 영역 */}
+            <div style={{ flex: 1, textAlign: 'center', paddingRight: 41 }}>
+              <span
+                style={{
+                  fontFamily: 'Inter, sans-serif',
+                  fontWeight: 600,         // SemiBold
+                  fontSize: 15,
+                  lineHeight: '22.5px',
+                  letterSpacing: '0.375px',
+                  color: '#5E5E5E',
+                }}
+              >
                 {ssoLoading ? '연결 중…' : 'Sign in with Microsoft'}
               </span>
             </div>
           </button>
 
-          {/* SSO 오류 메시지 */}
+          {/* SSO 오류 메시지 — 피그마에 없으나 기능상 유지 */}
           {error && (
-            <div className="flex items-center gap-2 rounded-xl px-3 py-2.5 mt-3 text-sm bg-red-50 border border-red-200 text-red-600">
-              <AlertCircle size={14} strokeWidth={1.8} className="flex-shrink-0"/>
+            <div style={{
+              width: 320, display: 'flex', alignItems: 'center', gap: 8,
+              padding: '10px 12px', borderRadius: 12,
+              background: '#FEF2F2', border: '1px solid #FCA5A5',
+              color: '#DC2626', fontSize: 13,
+            }}>
+              <AlertCircle size={14} strokeWidth={1.8} style={{flexShrink: 0}}/>
               <span>{error}</span>
             </div>
           )}
 
-          <div className="flex items-center justify-center h-[36px]">
-            <p className="text-[11px] text-[#99a1af] text-center">
-              C&R Research 사내 계정 전용 · 외부 접근 불가
+          {/* ④ 하단 텍스트 그룹 — 피그마 node 201:1172, gap 4 */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, textAlign: 'center' }}>
+            <p
+              style={{
+                fontFamily: 'Pretendard, sans-serif',
+                fontWeight: 400,
+                fontSize: 12,
+                lineHeight: '16px',
+                color: '#86CCFF',       // ← [피그마] 연한 파랑
+                margin: 0,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              C&amp;R Research 사내 계정 전용 · 외부 접근 불가
+            </p>
+            <p style={{ margin: 0, width: 215, textAlign: 'center' }}>
+              <span
+                style={{
+                  fontFamily: 'Pretendard, sans-serif',
+                  fontWeight: 500,           // Medium
+                  fontSize: 12,
+                  lineHeight: '16px',
+                  color: 'rgba(134, 204, 255, 0.53)',   // ← [피그마] 더 연한 파랑
+                }}
+              >
+                문의사항이 있으신가요?{' '}
+              </span>
+              <span
+                style={{
+                  fontFamily: 'Pretendard, sans-serif',
+                  fontWeight: 500,
+                  fontSize: 12,
+                  lineHeight: '16px',
+                  color: '#86CCFF',
+                  cursor: 'pointer',
+                }}
+                onClick={() => { /* 필요 시 handler 연결 */ }}
+              >
+                ISS 박대우님 문의
+              </span>
             </p>
           </div>
-        </div>
 
-        {/* 문의 링크 */}
-        <div className="text-center px-8 py-6">
-          <p className="text-[11px] text-[#99a1af]">
-            Microsoft 365 비밀번호 분실 시{' '}
-            <span className="text-[#86ccff] font-medium cursor-pointer hover:underline">
-              ISS 박대우 님 문의
-            </span>
-          </p>
         </div>
-
       </div>
 
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
