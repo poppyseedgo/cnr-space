@@ -102,6 +102,7 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, B
 import { RoomStatusBadge } from '../common/RoomStatusBadge'
 import { BookingStatusBadge } from '../common/BookingStatusBadge'
 import { MetaBadge } from '../common/MetaBadge'  // ← [10차] 반복·참석자 뱃지 공통화
+import { MiniBookingCard } from '../common/MiniBookingCard'  // ← [2026-04-21] 오늘 내 예약 카드 공통화
 import { RoomCardButtonArea } from './RoomCardButtonArea' // ← [6차] 공통 컴포넌트 추출
 
 export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearchQ, filterFloor, setFilterFloor, onBook, onDetail, onBookingDetail, onCheckIn, onEarlyEnd, onCancel, currentUser, currentUserEmail='', dark}) {
@@ -220,133 +221,37 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
           style={{overflowX:"auto",scrollbarWidth:"none",WebkitOverflowScrolling:"touch",
             paddingLeft:0, paddingRight:4}}>
 
-          {/* + 예약하기 첫 카드 */}
+          {/* + 예약하기 첫 카드 — ← [2026-04-21] borderRadius 16 통일 (MiniBookingCard와 일치) */}
           <button onClick={()=>{/* onBook 없이 새 예약 모달 */document.dispatchEvent(new CustomEvent("openNewBooking"))}}
-            className="btn flex-none flex flex-col items-center justify-center rounded-3xl text-white font-medium" /* ← [6차] rounded-2xl → rounded-3xl, font-semibold → font-medium */
-            style={{width:isMobile?150:170, height:isMobile?140:160, /* ← [6차] 가로 10px 확장 (정사각형 → 가로 긴 직사각형) */
+            className="btn flex-none flex flex-col items-center justify-center text-white font-medium"
+            style={{width:isMobile?150:170, height:isMobile?140:160, borderRadius:16,
               background:"#111111", flexShrink:0, gap:8}}>
             <span style={{fontSize:24, lineHeight:1}}>＋</span>
             <span style={{fontSize:isMobile?12:13}}>예약하기</span>
           </button>
 
           {myBookings.length === 0 ? (
-            <div className="flex-none flex items-center justify-center rounded-3xl text-slate-300 dark:text-slate-600 text-sm" /* ← [6차] rounded-2xl → rounded-3xl */
-              style={{width:isMobile?150:170, height:isMobile?140:160, background:"#F3F4F8"}}> {/* ← [6차] 가로 10px 확장 */}
+            <div className="flex-none flex items-center justify-center rounded-2xl text-slate-300 dark:text-slate-600 text-sm"
+              style={{width:isMobile?150:170, height:isMobile?140:160, background:"#F3F4F8", borderRadius:16}}>
               오늘 예약 없음
             </div>
           ) : myBookings.map(b => {
             const r = roomsData.find(r=>r.room_id===b.room_id);
-            // ← [v2.1] isActive: status='confirmed' 명시 (cancelled/rejected/pending 제외)
-            //   v2.1에서 User/Admin 취소도 autoCancelled=false라 status 조건 필수
-            const isActive   = tsDate(b.start_at)===today
-                               && tsMin(b.start_at)<=now && now<tsMin(b.end_at)
-                               && b.status === 'confirmed'        // ← [v2.1 추가] cancelled 제외
-                               && !b.autoCancelled;               // 노쇼 제외
-            const isPast     = tsMin(b.end_at) < now;
-            const minsUntil  = tsMin(b.start_at) - now;   // 시작까지 남은 분
-            const isSoon     = minsUntil > 0 && minsUntil <= 10;  // 10분 이내
-            // ← [v2.1] cardState 판정 완전 재작성 (설계 문서 v2.1 매트릭스 기반)
-            //   DB 규칙:
-            //     · rejected:       status='rejected'
-            //     · adminCancel:    status='cancelled' + cancelledBy='admin'
-            //     · userCancel:     status='cancelled' + cancelledBy='user'
-            //     · pendingExpired: status='pending'   + autoCancelled + cancelledBy='system'
-            //     · noshow:         status='confirmed' + autoCancelled + cancelledBy='system' + !checkedIn
-            //   판별 순서 (배타성 보장):
-            //     1. status='rejected' 최우선
-            //     2. status='cancelled' → cancelledBy로 admin/user 분기
-            //     3. status='pending'   + autoCancelled → pendingExpired
-            //     4. status='confirmed' + autoCancelled → noshow
-            //     5. status='confirmed' 정상 흐름 (checkin/using/done 등)
-            // ← [2026-04-21 update] 레거시 데이터 호환 판정
-            //   · pendingExpired: 에메랄드 + pending + autoCancelled + 시작시간 지남
-            //   · noshow: autoCancelled + system + !checkedIn (status 무관 → 레거시 호환)
-            //   · 판정 순서: pendingExpired 먼저 체크하여 배타성 확보
-            const isAdminRoom = !!r?.is_admin_only
-            const sm = tsMin(b.start_at)
-            const cardState: string =
-                b.status === 'rejected'                                                          ? "rejected"
-              : b.status === 'cancelled' && b.cancelledBy === 'admin'                            ? "adminCancel"
-              : b.status === 'cancelled' && b.cancelledBy === 'user'                             ? "userCancel"
-              // 기한초과: 에메랄드 + pending + autoCancelled + 시작시간 지남
-              : isAdminRoom && b.status === 'pending' && b.autoCancelled && sm < now             ? "pendingExpired"
-              // 노쇼: (confirmed OR cancelled) + autoCancelled + system + !checkedIn (자연 배타)
-              : (b.status === 'confirmed' || b.status === 'cancelled')
-                && b.autoCancelled && b.cancelledBy === 'system' && !b.checkedIn                 ? "noshow"
-              : b.earlyEnded                      ? "earlyEnded"
-              : b.checkedIn && isActive           ? "using"
-              : b.checkedIn                       ? "done"
-              : isActive                          ? "checkin"
-              : isPast                            ? "done"
-              : b.status === 'pending'            ? "pending"
-              : isSoon                            ? "soon"
-              : "waiting";
-
-            const S = {
-              waiting:       {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:true},
-              soon:          {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:true},
-              pending:       {label:"승인 대기",    btnBg:"#FEF3C7", btnColor:"#92400E", disabled:true,  action:null,                showBtn:true},
-              checkin:       {label:"체크인",       btnBg:"#16A34A", btnColor:"#fff",    disabled:false, action:()=>onCheckIn(b.id), showBtn:true},
-              using:         {label:"조기반납",     btnBg:"#111111", btnColor:"#fff",    disabled:false, action:()=>onEarlyEnd(b.id),showBtn:true},
-              noshow:        {label:null,           btnBg:"",        btnColor:"",        disabled:true,  action:null,                showBtn:false},
-              pendingExpired:{label:null,           btnBg:"",        btnColor:"",        disabled:true,  action:null,                showBtn:false},
-              done:          {label:"종료",         btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:true},
-              earlyEnded:    {label:"반납됨",       btnBg:"#DBEAFE", btnColor:"#2563EB", disabled:true,  action:null,                showBtn:true},
-              adminCancel:   {label:"강제취소",      btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:false},
-              rejected:      {label:"거절됨",       btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:false},
-              userCancel:    {label:"예약자 취소",    btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:true},  // ← [v2.1] cancelled → userCancel로 명확화
-            }[cardState] ?? {label:"체크인 대기", btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true, action:null, showBtn:true};
-
-            const isCancellable = cardState==="waiting" || cardState==="soon" || cardState==="pending";
-
+            // ← [2026-04-21] 인라인 구현 → MiniBookingCard 공통 컴포넌트로 교체
+            //   판정·스타일·상태칩 규칙 단일 진실 원천 (src/components/common/MiniBookingCard.tsx)
             return (
-              <div key={b.id} className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 rounded-3xl p-3" /* ← [6차] rounded-2xl → rounded-3xl */
-                onClick={()=>onBookingDetail&&onBookingDetail(b)}
-                style={{width:isMobile?150:170, height:isMobile?140:160, /* ← [6차] 가로 10px 확장 */
-                  flexShrink:0, overflow:"hidden",
-                  // ← [v2.1] cancelled → userCancel로 cardState 이름 변경됨
-                  opacity: (cardState==="userCancel"||cardState==="noshow"||cardState==="adminCancel"||cardState==="rejected"||cardState==="pendingExpired") ? 0.45 : 1,
-                  border: cardState==="pending" ? "1.5px solid #FCD34D" : "none",
-                  cursor:"pointer"}}>
-                {/* 상단 */}
-                <div>
-                  {/* ← [10차] 인라인 span → MetaBadge 공통 컴포넌트
-                       반복 뱃지: 인디고 → 민트 (BookingListTable과 색 통일)
-                       참석자 뱃지: 연초록 기존 색 유지 */}
-                  {b.recurGroupId && (
-                    <span style={{ marginRight: 3, marginBottom: 3, display: 'inline-block' }}>
-                      <MetaBadge type="recurring" size="xs" />
-                    </span>
-                  )}
-                  {b.user !== currentUser && (
-                    <span style={{ marginBottom: 3, display: 'inline-block' }}>
-                      <MetaBadge type="guest" size="xs" />
-                    </span>
-                  )}
-                  <div className="text-xs font-semibold text-slate-900 dark:text-white leading-snug line-clamp-1 mb-1.5">{b.title}</div> {/* ← [2026-04-17 3차] line-clamp-2 → line-clamp-1 */}
-                  <div style={{marginBottom:4}}>
-                    <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} size="sm" currentUser={currentUser} />
-                  </div>
-                  <div className="text-[10px] text-slate-400">{r?.room_name ?? ''}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">{fmtTSRangeFull(b.start_at, b.end_at)}</div>
-                </div>
-                {/* 버튼 영역 */}
-                <div className="flex gap-1.5 mt-2">
-                  {S.showBtn && (
-                    <button className="btn flex-1 text-[11px] font-semibold rounded-xl py-2"
-                      onClick={e=>{e.stopPropagation(); S.action?.();}}
-                      disabled={S.disabled}
-                      style={{background:S.btnBg, color:S.btnColor, cursor:S.disabled?"default":"pointer",
-                        minHeight:32, display:"flex", alignItems:"center", justifyContent:"center"}}>
-                      {S.label}
-                    </button>
-                  )}
-                  {isCancellable && (
-                    <button className="btn text-[11px] font-semibold rounded-xl py-2 px-2.5 dark:bg-slate-700 text-slate-500 dark:text-slate-400" style={{background:"#F3F4F8"}}
-                      onClick={e=>{e.stopPropagation(); onCancel(b.id);}}>취소</button>
-                  )}
-                </div>
-              </div>
+              <MiniBookingCard
+                key={b.id}
+                booking={b}
+                room={r}
+                currentUser={currentUser}
+                size="sm"
+                isMobile={isMobile}
+                onClick={onBookingDetail}
+                onCheckIn={onCheckIn}
+                onEarlyEnd={onEarlyEnd}
+                onCancel={onCancel}
+              />
             );
           })}
         </div>
