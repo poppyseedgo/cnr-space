@@ -76,10 +76,15 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
         position:"absolute",top:8,left:"50%",transform:"translateX(-50%)",zIndex:1}}/>}
 
       {/* ── 헤더 바 ── */}
-      {/* ← [피그마] padding 18px 28px 14px → 16px 20px, borderBottom 제거 */}
-      <div style={{padding: isMobile ? "20px 20px 14px" : "16px 20px",
+      {/* ← [피그마] padding 18px 28px 14px → 16px 20px, borderBottom 제거
+          ← [2026-04-21] 배경 그라디언트로 경계 표현 (흰색→투명 페이드) */}
+      <div style={{
+        padding: isMobile ? "20px 20px 24px" : "16px 20px 28px",       // 하단 여유 패딩으로 페이드 공간
+        background: "linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(255,255,255,1) 60%, rgba(255,255,255,0) 100%)",
         display:"flex", justifyContent:"space-between",
-        alignItems:"flex-start", flexShrink:0}}>
+        alignItems:"flex-start", flexShrink:0,
+        position: "relative", zIndex: 2,
+      }}>
         <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:4}}>
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
             {/* ← [피그마] 제목 20 → 24 (SemiBold) */}
