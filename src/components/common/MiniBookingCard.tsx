@@ -188,11 +188,17 @@ export function MiniBookingCard({
     >
       {/* 상단 영역 */}
       <div>
-        {/* ① 반복 칩 + 제목 (같은 줄, gap 6, pb 6) — ← [피그마 node 63:5905] */}
+        {/* ① 반복 + 참석자 뱃지 + 제목 (같은 줄, gap 6, pb 6) — ← [피그마 node 63:5905]
+             규칙: 반복·참석자 뱃지만 제목 앞 위치, 다른 상태칩은 아래 줄 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingBottom: 6, minWidth: 0 }}>
           {b.recurGroupId && (
             <span style={{ flexShrink: 0 }}>
               <MetaBadge type="recurring" size="xs" />
+            </span>
+          )}
+          {b.user !== currentUser && (
+            <span style={{ flexShrink: 0 }}>
+              <MetaBadge type="guest" size="xs" />
             </span>
           )}
           <span
@@ -208,9 +214,6 @@ export function MiniBookingCard({
 
         {/* ② 상태칩 줄 (gap 4) — ← [규칙] 상태칩 최대 3개 노출 (maxCount=3) */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, flexWrap: 'wrap' }}>
-          {b.user !== currentUser && (
-            <MetaBadge type="guest" size="xs" />
-          )}
           <BookingStatusBadge
             booking={b}
             room={r}
