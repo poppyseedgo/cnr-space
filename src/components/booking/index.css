@@ -24,7 +24,7 @@
 
   /* 상태 색상 */
   --color-available-bg:  #CBECFF;
-  --color-available-text:#0369A1;
+  --color-available-text:#111;    /* ← [2026-04-21] 피그마 node 196:1073 — 파랑→검정 */
   --color-busy-bg:       #FEE2E2;
   --color-busy-text:     #DC2626;
   --color-soon-bg:       #FEF3C7;
@@ -79,9 +79,10 @@
 @layer base {
   *, *::before, *::after { box-sizing: border-box; }
 
-  /* iOS Safari 가로 흔들림 전체 차단 */
+  /* iOS Safari 가로 흔들림 전체 차단
+     ← [2026-04-21] overflow-x: hidden → clip (sticky 호환) */
   html, body {
-    overflow-x: hidden;
+    overflow-x: clip;
     overscroll-behavior-x: none;
     width: 100%;
   }
@@ -239,11 +240,12 @@
   }
 
   /* ── 칩 (상태 뱃지) ── */
-  /* base 클래스만 여기에. 색상·사이즈 modifier는 tokens.css 단일 관리 */
+  /* base 클래스만 여기에. 색상·사이즈 modifier는 tokens.css 단일 관리
+     ← [2026-04-21] font-weight 600 → 500 (전체 통일) */
   .chip {
     display: inline-flex; align-items: center; gap: 4px;
     padding: 3px 10px; border-radius: var(--radius-full);
-    font-size: 11px; font-weight: 600; letter-spacing: 0.2px;
+    font-size: 11px; font-weight: 500; letter-spacing: 0.2px;
     white-space: nowrap;
   }
 
