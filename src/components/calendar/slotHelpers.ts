@@ -63,11 +63,19 @@ export interface SlotState {
  * ← [2026-04-21 v2.1] v2.1 설계 반영, status 기반 명확한 필터링
  */
 export function isShownInDailyView(b: Booking, now: number, isToday: boolean): boolean {
+  // ← [2026-04-21 update] 레거시 데이터 호환 필터링
+  //   배경: 과거 v1.x cron 버그로 status='cancelled' + cancelledBy='system'인 노쇼가 DB에 존재
+  //   해결: cancelledBy='system'(cron 자동)이면 status 무관하게 "노쇼 후보"로 유지
+  //         → 뒤이은 getSlotState에서 isNoshow 판정으로 최종 결정
+
   // ① 거절 제외 (status로 명확히 판별)
   if (b.status === 'rejected') return false
 
-  // ② 사람 취소 제외 (v2.1: autoCancelled=false이므로 status로 판별)
-  if (b.status === 'cancelled') return false   // User/Admin 취소 모두 제외
+  // ② 사람 취소 제외 (User/Admin) — v2.1: cancelledBy로 판별
+  if (b.status === 'cancelled' && b.cancelledBy !== 'system') return false
+  //   · status='cancelled' + cancelledBy='user' → User 취소 제외
+  //   · status='cancelled' + cancelledBy='admin' → Admin 강제취소 제외
+  //   · status='cancelled' + cancelledBy='system' → 레거시 노쇼로 간주 (통과)
 
   // ③ 기한초과 제외 (status='pending' + autoCancelled=true)
   if (b.status === 'pending' && b.autoCancelled) return false
@@ -85,45 +93,40 @@ export function getSlotState(
   b: Booking,
   now: number,
   isToday: boolean,
-  currentUser = ''
+  currentUser = '',
+  isAdminRoom = false,
 ): SlotState {
   const sm = tsMin(b.start_at)
   const em = tsMin(b.end_at)
 
   // ── 상태 판별 (v2.1 — BookingStatusBadge.tsx와 동일 로직) ──────────
   //
-  // ← [2026-04-21 v2.1] 판별 로직 재설계
+  // ← [2026-04-21 update] 레거시 데이터 호환 판정
   //
-  //   v2.1 DB 규칙:
-  //     · User/Admin 취소: status='cancelled' + autoCancelled=false + cancelledBy='user'/'admin'
-  //     · Admin 거절:      status='rejected'
-  //     · 기한초과(cron):  status='pending' + autoCancelled=true + cancelledBy='system'
-  //     · 노쇼(cron):      status='confirmed'+ autoCancelled=true + cancelledBy='system' + !checkedIn
-  //
-  //   판별 원칙:
-  //     · status 값으로 1차 분기 (rejected/pending/cancelled/confirmed)
-  //     · autoCancelled + cancelledBy 조합으로 2차 판별
-  //     · 시간축 판별 제거 (now<sm+10 등) — status로 명확히 구분됨
+  //   · isExpiredPending: 에메랄드 + pending + autoCancelled + 시작시간 지남
+  //     (status='pending'이 강력한 맥락, cron이 건드리지 않음)
+  //   · isNoshow: autoCancelled + system + !checkedIn
+  //     (status 조건 없음 → 레거시 status='cancelled' 데이터도 호환)
+  //   · 배타성은 판정 순서(호출하는 곳)에서 isExpiredPending 먼저 체크하여 확보
 
-  // ① 기한초과 (status='pending' + autoCancelled + system)
-  const isExpiredPending = b.status === 'pending'
+  // ① 기한초과: 에메랄드 + pending + autoCancelled + 시작시간 지남
+  const isExpiredPending = isAdminRoom
+                           && b.status === 'pending'
                            && b.autoCancelled
-                           && b.cancelledBy === 'system'
+                           && sm < now
 
-  // ② 노쇼 (status='confirmed' + autoCancelled + system + !checkedIn + !earlyEnded)
-  //    v2.1: !checkedIn 조건 추가 (노쇼의 본질)
-  const isNoshow = b.status === 'confirmed'
+  // ② 노쇼: (confirmed OR cancelled) + autoCancelled + system + !checkedIn
+  //    · status='pending'은 체크인 대상 자체가 아님 → 자연 배타성
+  //    · 'cancelled'은 v1.x 레거시 노쇼 데이터 호환
+  const isNoshow = (b.status === 'confirmed' || b.status === 'cancelled')
                    && b.autoCancelled
                    && b.cancelledBy === 'system'
                    && !b.checkedIn
-                   && !b.earlyEnded
 
   const isEnded     = b.earlyEnded
   // ← [v2.1] 진행 중: status='confirmed' 명시 (cancelled 제외)
-  //   v2.1에서는 User/Admin 취소도 autoCancelled=false라서
-  //   !isNoshow 만으로는 취소된 예약 필터링 불가 → status 조건 추가
   const isAct       = isToday && sm <= now && now < em
-                      && b.status === 'confirmed'      // ← [v2.1 추가] cancelled 제외
+                      && b.status === 'confirmed'      // ← [v2.1] cancelled 제외
                       && !isNoshow && !isExpiredPending && !isEnded
   const nci         = isAct && !b.checkedIn
   const isMyBooking = !!currentUser && b.user === currentUser

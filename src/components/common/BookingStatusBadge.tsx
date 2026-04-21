@@ -136,25 +136,29 @@ export function BookingStatusBadge({
   //    v2.1: autoCancelled 체크 제거 (사람 개입은 autoCancelled=false)
   const isAdminCancel = b.status === 'cancelled' && b.cancelledBy === 'admin'
 
-  // ④ 기한초과 취소 (cron 자동 처리, 에메랄드룸 전용)
-  //    v2.1: status='pending' 유지 (cron이 status 안 건드림)
-  //    룸 조건 안전장치: 일반룸에서 발생하면 데이터 이상 경고
-  const isExpiredPending = b.status === 'pending'
+  // ④ 기한초과 (에메랄드룸 승인대기가 시작시간 지남)
+  //    · 에메랄드룸 + pending + autoCancelled + 시작시간 지남
+  //    · status='pending' = 승인 대기 중이었다는 강력한 맥락 (cron이 건드리지 않음)
+  //    · autoCancelled = cron이 자동 처리했다는 명시
+  //    · isAdminRoom = 기한초과는 에메랄드룸에서만 발생
+  //    · sm < now = 시작 시간 지남 (cron 지연 시에도 UX 즉시 반영)
+  const isExpiredPending = adminRoom
+                           && b.status === 'pending'
                            && b.autoCancelled
-                           && b.cancelledBy === 'system'
-  if (isExpiredPending && r && !adminRoom) {
-    // ← [v2.1 안전장치] 기한초과는 에메랄드룸에서만 발생해야 함
-    console.warn('[BookingStatusBadge] 기한초과가 일반룸에서 발생? 데이터 이상:', b.id)
-  }
+                           && sm < now
 
-  // ⑤ 노쇼 (cron 자동 처리)
-  //    v2.1: !checkedIn + !earlyEnded 조건 추가 (노쇼의 본질: 체크인 안 함)
-  //          status='confirmed' 명시 (기한초과와 구분)
-  const isNoshow = b.status === 'confirmed'
+  // ⑤ 노쇼 ("체크인 대상이었던 예약이 체크인 안 함")
+  //    · (status='confirmed' OR 'cancelled') — 체크인 대상 상태
+  //      - 'confirmed': v2.1 정상 노쇼
+  //      - 'cancelled': v1.x 레거시 버그 데이터 (원래 confirmed였던 것)
+  //      - 'pending'은 체크인 대상 자체가 아니므로 제외 (자연 배타성)
+  //    · autoCancelled + system = cron 자동 처리
+  //    · !checkedIn = 노쇼의 본질
+  const isNoshow = (b.status === 'confirmed' || b.status === 'cancelled')
                    && b.autoCancelled
                    && b.cancelledBy === 'system'
                    && !b.checkedIn
-                   && !b.earlyEnded
+
 
   // ── 진행 상태 판별 ──────────────────────────────────────────────
   //

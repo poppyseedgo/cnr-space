@@ -31,27 +31,28 @@ import type { Booking, Room, AppUser } from '../../types'
  *   · 설계 문서: 예약상태관리_설계문서_v2.1.md
  */
 
-// ─── 노쇼 판별 ───────────────────────────────────────────────────────────────
-// ← [2026-04-21 v2.1] !checkedIn + !earlyEnded 조건 추가
-//   v2.1 노쇼 정의: "체크인 없이 start_at+10분 경과 시 cron이 자동 처리"
-//   판정: status='confirmed' + autoCancelled=true + cancelledBy='system' + !checkedIn + !earlyEnded
-//   기한초과(status='pending')는 자연히 제외됨 (status='confirmed'로 필터링)
+// ─── 노쇼 판별 ────────────────────────────────────────────────────────────────
+// ← [2026-04-21 update] 자연 배타성 공식 적용
+//   노쇼 본질: "체크인 대상이었던 예약이 체크인 안 함"
+//   · (status='confirmed' OR 'cancelled') — 체크인 대상 상태
+//     - 'confirmed': v2.1 정상 노쇼
+//     - 'cancelled': v1.x 레거시 버그 데이터 호환
+//     - 'pending'은 체크인 대상 아님 → 자연 배타 (기한초과와 분리)
+//   · autoCancelled + system + !checkedIn
 function isNoshow(b: Booking): boolean {
-  return b.status === 'confirmed'
+  return (b.status === 'confirmed' || b.status === 'cancelled')
       && !!b.autoCancelled
       && b.cancelledBy === 'system'
-      && !b.checkedIn                     // ← [v2.1 추가] 체크인 안 한 것만
-      && !b.earlyEnded                    // ← [v2.1 추가] 조기종료 제외
+      && !b.checkedIn
 }
 
-// ─── 취소 판별 (User/Admin 취소 + 기한초과) ──────────────────────────────────
-// ← [2026-04-21 v2.1 신규] 취소 탭용 판정 헬퍼
-//   v2.1: User/Admin 취소는 status='cancelled', 기한초과는 status='pending'+autoCancelled
-//         모두 "취소" 탭에 포함 (노쇼 제외)
+// ─── 취소 판별 (User/Admin 취소 + 거절 + 기한초과) ────────────────────────────
+// ← [2026-04-21 update] 배타성: 노쇼는 제외 (레거시 status='cancelled' 노쇼 호환)
 function isCancelled(b: Booking): boolean {
-  if (b.status === 'rejected') return true                       // Admin 거절
-  if (b.status === 'cancelled') return true                      // User/Admin 취소
-  if (b.status === 'pending' && b.autoCancelled) return true     // 기한초과
+  if (isNoshow(b)) return false                                   // ← 노쇼 우선 제외
+  if (b.status === 'rejected') return true                        // Admin 거절
+  if (b.status === 'cancelled') return true                       // User/Admin 취소
+  if (b.status === 'pending' && b.autoCancelled) return true      // 기한초과
   return false
 }
 
