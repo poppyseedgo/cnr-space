@@ -252,14 +252,13 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
                           {/* 1행: 상태칩 + 제목 | 시간 */}
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
                             <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
-                              {/* ← [피그마 StatusBadge-XS] fs:9 Medium, padding:1px 4px, radius:4, lineHeight:1.5
-                                    색상은 각 상태 토큰(chip-pending/expired/noshow 등)이 제공 */}
+                              {/* ← [피그마 StatusBadge-XS] tokens.css의 .chip--xs 단일 소스 사용 */}
                               {isActive   && <span style={{width:7,height:7,borderRadius:"50%",background:"#E11D48",display:"inline-block",flexShrink:0}}/>}
-                              {isPending  && <span className="chip-pending" style={{flexShrink:0,fontSize:9,fontWeight:500,padding:"1px 4px",borderRadius:4,lineHeight:1.5}}>승인대기</span>}
-                              {isExpired  && <span className="chip-expired" style={{flexShrink:0,fontSize:9,fontWeight:500,padding:"1px 4px",borderRadius:4,lineHeight:1.5}}>승인기한초과 취소</span>}
-                              {isNoshow   && <span className="chip-noshow"  style={{flexShrink:0,fontSize:9,fontWeight:500,padding:"1px 4px",borderRadius:4,lineHeight:1.5}}>노쇼</span>}
-                              {isEarlyEnd && <span className="chip-earlyend" style={{flexShrink:0,fontSize:9,fontWeight:500,padding:"1px 4px",borderRadius:4,lineHeight:1.5}}>조기반납</span>}
-                              {isDone     && <span className="chip-done"    style={{flexShrink:0,fontSize:9,fontWeight:500,padding:"1px 4px",borderRadius:4,lineHeight:1.5}}>종료</span>}
+                              {isPending  && <span className="chip chip--xs chip-pending"  style={{flexShrink:0}}>승인대기</span>}
+                              {isExpired  && <span className="chip chip--xs chip-expired"  style={{flexShrink:0}}>승인기한초과 취소</span>}
+                              {isNoshow   && <span className="chip chip--xs chip-noshow"   style={{flexShrink:0}}>노쇼</span>}
+                              {isEarlyEnd && <span className="chip chip--xs chip-earlyend" style={{flexShrink:0}}>조기반납</span>}
+                              {isDone     && <span className="chip chip--xs chip-done"     style={{flexShrink:0}}>종료</span>}
                               <span style={{fontSize:12,color:"#111",fontWeight:600,
                                 overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.5}}>{b.title}</span>
                             </div>
