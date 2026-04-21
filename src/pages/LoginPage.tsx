@@ -125,10 +125,13 @@ export default function LoginPage() {
       <div style={{ width: '100%', maxWidth: 448 }}>
 
         {/* ← [피그마 node 201:1137] 흰색 카드
-             bg #fff, radius 24, padding 24px 24px 1px, gap 32 */}
+             bg #fff, radius 24, padding 24px 24px 1px, gap 32
+             ← [2026-04-22] background: '#fff' 제거 — 바깥 wrapper(L114-123)의
+                그라디언트(#FFFFFF 63.45% → #B0DEFF 93.75%)가 카드 영역까지
+                자연스럽게 이어지도록. 버튼(L188)/오류박스(L247)는 자체 배경
+                보유하므로 영향 없음. */}
         <div
           style={{
-            background: '#fff',
             borderRadius: 24,
             padding: '24px 24px 24px',
             display: 'flex',
