@@ -186,11 +186,11 @@ export function MiniBookingCard({
         cursor: onClick ? 'pointer' : 'default',
       }}
     >
-      {/* 상단 영역 */}
-      <div>
-        {/* ① 반복 + 참석자 뱃지 + 제목 (같은 줄, gap 6, pb 6) — ← [피그마 node 63:5905]
+      {/* 상단 영역 — ← [2026-04-21] flex gap:4로 요소 간격 통일 */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {/* ① 반복 + 참석자 뱃지 + 제목 (같은 줄, gap 6) — ← [피그마 node 63:5905]
              규칙: 반복·참석자 뱃지만 제목 앞 위치, 다른 상태칩은 아래 줄 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingBottom: 6, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
           {b.recurGroupId && (
             <span style={{ flexShrink: 0 }}>
               <MetaBadge type="recurring" size="xs" />
@@ -224,8 +224,8 @@ export function MiniBookingCard({
           />
         </div>
 
-        {/* ③ 룸 + 시간 (gap 6, pt 4 pb 8, fs 11 Medium, leading-none) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4, paddingBottom: 8 }}>
+        {/* ③ 룸 + 시간 (fs 11 Medium, leading 1) */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
           <div style={{ fontSize: 11, fontWeight: 500, color: '#262930', lineHeight: 1, whiteSpace: 'nowrap' }}>
             {r?.room_name ?? ''}
           </div>
