@@ -300,9 +300,10 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
       </div>
 
       {/* ── 버튼 footer ── */}
-      {/* ← [피그마] padding 12px 28px 20px → 8, gap 8 → 16, borderTop 제거
+      {/* ← [피그마] padding 12px 28px 20px → 8, borderTop 제거
+          ← [2026-04-22] 모달 버튼 영역 gap 8로 통일
           버튼 h:56 radius:16, 닫기 #F1F5F9/#64748B, primary #111/#fff */}
-      <div style={{padding:8, flexShrink:0, display:"flex", gap:16}}>
+      <div style={{padding:8, flexShrink:0, display:"flex", gap:8}}>
         <button className="btn" onClick={onClose}
           style={{flex:1,height:56,borderRadius:16,background:"#F1F5F9",
             color:"#64748B",fontSize:14,fontWeight:600,border:"none",cursor:"pointer",
