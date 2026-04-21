@@ -10,15 +10,21 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@react-three/fiber": "^8.18.0",
+    "@shadergradient/react": "^2.4.20",
     "@supabase/supabase-js": "^2.39.0",
+    "camera-controls": "^2.10.1",
     "lucide-react": "^0.383.0",
     "material-symbols": "^0.44.1",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "three": "^0.160.1",
+    "three-stdlib": "^2.36.1"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
+    "@types/three": "^0.160.0",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.17",
     "postcss": "^8.4.35",

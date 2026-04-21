@@ -72,7 +72,7 @@
 //   - 변경: <MetaBadge type="recurring" size="xs" /> / <MetaBadge type="guest" size="xs" /> 사용
 //   - 효과: BookingListTable의 반복 뱃지(민트)와 색상 통일, tokens.css 단일 소스
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react' // ← [2026-04-21] lazy, Suspense 추가: ShaderBookingButton 동적 로드용
 import { Layers, Search, UsersRound, X, LayoutGrid, Grid3x3 } from 'lucide-react' // ← [그리드 토글 아이콘 추가]
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
@@ -85,6 +85,11 @@ import { RoomStatusBadge } from '../common/RoomStatusBadge'
 import { BookingStatusBadge } from '../common/BookingStatusBadge'
 import { MetaBadge } from '../common/MetaBadge'  // ← [10차] 반복·참석자 뱃지 공통화
 import { RoomCardButtonArea } from './RoomCardButtonArea' // ← [6차] 공통 컴포넌트 추출
+
+// ── lazy load — ShaderGradient는 three.js 생태계(약 300~400KB gzip) 의존 → 초기 번들 제외
+// ← [2026-04-21] "+ 예약하기" 버튼만 사용. 이 버튼이 렌더링될 때만 청크 로드됨.
+//    Suspense fallback은 기존 검정 배경 버튼과 동일 외형 → 로딩 중에도 UX 손상 없음.
+const ShaderBookingButton = lazy(() => import('../common/ShaderBookingButton').then(m => ({ default: m.ShaderBookingButton })))
 
 export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearchQ, filterFloor, setFilterFloor, onBook, onDetail, onBookingDetail, onCheckIn, onEarlyEnd, onCancel, currentUser, currentUserEmail='', dark}) {
   const { isMobile, isTablet } = useBreakpoint();
@@ -196,14 +201,34 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
           style={{overflowX:"auto",scrollbarWidth:"none",WebkitOverflowScrolling:"touch",
             paddingLeft:0, paddingRight:4}}>
 
-          {/* + 예약하기 첫 카드 */}
-          <button onClick={()=>{/* onBook 없이 새 예약 모달 */document.dispatchEvent(new CustomEvent("openNewBooking"))}}
-            className="btn flex-none flex flex-col items-center justify-center rounded-3xl text-white font-medium" /* ← [6차] rounded-2xl → rounded-3xl, font-semibold → font-medium */
-            style={{width:isMobile?150:170, height:isMobile?140:160, /* ← [6차] 가로 10px 확장 (정사각형 → 가로 긴 직사각형) */
-              background:"#111111", flexShrink:0, gap:8}}>
-            <span style={{fontSize:24, lineHeight:1}}>＋</span>
-            <span style={{fontSize:isMobile?12:13}}>예약하기</span>
-          </button>
+          {/* + 예약하기 첫 카드 ── [2026-04-21] ShaderGradient 적용
+              - 기존 검정 배경(#111111) 버튼을 ShaderBookingButton(3D 그라데이션)으로 교체
+              - 버튼 1개만 적용 (오늘 내 예약 섹션 최상단). 회의실 카드 버튼은 영향 없음.
+              - Suspense fallback: 기존 검정 버튼과 동일 외형 → 청크 로드 중에도 클릭 가능
+              - 클릭 핸들러: 기존 로직 동일 (openNewBooking 커스텀 이벤트 디스패치) */}
+          <Suspense
+            fallback={
+              <button
+                onClick={() => document.dispatchEvent(new CustomEvent("openNewBooking"))}
+                className="btn flex-none flex flex-col items-center justify-center rounded-3xl text-white font-medium"
+                style={{
+                  width: isMobile ? 150 : 170,
+                  height: isMobile ? 140 : 160,
+                  background: "#111111",
+                  flexShrink: 0,
+                  gap: 8,
+                }}
+              >
+                <span style={{ fontSize: 24, lineHeight: 1 }}>＋</span>
+                <span style={{ fontSize: isMobile ? 12 : 13 }}>예약하기</span>
+              </button>
+            }
+          >
+            <ShaderBookingButton
+              onClick={() => document.dispatchEvent(new CustomEvent("openNewBooking"))}
+              isMobile={isMobile}
+            />
+          </Suspense>
 
           {myBookings.length === 0 ? (
             <div className="flex-none flex items-center justify-center rounded-3xl text-slate-300 dark:text-slate-600 text-sm" /* ← [6차] rounded-2xl → rounded-3xl */
