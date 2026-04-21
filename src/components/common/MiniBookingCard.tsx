@@ -206,12 +206,19 @@ export function MiniBookingCard({
           </span>
         </div>
 
-        {/* ② 상태칩 줄 (gap 4) — BookingStatusBadge가 xs 크기로 렌더 */}
+        {/* ② 상태칩 줄 (gap 4) — ← [규칙] 상태칩 최대 3개 노출 (maxCount=3) */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, flexWrap: 'wrap' }}>
           {b.user !== currentUser && (
             <MetaBadge type="guest" size="xs" />
           )}
-          <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} size="xs" currentUser={currentUser} />
+          <BookingStatusBadge
+            booking={b}
+            room={r}
+            isAdminRoom={!!r?.is_admin_only}
+            size="xs"
+            currentUser={currentUser}
+            maxCount={3}
+          />
         </div>
 
         {/* ③ 룸 + 시간 (gap 6, pt 4 pb 8, fs 11 Medium, leading-none) */}
