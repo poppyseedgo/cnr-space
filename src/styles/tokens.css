@@ -41,6 +41,11 @@
   --color-expired-bg:      #E2E8F0; --color-expired-text:      #64748B;  /* ← [변경] done과 구분, 더 탁한 회색 */
   --color-rejected-bg:     #FEE2E2; --color-rejected-text:     #991B1B;
 
+  /* ── [2026-04-21 신규] 관리자 승인 필요 (에메랄드룸) 뱃지 토큰 ── */
+  /* 피그마 node 195:1071 "승인 후 확정" — 에메랄드룸 고정 표시용 */
+  --color-admin-approval-bg:   #E6FFB0;
+  --color-admin-approval-text: #111;
+
   /* ── 참석자 칩 토큰 ── */
   --color-attendee-bg:    #EEF2FF;  /* ← [신규] AttendeeChip 하드코딩 색상 토큰화 */
 
@@ -58,14 +63,14 @@
 /* ── 칩 사이즈 modifier ─────────────────────────────────────────────────────
    base .chip (md) : font-size 11px / padding 3px 10px  — index.css 정의
    .chip--sm       : font-size  9px / padding 2px 7px
-   .chip--xs       : font-size  9px / padding 1px 4px   / border-radius 4px / font-weight 500 / line-height 1.5
-                     — [2026-04-21] 피그마 StatusBadge-XS (node 193:1066) 스펙 반영
+   .chip--xs       : font-size 10px / padding 2px 4px   / border-radius 4px / font-weight 500 / line-height 1.5
+                     — [2026-04-21] 고지 지정 최종값
 ─────────────────────────────────────────────────────────────────────────── */
 .chip--sm { font-size: 9px;  padding: 2px 7px; }
 .chip--xs {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 500;
-  padding: 1px 4px;
+  padding: 2px 4px;
   border-radius: 4px;
   line-height: 1.5;
   display: inline-flex;
@@ -92,6 +97,8 @@
 /* ← [변경] expired에 opacity 추가로 "버려진" 시각적 인상 강화 */
 .chip-expired       { background: var(--color-expired-bg);       color: var(--color-expired-text); opacity: 0.75; }
 .chip-rejected      { background: var(--color-rejected-bg);      color: var(--color-rejected-text); }
+/* ← [2026-04-21 신규] 에메랄드룸 "승인 후 확정" 뱃지 */
+.chip-admin-approval { background: var(--color-admin-approval-bg); color: var(--color-admin-approval-text); }
 
 /* ── 메타 뱃지 (예약 속성: 반복/참석자) ──────────────────────────────────── */
 /* ← [2026-04-18 신규] MetaBadge 공통 컴포넌트용 스타일
