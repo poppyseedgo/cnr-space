@@ -7,20 +7,44 @@ import type { AppUser } from '../../types'
 interface UserChipProps {
   name:       string
   avatarUrl?: string | null
-  variant?:   'sm' | 'md'
+  variant?:   'sm' | 'md' | 'detail'
   isAdmin?:   boolean
   userInfo?:  AppUser
+  /** variant='detail'에서 이름 뒤에 부서 표시 */
+  showDept?:  boolean
+  dept?:      string
 }
 
+/**
+ * variant별 config
+ * - sm       : 소형 칩 (AttendeeChip 내부 등)                 — 기존 유지
+ * - md       : 중형 칩 (리스트뷰, BookingDoneModal 등)          — 기존 유지
+ * - detail   : [2026-04-21 신규] BookingDetailModal 예약자/참석자 전용
+ *              피그마 node 202:1178 (부서 포함) / 202:1184 (이름만)
+ *              avatar 24, bg #000, text #E7E7E7, fs 12 Medium leading 1.3
+ *              이름 14 Medium #111, 부서 11 Regular rgba(17,17,17,0.35)
+ *              gap 7 (아바타-이름 사이), 이름-부서 gap 4
+ */
 const CONFIG = {
-  sm: { avatarSize: 20, fontSize: 12, gap: 5 },
-  md: { avatarSize: 28, fontSize: 14, gap: 5 },
+  sm:     { avatarSize: 20, fontSize: 12, gap: 5 },
+  md:     { avatarSize: 28, fontSize: 14, gap: 5 },
+  detail: { avatarSize: 24, fontSize: 14, gap: 7 },
 }
 
-export function UserChip({ name, avatarUrl, variant = 'md', isAdmin = false, userInfo }: UserChipProps) {
+export function UserChip({
+  name, avatarUrl, variant = 'md', isAdmin = false, userInfo,
+  showDept = false, dept,
+}: UserChipProps) {
   const { avatarSize, fontSize, gap } = CONFIG[variant]
   const [open, setOpen] = useState(false)
   const canClick = !!userInfo
+
+  // ← [2026-04-21] detail variant는 아바타 색상 고정 (피그마 스펙: #000 bg / #E7E7E7 text, Medium 500)
+  //   sm/md는 기존 로직 유지 (isAdmin에 따라 #111/#E6F1FB 분기)
+  const avatarBg    = variant === 'detail' ? '#000'    : (isAdmin ? '#111' : '#E6F1FB')
+  const avatarColor = variant === 'detail' ? '#E7E7E7' : (isAdmin ? '#fff' : '#185FA5')
+  const avatarFontSize   = variant === 'detail' ? 12  : undefined
+  const avatarFontWeight = variant === 'detail' ? 500 : undefined
 
   return (
     <>
@@ -32,12 +56,25 @@ export function UserChip({ name, avatarUrl, variant = 'md', isAdmin = false, use
           name={name}
           avatarUrl={avatarUrl ?? null}
           size={avatarSize}
-          bgColor={isAdmin ? '#111' : '#E6F1FB'}
-          textColor={isAdmin ? '#fff' : '#185FA5'}
+          bgColor={avatarBg}
+          textColor={avatarColor}
+          fontSize={avatarFontSize}
+          fontWeight={avatarFontWeight}
         />
-        <span style={{ fontSize, fontWeight:500, color:'var(--color-text-primary, #111)', whiteSpace:'nowrap' }}>
-          {name}
-        </span>
+        {/* ← [2026-04-21] detail variant: 이름 Medium + 부서 동일 줄 gap 4
+               기존 sm/md variant: 이름만 렌더 */}
+        {variant === 'detail' ? (
+          <div style={{display:'inline-flex', alignItems:'center', gap:4, lineHeight:1.3, whiteSpace:'nowrap'}}>
+            <span style={{fontSize:14, fontWeight:500, color:'#111'}}>{name}</span>
+            {showDept && dept && (
+              <span style={{fontSize:11, fontWeight:400, color:'rgba(17,17,17,0.35)'}}>{dept}</span>
+            )}
+          </div>
+        ) : (
+          <span style={{ fontSize, fontWeight:500, color:'var(--color-text-primary, #111)', whiteSpace:'nowrap' }}>
+            {name}
+          </span>
+        )}
       </div>
 
       {canClick && open && createPortal(
