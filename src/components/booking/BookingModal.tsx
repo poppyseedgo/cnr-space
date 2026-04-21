@@ -13,6 +13,8 @@
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { AlertCircle, AlertTriangle, Ban, Calendar, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, X } from 'lucide-react'
+// ← [2026-04-21] 공통 X 아이콘
+import { IconClose } from '../common/IconClose'
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
@@ -725,8 +727,10 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
           <div style={{fontSize:18,fontWeight:600,color:"#111"}}>{editBooking ? "예약 변경" : "새 회의실 예약"}</div>
         )}
         <button className="btn" onClick={onClose}
-          style={{background:"none",color:"#94A3B8",fontSize:22,marginLeft:12,flexShrink:0,
-            padding:"4px",lineHeight:1,display:"flex",alignItems:"center"}}><X size={10} strokeWidth={1.8}/></button>
+          style={{background:"none",marginLeft:12,flexShrink:0,
+            padding:"4px",lineHeight:1,display:"flex",alignItems:"center",border:"none",cursor:"pointer"}}>
+          <IconClose size={20}/>
+        </button>
       </div>
 
       {/* ════ 모바일: 2-Step Wizard ════ */}

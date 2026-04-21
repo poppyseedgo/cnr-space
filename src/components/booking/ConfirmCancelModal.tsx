@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X, AlertTriangle } from 'lucide-react'
+// ← [2026-04-21] 공통 X 아이콘
+import { IconClose } from '../common/IconClose'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { fmtTSDateFull, fmtTSRangeFull } from '../../utils/time'
 import type { Booking, Room } from '../../types'
@@ -114,7 +116,7 @@ export function ConfirmCancelModal({ booking: b, room: r, onConfirm, onClose }: 
               border: 'none',
             }}
           >
-            <X size={13} strokeWidth={1.8} />
+            <IconClose size={20} />
           </button>
         </div>
 

@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
+// ← [2026-04-21] 공통 X 아이콘
+import { IconClose } from '../common/IconClose'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { todayStr, nowMinutes, tsDate, tsMin, fmtTimeFull, fmtTSFull, getRoomStatus } from '../../utils/time'
 import { getFloor } from '../../data/floors'
@@ -57,8 +59,10 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
             boxShadow:"0 8px 40px rgba(0,0,0,0.6)",cursor:"default"}}/>
         <button onClick={()=>setLightbox(false)}
           style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,0.15)",
-            border:"none",borderRadius:"50%",width:36,height:36,color:"#fff",
-            cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={16} strokeWidth={1.8}/></button>
+            border:"none",borderRadius:"50%",width:36,height:36,
+            cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <IconClose size={20} color="#fff"/>
+        </button>
       </div>
     )}
 
@@ -97,8 +101,10 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
         {/* ← [피그마] 닫기 버튼 배경 제거 — icon만 */}
         <button className="btn" onClick={onClose}
           style={{width:32,height:32,borderRadius:"50%",background:"transparent",
-            color:"#111",flexShrink:0,border:"none",cursor:"pointer",
-            display:"flex",alignItems:"center",justifyContent:"center"}}><X size={20} strokeWidth={1.8}/></button>
+            flexShrink:0,border:"none",cursor:"pointer",
+            display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <IconClose size={20}/>
+        </button>
       </div>
 
       {/* ── 본문: 데스크톱 2컬럼 / 모바일 1컬럼 ── */}
