@@ -14,10 +14,68 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, B
 
 import { UserAvatar } from '../components/common/UserAvatar'
 import { BookingListTable } from '../components/common/BookingListTable'
+import { MiniBookingCard } from '../components/common/MiniBookingCard'  // ← [v2.1 신규] 공통 카드 컴포넌트
 import { Button } from '../components/common/Button' 
 
+/**
+ * MyPage — 마이페이지 (프로필 + 통계 + 예약 관리)
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 변경 이력 (v2.1)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * [2026-04-21 v2.1] auto_cancelled 설계 재정립 + 4개 탭 UI 신설
+ *   · 배경: api.ts/BookingStatusBadge/HomeView가 v2.1로 업데이트됨
+ *   · v2.1 DB 규칙:
+ *     · User/Admin 취소: status='cancelled' + autoCancelled=false + cancelledBy='user'/'admin'
+ *     · Admin 거절:      status='rejected'
+ *     · 기한초과(cron):  status='pending'   + autoCancelled=true  + cancelledBy='system'
+ *     · 노쇼(cron):      status='confirmed' + autoCancelled=true  + cancelledBy='system' + !checkedIn
+ *
+ *   · 변경 범위:
+ *     [MyPageView]
+ *       (1) isNoshow() / isCancelled() 헬퍼 추가 (BookingListTable과 동일 로직)
+ *       (2) upcoming/completed/cancelled/noshow 필터 v2.1 재작성
+ *       (3) tab state: "upcoming"/"completed"/"cancelled"/"noshow" 4개 탭
+ *       (4) tab UI 신설: 탭 버튼 4개 + BookingStatusBadge 형식 리스트
+ *       (5) monthStats: 체크인/취소 카운트 v2.1 필터 반영
+ *     [MyBookingWeeklyView]
+ *       (6) todayBookings 필터 v2.1 업데이트 (User/Admin 취소 명시적 제외)
+ *       (7) cardState 판정 재작성 (HomeView와 동일 로직, userCancel 분기 추가)
+ *       (8) opacity 조건 cancelled → userCancel 이름 변경 반영
+ *
+ *   · 정책 준수:
+ *     · 노쇼 별도 탭: "취소된 예약"과 질적으로 다르므로 분리 (고지님 설계 원칙)
+ *     · BookingListTable과 동일한 노쇼/취소 판정 로직 사용 (단일 진실 원천)
+ *
+ *   · 설계 문서: 예약상태관리_설계문서_v2.1.md
+ */
+
+// ─── 노쇼 판별 (v2.1) ─────────────────────────────────────────────────────────
+// ← [2026-04-21 v2.1] BookingListTable과 동일 로직 — 단일 진실 원천
+//   노쇼 정의: status='confirmed' + autoCancelled=true + cancelledBy='system'
+//            + !checkedIn + !earlyEnded (체크인 안 한 것만)
+function isNoshow(b: Booking): boolean {
+  return b.status === 'confirmed'
+      && !!b.autoCancelled
+      && b.cancelledBy === 'system'
+      && !b.checkedIn
+      && !b.earlyEnded
+}
+
+// ─── 취소 판별 (v2.1) ─────────────────────────────────────────────────────────
+// ← [2026-04-21 v2.1] BookingListTable과 동일 로직
+//   취소 카테고리: Admin 거절 + User/Admin 취소 + 기한초과 (노쇼 제외)
+function isCancelled(b: Booking): boolean {
+  if (b.status === 'rejected') return true
+  if (b.status === 'cancelled') return true
+  if (b.status === 'pending' && b.autoCancelled) return true
+  return false
+}
+
 export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail, onCheckIn, onEarlyEnd, onCancel, rooms:rp=[], users:up=[], authUserId='', currentUserEmail='', avatarUrl=null}) {
-  const [tab, setTab] = useState("upcoming");
+  // ← [v2.1] 탭 4개: 예정/완료/취소/노쇼 (노쇼 별도 분리)
+  const [tab, setTab] = useState<"upcoming"|"completed"|"cancelled"|"noshow">("upcoming");
   const [statYear, setStatYear] = useState(()=>new Date().getFullYear());
   const [statMonth, setStatMonth] = useState(()=>new Date().getMonth());
   const today = todayStr();
@@ -119,15 +177,29 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   }, [authUserId, currentUserEmail]);
 
   const cancelBooking = async (id) => {
-    // 낙관적 UI 업데이트 (즉시 반영)
-    setBookings(prev => prev.map(b => b.id===id ? {...b, autoCancelled:true} : b));
+    // ← [v2.1] 롤백 안전장치: 원본 booking snapshot 저장
+    //   롤백 시 원래 status/autoCancelled/cancelledBy 복원 (pending/confirmed 구분)
+    let snapshot: Booking | undefined
+    setBookings(prev => {
+      snapshot = prev.find(b => b.id === id)
+      // 낙관적 UI 업데이트 (즉시 반영)
+      // v2.1 User 취소 DB 저장 형태: status='cancelled' + autoCancelled=false + cancelledBy='user'
+      return prev.map(b => b.id===id ? {
+        ...b,
+        status: 'cancelled',            // ← [v2.1 추가] cancelled 상태 명시
+        autoCancelled: false,            // ← [v2.1 변경] true→false (사람 개입이므로)
+        cancelledBy: 'user'              // ← [v2.1 추가] user 명시
+      } : b)
+    });
     showToast("예약이 취소되었습니다.", "info");
     try {
       // DB 반영
       await apiCancelBooking(id);
     } catch (err: any) {
-      // 실패 시 롤백
-      setBookings(prev => prev.map(b => b.id===id ? {...b, autoCancelled:false} : b));
+      // ← [v2.1] 실패 시 snapshot으로 원상 복구 (status/autoCancelled/cancelledBy 전부)
+      if (snapshot) {
+        setBookings(prev => prev.map(b => b.id===id ? snapshot! : b));
+      }
       showToast(err.message ?? "취소 중 오류가 발생했습니다.", "error");
     }
   };
@@ -140,29 +212,76 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   //   아래 모든 통계·목록은 allMyBookings 단일 소스 사용 — fallback/분기 없음
   // ─────────────────────────────────────────────────────────────────────────
 
-  // 실시간 탭 뷰 (예정/완료/취소)
-  const upcoming  = useMemo(()=>allMyBookings.filter(b=>!b.autoCancelled&&(tsDate(b.start_at)>today||(tsDate(b.start_at)===today&&tsMin(b.end_at)>now))).sort((a,b)=>a.start_at.localeCompare(b.start_at)),[allMyBookings,today,now]);
-  const completed = useMemo(()=>allMyBookings.filter(b=>!b.autoCancelled&&b.checkedIn&&(tsDate(b.start_at)<today||(tsDate(b.start_at)===today&&tsMin(b.end_at)<=now))).sort((a,b)=>b.start_at.localeCompare(a.start_at)),[allMyBookings,today,now]);
-  const cancelled = useMemo(()=>allMyBookings.filter(b=>b.autoCancelled).sort((a,b)=>b.start_at.localeCompare(a.start_at)),[allMyBookings]);
-  const tabData = tab==="upcoming"?upcoming:tab==="completed"?completed:cancelled;
+  // ← [v2.1] 실시간 탭 뷰 (예정/완료/취소/노쇼) — BookingListTable과 동일 로직
+  //   · upcoming:  미래 예약 (취소/노쇼/기한초과 제외)
+  //   · completed: 체크인 완료 또는 조기종료 (취소/노쇼 제외, status='confirmed')
+  //   · cancelled: User/Admin 취소 + 거절 + 기한초과 (노쇼 제외)
+  //   · noshow:    노쇼만 별도 (v2.1 설계 - 노쇼 별도 탭 분리)
+  const upcoming = useMemo(()=>
+    allMyBookings
+      .filter(b =>
+        !b.autoCancelled &&                                    // 노쇼/기한초과 제외
+        b.status !== 'cancelled' &&                             // ← [v2.1 추가] User/Admin 취소 제외
+        b.status !== 'rejected' &&                              // ← [v2.1 추가] 거절 제외
+        (tsDate(b.start_at) > today || (tsDate(b.start_at) === today && tsMin(b.end_at) > now))
+      )
+      .sort((a,b) => a.start_at.localeCompare(b.start_at)),
+    [allMyBookings, today, now]
+  );
+  const completed = useMemo(()=>
+    allMyBookings
+      .filter(b =>
+        !b.autoCancelled &&
+        b.status === 'confirmed' &&                             // ← [v2.1 추가] 확정 상태만
+        b.checkedIn &&
+        (tsDate(b.start_at) < today || (tsDate(b.start_at) === today && tsMin(b.end_at) <= now))
+      )
+      .sort((a,b) => b.start_at.localeCompare(a.start_at)),
+    [allMyBookings, today, now]
+  );
+  // ← [v2.1] cancelled: isCancelled() 헬퍼 사용 (노쇼 제외)
+  const cancelled = useMemo(()=>
+    allMyBookings
+      .filter(b => isCancelled(b))
+      .sort((a,b) => b.start_at.localeCompare(a.start_at)),
+    [allMyBookings]
+  );
+  // ← [v2.1 신규] noshow 탭 - 노쇼만 별도 분리
+  const noshow = useMemo(()=>
+    allMyBookings
+      .filter(b => isNoshow(b))
+      .sort((a,b) => b.start_at.localeCompare(a.start_at)),
+    [allMyBookings]
+  );
+  const tabData = tab==="upcoming" ? upcoming
+                : tab==="completed" ? completed
+                : tab==="cancelled" ? cancelled
+                : noshow;
 
-  // 월별 통계
+  // ← [v2.1] 월별 통계 — 체크인율과 취소/노쇼 카운트를 명확히 분리
   const monthStats = useMemo(()=>{
     const prefix=`${statYear}-${fmt2(statMonth+1)}`;
     const mb=allMyBookings.filter(b=>tsDate(b.start_at).startsWith(prefix));
-    const total=mb.length, ci=mb.filter(b=>(b.checkedIn||b.earlyEnded)&&!b.autoCancelled).length, can=mb.filter(b=>b.autoCancelled).length;
+    const total=mb.length;
+    // 체크인 = 체크인 완료 또는 조기종료 (정상 종료, 취소/노쇼 제외)
+    const ci=mb.filter(b=>(b.checkedIn||b.earlyEnded) && !b.autoCancelled && b.status === 'confirmed').length;
+    // 취소+노쇼 = 모든 취소 유형 (cancelled + noshow 합산)
+    const can=mb.filter(b => isCancelled(b) || isNoshow(b)).length;
     const rate=total>0?Math.round((ci/total)*100):0;
-    const rc: Record<number,number>={};mb.filter(b=>!b.autoCancelled).forEach(b=>{rc[b.room_id]=(rc[b.room_id]||0)+1;});
+    // 자주 예약하는 회의실 — 취소 건 제외
+    const rc: Record<number,number>={};
+    mb.filter(b=>!isCancelled(b) && !isNoshow(b)).forEach(b=>{rc[b.room_id]=(rc[b.room_id]||0)+1;});
     const top=Object.entries(rc).sort((a,b)=>(b[1] as number)-(a[1] as number))[0];
     const topRoom=top?(allRooms.find(r=>r.room_id===Number(top[0]))??null):null;
     return{total,checkedIn:ci,cancelled:can,rate,topRoom,topCount:top?top[1]:0};
   },[allMyBookings,statYear,statMonth]);
 
-  // 이번달 요약
+  // ← [v2.1] 이번달 요약 — 체크인율 계산
   const thisPrefix  = `${new Date().getFullYear()}-${fmt2(new Date().getMonth()+1)}`;
   const thisBks     = allMyBookings.filter(b=>tsDate(b.start_at).startsWith(thisPrefix));
   const thisPastBks = thisBks.filter(b=>tsDate(b.start_at)<today||(tsDate(b.start_at)===today&&tsMin(b.end_at)<=now));
-  const thisCI      = thisPastBks.filter(b=>b.checkedIn).length;
+  // ← [v2.1] 체크인 완료만 카운트 (취소/노쇼 제외)
+  const thisCI      = thisPastBks.filter(b=>b.checkedIn && !b.autoCancelled && b.status === 'confirmed').length;
   const thisRate    = thisPastBks.length>0?Math.round((thisCI/thisPastBks.length)*100):0;
 
   return(
@@ -186,6 +305,55 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
             <div style={{fontSize:11,color:"#94A3B8",fontWeight:600}}>체크인율</div>
           </div>
         </div>
+      </div>
+
+      {/* ── [v2.1 신규] 내 예약 빠른 조회 (4개 탭: 예정/완료/취소/노쇼) ── */}
+      {/* 정책: 전체 기간 대상으로 "예정/완료/취소/노쇼"만 빠르게 확인 */}
+      {/* BookingListTable에 controlled + hideFilters 전달 → 자체 필터는 숨기고 리스트만 렌더 */}
+      <div className="anm" style={{background:"#fff",borderRadius:16,padding:isMobile?"16px 16px 20px":"20px 28px 24px",marginTop:20,animationDelay:"100ms"}}>
+        <div style={{fontSize:15,fontWeight:600,color:"#111",marginBottom:16,display:"flex",alignItems:"center",gap:6}}>
+          <ClipboardList size={15} strokeWidth={1.8}/>내 예약
+        </div>
+
+        {/* 4개 탭 버튼 */}
+        <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:12}}>
+          {[
+            { id: 'upcoming',  label: '예정',   count: upcoming.length,  activeStyle:{ background:'#854F0B', color:'#FAEEDA' } },
+            { id: 'completed', label: '완료',   count: completed.length, activeStyle:{ background:'#0F6E56', color:'#E1F5EE' } },
+            { id: 'cancelled', label: '취소',   count: cancelled.length, activeStyle:{ background:'#5F5E5A', color:'#F1EFE8' } },
+            { id: 'noshow',    label: '노쇼',   count: noshow.length,    activeStyle:{ background:'#A32D2D', color:'#FCEBEB' } },
+          ].map(t => (
+            <button key={t.id} className="btn"
+              onClick={() => setTab(t.id as typeof tab)}
+              style={{
+                display:"flex",alignItems:"center",gap:5,
+                height:34,padding:"0 14px",
+                border:"0.5px solid #E2E8F0",borderRadius:999,
+                fontSize:12,cursor:"pointer",whiteSpace:"nowrap",
+                background:"#fff",color:"#64748B",
+                ...(tab === t.id ? { ...t.activeStyle, borderColor:'transparent' } : {}),
+              }}>
+              <span>{t.label}</span>
+              <span style={{fontWeight:600,fontSize:13}}>{t.count}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* 탭 결과: BookingListTable에 controlled + hideFilters 전달 */}
+        {/*   controlled={tabData}: 부모가 필터한 리스트 전달 → 자체 날짜 필터 비활성 */}
+        {/*   hideFilters: 필터 UI(날짜/상태칩/층/검색) 숨김 — 탭 UI가 위에서 제어하므로 중복 방지 */}
+        {/*   viewType 토글(리스트/카드)은 유지됨 (컴포넌트 내부에서) */}
+        <BookingListTable
+          bookings={allMyBookings}
+          rooms={allRooms}
+          users={allUsers}
+          currentUser={currentUser}
+          currentUserEmail={currentUserEmail}
+          onDetail={onDetail}
+          loading={allLoading}
+          controlled={tabData}
+          hideFilters={true}
+        />
       </div>
 
       {/* ── 기간별 예약 조회 ── */}
@@ -262,9 +430,16 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
   // 본인 예약만 필터
   const myBookings = bookings.filter(b => b.user === currentUser)
 
-  // 오늘 내 예약 (취소 제외, 사용자가 취소한 것만 제외)
+  // ← [v2.1] 오늘 내 예약 필터 — User 본인 취소만 제외 (HomeView와 동일 정책)
+  //   기존 v1.x: b.cancelledBy !== 'user' (autoCancelled=true 전제)
+  //   v2.1:      User 취소는 status='cancelled'+cancelledBy='user'로 저장
+  //   포함: 정상예약, 승인대기, 체크인, 조기종료, 노쇼, 기한초과, Admin취소, 거절
+  //   제외: User 본인이 직접 취소한 것만
   const todayBookings = myBookings
-    .filter(b => tsDate(b.start_at) === today && b.cancelledBy !== 'user')
+    .filter(b =>
+      tsDate(b.start_at) === today &&
+      !(b.status === 'cancelled' && b.cancelledBy === 'user')   // ← [v2.1 변경] 명시적 status+cancelledBy 조합
+    )
     .sort((a, b) => a.start_at.localeCompare(b.start_at))
 
   // 주 네비게이션
@@ -278,7 +453,11 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
   return (
     <div style={{maxWidth:1400, margin:"0 auto", padding: isMobile?"16px 12px":"28px 28px"}}>
 
-      {/* ── 오늘 내 예약 — HomeView 동일 카드 UI ── */}
+      {/* ── 오늘 내 예약 — MiniBookingCard 공통 컴포넌트 사용 (v2.1) ── */}
+      {/* ← [v2.1] 기존 인라인 cardState 판정 블록(~65줄)을 MiniBookingCard로 대체
+            · cardState/버튼/opacity 로직 모두 MiniBookingCard 내부로 이관
+            · HomeView/BookingListTable과 동일한 단일 진실 원천 사용
+            · 판정 규칙 변경 시 MiniBookingCard만 수정하면 3곳 자동 반영 */}
       <div style={{marginBottom:28}}>
         <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12}}>
           <div style={{display:"flex", alignItems:"center", gap:8}}>
@@ -306,68 +485,19 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
             </div>
           ) : todayBookings.map(b => {
             const r = (rooms as any[]).find((r:any) => r.room_id === b.room_id)
-            const isActive  = tsMin(b.start_at) <= now && now < tsMin(b.end_at) && !b.autoCancelled
-            const isPast    = tsMin(b.end_at) < now
-            const minsUntil = tsMin(b.start_at) - now
-            const isSoon    = minsUntil > 0 && minsUntil <= 10
-            const cardState: string = b.status === 'rejected'       ? "rejected"
-              : b.cancelledBy === 'admin'         ? "adminCancel"
-              : b.cancelledBy === 'system'        ? "noshow"
-              : b.autoCancelled                   ? "cancelled"
-              : b.earlyEnded                      ? "earlyEnded"
-              : b.checkedIn && isActive           ? "using"
-              : b.checkedIn                       ? "done"
-              : isActive                          ? "checkin"
-              : isPast                            ? "done"
-              : b.status === 'pending'            ? "pending"
-              : isSoon                            ? "soon"
-              : "waiting"
-            const S: any = {
-              waiting:    {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                    showBtn:true},
-              soon:       {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                    showBtn:true},
-              pending:    {label:"승인 대기",    btnBg:"#FEF3C7", btnColor:"#92400E", disabled:true,  action:null,                    showBtn:true},
-              checkin:    {label:"체크인",       btnBg:"#16A34A", btnColor:"#fff",    disabled:false, action:()=>onCheckIn(b.id),     showBtn:true},
-              using:      {label:"조기반납",     btnBg:"#111111", btnColor:"#fff",    disabled:false, action:()=>onEarlyEnd(b.id),    showBtn:true},
-              noshow:     {label:null,           btnBg:"",        btnColor:"",        disabled:true,  action:null,                    showBtn:false},
-              done:       {label:"종료",         btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                    showBtn:true},
-              earlyEnded: {label:"반납됨",       btnBg:"#DBEAFE", btnColor:"#2563EB", disabled:true,  action:null,                    showBtn:true},
-              adminCancel:{label:"강제취소",      btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                    showBtn:false},
-              rejected:   {label:"거절됨",       btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                    showBtn:false},
-              cancelled:  {label:"취소됨",       btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                    showBtn:true},
-            }[cardState] ?? {label:"체크인 대기", btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true, action:null, showBtn:true}
-            const isCancellable = cardState==="waiting" || cardState==="soon" || cardState==="pending"
             return (
-              <div key={b.id}
-                className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 rounded-2xl p-3"
-                onClick={()=>onDetail(b)}
-                style={{width:isMobile?"42vw":160, minWidth:140, minHeight:isMobile?120:140,
-                  flexShrink:0, cursor:"pointer",
-                  opacity:(cardState==="cancelled"||cardState==="noshow"||cardState==="adminCancel"||cardState==="rejected")?0.45:1,
-                  border:cardState==="pending"?"1.5px solid #FCD34D":"none"}}>
-                <div>
-                  <div className="text-xs font-semibold text-slate-900 dark:text-white leading-snug line-clamp-2 mb-1.5">{b.title}</div>
-                  <div style={{marginBottom:4}}>
-                    <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} size="sm" currentUser={currentUser} />
-                  </div>
-                  <div className="text-[10px] text-slate-400">{r?.room_name ?? ''}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">{fmtTSRangeFull(b.start_at, b.end_at)}</div>
-                </div>
-                <div className="flex gap-1.5 mt-2">
-                  {S.showBtn && (
-                    <button className="btn flex-1 text-[11px] font-semibold rounded-xl py-2"
-                      onClick={e=>{e.stopPropagation(); S.action?.();}}
-                      disabled={S.disabled}
-                      style={{background:S.btnBg, color:S.btnColor, cursor:S.disabled?"default":"pointer",
-                        minHeight:32, display:"flex", alignItems:"center", justifyContent:"center"}}>
-                      {S.label}
-                    </button>
-                  )}
-                  {isCancellable && (
-                    <Button variant="ghost" size="sm" style={{borderRadius:12}}
-                      onClick={e=>{e.stopPropagation(); onCancel(b.id);}}>취소</Button>
-                  )}
-                </div>
-              </div>
+              <MiniBookingCard
+                key={b.id}
+                booking={b}
+                room={r}
+                currentUser={currentUser}
+                size="sm"
+                onClick={onDetail}
+                onCheckIn={onCheckIn}
+                onEarlyEnd={onEarlyEnd}
+                onCancel={onCancel}
+                isMobile={isMobile}
+              />
             )
           })}
         </div>

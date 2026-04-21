@@ -1,16 +1,58 @@
 import { useState, useMemo } from 'react'
-import { Inbox } from 'lucide-react'
+import { Inbox, LayoutList, LayoutGrid } from 'lucide-react'
 import {
   todayStr, tsDate, tsTime, fmtTime, fmtDateFullWithDay, objToStr,
 } from '../../utils/time'
 import { BookingStatusBadge } from './BookingStatusBadge'
 import { UserChip } from './UserChip'
 import { MetaBadge } from './MetaBadge'  // ← [2026-04-18] 반복 뱃지 공통화
+import { MiniBookingCard } from './MiniBookingCard'  // ← [2026-04-21 v2.1] 카드 뷰용 공통 컴포넌트
 import type { Booking, Room, AppUser } from '../../types'
 
+/**
+ * BookingListTable — 예약 리스트 뷰 (기간별 필터 + 상태별 탭)
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 변경 이력 (v2.1)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * [2026-04-21 v2.1] auto_cancelled 설계 재정립 반영
+ *   · 배경: api.ts가 v2.1 설계로 업데이트됨 (User/Admin 취소 → autoCancelled=false)
+ *   · v2.1 DB 규칙:
+ *     · User/Admin 취소: status='cancelled' + autoCancelled=false + cancelledBy='user'/'admin'
+ *     · Admin 거절:      status='rejected'
+ *     · 기한초과(cron):  status='pending'   + autoCancelled=true  + cancelledBy='system'
+ *     · 노쇼(cron):      status='confirmed' + autoCancelled=true  + cancelledBy='system' + !checkedIn
+ *   · 변경 위치:
+ *     (1) isNoshow() 헬퍼: !checkedIn + !earlyEnded 조건 추가 (견고성)
+ *     (2) stats 카운트: upcoming/cancelled 필터 status 조건 추가
+ *     (3) displayList 필터: 각 탭별 필터를 status 기반으로 명확화
+ *   · 탭 구조: 전체/예정/완료/취소/노쇼 — 5개 유지 (노쇼 별도 탭 정책 준수)
+ *   · 설계 문서: 예약상태관리_설계문서_v2.1.md
+ */
+
 // ─── 노쇼 판별 ───────────────────────────────────────────────────────────────
+// ← [2026-04-21 v2.1] !checkedIn + !earlyEnded 조건 추가
+//   v2.1 노쇼 정의: "체크인 없이 start_at+10분 경과 시 cron이 자동 처리"
+//   판정: status='confirmed' + autoCancelled=true + cancelledBy='system' + !checkedIn + !earlyEnded
+//   기한초과(status='pending')는 자연히 제외됨 (status='confirmed'로 필터링)
 function isNoshow(b: Booking): boolean {
-  return !!b.autoCancelled && b.cancelledBy === 'system' && b.status !== 'pending' && b.status !== 'rejected'
+  return b.status === 'confirmed'
+      && !!b.autoCancelled
+      && b.cancelledBy === 'system'
+      && !b.checkedIn                     // ← [v2.1 추가] 체크인 안 한 것만
+      && !b.earlyEnded                    // ← [v2.1 추가] 조기종료 제외
+}
+
+// ─── 취소 판별 (User/Admin 취소 + 기한초과) ──────────────────────────────────
+// ← [2026-04-21 v2.1 신규] 취소 탭용 판정 헬퍼
+//   v2.1: User/Admin 취소는 status='cancelled', 기한초과는 status='pending'+autoCancelled
+//         모두 "취소" 탭에 포함 (노쇼 제외)
+function isCancelled(b: Booking): boolean {
+  if (b.status === 'rejected') return true                       // Admin 거절
+  if (b.status === 'cancelled') return true                      // User/Admin 취소
+  if (b.status === 'pending' && b.autoCancelled) return true     // 기한초과
+  return false
 }
 
 // ─── 스타일 헬퍼 ─────────────────────────────────────────────────────────────
@@ -69,6 +111,10 @@ export function BookingListTable({
   const [floorFilter, setFloorFilter] = useState<number | 'ALL'>('ALL')
   const [sortOrder,   setSortOrder]   = useState<'latest' | 'oldest'>('latest')
   const [page, setPage] = useState(1)
+  // ← [v2.1 신규] 뷰 타입 토글: 리스트 뷰 / 소형카드 뷰
+  //   고지님 설계: "4개 탭 필터에 뷰타입 추가 - 리스트 + 소형카드"
+  //   기본값: 'list' (기존 UX 유지)
+  const [viewType, setViewType] = useState<'list' | 'card'>('list')
   const resetPage = () => setPage(1)
 
   // ── 퀵버튼
@@ -95,11 +141,31 @@ export function BookingListTable({
     return bookings.filter(b => { const d = tsDate(b.start_at); return d >= listFrom && d <= listTo })
   }, [bookings, listFrom, listTo, controlled])
 
+  // ← [v2.1] 탭 카운트 필터 재작성
+  //   v2.1 정책:
+  //     · all:       전체 개수
+  //     · upcoming:  미래 예약 (취소/노쇼/기한초과/거절 제외)
+  //     · completed: 정상 종료 (체크인 또는 조기종료, 취소/노쇼 제외)
+  //     · cancelled: User/Admin 취소 + 거절 + 기한초과 (노쇼 제외) — v2.1 설계
+  //     · noshow:    노쇼만 (별도 탭 분리) — v2.1 설계
   const stats = useMemo(() => ({
     all:       dateFiltered.length,
-    upcoming:  dateFiltered.filter(b => !b.autoCancelled && tsDate(b.start_at) >= today).length,
-    completed: dateFiltered.filter(b => (b.checkedIn || b.earlyEnded) && !b.autoCancelled).length,
-    cancelled: dateFiltered.filter(b => !!b.autoCancelled && !isNoshow(b)).length,
+    // ← [v2.1] upcoming: status='confirmed' 또는 'pending' 중 미래 (취소/노쇼 제외)
+    upcoming:  dateFiltered.filter(b =>
+                 !b.autoCancelled &&                            // 노쇼/기한초과 제외
+                 b.status !== 'cancelled' &&                     // ← [v2.1 추가] User/Admin 취소 제외
+                 b.status !== 'rejected' &&                      // ← [v2.1 추가] 거절 제외
+                 tsDate(b.start_at) >= today
+               ).length,
+    // ← [v2.1] completed: 체크인 완료 또는 조기종료 (취소/노쇼 제외)
+    completed: dateFiltered.filter(b =>
+                 (b.checkedIn || b.earlyEnded) &&
+                 !b.autoCancelled &&                             // 노쇼 제외
+                 b.status === 'confirmed'                         // ← [v2.1 추가] 확정 상태만
+               ).length,
+    // ← [v2.1] cancelled: User/Admin 취소 + 거절 + 기한초과 (노쇼 제외)
+    cancelled: dateFiltered.filter(b => isCancelled(b)).length,
+    // noshow: 노쇼만 별도 카운트 (v2.1 설계)
     noshow:    dateFiltered.filter(b => isNoshow(b)).length,
   }), [dateFiltered, today])
 
@@ -125,12 +191,22 @@ export function BookingListTable({
   }
 
   // ── 최종 표시 목록
+  // ← [v2.1] 탭 필터 재작성 — stats와 동일한 로직 적용
   const displayList = useMemo(() => {
     if (controlled) return applyCommon([...controlled])
     let list = [...dateFiltered]
-    if (listStatus === 'upcoming')  list = list.filter(b => !b.autoCancelled && tsDate(b.start_at) >= today)
-    if (listStatus === 'completed') list = list.filter(b => (b.checkedIn || b.earlyEnded) && !b.autoCancelled)
-    if (listStatus === 'cancelled') list = list.filter(b => !!b.autoCancelled && !isNoshow(b))
+    if (listStatus === 'upcoming')  list = list.filter(b =>
+      !b.autoCancelled &&
+      b.status !== 'cancelled' &&                                // ← [v2.1 추가]
+      b.status !== 'rejected' &&                                  // ← [v2.1 추가]
+      tsDate(b.start_at) >= today
+    )
+    if (listStatus === 'completed') list = list.filter(b =>
+      (b.checkedIn || b.earlyEnded) &&
+      !b.autoCancelled &&
+      b.status === 'confirmed'                                    // ← [v2.1 추가]
+    )
+    if (listStatus === 'cancelled') list = list.filter(b => isCancelled(b))    // ← [v2.1 변경]
     if (listStatus === 'noshow')    list = list.filter(b => isNoshow(b))
     return applyCommon(list)
   }, [controlled, dateFiltered, listStatus, floorFilter, searchQ, sortOrder, rooms, today])
@@ -220,6 +296,36 @@ export function BookingListTable({
 
         <div style={{ flex: 1 }}/>
 
+        {/* ← [v2.1] 뷰 타입 토글 — 리스트 / 카드 */}
+        <div style={{ display: 'flex', gap: 0, border: '0.5px solid #E2E8F0', borderRadius: 8, overflow: 'hidden', height: 34 }}>
+          <button className="btn"
+            onClick={() => setViewType('list')}
+            title="리스트 뷰"
+            style={{
+              padding: '0 10px', height: '100%', cursor: 'pointer',
+              background: viewType === 'list' ? '#111' : '#fff',
+              color:      viewType === 'list' ? '#fff' : '#64748B',
+              border: 'none',
+              display: 'flex', alignItems: 'center', gap: 4, fontSize: 12,
+            }}>
+            <LayoutList size={14} strokeWidth={1.8} />
+            <span>리스트</span>
+          </button>
+          <button className="btn"
+            onClick={() => setViewType('card')}
+            title="카드 뷰"
+            style={{
+              padding: '0 10px', height: '100%', cursor: 'pointer',
+              background: viewType === 'card' ? '#111' : '#fff',
+              color:      viewType === 'card' ? '#fff' : '#64748B',
+              border: 'none', borderLeft: '0.5px solid #E2E8F0',
+              display: 'flex', alignItems: 'center', gap: 4, fontSize: 12,
+            }}>
+            <LayoutGrid size={14} strokeWidth={1.8} />
+            <span>카드</span>
+          </button>
+        </div>
+
         {/* 정렬 */}
         <div style={{ display: 'flex', gap: 4 }}>
           <button className="btn" onClick={() => { setSortOrder('latest'); resetPage() }} style={sortBtnStyle('latest')}>최신순</button>
@@ -250,8 +356,9 @@ export function BookingListTable({
       </div>
       )}
 
-      {/* ── 테이블 컨테이너 ── */}
-      <div style={{ marginTop: 12, border: '1px solid #F1F5F9', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
+      {/* ── 결과 컨테이너 (리스트 뷰 / 카드 뷰 분기) ── */}
+      {/* ← [v2.1 신규] viewType 상태에 따라 테이블 또는 카드 그리드 렌더링 */}
+      <div style={{ marginTop: 12, border: viewType === 'list' ? '1px solid #F1F5F9' : 'none', borderRadius: 12, overflow: 'hidden', background: viewType === 'list' ? '#fff' : 'transparent' }}>
         <div style={{ maxHeight: 420, overflowY: 'auto' }}>
           {loading ? (
             <div style={{ textAlign: 'center', padding: '40px 20px', color: '#CBD5E1', fontSize: 13 }}>불러오는 중…</div>
@@ -260,7 +367,34 @@ export function BookingListTable({
               <Inbox size={32} strokeWidth={1.8} color="#CBD5E1" style={{ display: 'block', margin: '0 auto 8px' }}/>
               해당 기간에 예약 내역이 없습니다
             </div>
+          ) : viewType === 'card' ? (
+            /* ── 카드 뷰 (v2.1 신규) ── */
+            /* ← 반응형 그리드: 모바일 1열 / 태블릿 2열 / 데스크탑 3열 / 와이드 4열 */
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+              gap: 12,
+              padding: 12,
+              background: '#FAFAFA',
+              borderRadius: 12,
+              border: '1px solid #F1F5F9',
+            }}>
+              {pagedList.map(b => {
+                const r = rooms.find(room => room.room_id === b.room_id)
+                return (
+                  <MiniBookingCard
+                    key={b.id}
+                    booking={b}
+                    room={r}
+                    currentUser={currentUser}
+                    size="md"
+                    onClick={onDetail}
+                  />
+                )
+              })}
+            </div>
           ) : (
+            /* ── 리스트 뷰 (기존) ── */
             <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 13 }}>
               <thead>
                 <tr style={{ position: 'sticky', top: 0, zIndex: 1 }}>

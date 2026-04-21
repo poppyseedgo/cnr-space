@@ -1,5 +1,23 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // [변경 이력]
+//
+// 2026-04-21 (v2.1): auto_cancelled 설계 재정립 반영
+//   - 배경: api.ts/BookingStatusBadge/slotHelpers가 v2.1 설계로 업데이트됨
+//   - v2.1 DB 규칙:
+//     · User/Admin 취소: status='cancelled' + autoCancelled=false + cancelledBy='user'/'admin'
+//     · Admin 거절:      status='rejected'
+//     · 기한초과(cron):  status='pending'   + autoCancelled=true  + cancelledBy='system'
+//     · 노쇼(cron):      status='confirmed' + autoCancelled=true  + cancelledBy='system' + !checkedIn
+//   - 변경 위치:
+//     (1) myBookingsBase 필터 (L~136): status 기반 명확한 필터
+//     (2) isActive 판정 (L~215): status='confirmed' 조건 추가
+//     (3) cardState 판정 (L~219-231): v2.1 DB 규칙 기반 완전 재작성
+//         · userCancel 분기 추가 (v1.x에서는 autoCancelled=true로 저장되어 구분 불가)
+//         · adminCancel / pendingExpired / noshow 판정 조건 명확화
+//     (4) RoomCard todayBks 필터 (L~477): User/Admin 취소 명시적 제외
+//   - 룸카드 '오늘 남은 예약' 영역: 기존 로직 유지 (현재+미래만, 취소 건 제외)
+//   - 설계 문서: 예약상태관리_설계문서_v2.1.md
+//
 // 2026-04-17: 그리드 밀도 토글(comfortable 3열 / compact 5열) 추가
 //   - localStorage 'cnr-grid-density'에 선호도 저장
 //   - 데스크탑(1024px+)에서만 토글 노출, 모바일/태블릿은 기존 1/2열 유지
@@ -130,10 +148,16 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
   const soon       = withStatus.filter(x => x.status.type==="SOON");
   const busy       = withStatus.filter(x => x.status.type==="BUSY");
 
-  // 오늘 내 예약 — 직접 취소만 제외, 노쇼 자동취소는 유지 (예약자 + 참석자 모두 포함)
+  // ← [v2.1] 오늘 내 예약 — User 본인 취소만 제외 (기존 정책 유지)
+  //   · 기존 v1.x: b.cancelledBy !== 'user' (autoCancelled=true 전제)
+  //   · v2.1:      User 취소는 status='cancelled'+cancelledBy='user'로 저장되므로
+  //                명확히 status + cancelledBy 조합으로 필터
+  //   · 포함: 정상예약, 승인대기, 체크인, 조기종료, 노쇼, 기한초과, Admin취소, 거절
+  //   · 제외: User 본인이 직접 취소한 것만
+  //   · 참석자로 포함된 예약도 표시 (예약자+참석자 모두)
   const myBookingsBase = bookings.filter(b =>
     tsDate(b.start_at) === today &&
-    b.cancelledBy !== 'user' &&
+    !(b.status === 'cancelled' && b.cancelledBy === 'user') &&   // ← [v2.1 변경] User 취소 제외 (명시적)
     (b.user === currentUser ||
      (currentUserEmail && (b.attendees ?? []).some((a: any) => a.email === currentUserEmail)))
   )
@@ -212,15 +236,35 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
             </div>
           ) : myBookings.map(b => {
             const r = roomsData.find(r=>r.room_id===b.room_id);
-            const isActive   = tsDate(b.start_at)===today && tsMin(b.start_at)<=now && now<tsMin(b.end_at) && !b.autoCancelled;
+            // ← [v2.1] isActive: status='confirmed' 명시 (cancelled/rejected/pending 제외)
+            //   v2.1에서 User/Admin 취소도 autoCancelled=false라 status 조건 필수
+            const isActive   = tsDate(b.start_at)===today
+                               && tsMin(b.start_at)<=now && now<tsMin(b.end_at)
+                               && b.status === 'confirmed'        // ← [v2.1 추가] cancelled 제외
+                               && !b.autoCancelled;               // 노쇼 제외
             const isPast     = tsMin(b.end_at) < now;
             const minsUntil  = tsMin(b.start_at) - now;   // 시작까지 남은 분
             const isSoon     = minsUntil > 0 && minsUntil <= 10;  // 10분 이내
-            const cardState: string = b.status === 'rejected'                                  ? "rejected"
-              : b.cancelledBy === 'admin'                                                      ? "adminCancel"
-              : b.autoCancelled && b.cancelledBy === 'system' && b.status === 'cancelled'      ? "pendingExpired"
-              : b.autoCancelled && b.cancelledBy === 'system' && b.status === 'confirmed'      ? "noshow"
-              : b.autoCancelled                                                                ? "cancelled"
+            // ← [v2.1] cardState 판정 완전 재작성 (설계 문서 v2.1 매트릭스 기반)
+            //   DB 규칙:
+            //     · rejected:       status='rejected'
+            //     · adminCancel:    status='cancelled' + cancelledBy='admin'
+            //     · userCancel:     status='cancelled' + cancelledBy='user'
+            //     · pendingExpired: status='pending'   + autoCancelled + cancelledBy='system'
+            //     · noshow:         status='confirmed' + autoCancelled + cancelledBy='system' + !checkedIn
+            //   판별 순서 (배타성 보장):
+            //     1. status='rejected' 최우선
+            //     2. status='cancelled' → cancelledBy로 admin/user 분기
+            //     3. status='pending'   + autoCancelled → pendingExpired
+            //     4. status='confirmed' + autoCancelled → noshow
+            //     5. status='confirmed' 정상 흐름 (checkin/using/done 등)
+            const cardState: string =
+                b.status === 'rejected'                                                          ? "rejected"
+              : b.status === 'cancelled' && b.cancelledBy === 'admin'                            ? "adminCancel"     // ← [v2.1 변경] status 조건 추가
+              : b.status === 'cancelled' && b.cancelledBy === 'user'                             ? "userCancel"      // ← [v2.1 추가] User 취소 명시
+              : b.status === 'pending'   && b.autoCancelled && b.cancelledBy === 'system'        ? "pendingExpired"  // ← [v2.1 변경] status='pending'
+              : b.status === 'confirmed' && b.autoCancelled && b.cancelledBy === 'system'
+                  && !b.checkedIn && !b.earlyEnded                                               ? "noshow"          // ← [v2.1 변경] !checkedIn 추가
               : b.earlyEnded                      ? "earlyEnded"
               : b.checkedIn && isActive           ? "using"
               : b.checkedIn                       ? "done"
@@ -231,18 +275,18 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
               : "waiting";
 
             const S = {
-              waiting:    {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:true},
-              soon:       {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:true},
-              pending:    {label:"승인 대기",    btnBg:"#FEF3C7", btnColor:"#92400E", disabled:true,  action:null,                showBtn:true},
-              checkin:    {label:"체크인",       btnBg:"#16A34A", btnColor:"#fff",    disabled:false, action:()=>onCheckIn(b.id), showBtn:true},
-              using:      {label:"조기반납",     btnBg:"#111111", btnColor:"#fff",    disabled:false, action:()=>onEarlyEnd(b.id),showBtn:true},
+              waiting:       {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:true},
+              soon:          {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:true},
+              pending:       {label:"승인 대기",    btnBg:"#FEF3C7", btnColor:"#92400E", disabled:true,  action:null,                showBtn:true},
+              checkin:       {label:"체크인",       btnBg:"#16A34A", btnColor:"#fff",    disabled:false, action:()=>onCheckIn(b.id), showBtn:true},
+              using:         {label:"조기반납",     btnBg:"#111111", btnColor:"#fff",    disabled:false, action:()=>onEarlyEnd(b.id),showBtn:true},
               noshow:        {label:null,           btnBg:"",        btnColor:"",        disabled:true,  action:null,                showBtn:false},
               pendingExpired:{label:null,           btnBg:"",        btnColor:"",        disabled:true,  action:null,                showBtn:false},
-              done:       {label:"종료",         btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:true},
-              earlyEnded: {label:"반납됨",       btnBg:"#DBEAFE", btnColor:"#2563EB", disabled:true,  action:null,                showBtn:true},
-              adminCancel:{label:"강제취소",      btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:false},
-              rejected:   {label:"거절됨",       btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:false},
-              cancelled:  {label:"취소됨",       btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:true},
+              done:          {label:"종료",         btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:true},
+              earlyEnded:    {label:"반납됨",       btnBg:"#DBEAFE", btnColor:"#2563EB", disabled:true,  action:null,                showBtn:true},
+              adminCancel:   {label:"강제취소",      btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:false},
+              rejected:      {label:"거절됨",       btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:false},
+              userCancel:    {label:"취소됨",       btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:true},  // ← [v2.1] cancelled → userCancel로 명확화
             }[cardState] ?? {label:"체크인 대기", btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true, action:null, showBtn:true};
 
             const isCancellable = cardState==="waiting" || cardState==="soon" || cardState==="pending";
@@ -252,7 +296,8 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
                 onClick={()=>onBookingDetail&&onBookingDetail(b)}
                 style={{width:isMobile?150:170, height:isMobile?140:160, /* ← [6차] 가로 10px 확장 */
                   flexShrink:0, overflow:"hidden",
-                  opacity: (cardState==="cancelled"||cardState==="noshow"||cardState==="adminCancel"||cardState==="rejected"||cardState==="pendingExpired") ? 0.45 : 1,
+                  // ← [v2.1] cancelled → userCancel로 cardState 이름 변경됨
+                  opacity: (cardState==="userCancel"||cardState==="noshow"||cardState==="adminCancel"||cardState==="rejected"||cardState==="pendingExpired") ? 0.45 : 1,
                   border: cardState==="pending" ? "1.5px solid #FCD34D" : "none",
                   cursor:"pointer"}}>
                 {/* 상단 */}
@@ -473,8 +518,18 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
 
   const today   = todayStr();
   const now     = nowMinutes();
+  // ← [v2.1] 룸카드 "오늘 남은 예약" 영역: 활성 예약만 포함 (취소/거절 모두 제외)
+  //   v2.1: User/Admin 취소도 autoCancelled=false이므로 status 조건 추가 필수
+  //   정책: 룸카드 본체는 현재 진행 중인 예약 + 미래 예약만 표시 (취소 건 표시 안 함)
   const todayBks = bookings
-    .filter(b => b.room_id===r.room_id && tsDate(b.start_at)===today && !b.autoCancelled && !b.earlyEnded)
+    .filter(b => 
+      b.room_id===r.room_id &&
+      tsDate(b.start_at)===today &&
+      !b.autoCancelled &&                            // 노쇼/기한초과 제외
+      !b.earlyEnded &&                               // 조기종료 제외
+      b.status !== 'cancelled' &&                     // ← [v2.1 추가] User/Admin 취소 제외
+      b.status !== 'rejected'                         // ← [v2.1 추가] 거절 제외
+    )
     .sort((a,b) => a.start_at.localeCompare(b.start_at));
 
   // 현재 진행중인 예약

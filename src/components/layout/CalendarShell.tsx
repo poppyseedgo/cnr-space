@@ -10,6 +10,33 @@ import {
 import { FLOORS, getFloor } from '../../data/floors'
 import type { Booking, Room } from '../../types'
 
+/**
+ * CalendarShell — Daily/Weekly/Monthly 통합 캘린더 뷰
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 변경 이력 (v2.1)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * [2026-04-21 v2.1] auto_cancelled 설계 재정립 반영
+ *   · 배경: api.ts/BookingStatusBadge/slotHelpers가 v2.1 설계로 업데이트됨
+ *   · v2.1 캘린더 슬롯 정책 (변경 없음):
+ *     · 노쇼 → 15분 고정 슬롯 박제 (유일한 예외, 기존 정책 유지)
+ *     · User취소/Admin취소/거절/기한초과 → 캘린더에서 모두 제외
+ *   · 필터 로직 수정:
+ *     (1) !b.autoCancelled 단독 조건으로는 v2.1에서 취소 필터링 불가
+ *         → v2.1에서는 User/Admin 취소도 autoCancelled=false로 저장됨
+ *     (2) status 기반 필터로 명확화: !b.autoCancelled + status in ('confirmed','pending')
+ *     (3) 각 뷰의 필터를 isShownInCalendar 헬퍼로 통일
+ *   · 변경 위치:
+ *     · MonthlyView dbs 필터 (L350)
+ *     · getRoomDot 충돌 검사 (L414)
+ *     · DailyView rBks (L463) — isShownInDailyView 이미 사용 중, 자동 반영
+ *     · DailyView rBksCancelled (L469) — 노쇼 15분 슬롯 필터 (v2.1 노쇼 판정 반영)
+ *     · getCellBks Weekly 필터 (L617)
+ *   · 노쇼 15분 슬롯 width 계산 (L535): 변경 없음 (15/60)*CW-4
+ *   · 설계 문서: 예약상태관리_설계문서_v2.1.md
+ */
+
 // ── 툴바 아이콘 SVG (Figma 기준) ──────────────────────────────────────────────
 const IcoBack = () => (
   <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -347,7 +374,15 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
         {cells.map((day, idx) => {
           if (!day) return <div key={`e${idx}`} style={{ minHeight: 110, borderRight: '1px solid #F1F5F9', borderBottom: '1px solid #F1F5F9', background: '#FAFAFA', overflow: 'hidden' }} />
           const ds = `${year}-${fmt2(month+1)}-${fmt2(day)}`
-          const dbs = bookings.filter(b => tsDate(b.start_at) === ds && !b.autoCancelled)
+          // ← [v2.1] 월간 뷰: 취소/거절/기한초과 모두 제외 (노쇼는 월간 뷰에 표시 안 함 — 숫자 카운트용)
+          //   이전: !b.autoCancelled 만으로는 v2.1 User/Admin 취소 필터링 불가
+          //   변경: status 기반 필터 — confirmed/pending 중 autoCancelled=false만 포함
+          const dbs = bookings.filter(b => 
+            tsDate(b.start_at) === ds &&
+            !b.autoCancelled &&                              // 노쇼/기한초과 제외
+            b.status !== 'cancelled' &&                       // ← [v2.1 추가] User/Admin 취소 제외
+            b.status !== 'rejected'                           // ← [v2.1 추가] 거절 제외
+          )
           const isToday = ds === today, isSel = ds === selectedDate
           const dow = (firstDay + day - 1) % 7
           return (
@@ -408,10 +443,16 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
   }, [selectedDate, isToday, nowLeft])
 
   // 회의실 현재 상태 dot (오늘만)
+  //
+  // ← [v2.1] 취소된 예약은 시간 점유 해제 → busy 판정에서 제외
+  //   status='confirmed' 명시로 User/Admin 취소(autoCancelled=false) 자동 제외
   const getRoomDot = (roomId: number): 'busy' | 'available' | null => {
     if (!isToday) return null
     const busy = bookings.some(b =>
-      b.room_id === roomId && !b.autoCancelled && !b.earlyEnded &&
+      b.room_id === roomId &&
+      b.status === 'confirmed' &&              // ← [v2.1 추가] cancelled/rejected/pending 제외
+      !b.autoCancelled &&                       // 노쇼 제외
+      !b.earlyEnded &&                          // 조기종료 제외
       tsMin(b.start_at) <= now && now < tsMin(b.end_at)
     )
     return busy ? 'busy' : 'available'
@@ -460,17 +501,25 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
         {/* 바디: 회의실별 행 */}
         {rooms.map((room, ri) => {
           const floor = getFloor(room.floor_id)
-          const rBks = bookings.filter(b => b.room_id === room.room_id && !b.autoCancelled)
-          // ← [P2 v7 hotfix] 노쇼만 박제 표시 — 기한초과는 제외 (일반 취소와 동일 처리)
-          //   정책: 노쇼는 "이 시간에 노쇼 있었다"는 기록 목적이라 박제,
-          //         기한초과는 "승인되지 않아 일어나지 않은 약속"이라 제외
-          //   변경: isShownInDailyView가 이미 기한초과 제외하므로 rBks에서도 자동 제외됨
-          //         여기서는 isNoshow만 명시적으로 별도 슬롯 렌더
+          // ← [v2.1] DailyView 정상 예약 필터
+          //   활성 예약(취소되지 않은 것)만 포함: confirmed/pending + autoCancelled=false
+          //   v2.1: User/Admin 취소도 autoCancelled=false이므로 status 조건 추가 필수
+          const rBks = bookings.filter(b => 
+            b.room_id === room.room_id &&
+            !b.autoCancelled &&                               // 노쇼/기한초과 제외
+            b.status !== 'cancelled' &&                        // ← [v2.1 추가] User/Admin 취소 제외
+            b.status !== 'rejected'                            // ← [v2.1 추가] 거절 제외
+          )
+          // ← [v2.1] 노쇼 박제 슬롯 필터 (DailyView 유일한 취소 잔존 유형)
+          //   정책: 노쇼는 "이 시간에 노쇼 있었다"는 기록 목적이라 15분 슬롯 박제
+          //   v2.1 판정: status='confirmed' + autoCancelled + cancelledBy='system' + !checkedIn
+          //   getSlotState가 v2.1 설계로 업데이트되어 있으므로 st.isNoshow 그대로 사용
           const rBksCancelled = bookings.filter(b => {
             if (b.room_id !== room.room_id) return false
-            if (!b.autoCancelled || b.status === 'rejected') return false
+            // ← [v2.1] autoCancelled=true 건만 노쇼 후보 (기한초과 제외는 getSlotState가 담당)
+            if (!b.autoCancelled) return false
             const st = getSlotState(b, now, isToday, currentUser)
-            return st.isNoshow   // 노쇼만 포함 (기한초과 제외)
+            return st.isNoshow   // 노쇼만 포함 (기한초과는 isNoshow=false로 자연 제외)
           })
           const dot = getRoomDot(room.room_id)
 
@@ -611,11 +660,16 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
     scrollRef.current.scrollTop = Math.max(0, nowPx - 200)
   }, [weekStart])
 
+  // ← [v2.1] Weekly 뷰 셀 예약 필터
+  //   활성 예약만 포함: confirmed/pending + autoCancelled=false
+  //   v2.1: User/Admin 취소도 autoCancelled=false이므로 status 조건 추가 필수
+  //   Weekly에서는 노쇼도 표시 안 함 (월간과 동일 - 축소된 요약 뷰)
   const getCellBks = (day: string, hour: number) =>
     bookings.filter(b => {
       if (tsDate(b.start_at) !== day) return false
-      if (b.autoCancelled) return false
-      if (b.status === 'rejected') return false
+      if (b.autoCancelled) return false              // 노쇼/기한초과 제외
+      if (b.status === 'rejected') return false      // 거절 제외
+      if (b.status === 'cancelled') return false     // ← [v2.1 추가] User/Admin 취소 제외
       return Math.floor(tsMin(b.start_at) / 60) === hour
     })
 

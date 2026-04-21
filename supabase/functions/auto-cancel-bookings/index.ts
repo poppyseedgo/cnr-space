@@ -32,6 +32,31 @@
  *   · 제거된 헬퍼: insertInAppNotification, fetchAdminUserIds, fetchAttendeeUserIds
  *   · 인앱 중복 INSERT 근본 제거
  *
+ * [2026-04-21 v2.1] pending_expired 설계 재정립 — status='pending' 유지
+ *   배경: auto_cancelled 설계 재정립 (설계 문서 v2.1)
+ *     · v1.x~v2.0: pending_expired 처리 시 status='pending' → 'cancelled' 변경
+ *       → BookingStatusBadge가 status='cancelled' 기준으로 기한초과 판정
+ *       → 문제: 노쇼와 cancelled 기반 판정이 꼬여 상태 혼란 발생
+ *     · v2.1: status='pending' 유지, auto_cancelled=true만 표시
+ *       → 판정: status==='pending' && auto_cancelled && cancelled_by==='system'
+ *       → 노쇼와 명확히 구분 (노쇼는 status='confirmed')
+ *   변경:
+ *     (1) SELECT 필터: .or(cancelled_by.is.null,cancelled_by.eq.system)
+ *                      → .eq('auto_cancelled', false) (더 명확, 재처리 방지)
+ *     (2) UPDATE: status='cancelled' 제거 (status는 'pending' 유지)
+ *     (3) UPDATE 원자성 가드: .eq('auto_cancelled', false) 추가 (동시 cron 방지)
+ *   전제 조건:
+ *     · 프론트엔드에서 auto_cancelled=true로 선점하는 경로 없음 (확인됨)
+ *     · App.tsx expirePendingBooking() 호출 제거됨 (P2 v6)
+ *     · 오직 cron만 auto_cancelled=true로 변경 가능
+ *   재처리 방지 3중 안전장치:
+ *     (1) SELECT WHERE .eq('auto_cancelled', false) — 미처리 건만 조회
+ *     (2) UPDATE WHERE .eq('status','pending').eq('auto_cancelled',false) — 원자성
+ *     (3) UPDATE .select('id') — 실제 변경 확인 (0 rows = 이미 처리됨, skip)
+ *   영향받는 다른 파일:
+ *     · src/lib/api.ts (cancelBooking, adminForceCancel, rejectBooking, approveBooking)
+ *     · src/components/common/BookingStatusBadge.tsx (judge 로직 재설계)
+ *
  * [2026-04-19 P2 v6] pending_expired 알림 누락 버그 해결 (Race Condition)
  *   · 증상: 승인 기한 초과로 자동 취소된 예약의 이메일/인앱 알림 완전 누락
  *   · DB 검증: status=pending + auto_cancelled=true 행 17건 누적, pending_expired 알림 04-18 이후 0건
@@ -218,57 +243,57 @@ Deno.serve(async () => {
     // ─── 3. 승인 기한 초과 자동 취소 ───────────────────────────────────
     // pending 예약 중 start_at이 현재+1분 이내면 자동 취소 (승인 안 됨)
     //
-    // ← [2026-04-19 P2 v6] auto_cancelled=false 필터 제거 + UPDATE 원자성 강화
-    //   배경:
-    //     · 기존: `auto_cancelled=false` 필터로만 재처리 방지 → 프론트가 선점한 건들 전부 누락
-    //     · App.tsx의 expirePendingBooking() 호출 제거(근본 해결)와 병행하는 방어막
-    //   변경:
-    //     (1) 쿼리에서 `auto_cancelled=false` 제거 — pending + start_at 조건만으로 대상 식별
-    //     (2) UPDATE에 `.eq('status', 'pending')` + `.select('id')` 추가
-    //         → 원자적 조건부 UPDATE: pending일 때만 cancelled로 바꾸고 실제 바뀐 행 수 확인
-    //         → 다른 주체가 이미 status를 바꿨다면 UPDATE 0 rows (재처리 방지)
-    //     (3) UPDATE 결과가 0 rows면 알림 발송 skip (이미 다른 주체가 처리한 건)
-    //   효과:
-    //     · 프론트가 auto_cancelled=true로 선점한 과거 17건도 cron이 다시 처리함 (backfill)
-    //     · 동시 cron 인스턴스가 같은 건을 처리해도 1건만 UPDATE 성공 (알림 중복 방지)
-    // ← [2026-04-17] start_at lower bound 추가 (과거 1시간만 스캔)
+    // ← [2026-04-21 v2.1] 섹션 3 전면 수정 (설계 문서 v2.1)
+    //   변경점:
+    //     (1) SELECT: .or(cancelled_by...) → .eq('auto_cancelled', false)
+    //         · 더 명확: "아직 cron이 처리 안 한 pending"
+    //         · 전제: 프론트에서 auto_cancelled=true 선점 경로 없음 (확인됨)
+    //     (2) UPDATE: status='cancelled' 제거 → status는 'pending' 유지
+    //         · v2.1 설계: 기한초과는 status='pending' + auto_cancelled=true
+    //         · 노쇼(status='confirmed')와 명확히 구분
+    //     (3) UPDATE 원자성 강화: .eq('auto_cancelled', false) 가드 추가
+    //         · 동시 cron 인스턴스 실행 시 1건만 UPDATE 성공 보장
+    //
+    //   재처리 방지 3중 안전장치:
+    //     · SELECT .eq('auto_cancelled', false): 미처리 건만 조회
+    //     · UPDATE .eq('auto_cancelled', false): 동시성 방어
+    //     · UPDATE .select('id'): 0 rows면 skip (중복 알림 방지)
+    //
+    // ← [2026-04-17] start_at lower bound 추가 (과거 1시간만 스캔, Disk IO 최적화)
     const expireDeadline     = new Date(now.getTime() + 1 * 60 * 1000).toISOString()
     const expireLowerBound   = new Date(now.getTime() - 60 * 60 * 1000).toISOString()
 
     const { data: expiredTargets, error: expiredErr } = await supabase
       .from('bookings')
       .select('*')
-      .eq('status',    'pending')
-      // ← [P2 v6] auto_cancelled=false 필터 제거 (프론트 선점 건 backfill)
-      //   · 대신 cancelled_by로 "누가 취소했는지" 구분하여 사용자/관리자 수동 취소는 제외
-      //   · 허용: cancelled_by IS NULL (정상 pending) OR 'system' (프론트 expirePendingBooking)
-      //   · 제외: cancelled_by IN ('user', 'admin') — 사용자 수동 취소 / 관리자 강제 취소
-      //   · PostgREST는 .or('cancelled_by.is.null,cancelled_by.eq.system') 형태로 표현
-      .or('cancelled_by.is.null,cancelled_by.eq.system')
-      .gte('start_at', expireLowerBound)
-      .lt('start_at',  expireDeadline)
+      .eq('status',         'pending')
+      .eq('auto_cancelled', false)            // ← [v2.1 변경] .or() 필터 → 단순 .eq() 가드
+      .gte('start_at',      expireLowerBound)
+      .lt('start_at',       expireDeadline)
 
     if (expiredErr) {
       console.error('[auto-cancel] pending_expired 조회 실패:', expiredErr)
     }
 
     for (const booking of (expiredTargets ?? [])) {
-      // ← [CRITICAL] pending_expired는 status를 cancelled로 저장해야 함
-      //    (BookingStatusBadge 로직: status==='cancelled' && auto_cancelled && cancelled_by==='system')
+      // ← [v2.1] pending_expired는 status='pending' 유지 (v2.1 설계)
+      //   · BookingStatusBadge 판정: status==='pending' && auto_cancelled && cancelled_by==='system'
+      //   · 노쇼(status='confirmed')와 status 값으로 명확히 구분
       //
-      // ← [P2 v6] 원자적 조건부 UPDATE
-      //   · .eq('status', 'pending')를 UPDATE 절에도 추가 → pending일 때만 바꿈
+      // ← [v2.1] 원자적 조건부 UPDATE (재처리 방지 강화)
+      //   · .eq('status', 'pending') + .eq('auto_cancelled', false) 이중 가드
       //   · .select('id')로 실제 UPDATE된 행 반환
-      //   · 0 rows면 다른 주체가 이미 처리한 것 → 알림 skip (재발송 방지)
+      //   · 0 rows면 다른 주체가 이미 처리 → 알림 skip (재발송 방지)
       const { data: updated, error: upErr } = await supabase
         .from('bookings')
         .update({
-          status:         'cancelled',
+          // status는 'pending' 유지 (v2.1)               ← [v2.1 변경] status='cancelled' 제거
           auto_cancelled: true,
           cancelled_by:   'system',
         })
-        .eq('id',     booking.id)
-        .eq('status', 'pending')   // ← [P2 v6] 원자성: pending일 때만 UPDATE
+        .eq('id',             booking.id)
+        .eq('status',         'pending')        // 원자성: pending일 때만 UPDATE
+        .eq('auto_cancelled', false)            // ← [v2.1 추가] 동시성 방어
         .select('id')
 
       if (upErr) {
