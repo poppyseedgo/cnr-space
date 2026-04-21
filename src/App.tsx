@@ -1124,8 +1124,16 @@ function AppContent() {
     <div className={dark ? "dark" : ""}>
     <div className="dark:bg-slate-900 min-h-screen text-slate-800 dark:text-slate-200" style={{background:"#F3F4F8"}}>
 {/* ── Header ── */}
-      {/* ← [2026-04-21] border-b 제거, 헤더 하단에 흰색→투명 그라디언트 오버레이로 경계 표현 */}
-      <header className="bg-white dark:bg-slate-800 sticky top-0 z-[100]">
+      {/* ← [2026-04-21] border-b 제거, 헤더 하단에 흰색→투명 그라디언트 오버레이로 경계 표현
+           sticky 명시적 보장: position sticky + top 0 + z-index 100 */}
+      <header
+        className="bg-white dark:bg-slate-800"
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 100,
+        }}
+      >
         {/* 하단 16px 그라디언트 페이드 영역 (헤더 아래로 돌출) */}
         <div style={{
           position: 'absolute',
