@@ -24,47 +24,6 @@ import { UserAvatar } from '../components/common/UserAvatar'
 import { UserChip } from '../components/common/UserChip'
 import { BookingListTable } from '../components/common/BookingListTable'
 
-/**
- * AdminPage — 관리자 대시보드 (대시보드 + 예약 관리 + 승인 관리 + 사용자 관리)
- *
- * ═══════════════════════════════════════════════════════════════════════════
- * 변경 이력 (v2.1)
- * ═══════════════════════════════════════════════════════════════════════════
- *
- * [2026-04-21 v2.1] auto_cancelled 설계 재정립 반영
- *   · 배경: api.ts/BookingStatusBadge가 v2.1 설계로 업데이트됨
- *   · v2.1 DB 규칙:
- *     · User/Admin 취소: status='cancelled' + autoCancelled=false + cancelledBy='user'/'admin'
- *     · Admin 거절:      status='rejected'  + autoCancelled=false + cancelledBy='admin'
- *     · 기한초과(cron):  status='pending'   + autoCancelled=true  + cancelledBy='system'
- *     · 노쇼(cron):      status='confirmed' + autoCancelled=true  + cancelledBy='system' + !checkedIn
- *
- *   · 변경 범위:
- *     [DetailDrawer]
- *       · isNoshow 함수: status='confirmed' + !checkedIn 조건 추가 (견고성)
- *       · confirmed/past 카운트 필터: status 조건 추가
- *       · 인라인 상태 뱃지 판정: v2.1 매트릭스 반영
- *
- *     [AdminDashboard]
- *       · isNoshow 함수: status='confirmed' + !checkedIn 조건 추가
- *       · confirmed 필터: !b.autoCancelled && status='confirmed' && status !== 'rejected'
- *       · noshowRate 계산: v2.1 isNoshow 반영
- *       · 여러 집계 필터 status 조건 추가
- *
- *     [AdminBookings]
- *       · isNoshow: status='confirmed' 추가
- *       · 5개 탭 필터 (upcoming/completed/cancelled/noshow/adminCancel) v2.1 재작성
- *       · stats 카운트 필터 업데이트
- *       · 인라인 상태 뱃지 판정 재작성
- *       · adminCancel 판정: status='cancelled' + cancelledBy='admin'로 명확화
- *
- *     [AdminApprovals]
- *       · classify 함수는 이미 v2.1 설계와 일치 (status 기반 분기)
- *       · 주석만 수정: "거절: autoCancelled=true" → "autoCancelled=false"
- *
- *   · 설계 문서: 예약상태관리_설계문서_v2.1.md
- */
-
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
 function addDaysStr(base: string, days: number): string {
   const d = new Date(base); d.setDate(d.getDate() + days)
@@ -218,15 +177,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // ← [v2.1] isNoshow: status='confirmed' + cancelledBy='system' + !checkedIn
-  //   v2.1 노쇼 정의: cron이 start_at+10분 후 체크인 없는 confirmed 예약을 자동 처리
-  //   · earlyEnded는 조기반납을 구분하는 플래그 → 여기 필요 없음 (checkedIn=true라 자동 배제)
-  //   기한초과(status='pending'+autoCancelled)는 별개 → status='confirmed' 조건으로 배제
-  const isNoshow = (b: Booking) =>
-    b.status === 'confirmed'                  // ← [v2.1 추가] 기한초과 제외
-    && b.autoCancelled
-    && b.cancelledBy === 'system'              // ← [v2.1 추가] system만 (admin 강제취소와 구분)
-    && !b.checkedIn
+  const isNoshow = (b: Booking) => b.autoCancelled && !b.checkedIn && !b.earlyEnded
 
   // 타입별 필터
   const filtered = useMemo(() => {
@@ -242,7 +193,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
     filtered.forEach(b => {
       if (!map.has(b.room_id)) map.set(b.room_id, { confirmed:0, noshow:0, checkin:0 })
       const s = map.get(b.room_id)!
-      if (!b.autoCancelled && b.status !== 'rejected' && b.status !== 'cancelled') s.confirmed++
+      if (!b.autoCancelled && b.status !== 'rejected') s.confirmed++
       if (isNoshow(b)) s.noshow++
       if (b.checkedIn) s.checkin++
     })
@@ -258,7 +209,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
     filtered.filter(b => b.dept).forEach(b => {
       if (!map.has(b.dept)) map.set(b.dept, { confirmed:0, noshow:0 })
       const s = map.get(b.dept)!
-      if (!b.autoCancelled && b.status !== 'rejected' && b.status !== 'cancelled') s.confirmed++
+      if (!b.autoCancelled && b.status !== 'rejected') s.confirmed++
       if (isNoshow(b)) s.noshow++
     })
     return Array.from(map.entries()).map(([dept, s]) => ({ dept, ...s })).sort((a,b) => b.confirmed - a.confirmed)
@@ -266,7 +217,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
 
   const hourAgg = useMemo(() => Array.from({ length: 13 }, (_, i) => {
     const h = 7 + i
-    const count = filtered.filter(b => !b.autoCancelled && b.status !== 'rejected' && b.status !== 'cancelled' && Math.floor(tsMin(b.start_at)/60) === h).length
+    const count = filtered.filter(b => !b.autoCancelled && b.status !== 'rejected' && Math.floor(tsMin(b.start_at)/60) === h).length
     return { hour: `${h}:00`, count }
   }), [filtered])
 
@@ -275,7 +226,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
     filtered.forEach(b => {
       if (!map.has(b.user)) map.set(b.user, { name:b.user, dept:b.dept, count:0, noshow:0 })
       const s = map.get(b.user)!
-      if (!b.autoCancelled && b.status !== 'rejected' && b.status !== 'cancelled') s.count++
+      if (!b.autoCancelled && b.status !== 'rejected') s.count++
       if (isNoshow(b)) s.noshow++
     })
     return Array.from(map.values()).sort((a,b) => b.count - a.count)
@@ -292,17 +243,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
     const paged = sorted.slice((page-1)*PER, page*PER)
     const csvRows = sorted.map(b => {
       const r = rooms.find(rm => rm.room_id === b.room_id)
-      // ← [v2.1] CSV 상태 문자열: 정확한 카테고리 구분
-      const statusLabel =
-          b.status==='rejected' ? '거절'
-        : b.status==='cancelled'&&b.cancelledBy==='admin' ? '관리자강제취소'
-        : b.status==='cancelled'&&b.cancelledBy==='user' ? '취소'
-        : b.status==='pending'&&b.autoCancelled ? '기한초과'
-        : b.status==='pending' ? '승인대기'
-        : isNoshow(b) ? '노쇼'
-        : b.checkedIn||b.earlyEnded ? '완료'
-        : '예정'
-      return { 회의명:b.title, 회의실:r?.room_name??'', 날짜:tsDate(b.start_at), 시작:b.start_at.slice(11,16), 종료:b.end_at.slice(11,16), 예약자:b.user, 부서:b.dept, 상태:statusLabel }
+      return { 회의명:b.title, 회의실:r?.room_name??'', 날짜:tsDate(b.start_at), 시작:b.start_at.slice(11,16), 종료:b.end_at.slice(11,16), 예약자:b.user, 부서:b.dept, 상태:b.autoCancelled?'취소':b.checkedIn?'완료':b.status==='pending'?'승인대기':'예정' }
     })
     return (
       <>
@@ -339,18 +280,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
             <tbody>
               {paged.map(b => {
                 const r = rooms.find(rm => rm.room_id === b.room_id)
-                // ← [v2.1] 인라인 상태 뱃지 판정 재작성
-                //   우선순위 (배타성 보장): rejected > cancelled(user/admin) > pending_expired > noshow > pending > 완료 > 예정
-                //   v2.1: User/Admin 취소는 status='cancelled' (autoCancelled=false)로 구분
-                const status =
-                    b.status === 'rejected'                                                     ? {l:'거절',    c:'#DC2626',bg:'#FEF2F2'}
-                  : b.status === 'cancelled' && b.cancelledBy === 'admin'                       ? {l:'강제취소', c:'#111',   bg:'#F1F5F9'}
-                  : b.status === 'cancelled' && b.cancelledBy === 'user'                        ? {l:'취소',    c:'#94A3B8',bg:'#F1F5F9'}
-                  : b.status === 'pending'   && b.autoCancelled                                 ? {l:'기한초과', c:'#94A3B8',bg:'#F1F5F9'}
-                  : b.status === 'pending'                                                      ? {l:'승인대기', c:'#D97706',bg:'#FEF3C7'}
-                  : b.autoCancelled && !b.checkedIn                                             ? {l:'노쇼',    c:'#DC2626',bg:'#FEF2F2'}
-                  : b.checkedIn || b.earlyEnded                                                 ? {l:'완료',    c:'#16A34A',bg:'#DCFCE7'}
-                  :                                                                               {l:'예정',    c:'#3B82F6',bg:'#EFF6FF'}
+                const status = b.status==='pending'?{l:'승인대기',c:'#D97706',bg:'#FEF3C7'}:b.autoCancelled&&!b.checkedIn&&!b.earlyEnded?{l:'노쇼',c:'#DC2626',bg:'#FEF2F2'}:b.autoCancelled?{l:'취소',c:'#94A3B8',bg:'#F1F5F9'}:b.checkedIn||b.earlyEnded?{l:'완료',c:'#16A34A',bg:'#DCFCE7'}:{l:'예정',c:'#3B82F6',bg:'#EFF6FF'}
                 return (
                   <tr key={b.id}
                     onClick={() => { onDetail?.(b) }}
@@ -795,15 +725,8 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
   const td = todayStr()
   const filtered  = useMemo(() => rangeData, [rangeData])
   const past      = useMemo(() => filtered.filter(b => tsDate(b.start_at) < td && b.status !== 'pending'), [filtered, td])
-  // ← [v2.1] isNoshow: status='confirmed' + autoCancelled + cancelledBy='system' + !checkedIn
-  //   기한초과(pending+autoCancelled), admin 강제취소(cancelledBy='admin')와 구분
-  //   earlyEnded는 조기반납의 유일한 플래그 → 여기 필요 없음 (checkedIn=true라 자동 배제)
-  const isNoshow  = (b: Booking) =>
-    b.status === 'confirmed'
-    && b.autoCancelled
-    && b.cancelledBy === 'system'
-    && !b.checkedIn
-  const confirmed = useMemo(() => filtered.filter(b => !b.autoCancelled && b.status !== 'rejected' && b.status !== 'cancelled'), [filtered])
+  const isNoshow  = (b: Booking) => b.autoCancelled && !b.checkedIn && !b.earlyEnded
+  const confirmed = useMemo(() => filtered.filter(b => !b.autoCancelled && b.status !== 'rejected'), [filtered])
   const noshowRate   = past.length > 0 ? Math.round(past.filter(isNoshow).length / past.length * 100) : 0
   const pendingCount = bookings.filter(b => b.status === 'pending' && !b.autoCancelled).length
 
@@ -833,7 +756,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
       while (objToStr(cur) <= dateTo) {
         const wStart = objToStr(cur)
         const wEnd   = objToStr(new Date(cur.getTime() + 6*86400000))
-        const cnt = filtered.filter(b => {const d=tsDate(b.start_at);return d>=wStart&&d<=wEnd&&!b.autoCancelled&&b.status!=='rejected'&&b.status!=='cancelled'}).length
+        const cnt = filtered.filter(b => {const d=tsDate(b.start_at);return d>=wStart&&d<=wEnd&&!b.autoCancelled&&b.status!=='rejected'}).length
         const dt = new Date(wStart)
         days.push({ date:wStart, label:`${dt.getMonth()+1}/${dt.getDate()}W`, count:cnt, isToday:false })
         cur.setDate(cur.getDate() + 7)
@@ -844,7 +767,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
 
   const roomStats = useMemo(() => rooms.map(r => {
     const rb = filtered.filter(b => b.room_id===r.room_id)
-    return { room:r, confirmed:rb.filter(b=>!b.autoCancelled&&b.status!=='rejected'&&b.status!=='cancelled').length, noshow:rb.filter(isNoshow).length }
+    return { room:r, confirmed:rb.filter(b=>!b.autoCancelled&&b.status!=='rejected').length, noshow:rb.filter(isNoshow).length }
   }).filter(s=>s.confirmed+s.noshow>0).sort((a,b)=>b.confirmed-a.confirmed), [rooms, filtered])
 
   const deptStats = useMemo(()=>{
@@ -861,7 +784,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
 
   const hourDist = useMemo(()=>Array.from({length:13},(_,i)=>{
     const h=7+i
-    const count=filtered.filter(b=>!b.autoCancelled&&b.status!=='rejected'&&b.status!=='cancelled'&&Math.floor(tsMin(b.start_at)/60)===h).length
+    const count=filtered.filter(b=>!b.autoCancelled&&b.status!=='rejected'&&Math.floor(tsMin(b.start_at)/60)===h).length
     return {hour:h,label:`${h}시`,count}
   }),[filtered])
 
@@ -1085,43 +1008,29 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
   const [cancelModal,  setCancelModal] =useState<Booking|null>(null)
   const [cancelReason, setCancelReason]=useState('')
   const [cancelling,   setCancelling]  =useState(false)
-  // ← [v2.1] isNoshow 재작성
-  //   · status='confirmed' + autoCancelled + cancelledBy='system' + !checkedIn
-  //   · earlyEnded는 조기반납의 유일한 플래그 → 여기 필요 없음 (checkedIn=true라 자동 배제)
-  //   · admin 강제취소는 status='cancelled'+cancelledBy='admin' (autoCancelled=false)으로 완전히 분리됨
-  const isNoshow=(b:Booking)=>
-    b.status==='confirmed'
-    && b.autoCancelled
-    && b.cancelledBy==='system'
-    && !b.checkedIn
+  // 관리자 강제취소는 cancelledBy==='admin', 노쇼는 그 외 autoCancelled
+  const isNoshow=(b:Booking)=>b.autoCancelled&&!b.checkedIn&&!b.earlyEnded&&b.cancelledBy!=='admin'
   const filtered=useMemo(()=>bookings.filter(b=>{
     const d=tsDate(b.start_at)
     if(d<dateFrom||d>dateTo)return false
     if(filterRoom!=='ALL'&&b.room_id!==Number(filterRoom))return false
     if(filterUser&&!b.user.toLowerCase().includes(filterUser.toLowerCase()))return false
-    // ← [v2.1] 필터 재작성 — status 기반 명확한 분기
-    //   upcoming:    미래, 취소/노쇼/거절 모두 제외 (autoCancelled=false + cancelled/rejected 제외)
-    //   completed:   체크인 또는 조기종료 + 확정 상태 (취소/노쇼 제외)
-    //   cancelled:   사람 취소(user/admin) + 거절 + 기한초과 (노쇼 제외)
-    //   noshow:      노쇼만 (isNoshow 사용)
-    //   adminCancel: Admin 강제취소만 (status='cancelled'+cancelledBy='admin')
-    if(filterStatus==='upcoming'&&(b.autoCancelled||b.status==='cancelled'||b.status==='rejected'||d<today))return false
-    if(filterStatus==='completed'&&!((b.checkedIn||b.earlyEnded)&&!b.autoCancelled&&b.status==='confirmed'))return false
-    if(filterStatus==='cancelled'&&!(b.status==='cancelled'||b.status==='rejected'||(b.status==='pending'&&b.autoCancelled)))return false
+    if(filterStatus==='upcoming'&&(b.autoCancelled||b.status==='rejected'||d<today))return false
+    if(filterStatus==='completed'&&!((b.checkedIn||b.earlyEnded)&&!b.autoCancelled))return false
+    if(filterStatus==='cancelled'&&!(b.autoCancelled||b.status==='rejected'))return false
     if(filterStatus==='noshow'&&!isNoshow(b))return false
-    if(filterStatus==='adminCancel'&&!(b.status==='cancelled'&&b.cancelledBy==='admin'))return false
+    if(filterStatus==='adminCancel'&&b.cancelledBy!=='admin')return false
     return true
   }).sort((a,b)=>b.start_at.localeCompare(a.start_at)),[bookings,dateFrom,dateTo,filterRoom,filterUser,filterStatus,today])
   const totalPages=Math.max(1,Math.ceil(filtered.length/PER_PAGE))
   const paged=filtered.slice((page-1)*PER_PAGE,page*PER_PAGE)
-  // ← [v2.1] stats: 각 탭의 카운트를 v2.1 필터와 동일하게 계산
   const stats={
     all:filtered.length,
-    upcoming:filtered.filter(b=>!b.autoCancelled&&b.status!=='rejected'&&b.status!=='cancelled'&&tsDate(b.start_at)>=today).length,
-    completed:filtered.filter(b=>(b.checkedIn||b.earlyEnded)&&!b.autoCancelled&&b.status==='confirmed').length,
-    cancelled:filtered.filter(b=>b.status==='cancelled'||b.status==='rejected'||(b.status==='pending'&&b.autoCancelled)).length,
+    upcoming:filtered.filter(b=>!b.autoCancelled&&b.status!=='rejected'&&tsDate(b.start_at)>=today).length,
+    completed:filtered.filter(b=>(b.checkedIn||b.earlyEnded)&&!b.autoCancelled).length,
+    cancelled:filtered.filter(b=>b.autoCancelled||b.status==='rejected').length,
     noshow:filtered.filter(isNoshow).length,
-    adminCancel:filtered.filter(b=>b.status==='cancelled'&&b.cancelledBy==='admin').length,
+    adminCancel:filtered.filter(b=>b.cancelledBy==='admin').length,
   }
   // ★ App.tsx의 adminForceCancelBooking 콜백 위임 (알림·이메일·audit 모두 App에서 처리)
   const doCancel=async(id:string)=>{
@@ -1130,27 +1039,16 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
     catch(err:any){ showToast(err.message??'취소 중 오류','error') }
     finally{ setCancelling(false); setCancelModal(null); setCancelReason('') }
   }
-  // ← [v2.1] getBadge 재작성: 배타성 우선순위로 명확히 재정렬
-  //   우선순위: rejected > adminCancel > userCancel > pendingExpired > pending > noshow > 완료 > 예정 > 종료
   const getBadge=(b:Booking)=>{
     const d=tsDate(b.start_at)
-    // ① 거절 (최우선)
+    if(b.status==='pending'&&!b.autoCancelled)return<span style={{background:'#FEF3C7',color:'#92400E',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>승인대기</span>
     if(b.status==='rejected')return<span style={{background:'#FEE2E2',color:'#DC2626',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>거절</span>
-    // ② Admin 강제취소 (status='cancelled' + cancelledBy='admin')
-    if(b.status==='cancelled'&&b.cancelledBy==='admin')return<span style={{background:'#111',color:'#fff',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,display:'inline-flex',alignItems:'center',gap:3}}><AlertTriangle size={9} strokeWidth={1.8}/>관리자 강제취소</span>
-    // ③ User 취소 (status='cancelled' + cancelledBy='user')
-    if(b.status==='cancelled'&&b.cancelledBy==='user')return<span style={{background:'#F1F5F9',color:'#94A3B8',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>취소</span>
-    // ④ 기한초과 (status='pending' + autoCancelled)
-    if(b.status==='pending'&&b.autoCancelled)return<span style={{background:'#F1F5F9',color:'#94A3B8',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>기한초과</span>
-    // ⑤ 승인대기
-    if(b.status==='pending')return<span style={{background:'#FEF3C7',color:'#92400E',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>승인대기</span>
-    // ⑥ 노쇼
-    if(isNoshow(b))return<span style={{background:'#FEF3C7',color:'#D97706',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>노쇼</span>
-    // ⑦ 완료 (체크인 또는 조기종료)
+    // ★ 관리자 강제취소 — 가장 먼저 체크 (다른 취소 케이스와 명확히 구분)
+    if(b.cancelledBy==='admin')return<span style={{background:'#111',color:'#fff',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,display:'inline-flex',alignItems:'center',gap:3}}><AlertTriangle size={9} strokeWidth={1.8}/>관리자 강제취소</span>
+    if(isNoshow(b)&&d<today)return<span style={{background:'#FEF3C7',color:'#D97706',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>노쇼</span>
+    if(b.autoCancelled)return<span style={{background:'#F1F5F9',color:'#94A3B8',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>취소</span>
     if(b.checkedIn||b.earlyEnded)return<span style={{background:'#DCFCE7',color:'#16A34A',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>완료</span>
-    // ⑧ 예정 (미래)
     if(d>=today)return<span style={{background:'#EFF6FF',color:'#3B82F6',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>예정</span>
-    // ⑨ 종료 (과거, 체크인 없이 end_at 지남)
     return<span style={{background:'#F1F5F9',color:'#94A3B8',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>종료</span>
   }
   return(
@@ -1190,16 +1088,7 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
                 border:filterStatus===s.id?'none':'1px solid #E2E8F0'}}>{s.l}</button>
           ))}
           <button className="btn" onClick={()=>{
-            // ← [v2.1] getStatus: CSV 내보내기용 상태 문자열 (getBadge와 동일한 우선순위)
-            const getStatus=(b:Booking)=>
-                b.status==='rejected' ? '거절'
-              : b.status==='cancelled'&&b.cancelledBy==='admin' ? '관리자강제취소'
-              : b.status==='cancelled'&&b.cancelledBy==='user' ? '취소'
-              : b.status==='pending'&&b.autoCancelled ? '기한초과'
-              : b.status==='pending' ? '승인대기'
-              : isNoshow(b) ? '노쇼'
-              : b.checkedIn||b.earlyEnded ? '완료'
-              : '예정'
+            const getStatus=(b:Booking)=>b.cancelledBy==='admin'?'관리자강제취소':b.autoCancelled?'취소':b.checkedIn?'완료':b.status==='pending'?'승인대기':'예정'
             const csvRows=filtered.map(b=>{const r=rooms.find(rm=>rm.room_id===b.room_id);return{회의명:b.title,회의실:r?.room_name??'',날짜:tsDate(b.start_at),시작:b.start_at.slice(11,16),종료:b.end_at.slice(11,16),예약자:b.user,부서:b.dept,상태:getStatus(b)}})
             exportCSV(csvRows,`예약목록_${dateFrom}_${dateTo}`)
           }} style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:5,padding:'5px 12px',fontSize:11,borderRadius:999,background:'#F8FAFC',border:'1px solid #E2E8F0',color:'#374151',fontWeight:600}}>
@@ -1214,7 +1103,7 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
               <thead><tr style={{background:'#F8FAFC'}}>
                 {['회의명','회의실','날짜','시간','예약자','상태','관리'].map(h=><th key={h} style={{padding:'10px 14px',textAlign:'left',fontSize:11,fontWeight:600,color:'#94A3B8',whiteSpace:'nowrap',borderBottom:'1px solid #F1F5F9'}}>{h}</th>)}
               </tr></thead>
-              <tbody>{paged.map(b=>{const r=rooms.find(rm=>rm.room_id===b.room_id);const canCancel=!b.autoCancelled&&b.status!=='rejected'&&b.status!=='cancelled';return(
+              <tbody>{paged.map(b=>{const r=rooms.find(rm=>rm.room_id===b.room_id);const canCancel=!b.autoCancelled&&b.status!=='rejected';return(
                 <tr key={b.id} style={{borderBottom:'1px solid #F8FAFC',cursor:'pointer'}} onClick={()=>onDetail&&onDetail(b)} onMouseEnter={e=>e.currentTarget.style.background='#FAFBFD'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                   <td style={{padding:'10px 14px',fontWeight:600,color:'#111',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{b.title}</td>
                   <td style={{padding:'10px 14px',color:'#64748B',whiteSpace:'nowrap'}}>{r?.room_name??'?'}</td>
@@ -1785,10 +1674,10 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
   )
 }
 // ─── AdminApprovals ────────────────────────────────────────────────────────────
-// 승인 정책 (v2.1):
+// 승인 정책:
 //   - 승인/거절 가능 시간: start_at 1분 전까지 (nowMs < startMs - 60000)
-//   - 기한 초과: status='pending' && autoCancelled=true   (cron이 자동 처리)
-//   - 거절:     status='rejected' && autoCancelled=false   (사람 개입이므로 false)
+//   - 기한 초과: status='pending' && autoCancelled=true
+//   - 거절: status='rejected' && autoCancelled=true
 //   - 승인 완료: status='confirmed'
 // ← [2026-04-18 P0 fix] import 제거 → 최상단으로 이동
 
