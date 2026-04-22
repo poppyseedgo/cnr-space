@@ -174,71 +174,50 @@ export function MiniBookingCard({
 
   return (
     <div
-      className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 p-3"
+      className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 rounded-3xl p-3"
       onClick={() => onClick && onClick(b)}
       style={{
         ...dims,
         flexShrink: 0,
         overflow: 'hidden',
         opacity,
-        borderRadius: 16,                                                    // ← [피그마] 3xl(24) → 16
         border: cs === 'pending' ? '1.5px solid #FCD34D' : 'none',
         cursor: onClick ? 'pointer' : 'default',
       }}
     >
-      {/* 상단 영역 */}
+      {/* 상단: 메타 뱃지 + 제목 + 상태 뱃지 + 룸 + 시간 */}
       <div>
-        {/* ① 반복 칩 + 제목 (같은 줄, gap 6, pb 6) — ← [피그마 node 63:5905] */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingBottom: 6, minWidth: 0 }}>
-          {b.recurGroupId && (
-            <span style={{ flexShrink: 0 }}>
-              <MetaBadge type="recurring" size="xs" />
-            </span>
-          )}
-          <span
-            style={{
-              fontSize: 12, fontWeight: 700, color: '#111', lineHeight: 1.5,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              minWidth: 0,
-            }}
-          >
-            {b.title}
+        {b.recurGroupId && (
+          <span style={{ marginRight: 3, marginBottom: 3, display: 'inline-block' }}>
+            <MetaBadge type="recurring" size="xs" />
           </span>
-        </div>
-
-        {/* ② 상태칩 줄 (gap 4) — BookingStatusBadge가 xs 크기로 렌더 */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, flexWrap: 'wrap' }}>
-          {b.user !== currentUser && (
+        )}
+        {b.user !== currentUser && (
+          <span style={{ marginBottom: 3, display: 'inline-block' }}>
             <MetaBadge type="guest" size="xs" />
-          )}
-          <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} size="xs" currentUser={currentUser} />
+          </span>
+        )}
+        <div className="text-xs font-semibold text-slate-900 dark:text-white leading-snug line-clamp-1 mb-1.5">
+          {b.title}
         </div>
-
-        {/* ③ 룸 + 시간 (gap 6, pt 4 pb 8, fs 11 Medium, leading-none) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4, paddingBottom: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 500, color: '#262930', lineHeight: 1, whiteSpace: 'nowrap' }}>
-            {r?.room_name ?? ''}
-          </div>
-          <div style={{ fontSize: 11, fontWeight: 500, color: '#6A7282', lineHeight: 1, whiteSpace: 'nowrap' }}>
-            {fmtTSRangeFull(b.start_at, b.end_at)}
-          </div>
+        <div style={{ marginBottom: 4 }}>
+          <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} size="sm" currentUser={currentUser} />
         </div>
+        <div className="text-[10px] text-slate-400">{r?.room_name ?? ''}</div>
+        <div className="text-[10px] text-slate-400 mt-0.5">{fmtTSRangeFull(b.start_at, b.end_at)}</div>
       </div>
 
-      {/* 하단: 액션 버튼 + 취소 버튼 — ← [피그마 node 193:1068] h:40, py:12, radius:14, fs:12 Medium */}
-      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+      {/* 하단: 액션 버튼 + 취소 버튼 */}
+      <div className="flex gap-1.5 mt-2">
         {S.showBtn && (
           <button
-            className="btn"
+            className="btn flex-1 text-[11px] font-semibold rounded-xl py-2"
             onClick={e => { e.stopPropagation(); handleAction() }}
             disabled={S.disabled}
             style={{
-              flex: 1, height: 40, borderRadius: 14,
               background: S.btnBg, color: S.btnColor,
-              fontSize: 12, fontWeight: 500, lineHeight: 1.5,
-              border: 'none',
               cursor: S.disabled ? 'default' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              minHeight: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
           >
             {S.label}
@@ -246,15 +225,9 @@ export function MiniBookingCard({
         )}
         {isCancellable && (
           <button
-            className="btn"
+            className="btn text-[11px] font-semibold rounded-xl py-2 px-2.5 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+            style={{ background: '#F3F4F8' }}
             onClick={e => { e.stopPropagation(); onCancel!(b.id) }}
-            style={{
-              height: 40, borderRadius: 14, padding: '0 10px',
-              background: '#F3F4F8', color: '#64748B',
-              fontSize: 12, fontWeight: 500, lineHeight: 1.5,
-              border: 'none', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
           >
             취소
           </button>
