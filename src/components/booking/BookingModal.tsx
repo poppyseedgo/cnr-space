@@ -576,20 +576,10 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
 
   // ── 공통: 회의실 카드 그리드 ────────────────────────────────────────────────
   // 회의실별 상태 판별 (unavailable room용)
-  // ← [2026-04-22 v2.1] dayBks 필터 재정립: hasTimeConflict와 동일한 v2.1 공식 사용
-  //    기존: `!b.autoCancelled`만 체크 → User/Admin 취소(autoCancelled=false)가
-  //          "예약됨"으로 잘못 표시되는 버그
-  //    해결: status ∈ ('confirmed','pending') + autoCancelled=false 만 점유 예약으로 간주
   const getRoomUnavailStatus = (rid) => {
     const now = nowMinutes();
     const isToday = bookingDate === todayStr();
-    const dayBks = bookings.filter(b =>
-      b.room_id === rid &&
-      tsDate(b.start_at) === bookingDate &&
-      !b.autoCancelled &&                          // 노쇼/기한초과 제외
-      b.status !== 'cancelled' &&                   // ← [v2.1 추가] User/Admin 취소 제외
-      b.status !== 'rejected'                       // ← [v2.1 추가] 거절 제외
-    );
+    const dayBks = bookings.filter(b => b.room_id===rid && tsDate(b.start_at)===bookingDate && !b.autoCancelled);
     const fStart = timeToMin(form.start), fEnd = timeToMin(form.end);
     // 요청 시간과 겹치는 예약 찾기
     const conflict = dayBks.find(b => {

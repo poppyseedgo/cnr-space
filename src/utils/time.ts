@@ -105,31 +105,14 @@ export function nowStr() { const d=nowKST(); return `${fmt2(d.getUTCHours())}:${
 
 // ─── 중복 예약 검증 (중앙화) ──────────────────────────────────────────────
 // 모든 충돌 검사를 이 함수 하나로 통일. UI 필터 + 제출 검증 모두 사용.
-//
-// ✅ 변경 이력
-//  - [2026-04-22 v2.1] 시간 점유 필터 재정립 ← [변경 설명: 취소 예약이 활성 예약으로 잡혀 "예약할 수 없는 회의실" 버그 유발]
-//     · 배경: 2026-04-21 v2.1 판정 공식 확정 시, 사람 개입 취소(User/Admin/거절)는
-//            autoCancelled=false로 저장되도록 DB 규칙 변경됨
-//     · 기존 버그: !b.autoCancelled 단독 조건 → User/Admin 취소가 활성 예약으로 통과
-//                 → BookingModal에서 "예약할 수 없는 회의실" 오류
-//     · 해결: CalendarShell/RoomDetailModal과 동일한 v2.1 필터 공식 적용
-//            "시간 점유 = autoCancelled=false AND status ∈ ('confirmed','pending')"
-//     · v2.1 DB 저장 규칙 (참조):
-//        · User 취소:     status='cancelled' + autoCancelled=false + cancelledBy='user'
-//        · Admin 강제취소: status='cancelled' + autoCancelled=false + cancelledBy='admin'
-//        · Admin 거절:     status='rejected'  + autoCancelled=false + cancelledBy='admin'
-//        · 기한초과(cron): status='pending'   + autoCancelled=true  + cancelledBy='system'
-//        · 노쇼(cron):     status='confirmed' + autoCancelled=true  + cancelledBy='system'
 export function hasTimeConflict(existingBookings, roomId, date, startMin, endMin) {
   if (!roomId || !date || startMin >= endMin || endMin <= 0) return { conflict: true, reason: "INVALID_TIME" };
 
   const activeBookings = existingBookings.filter(b =>
     b.room_id === roomId &&
     tsDate(b.start_at) === date &&
-    !b.autoCancelled &&                              // 노쇼/기한초과 제외 (cron 자동취소)
-    !b.earlyEnded &&                                 // 조기반납 제외
-    b.status !== 'cancelled' &&                      // ← [v2.1 추가] User/Admin 취소 제외
-    b.status !== 'rejected'                          // ← [v2.1 추가] Admin 거절 제외
+    !b.autoCancelled &&
+    !b.earlyEnded
   );
 
   for (const b of activeBookings) {
@@ -169,13 +152,6 @@ export function getAvailableRooms(allRooms, bookings, date, startTime, endTime, 
  * getRoomStatus — 특정 날짜/회의실의 현재 상태 계산
  *
  * ✅ 변경 이력
- *  - [2026-04-22 v2.1] dayBks 필터 재정립 ← [변경 설명: User/Admin 취소가 BUSY 판정에 포함되던 버그]
- *     · 기존: `!b.autoCancelled && !b.earlyEnded && b.status !== 'rejected'`
- *            → v2.1에서 User/Admin 취소는 autoCancelled=false로 저장되므로 통과됨
- *     · 해결: hasTimeConflict/CalendarShell과 동일한 v2.1 필터 공식 적용
- *            "dayBks = autoCancelled=false AND status ∈ ('confirmed','pending') AND !earlyEnded"
- *     · 영향: 홈 카드 "사용중/예약가능" 판정 정확성 복구
- *
  *  - [2026-04-18 타입 안전성] 반환 타입 `RoomStatus` 명시 + return 객체 `as const` 처리
  *    · 원인: 반환 타입 미명시로 인해 { type: "BUSY" } 같은 리터럴이 string으로 추론됨
  *    · 증상: RoomStatusBadge 같이 status 객체 전체를 타입 엄격하게 받는 컴포넌트에
@@ -187,16 +163,13 @@ export function getRoomStatus(roomId: number, bookings: Booking[], date: string)
   const now = nowMinutes();
   const today = todayStr();
   const isToday = date === today;
-  // [v2.1] 시간 점유 필터: 정상 예약(confirmed/pending) + autoCancelled=false + !earlyEnded
-  //        · User/Admin 취소(status='cancelled'), 거절(status='rejected') 자동 제외
-  //        · 노쇼/기한초과(autoCancelled=true) 자동 제외
+  // pending 예약은 사실상 점유(SOON) — rejected/cancelled 제외
   const dayBks = bookings.filter(b =>
     b.room_id === roomId &&
     tsDate(b.start_at) === date &&
-    !b.autoCancelled &&                        // 노쇼/기한초과 제외 (cron 자동취소)
-    !b.earlyEnded &&                           // 조기반납 제외
-    b.status !== 'cancelled' &&                // ← [v2.1 추가] User/Admin 취소 제외
-    b.status !== 'rejected'                    // 거절 제외
+    !b.autoCancelled &&
+    !b.earlyEnded &&
+    b.status !== 'rejected'  // 거절된 예약은 제외
   );
 
   // ── BUSY 정책 ────────────────────────────────────────────────────────────
