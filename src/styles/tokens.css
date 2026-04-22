@@ -21,7 +21,7 @@
 
 :root {
   /* ── 룸/예약 공통 상태 뱃지 토큰 ── */
-  --color-available-bg:   #CBECFF;  --color-available-text: #111;       /* ← [2026-04-21] 피그마 node 196:1073 — text 색상 파랑→검정 */
+  --color-available-bg:   #CBECFF;  --color-available-text: #0369A1;
   --color-busy-bg:        #FCE7F3;  --color-busy-text:      #BE185D;
   --color-soon-bg:        #FFF7ED;  --color-soon-text:      #C2410C;
   --color-pending-bg:     #FEF3C7;  --color-pending-text:   #92400E;
