@@ -38,7 +38,8 @@
   --color-countdown-bg:   #EEF2FF;  --color-countdown-text: #6366F1;
   --color-neutral-bg:     #F1F5F9;  --color-neutral-text:   #64748B;
   --color-checkin-wait-bg: #DBEAFE; --color-checkin-wait-text: #1D4ED8;  /* ← [변경] soon과 구분, 파란 계열 */
-  --color-done-bg:         #F1F5F9; --color-done-text:         #64748B;
+  /* ← [피그마 212:328] 사용완료(done): 기존 연회색 #F1F5F9/#64748B → 검정 #000/흰색 #FFF */
+  --color-done-bg:         #000;    --color-done-text:         #fff;
   --color-noshow-bg:       #FEE2E2; --color-noshow-text:       #B91C1C;  /* ← [변경] pending과 구분, 부드러운 빨강 */
   --color-approved-bg:     #DCFCE7; --color-approved-text:     #166534;
   --color-expired-bg:      #E2E8F0; --color-expired-text:      #64748B;  /* ← [변경] done과 구분, 더 탁한 회색 */
@@ -66,6 +67,9 @@
 .chip--sm { font-size: 9px;  padding: 2px 7px; }
 /* ← [피그마 반영] chip--xs: 9px / padding 1px 4px / radius 4 (RoomModal StatusBadge-XS 기준) */
 .chip--xs { font-size: 9px;  padding: 1px 4px; border-radius: 4px; }
+/* ← [피그마 180:534 신규] chip--square: BookingDetailModal 전용 사각형 칩 modifier
+      · border-radius 24(pill) → 8(사각), padding 4 10 또는 4 12 */
+.chip--square { border-radius: 8px; padding: 4px 10px; }
 
 /* ── 상태 칩 색상 클래스 (단일 소스 — index.css 중복 제거됨) ── */
 .chip-available     { background: var(--color-available-bg);     color: var(--color-available-text); font-weight: 500; }
@@ -77,7 +81,9 @@
 .chip-success       { background: var(--color-success-bg);       color: var(--color-success-text); }
 .chip-danger        { background: var(--color-danger-bg);        color: var(--color-danger-text); }
 .chip-neutral       { background: var(--color-neutral-bg);       color: var(--color-neutral-text); }
-.chip-mine          { background: var(--color-mine-bg);          color: var(--color-mine-text); }
+/* ← [피그마 212:322] chip-mine: 내 예약 — border 1px solid #000, bg 투명, text #111, fw 500(Medium), padding 4 10, radius 8
+        · 이전 0.5px SemiBold → 1px Medium으로 시각 강도 피그마 최신 스펙에 맞춤 */
+.chip-mine          { background: transparent; color: #111; border: 1px solid #000; padding: 4px 10px; font-weight: 500; }
 .chip-admin         { background: var(--color-admin-bg);         color: var(--color-admin-text); }
 .chip-earlyend      { background: var(--color-earlyend-bg);      color: var(--color-earlyend-text); }
 .chip-countdown     { background: var(--color-countdown-bg);     color: var(--color-countdown-text); }

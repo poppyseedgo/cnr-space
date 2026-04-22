@@ -14,19 +14,24 @@ interface UserAvatarProps {
  * UserAvatar
  * - avatarUrl 있으면 이미지 표시
  * - 없거나 로드 실패 시 이름 첫 글자 이니셜 표시
+ * ← [피그마 202:1178] 이니셜 폰트 비율 0.38 → 0.5
+ *     · 24px 아바타 → 12px 이니셜 (이전 9px, 너무 작음)
+ *     · 36px → 18px / 44px → 22px 자동 환산
+ * ← [피그마 180:534] 기본값: bg #000, text #E7E7E7, fw 500
  */
 export function UserAvatar({
   name,
   avatarUrl,
   size      = 36,
-  bgColor   = '#111',
-  textColor = '#fff',
+  bgColor   = '#000',
+  textColor = '#E7E7E7',
   fontSize,
   className = '',
 }: UserAvatarProps) {
   const [imgError, setImgError] = useState(false)
 
-  const resolvedFontSize = fontSize ?? Math.round(size * 0.38)
+  // ← [피그마] 아바타 대비 이니셜 폰트 50%
+  const resolvedFontSize = fontSize ?? Math.round(size * 0.5)
   const initial          = (name ?? '?').charAt(0).toUpperCase()
 
   const baseStyle: React.CSSProperties = {
@@ -62,7 +67,8 @@ export function UserAvatar({
         background: bgColor,
         color:      textColor,
         fontSize:   resolvedFontSize,
-        fontWeight: 800,
+        fontWeight: 500,      // ← [피그마 180:534] fw 800 → 500
+        lineHeight: 1.3,      // ← [피그마] leading 1.3
       }}
       className={className}
     >

@@ -278,7 +278,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
                               {isExpired  && <span className="chip chip--xs chip-expired"  style={{flexShrink:0}}>기한초과</span>}
                               {isNoshow   && <span className="chip chip--xs chip-noshow"   style={{flexShrink:0}}>노쇼</span>}
                               {isEarlyEnd && <span className="chip chip--xs chip-earlyend" style={{flexShrink:0}}>조기반납</span>}
-                              {isDone     && <span className="chip chip--xs chip-done"     style={{flexShrink:0}}>종료</span>}
+                              {isDone     && <span className="chip chip--xs chip-done"     style={{flexShrink:0}}>사용완료</span>}
                               {/* ← [피그마] 제목 12px SemiBold #111 */}
                               <span style={{fontSize:12, fontWeight:600, color:"#111", lineHeight:1.5,
                                 overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{b.title}</span>
