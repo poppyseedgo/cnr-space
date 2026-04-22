@@ -511,7 +511,7 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
       <div className={`${D.cardPadding} flex flex-col flex-1`}> {/* ← [패딩/gap density 분기] */}
 
         {/* ① 상태 칩 */}
-        <RoomStatusBadge status={status} />
+        <RoomStatusBadge status={status} isAdminRoom={!!r.is_admin_only} />
 
         {/* ② 회의실명 */}
         <div style={{fontSize:D.roomNameSize, fontWeight:600, letterSpacing:"-0.3px", lineHeight:1.2, /* ← [폰트 크기 density 분기] */

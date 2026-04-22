@@ -80,11 +80,11 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
           <div style={{display:"flex",alignItems:"center",gap:8 /* ← [피그마] 타이틀↔칩 gap 8 */,flexWrap:"wrap"}}>
             {/* ← [피그마] 타이틀 24px SemiBold #111 */}
             <div style={{fontSize: isMobile ? 20 : 24, fontWeight:600, color:"#111", lineHeight:1.5}}>{r.room_name}</div>
-            <RoomStatusBadge status={status} />
+            <RoomStatusBadge status={status} isAdminRoom={!!r.is_admin_only} />
           </div>
-          {/* ← [피그마] 서브타이틀 14px Regular #6A7282 */}
+          {/* ← [피그마] 서브타이틀 14px Regular #6A7282 — room_name_ko 한글명만 표시 (층은 정보 리스트에 있음) */}
           <div style={{fontSize:14, fontWeight:400, color:"#6A7282", lineHeight:1.5}}>
-            {[floor?.floor_name, r.room_name_ko].filter(Boolean).join(" ")}
+            {r.room_name_ko ?? ''}
           </div>
         </div>
         {/* ← [피그마] Close 32×32, 투명 배경, 아이콘 20px (hover 시만 연회색) */}
@@ -169,13 +169,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
                   </div>
                 </div>
               )}
-              {(r.is_admin_only) && (
-                // ← [피그마] padding 8/12, rounded 12, 12px Medium (스타일만 반영, 색상 정책 유지)
-                <div style={{background:"#EEF2FF",borderRadius:12,padding:"8px 12px",marginTop:10,
-                  display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#4338CA",fontWeight:500,lineHeight:1.5}}>
-                  관리자(Admin) 전용 예약 회의실
-                </div>
-              )}
+              {/* ← [피그마 재배치] 관리자 전용 안내는 Hero Right 최상단 알림박스로 이전 (hero.right 참고) */}
             </div>
           </div>
 
@@ -184,6 +178,16 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
             padding: isMobile ? "0 20px 16px" : 16,
             display:"flex", flexDirection:"column", gap:24,
           }}>
+            {/* ← [피그마 196:1077 신규] 에메랄드(관리자 전용) 룸 알림박스: bg #E6FFB0, rounded 12, padding 8·12, min-height 62, 12px Medium #000 */}
+            {r.is_admin_only && (
+              <div style={{background:"#E6FFB0", borderRadius:12, padding:"8px 12px", minHeight:62,
+                display:"flex", flexDirection:"column", alignItems:"flex-start", justifyContent:"flex-start"}}>
+                <p style={{fontSize:12, fontWeight:500, color:"#000", lineHeight:1.5, margin:0}}>
+                  관리자 승인 후 예약이 확정됩니다
+                </p>
+              </div>
+            )}
+
             {/* ← [피그마] 상단 상태박스: padding 8·12, rounded 12 / 폰트 12px (색상은 상태별 유지) */}
             {status.type==="BUSY" && (
               <div style={{background:"#FEF2F2",borderRadius:12,padding:"8px 12px"}}>
