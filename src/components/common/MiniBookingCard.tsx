@@ -203,7 +203,7 @@ export function MiniBookingCard({
           )}
           <span
             style={{
-              fontSize: 12, fontWeight: 600, color: '#111', lineHeight: 1.5,
+              fontSize: 12, fontWeight: 700, color: '#111', lineHeight: 1.5,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               minWidth: 0,
             }}
