@@ -2,6 +2,23 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-04-22 HOTFIX] 캘린더 → 홈 예약 모달 날짜 꼬임 해결
+ *      · 증상: 사용자가 캘린더에서 미래 날짜 선택 후 홈으로 이동 → "바로 예약" 버튼 누르면
+ *              예약 모달에 오늘이 아닌 캘린더에서 보던 미래 날짜가 적용됨
+ *              → 지금 당장 회의실 잡을 의도였는데 미래 날짜로 예약 생성되는 혼선
+ *      · 근본 원인:
+ *        - BookingModal의 date prop을 `modal.date || selectedDate` 폴백으로 전달
+ *        - 홈의 "바로 예약"(onBook), "+"(openNewBooking 이벤트), RoomDetailModal 예약 버튼 모두
+ *          setModal 호출 시 date를 명시하지 않음 → modal.date = undefined
+ *        - selectedDate는 캘린더 탐색 상태라 미래 날짜일 수 있음 → 폴백으로 적용되어 버그
+ *      · 해결:
+ *        - 폴백을 selectedDate → todayStr()로 변경 (date prop 라인 1곳만)
+ *        - 캘린더에서 슬롯 클릭 시에는 이미 명시적으로 date 전달 중이라 영향 없음
+ *        - edit 모드도 명시적으로 date 전달 중이라 영향 없음
+ *      · [2026-04-19 P1 복구]와 무관:
+ *        - P1 복구: 캘린더 뷰 내에서 탐색 중 오늘로 강제 이동 버그 (해결됨)
+ *        - 본 수정: 캘린더 밖(홈)에서 예약 모달 열 때 날짜 맥락이 새는 문제 (별개)
+ *
  *  - [2026-04-22 HOTFIX v3] 노쇼 cancelled_by='user' 오염 근본 해결 (옵션 A)
  *      · 증상: 노쇼 예약이 DB에 auto_cancelled=true + cancelled_by='user'로 저장
  *              → BookingStatusBadge의 isNoshow 판정(cancelled_by==='system') 불성립
@@ -1439,7 +1456,7 @@ function AppContent() {
             zIndex:1000,
             padding: isMobile ? 0 : 16,
           }}>
-          {modal.type==="new"         && <BookingModal prefill={modal.prefill} date={modal.date||selectedDate} onClose={()=>setModal(null)} onSubmit={addBooking} onUpdate={()=>false} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} />}
+          {modal.type==="new"         && <BookingModal prefill={modal.prefill} date={modal.date||todayStr()/* ← [2026-04-22 HOTFIX] 캘린더→홈 날짜 꼬임 해결 — selectedDate 폴백 제거, 명시 전달만 사용 */} onClose={()=>setModal(null)} onSubmit={addBooking} onUpdate={()=>false} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} />}
             {modal.type==="edit"         && <BookingModal prefill={{}} editBooking={modal.data} date={tsDate(modal.data.start_at)} onClose={()=>setModal(null)} onSubmit={async ()=>false} onUpdate={(form,date)=>updateBooking(form,date,modal.data.id)} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} />}
             {/* ← [P2 v8] onCancel={cancelBooking} → onCancel={confirmAndCancelBooking}
                   예약 상세에서만 confirm dialog 경유 (소형카드는 즉시 실행 유지) */}
