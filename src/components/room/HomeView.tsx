@@ -294,7 +294,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
               earlyEnded:    {label:"반납됨",       btnBg:"#DBEAFE", btnColor:"#2563EB", disabled:true,  action:null,                showBtn:true},
               adminCancel:   {label:"강제취소",      btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:false},
               rejected:      {label:"거절됨",       btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:false},
-              userCancel:    {label:"예약자 취소",    btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:true},  // ← [v2.1] cancelled → userCancel로 명확화
+              userCancel:    {label:"취소됨",       btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:true},  // ← [v2.1] cancelled → userCancel로 명확화
             }[cardState] ?? {label:"체크인 대기", btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true, action:null, showBtn:true};
 
             const isCancellable = cardState==="waiting" || cardState==="soon" || cardState==="pending";
