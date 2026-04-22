@@ -22,19 +22,15 @@
   --color-text-muted:    #64748B;
   --color-text-hint:     #94A3B8;
 
-  /* 상태 색상 */
-  --color-available-bg:  #CBECFF;
-  --color-available-text:#111;    /* ← [2026-04-21] 피그마 node 196:1073 — 파랑→검정 */
-  --color-busy-bg:       #FEE2E2;
-  --color-busy-text:     #DC2626;
-  --color-soon-bg:       #FEF3C7;
-  --color-soon-text:     #D97706;
-  --color-pending-bg:    #FEF3C7;
-  --color-pending-text:  #92400E;
-  --color-success-bg:    #DCFCE7;
-  --color-success-text:  #16A34A;
-  --color-danger-bg:     #FEE2E2;
-  --color-danger-text:   #DC2626;
+  /* ── 상태 색상 토큰은 tokens.css가 단일 소스 ─────────────────────
+     [2026-04-19 P2 v7 중복 제거]
+     · 기존: index.css와 tokens.css 양쪽에 선언되어 값 충돌 발생
+       - busy:  #FEE2E2/#DC2626 (index.css) vs #FCE7F3/#BE185D (tokens.css)
+       - soon:  #FEF3C7/#D97706 (index.css) vs #FFF7ED/#C2410C (tokens.css)
+       - pending/success/danger: 동일 (문제 없음)
+     · 해결: index.css에서 모두 제거 → tokens.css가 최종 선언 (cascade 순서상 후자 적용)
+     · 참고: tokens.css는 main.tsx에서 index.css 다음에 import됨 (single source of truth)
+  ──────────────────────────────────────────────────────────────── */
 
   /* 간격 */
   --space-1: 4px;
@@ -141,25 +137,6 @@
   /* ── 버튼 기본 ── */
   /* ── 버튼 기본 ── */
   .btn {
-
-  /* ── 모달 하단 버튼 그룹 ── */
-  /* 버튼 수에 관계없이 항상 동일한 너비 보장 */
-  /* 사용법: <div class="modal-actions"> <button class="btn">...</button> ... </div> */
-  .modal-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 16px;
-  }
-  .modal-actions > .btn {
-    flex: 1;
-    padding: 13px;
-    font-size: 13px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-  }
     cursor: pointer;
     border: none;
     font-family: inherit;
@@ -239,12 +216,11 @@
   }
 
   /* ── 칩 (상태 뱃지) ── */
-  /* base 클래스만 여기에. 색상·사이즈 modifier는 tokens.css 단일 관리
-     ← [2026-04-21] font-weight 600 → 500 (전체 통일) */
+  /* base 클래스만 여기에. 색상·사이즈 modifier는 tokens.css 단일 관리 */
   .chip {
     display: inline-flex; align-items: center; gap: 4px;
     padding: 3px 10px; border-radius: var(--radius-full);
-    font-size: 11px; font-weight: 500; letter-spacing: 0.2px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.2px;
     white-space: nowrap;
   }
 
