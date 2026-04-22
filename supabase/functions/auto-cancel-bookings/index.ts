@@ -139,13 +139,27 @@ Deno.serve(async () => {
     const now = new Date()
     const stats = { noshow: 0, reminderSent: 0, pendingExpired: 0 }
 
-    // ─── 1. 노쇼 자동 취소 ──────────────────────────────────────────────
-    // confirmed 예약 중 (start_at + 10분)이 현재보다 이전 & 미체크인
-    // ← [2026-04-17] start_at lower bound로 full scan 방지 (과거 1시간까지만)
+    // ─── 1. 노쇼 자동 취소 + 이메일 발송 ──────────────────────────────────
+    //
+    // ← [2026-04-22 v3] 옵션 A — 프론트/cron 역할 분리
+    //   변경 전 (v6): .eq('auto_cancelled', false)만 조회 → 프론트가 먼저 선점하면
+    //                 cron 쿼리에서 배제되어 이메일 미발송 (알려진 버그)
+    //   변경 후 (v3): noshow_notified=false인 system 취소 건을 조회
+    //                 · 프론트 markNoshow로 선점된 건 포함
+    //                 · cron 단독 처리 건 포함
+    //                 · 모두 이메일 1회만 발송 후 noshow_notified=true 마킹
+    //   흐름:
+    //     ① 프론트(즉시): markNoshow → auto_cancelled=true, cancelled_by='system', noshow_notified=false
+    //     ② Realtime 구독: 전 클라이언트 즉시 노쇼 뱃지 표시
+    //     ③ cron(5분): 이 쿼리로 조회 → 이메일 발송 → noshow_notified=true 마킹
+    //     ④ 다음 cron: noshow_notified=true 이미 발송된 건 배제 (중복 방지)
+    //
+    // 대상 1: cron이 단독 처리할 건 (프론트 미선점)
     const noshowCutoff = new Date(now.getTime() - 10 * 60 * 1000).toISOString()
     const noshowLowerBound = new Date(now.getTime() - 60 * 60 * 1000).toISOString()
 
-    const { data: noshowTargets, error: noshowErr } = await supabase
+    // (1-a) 아직 프론트가 선점 안 한 건 → cron이 DB 기록
+    const { data: noshowTargetsFresh, error: noshowErrFresh } = await supabase
       .from('bookings')
       .select('*')
       .eq('status',         'confirmed')
@@ -154,28 +168,64 @@ Deno.serve(async () => {
       .gte('start_at',      noshowLowerBound)
       .lt('start_at',       noshowCutoff)
 
-    if (noshowErr) {
-      console.error('[auto-cancel] noshow 조회 실패:', noshowErr)
+    if (noshowErrFresh) {
+      console.error('[auto-cancel] noshow fresh 조회 실패:', noshowErrFresh)
     }
 
-    for (const booking of (noshowTargets ?? [])) {
-      const { error: upErr } = await supabase
+    for (const booking of (noshowTargetsFresh ?? [])) {
+      // 프론트와 race 방지: .eq('auto_cancelled', false)로 원자성 확보
+      const { data: updated, error: upErr } = await supabase
         .from('bookings')
         .update({ auto_cancelled: true, cancelled_by: 'system' })
         .eq('id', booking.id)
+        .eq('auto_cancelled', false)  // ← race 발생 시 UPDATE 0 rows
+        .select('id')
 
       if (upErr) {
         console.error(`[auto-cancel] noshow 업데이트 실패 (${booking.id}):`, upErr)
         continue
       }
+      // UPDATE 0 rows = 프론트가 먼저 선점 → 이 건은 (1-b) 쿼리에서 처리됨
+      if (!updated || updated.length === 0) {
+        console.log(`[auto-cancel] noshow 프론트 선점 감지 (${booking.id}) — 다음 조회에서 알림 처리`)
+        continue
+      }
+    }
 
-      // ← [P2] 이메일 + 인앱 알림 모두 send-notification이 담당
-      //        (기존 insertInAppNotification 중복 호출 제거)
+    // (1-b) 프론트 선점 포함 — noshow_notified=false인 모든 system 노쇼 조회 → 이메일 발송
+    const { data: noshowToNotify, error: notifyErr } = await supabase
+      .from('bookings')
+      .select('*')
+      .eq('checked_in',        false)
+      .eq('auto_cancelled',    true)
+      .eq('cancelled_by',      'system')
+      .eq('noshow_notified',   false)
+      .gte('start_at',         noshowLowerBound)
+      .lt('start_at',          noshowCutoff)
+
+    if (notifyErr) {
+      console.error('[auto-cancel] noshow 알림 대상 조회 실패:', notifyErr)
+    }
+
+    for (const booking of (noshowToNotify ?? [])) {
+      // 이메일 발송
       const payload = await buildPayload(booking)
       await callSendNotification('noshow', payload)
 
+      // 발송 완료 마킹 (원자성: notified=false 일 때만 true로)
+      const { error: markErr } = await supabase
+        .from('bookings')
+        .update({ noshow_notified: true })
+        .eq('id', booking.id)
+        .eq('noshow_notified', false)
+
+      if (markErr) {
+        console.error(`[auto-cancel] noshow_notified 마킹 실패 (${booking.id}):`, markErr)
+        continue
+      }
+
       stats.noshow++
-      console.log(`[auto-cancel] noshow 처리: ${booking.id} (${booking.title})`)
+      console.log(`[auto-cancel] noshow 알림 발송: ${booking.id} (${booking.title})`)
     }
 
     // ─── 2. 승인 기한 10분 전 알림 (Admin 전용) ────────────────────────

@@ -2,27 +2,31 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
- *  - [2026-04-22 HOTFIX] 노쇼 Race Condition 근본 해결 (cancelled_by='user' 오염 버그)
- *      · 증상: 노쇼 예약이 DB에 status=cancelled + cancelled_by='user'로 저장됨
- *              → 시스템 자동 처리한 노쇼가 "사용자 취소"로 기록되는 데이터 오염
- *              → auto-cancel-bookings cron의 auto_cancelled=false 필터에 걸려
- *                 send-notification('noshow') 미호출 → 이메일/인앱 알림 누락
- *      · 진단 (DB 검증 완료):
- *        - 2026-04-22 최근 2시간 내 생성된 예약의 노쇼 건 전체가 오염됨
- *        - 프론트 useEffect가 start_at + 10분 시점에 apiCancelBooking() 호출
- *          → api.ts의 cancelBooking이 cancelled_by='user'로 DB 직접 기록
- *        - emergency_log_user_cancel 트리거 로그로 프론트 세션이 범인 확정
- *      · 근본 원인: 2026-04-19 pending_expired 해결 시 노쇼는 "정상 작동 중"으로
- *                   판단해 건드리지 않았으나, 동일한 Race Condition 구조였음
- *      · 해결 (pending_expired와 동일한 단일 주체 DB 쓰기 원칙 적용):
- *        - useEffect 노쇼 블록에서 apiCancelBooking() 호출 제거
- *        - 프론트는 낙관적 UI만 담당 (setBookings로 state만 업데이트,
- *          autoCancelled=true + cancelledBy='system'으로 임시 표시)
- *        - DB 상태 변경은 auto-cancel-bookings cron이 단독 수행
- *        - Realtime 구독이 cron 결과를 프론트에 푸시하여 최종 동기화
- *      · 부수 효과: 최대 5분 지연 (cron 주기). 이미 노쇼 상태이므로 허용 가능
- *      · 원칙 재확인: "같은 DB 컬럼에 여러 주체가 쓴다"는 구조는 반드시 오염됨.
- *                    단일 주체로 수렴이 유일한 근본 해결.
+ *  - [2026-04-22 HOTFIX v3] 노쇼 cancelled_by='user' 오염 근본 해결 (옵션 A)
+ *      · 증상: 노쇼 예약이 DB에 auto_cancelled=true + cancelled_by='user'로 저장
+ *              → BookingStatusBadge의 isNoshow 판정(cancelled_by==='system') 불성립
+ *              → 노쇼 뱃지 미표시 + 캘린더/카드에 opacity 45% 잔존 정책 미적용
+ *              → auto-cancel-bookings cron도 auto_cancelled=false 필터에 걸려 이메일 미발송
+ *      · 과거 설계 복원 (여러 세션 확정된 내용):
+ *        - 노쇼(system)는 화면에 opacity 45%로 "남아야 함" (히스토리 보존)
+ *        - 캘린더 슬롯에도 희미하게 + 노쇼 칩 표시
+ *        - 이 모든 UI 판별의 키는 cancelled_by='system'
+ *      · 근본 원인:
+ *        - api.ts의 cancelBooking이 항상 cancelled_by='user'로 기록하는데
+ *          프론트 노쇼 감지도 이 함수를 호출 → "system이어야 할 것"을 "user"로 오염
+ *      · 해결 (옵션 A — 프론트 즉시 UI + cron 이메일 보장):
+ *        - api.ts에 markNoshow(id) 함수 신설 — cancelled_by='system'으로 기록
+ *        - 노쇼 감지 useEffect가 apiCancelBooking 대신 markNoshow 호출
+ *        - DB에 noshow_notified 컬럼 추가 (이메일 중복 발송 방지)
+ *        - auto-cancel-bookings cron은 noshow_notified=false 건 조회로 이메일 발송
+ *          (프론트가 먼저 선점해도 cron이 이메일 책임 분담)
+ *      · v1/v2 시도 기록:
+ *        - v1: apiCancelBooking 호출만 제거하고 setBookings 유지 → Realtime이 DB 덮어써
+ *              결국 노쇼 뱃지 미표시 (배포됨, v3로 대체)
+ *        - v2: useEffect 블록 전체 삭제 → 노쇼가 아예 화면에 안 남는 심각한 역행 (미배포)
+ *        - v3: 함수 분리로 cancelled_by 올바르게 기록 (진짜 근본 해결)
+ *      · 원칙: "같은 DB 컬럼에 여러 값을 쓰는 함수 하나"는 의미 혼선의 온상.
+ *              의미별 함수 분리(cancelBooking / markNoshow / adminForceCancel)가 정답.
  *
  *  - [2026-04-19 P2 v6] pending_expired 알림 누락 버그 해결 (Race Condition)
  *      · 증상: 에메랄드 룸 승인 대기 예약이 기한 초과로 자동 취소될 때
@@ -99,7 +103,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from './utils/time'
 import { getFloor } from './data/floors'
-import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking, upsertBookingAttendees, getBookingAttendees, insertNotification, loadNotifications, markNotificationRead, markAllNotificationsRead, subscribeNotifications, adminForceCancel, type AppNotification } from './lib/api'
+import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, markNoshow, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking, upsertBookingAttendees, getBookingAttendees, insertNotification, loadNotifications, markNotificationRead, markAllNotificationsRead, subscribeNotifications, adminForceCancel, type AppNotification } from './lib/api'
 import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView } from './components/room/HomeView'
@@ -995,36 +999,38 @@ function AppContent() {
 
   // Auto-cancel: ① 노쇼(미체크인) 자동 취소  ② pending 승인 기한 초과 자동 취소
   //
-  // ← [2026-04-22 HOTFIX] 프론트 DB 쓰기 완전 제거 — Race Condition 근본 해결
-  //    문제 진단 (DB 검증 완료):
-  //      · 기존 코드가 apiCancelBooking(b.id) 호출 → DB에 cancelled_by='user' 저장
-  //      · 시스템이 자동 처리한 노쇼가 "사용자 취소"로 기록되는 심각한 데이터 오염
-  //      · auto-cancel-bookings cron은 auto_cancelled=false 필터로 쿼리
-  //        → 프론트가 먼저 선점하면 cron 쿼리에서 완전 배제 → 노쇼 알림 미발송
-  //      · 증거: 2026-04-22 DB 상태 전체가 status=cancelled + cancelled_by=user로 오염
-  //    해결 (② pending_expired와 동일한 원칙 적용):
-  //      · 프론트는 낙관적 UI만 담당 (setBookings로 state만 업데이트)
-  //      · DB 상태 변경은 auto-cancel-bookings cron이 단독 수행
-  //      · cron이 처리 후 send-notification('noshow')이 이메일+인앱 자동 발송
-  //      · Realtime 구독(subscribeBookings)이 cron 결과를 프론트에 푸시하여 최종 동기화
-  //    최악 지연: 5분 (cron 주기). 이미 노쇼 상태이므로 업무상 허용 가능
+  // ← [2026-04-22 HOTFIX v3] 노쇼 cancelled_by='user' 오염 근본 해결
+  //    진단:
+  //      · 기존 apiCancelBooking은 cancelled_by='user'로 DB 기록 → 시스템 자동 처리한 노쇼를
+  //        "사용자 취소"로 오염시키는 치명적 버그
+  //      · 과거 설계 복원: 노쇼는 반드시 cancelled_by='system'으로 기록해야
+  //        (1) 화면에 노쇼 뱃지 표시 (cancelled_by='system' 필수 조건)
+  //        (2) opacity 45% 잔존 정책 적용
+  //        (3) cron이 이메일 발송 대상 식별
+  //    해결:
+  //      · api.ts에 markNoshow(id) 함수 추가 — cancelled_by='system'으로 기록
+  //      · 노쇼 감지 시 apiCancelBooking 대신 markNoshow 호출
+  //      · 프론트가 DB에 선점해도 cron이 이메일 발송 (noshow_notified 컬럼으로 중복 방지)
+  //    과거 동작 복원:
+  //      · 프론트 즉시 UI 반영 (Realtime 구독이 전 클라이언트에 전파)
+  //      · cron은 최대 5분 내 이메일 발송 보장
   useEffect(() => {
     const now=nowMinutes(), today=todayStr(), nowMs=Date.now();
 
     // ① 노쇼: 오늘 예약 중 체크인 없이 CHECKIN_WINDOW_MIN 경과
-    const toCancel=bookings.filter(b=>
+    const toNoshow=bookings.filter(b=>
       tsDate(b.start_at)===today &&
       !b.checkedIn && !b.autoCancelled && !b.earlyEnded &&
       b.status !== 'pending' && b.status !== 'rejected' &&   // pending·rejected는 별도 처리
       now > tsMin(b.start_at)+CHECKIN_WINDOW_MIN
     );
-    if(toCancel.length>0){
-      const ids=new Set(toCancel.map(b=>b.id));
-      // ← [2026-04-22 HOTFIX] 낙관적 UI만: state만 업데이트 (사용자에겐 즉시 "노쇼"로 보임)
+    if(toNoshow.length>0){
+      const ids=new Set(toNoshow.map(b=>b.id));
+      // ← [v3] 낙관적 UI: state에 즉시 반영 (system으로 기록 — 노쇼 뱃지 즉시 표시)
       setBookings(prev => prev.map(b => ids.has(b.id) ? {...b, autoCancelled:true, cancelledBy:'system'} : b));
-      // ← [2026-04-22 HOTFIX] apiCancelBooking() 호출 제거 — DB 쓰기는 cron 단독 처리
-      //   기존: Promise.all(toCancel.map(b => apiCancelBooking(b.id))).catch(console.error);
-      //   이유: apiCancelBooking은 cancelled_by='user'로 저장하여 노쇼를 사용자 취소로 오염시킴
+      // ← [v3] DB에 cancelled_by='system'으로 기록 (과거 apiCancelBooking = 'user' 오염 해결)
+      //   이메일/인앱 알림은 auto-cancel-bookings cron이 noshow_notified=false 조회로 발송
+      Promise.all(toNoshow.map(b => markNoshow(b.id))).catch(console.error);
     }
 
     // ② pending 승인 기한 초과: start_at 1분 전 이후 경과

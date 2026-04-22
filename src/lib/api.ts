@@ -259,6 +259,21 @@ export async function cancelBooking(id: string): Promise<void> {
   await updateBooking(id, { autoCancelled: true, cancelledBy: 'user' })
 }
 
+/**
+ * 노쇼 자동 감지 — cancelled_by='system'으로 기록
+ *
+ * ← [2026-04-22 v3] 기존 cancelBooking이 'user'로만 기록되어
+ *    프론트 useEffect 노쇼 감지 시 cancelled_by='user' 오염 발생.
+ *    노쇼는 시스템 자동 처리이므로 'system'으로 명확히 분리.
+ *
+ * 흐름:
+ *   프론트(즉시) → markNoshow → DB에 system 기록 → 모든 클라이언트 즉시 노쇼 뱃지 표시
+ *   cron(최대 5분) → noshow_notified=false인 건 조회 → 이메일 발송 → noshow_notified=true 마킹
+ */
+export async function markNoshow(id: string): Promise<void> {
+  await updateBooking(id, { autoCancelled: true, cancelledBy: 'system' })
+}
+
 // ── Realtime 구독 ────────────────────────────────────────────────────────────
 export function subscribeBookings(onUpdate: () => void) {
   if (!isSupabaseEnabled) return () => {}
