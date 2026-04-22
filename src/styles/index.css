@@ -24,7 +24,7 @@
 
   /* 상태 색상 */
   --color-available-bg:  #CBECFF;
-  --color-available-text:#0369A1;
+  --color-available-text:#111;    /* ← [2026-04-21] 피그마 node 196:1073 — 파랑→검정 */
   --color-busy-bg:       #FEE2E2;
   --color-busy-text:     #DC2626;
   --color-soon-bg:       #FEF3C7;
