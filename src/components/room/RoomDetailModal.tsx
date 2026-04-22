@@ -83,7 +83,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
         <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:4}}>
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
             {/* ← [피그마] 제목 20 → 24 (SemiBold) */}
-            <div style={{fontSize: isMobile ? 20 : 24, fontWeight:600, color:"#111", lineHeight:1.5}}>{r.room_name}</div>
+            <div style={{fontSize: isMobile ? 20 : 24, fontWeight:600, color:"#111111", lineHeight:1.5}}>{r.room_name}</div>
             <RoomStatusBadge status={status} />
           </div>
           {/* ← [피그마] subtitle 12 #64748B → 14 #6A7282 Regular, 내용 room_name_ko만 */}
@@ -100,8 +100,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
       <div style={{flex:1, overflowY:"auto"}}>
         <div style={{
           display: isMobile ? "flex" : "grid",
-          // ← [피그마] 정확한 50/50 — minmax(0, 1fr)로 content 넘침 방지
-          gridTemplateColumns: isMobile ? undefined : "minmax(0, 1fr) minmax(0, 1fr)",
+          gridTemplateColumns: isMobile ? undefined : "1fr 1fr",
           flexDirection: isMobile ? "column" : undefined,
           gap: 0,
         }}>
@@ -112,7 +111,6 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
             padding: 16,
             borderRight: isMobile ? "none" : "1px solid #F1F5F9",
             display:"flex", flexDirection:"column", gap:16,
-            minWidth: 0,                // ← grid 50/50 보장 (content overflow 방지)
           }}>
             {/* 썸네일 — ← [피그마] borderRadius 12 → 16 */}
             <div style={{width:"100%", height: isMobile ? 180 : 200, borderRadius:16, overflow:"hidden",
@@ -168,6 +166,16 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
                   </div>
                 </div>
               )}
+              {(r.is_admin_only) && (
+                <div style={{borderBottom:"0.5px solid #F1F5F9",padding:"10px 0",
+                  display:"flex",alignItems:"center"}}>
+                  <div style={{fontSize:14,color:"#96A0B3",width:64,fontWeight:600,flexShrink:0,
+                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.5}}>유형</div>
+                  <div style={{fontSize:14,color:"#4338CA",fontWeight:600,lineHeight:1.5}}>
+                    관리자(Admin) 전용 예약 회의실
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -176,32 +184,31 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
           <div style={{
             padding: 16,
             display:"flex", flexDirection:"column", gap:24,
-            minWidth: 0,                // ← grid 50/50 보장 (content overflow 방지)
           }}>
             {status.type==="BUSY" && (
               <div style={{background:"#FEF2F2",borderRadius:12,padding:"12px 14px"}}>
                 <div style={{fontSize:11,color:"#DC2626",fontWeight:600,marginBottom:6}}>현재 사용 중</div>
-                <div style={{fontSize:14,color:"#111",fontWeight:600}}>{status.booking?.title}</div>
-                <div style={{fontSize:12,color:"#6A7282",marginTop:4}}>{fmtTimeFull(status.endTime)}까지 · {status.minsLeft}분 남음</div>
+                <div style={{fontSize:14,color:"#111111",fontWeight:600}}>{status.booking?.title}</div>
+                <div style={{fontSize:12,color:"#64748B",marginTop:4}}>{fmtTimeFull(status.endTime)}까지 · {status.minsLeft}분 남음</div>
               </div>
             )}
             {status.type==="SOON" && (
               <div style={{background:"#FFFBEB",borderRadius:12,padding:"12px 14px"}}>
                 <div style={{fontSize:11,color:"#D97706",fontWeight:600,marginBottom:6}}>사용 예정</div>
-                <div style={{fontSize:14,color:"#111",fontWeight:600}}>{status.minsUntil}분 후 사용 시작</div>
-                <div style={{fontSize:12,color:"#6A7282",marginTop:4}}>{fmtTimeFull(status.nextStart)} 부터</div>
+                <div style={{fontSize:14,color:"#111111",fontWeight:600}}>{status.minsUntil}분 후 사용 시작</div>
+                <div style={{fontSize:12,color:"#64748B",marginTop:4}}>{fmtTimeFull(status.nextStart)} 부터</div>
               </div>
             )}
             {status.type==="AVAILABLE" && r.is_admin_only && (
               /* ← [피그마] 에메랄드 안내 메시지 (승인 후 확정) */
               <div style={{background:"#E6FFB0",borderRadius:12,padding:"12px 14px"}}>
-                <div style={{fontSize:12,color:"#111",fontWeight:500,lineHeight:1.5}}>관리자 승인 후 예약이 확정됩니다</div>
+                <div style={{fontSize:12,color:"#000",fontWeight:500,lineHeight:1.5}}>관리자 승인 후 예약이 확정됩니다</div>
               </div>
             )}
             {status.type==="AVAILABLE" && !r.is_admin_only && (
               <div style={{background:"#E8F4FF",borderRadius:12,padding:"12px 14px"}}>
                 <div style={{fontSize:11,color:"#0369A1",fontWeight:600,marginBottom:4}}>예약 가능</div>
-                <div style={{fontSize:13,color:"#111",fontWeight:600}}>지금 바로 이용 가능합니다</div>
+                <div style={{fontSize:13,color:"#111111",fontWeight:600}}>지금 바로 이용 가능합니다</div>
               </div>
             )}
 
@@ -210,13 +217,13 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
               {/* ← [피그마] 제목 12 → 14, 카운트 chip radius 999 → 8 px8py4 fs10 Medium */}
               <div style={{padding:"12px 0",
                 display:"flex",alignItems:"center",gap:8}}>
-                <span style={{fontSize:14,fontWeight:600,color:"#111",lineHeight:1.5}}>오늘 예약 현황</span>
-                <span style={{fontSize:10,color:"#fff",fontWeight:500,background:"#111",
+                <span style={{fontSize:14,fontWeight:600,color:"#000",lineHeight:1.5}}>오늘 예약 현황</span>
+                <span style={{fontSize:10,color:"#fff",fontWeight:500,background:"#000",
                   borderRadius:8,padding:"4px 8px",lineHeight:1}}>{todayBks.length}건</span>
               </div>
               {todayBks.length===0
                 ? <div style={{background:"#F8FAFC",borderRadius:10,padding:"20px",
-                    textAlign:"center",fontSize:12,color:"#A2A7B2"}}>
+                    textAlign:"center",fontSize:12,color:"#CBD5E1"}}>
                     오늘 예약이 없습니다
                   </div>
                 : <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -252,14 +259,12 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
                           {/* 1행: 상태칩 + 제목 | 시간 */}
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
                             <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
-                              {/* ← [피그마 StatusBadge-XS] fs:9 Medium, padding:1px 4px, radius:4, lineHeight:1.5
-                                    색상은 각 상태 토큰(chip-pending/expired/noshow 등)이 제공 */}
                               {isActive   && <span style={{width:7,height:7,borderRadius:"50%",background:"#E11D48",display:"inline-block",flexShrink:0}}/>}
-                              {isPending  && <span className="chip-pending" style={{flexShrink:0,fontSize:9,fontWeight:500,padding:"1px 4px",borderRadius:4,lineHeight:1.5}}>승인대기</span>}
-                              {isExpired  && <span className="chip-expired" style={{flexShrink:0,fontSize:9,fontWeight:500,padding:"1px 4px",borderRadius:4,lineHeight:1.5}}>승인기한초과 취소</span>}
-                              {isNoshow   && <span className="chip-noshow"  style={{flexShrink:0,fontSize:9,fontWeight:500,padding:"1px 4px",borderRadius:4,lineHeight:1.5}}>노쇼</span>}
-                              {isEarlyEnd && <span className="chip-earlyend" style={{flexShrink:0,fontSize:9,fontWeight:500,padding:"1px 4px",borderRadius:4,lineHeight:1.5}}>조기반납</span>}
-                              {isDone     && <span className="chip-done"    style={{flexShrink:0,fontSize:9,fontWeight:500,padding:"1px 4px",borderRadius:4,lineHeight:1.5}}>종료</span>}
+                              {isPending  && <span className="chip chip--xs chip-pending"  style={{flexShrink:0}}>승인대기</span>}
+                              {isExpired  && <span className="chip chip--xs chip-expired"  style={{flexShrink:0}}>승인기한초과 취소</span>}
+                              {isNoshow   && <span className="chip chip--xs chip-noshow"   style={{flexShrink:0}}>노쇼</span>}
+                              {isEarlyEnd && <span className="chip chip--xs chip-earlyend" style={{flexShrink:0}}>조기반납</span>}
+                              {isDone     && <span className="chip chip--xs chip-done"     style={{flexShrink:0}}>종료</span>}
                               <span style={{fontSize:12,color:"#111",fontWeight:600,
                                 overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.5}}>{b.title}</span>
                             </div>
