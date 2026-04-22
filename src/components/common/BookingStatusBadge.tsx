@@ -79,9 +79,6 @@ interface BookingStatusBadgeProps {
   size?:        'md' | 'sm' | 'xs'
   /** 지정 시 해당 타입의 뱃지만 렌더. 미지정 시 전체 자동 판별. */
   only?:        BadgeType[]
-  /** 지정 시 최대 N개의 뱃지만 렌더. 우선순위 상위부터 잘림.
-   *  ← [2026-04-21] 소형카드 규칙: 상태칩 3개 이상 출력 시 감춤 용도 */
-  maxCount?:    number
 }
 
 /** size별 chip modifier 클래스 — tokens.css 정의 */
@@ -98,7 +95,6 @@ export function BookingStatusBadge({
   currentUser = '',
   size = 'md',
   only,
-  maxCount,
 }: BookingStatusBadgeProps) {
   const now     = nowMinutes()
   const isToday = tsDate(b.start_at) === todayStr()
@@ -225,54 +221,57 @@ export function BookingStatusBadge({
     <span className={`chip ${sizeClass} ${cls}`.trim()}>{children}</span>
   )
 
-  // ← [2026-04-21] maxCount 적용을 위해 뱃지 배열로 수집 후 slice
-  //   우선순위는 기존 JSX 순서 그대로 유지 (rejected > expired-pending > admin-cancel > ...)
-  const badges: React.ReactNode[] = []
-
-  // ① 거절됨
-  if (show('rejected') && isRejected) badges.push(<C key="rejected" cls="chip-rejected">거절됨</C>)
-  // ② 기한초과 취소
-  if (show('expired-pending') && isExpiredPending) badges.push(<C key="expired-pending" cls="chip-expired">승인기한초과 취소</C>)
-  // ③ 관리자 강제취소
-  if (show('admin-cancel') && isAdminCancel) badges.push(<C key="admin-cancel" cls="chip-admin">관리자 강제취소</C>)
-  // ④ 노쇼
-  if (show('noshow') && isNoshow) badges.push(<C key="noshow" cls="chip-noshow">노쇼</C>)
-  // ⑤ 사용자 직접 취소
-  if (show('user-cancel') && isUserCancel && isOwner) badges.push(<C key="user-cancel" cls="chip-neutral">예약자 취소</C>)
-  // ⑥ 승인 대기
-  if (show('pending') && b.status === 'pending' && !b.autoCancelled) badges.push(<C key="pending" cls="chip-pending">승인 대기</C>)
-  // ⑦ 승인완료
-  if (show('approved') && isApproved) badges.push(<C key="approved" cls="chip-approved">승인완료</C>)
-  // ⑧ 내 예약 — sm 소형카드 제외, 취소/거절/기한초과 상태에서는 숨김 (노쇼는 예외)
-  if (show('mine') && isOwner && (!isAnyCancelled || isNoshow) && size !== 'sm') {
-    badges.push(<C key="mine" cls="chip-mine">내 예약</C>)
-  }
-  // ⑨ 진행 중
-  if (show('active') && isAct) {
-    badges.push(
-      <span key="active" className={`chip ${sizeClass}`.trim()} style={{ background: (r?.color ?? '#6366F1') + '18', color: r?.color ?? '#6366F1' }}>
-        진행 중
-      </span>
-    )
-  }
-  // ⑩ 체크인 대기 / 완료
-  if (show('checkin-wait') && nci) badges.push(<C key="checkin-wait" cls="chip-checkin-wait">체크인 대기</C>)
-  if (show('checkin-done') && b.checkedIn && isAct) badges.push(<C key="checkin-done" cls="chip-success">체크인 완료</C>)
-  // ⑪ 종료
-  if (show('past') && isPast) badges.push(<C key="past" cls="chip-done">종료</C>)
-  // ⑫ 조기반납
-  if (show('early-end') && b.earlyEnded) badges.push(<C key="early-end" cls="chip-earlyend">조기반납</C>)
-  // ⑬ N분 후 카운트다운
-  if (show('countdown') && !isAct && !isAnyCancelled && !b.autoCancelled && isToday && tl > 0 && tl <= 10) {
-    badges.push(<C key="countdown" cls="chip-countdown">{tl}분 후</C>)
-  }
-
-  // ← [2026-04-21] maxCount 지정 시 상위 N개만 렌더
-  const rendered = typeof maxCount === 'number' ? badges.slice(0, maxCount) : badges
-
   return (
     <div style={{ display: 'inline-flex', gap, flexWrap: 'wrap', alignItems: 'center' }}>
-      {rendered}
+      {/* ① 거절됨 — 최우선, 단독 표시 */}
+      {show('rejected') && isRejected && <C cls="chip-rejected">거절됨</C>}
+
+      {/* ② 기한초과 취소 (pending + autoCancelled) */}
+      {show('expired-pending') && isExpiredPending && <C cls="chip-expired">승인기한초과 취소</C>}
+
+      {/* ③ 관리자 강제취소 (rejected 제외) */}
+      {show('admin-cancel') && isAdminCancel && <C cls="chip-admin">관리자 강제취소</C>}
+
+      {/* ④ 노쇼 (system 자동취소) */}
+      {show('noshow') && isNoshow && <C cls="chip-noshow">노쇼</C>}
+
+      {/* ⑤ 사용자 직접 취소 — 본인 컨텍스트(MyPage)에서만 */}
+      {show('user-cancel') && isUserCancel && isOwner && <C cls="chip-neutral">예약자 취소</C>}
+
+      {/* ── 이하 정상 상태 (취소 없는 경우) ── */}
+      {/* ⑥ 승인 대기 */}
+      {show('pending') && b.status === 'pending' && !b.autoCancelled && <C cls="chip-pending">승인 대기</C>}
+
+      {/* ⑦ 승인완료 */}
+      {show('approved') && isApproved && <C cls="chip-approved">승인완료</C>}
+
+      {/* ⑧ 내 예약 — sm 소형카드 제외, 취소/거절/기한초과 상태에서는 숨김 (노쇼는 예외) */}
+      {/* ← [v2.1] !b.autoCancelled → !isAnyCancelled (User/Admin 취소도 숨김) */}
+      {show('mine') && isOwner && (!isAnyCancelled || isNoshow) && size !== 'sm' && <C cls="chip-mine">내 예약</C>}
+
+      {/* ⑨ 진행 중 */}
+      {/* ← [v2.1] isAct가 이미 status='confirmed' 체크하므로 추가 조건 간소화 */}
+      {show('active') && isAct && (
+        <span className={`chip ${sizeClass}`.trim()} style={{ background: (r?.color ?? '#6366F1') + '18', color: r?.color ?? '#6366F1' }}>
+          진행 중
+        </span>
+      )}
+
+      {/* ⑩ 체크인 대기 / 완료 */}
+      {show('checkin-wait') && nci && <C cls="chip-checkin-wait">체크인 대기</C>}
+      {show('checkin-done') && b.checkedIn && isAct && <C cls="chip-success">체크인 완료</C>}
+
+      {/* ⑪ 종료 */}
+      {show('past') && isPast && <C cls="chip-done">종료</C>}
+
+      {/* ⑫ 조기반납 */}
+      {show('early-end') && b.earlyEnded && <C cls="chip-earlyend">조기반납</C>}
+
+      {/* ⑬ N분 후 카운트다운 */}
+      {/* ← [v2.1] !b.autoCancelled → !isAnyCancelled 추가 (User/Admin 취소도 제외) */}
+      {show('countdown') && !isAct && !isAnyCancelled && !b.autoCancelled && isToday && tl > 0 && tl <= 10 && (
+        <C cls="chip-countdown">{tl}분 후</C>
+      )}
     </div>
   )
 }
