@@ -58,20 +58,10 @@
 /* ── 칩 사이즈 modifier ─────────────────────────────────────────────────────
    base .chip (md) : font-size 11px / padding 3px 10px  — index.css 정의
    .chip--sm       : font-size  9px / padding 2px 7px
-   .chip--xs       : font-size  9px / padding 1px 4px   / border-radius 4px / font-weight 500 / line-height 1.5
-                     — [2026-04-21] 피그마 StatusBadge-XS (node 193:1066) 스펙 반영
+   .chip--xs       : font-size  8px / padding 1px 4px   / border-radius 3px
 ─────────────────────────────────────────────────────────────────────────── */
 .chip--sm { font-size: 9px;  padding: 2px 7px; }
-.chip--xs {
-  font-size: 9px;
-  font-weight: 500;
-  padding: 1px 4px;
-  border-radius: 4px;
-  line-height: 1.5;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
+.chip--xs { font-size: 8px;  padding: 1px 4px; border-radius: 3px; }
 
 /* ── 상태 칩 색상 클래스 (단일 소스 — index.css 중복 제거됨) ── */
 .chip-available     { background: var(--color-available-bg);     color: var(--color-available-text); }
