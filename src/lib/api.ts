@@ -41,7 +41,9 @@ function rowToBooking(row: Record<string, any>): Booking {
     processedByName:   row.processed_by_name ?? null,
     processedByAvatar: row.processed_by_avatar ?? null,
     earlyEnded:    row.early_ended ?? false,
-    originalEndAt: row.original_end_at ?? null,
+    // ← [2026-04-22 HOTFIX] originalEndAt도 KST 변환 필수 (기존 UTC 그대로 → 조기반납 시 취소선 표기 시각 오류)
+    //   start_at/end_at과 동일 패턴. null이면 null 유지.
+    originalEndAt: row.original_end_at ? utcToKST(row.original_end_at) : null,
     recurGroupId:  row.recur_group_id ?? null,
     createdAt:     new Date(row.created_at).getTime(),
   }
