@@ -176,24 +176,6 @@ export default function LoginPage() {
           >
             사내 Microsoft ID로 로그인 하세요.
           </p>
-          <p
-            style={{
-              fontFamily: 'Pretendard, sans-serif',
-              fontWeight: 400,          // Regular
-              fontSize: 12,
-              lineHeight: '16px',
-              color: '#ff7d7d',
-              textAlign: 'center',
-              margin: 0,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            4월 22일 현재 강제로 예약 데이터 이관되신 분들중(참석자 포함) 동일한 로그인 막힘 문제가 발생하고 있습니다.
-            현재 해당 버그에 대한 작업에 착수 해 있으니 최대한 빠른시일내에 로그인 가능하도록 하겠습니다. 
-            시스템에 대한 모든 문의는 고현정 Management Support 에게 팀즈 또는 메일 부탁드립니다.
-            감사합니다. 
-
-          </p>
 
           {/* ③ Sign in with Microsoft 버튼 — 피그마 node 201:1143
                width 320, height 41, border 1px #8C8C8C, radius 10 */}
@@ -298,7 +280,7 @@ export default function LoginPage() {
                   color: 'rgba(134, 204, 255, 0.53)',   // ← [피그마] 더 연한 파랑
                 }}
               >
-                비밀번호 분실 시{' '}
+                문의사항이 있으신가요?{' '}
               </span>
               <span
                 style={{
