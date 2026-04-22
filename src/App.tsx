@@ -2,31 +2,6 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
- *  - [2026-04-22 v2.1 HOTFIX] 노쇼 Race Condition 근본 해결 (운영 장애 대응)
- *      · 증상 (2026-04-22 오전 운영 장애):
- *        1) 노쇼 건이 DB에 불가능한 조합으로 박힘:
- *           status='cancelled' + auto_cancelled=true + cancelled_by='user'
- *        2) 노쇼 예약이 화면에서 사라짐 (판정 공식상 isUserCancel=true로 오분류)
- *        3) 노쇼가 영원히 기록 불가 (auto_cancelled=true로 박혀 cron 재처리 불가)
- *      · 근본 원인:
- *        - 노쇼 감지 useEffect(①)가 apiCancelBooking() 호출 → cancelled_by='user' 저장
- *        - 동시에 cron이 노쇼 UPDATE → cancelled_by='system' 저장
- *        - 두 UPDATE Race → 프론트가 마지막에 덮어써 'user'로 남음
- *      · 역사:
- *        - v2.1 이전: apiCancelBooking도 auto_cancelled=true를 썼음 (값 거의 동일)
- *        - v2.1: apiCancelBooking이 사람 개입 의미로 auto_cancelled=false 로 변경
- *          → 이 Race가 운영에서 드러남
- *        - pending_expired는 P2 v6에서 이미 프론트 DB 쓰기 제거됨
- *          → 노쇼도 동일 원칙 적용 (대칭화 완료)
- *      · 해결:
- *        - 노쇼 감지 useEffect에서 apiCancelBooking() 호출 제거
- *        - 프론트는 낙관적 UI만 (setBookings만)
- *        - DB 저장은 auto-cancel-bookings cron이 단독 수행 (cancelled_by='system' 보장)
- *        - send-notification('noshow')도 cron이 자동 발송 (이메일+인앱)
- *      · 원칙 (v2.1 재확인): "auto_cancelled=true는 cron만 쓸 수 있다"
- *        - 사람 개입 = auto_cancelled=false (User/Admin 취소·거절)
- *        - cron 개입 = auto_cancelled=true (노쇼/기한초과)
- *
  *  - [2026-04-19 P2 v6] pending_expired 알림 누락 버그 해결 (Race Condition)
  *      · 증상: 에메랄드 룸 승인 대기 예약이 기한 초과로 자동 취소될 때
  *              이메일/인앱 알림이 완전히 발송되지 않음
@@ -1005,40 +980,6 @@ function AppContent() {
     const now=nowMinutes(), today=todayStr(), nowMs=Date.now();
 
     // ① 노쇼: 오늘 예약 중 체크인 없이 CHECKIN_WINDOW_MIN 경과
-    //
-    // ← [2026-04-22 v2.1 HOTFIX] 프론트 DB 쓰기 제거 — Race Condition 근본 해결  // ← [변경 설명]
-    //   버그 증상 (2026-04-22 오전 운영 장애):
-    //     1) 노쇼 건이 DB에 불가능한 조합으로 박힘:
-    //        status='cancelled' + auto_cancelled=true + cancelled_by='user'
-    //     2) 노쇼 예약이 화면에서 사라짐 (판정 공식상 isUserCancel=true로 오분류)
-    //     3) 노쇼가 영원히 기록 불가 (auto_cancelled=true로 박혀 cron 재처리 불가)
-    //
-    //   근본 원인:
-    //     · 본 useEffect가 노쇼 감지 시 apiCancelBooking() 호출
-    //     · v2.1 규칙에서 apiCancelBooking은 status='cancelled', auto_cancelled=false,
-    //       cancelled_by='user' 저장 (사람 취소 의미)
-    //     · 동시에 cron(auto-cancel-bookings)도 같은 건을 noshow로 처리 시도
-    //       → auto_cancelled=true, cancelled_by='system' 저장 (cron 처리 의미)
-    //     · 두 UPDATE Race → 프론트가 마지막에 덮어써 cancelled_by='user'로 남음
-    //
-    //   역사:
-    //     · v2.1 이전: apiCancelBooking도 auto_cancelled=true, cancelled_by='user' 저장
-    //       → cron과 값이 거의 비슷해서 증상이 수면 아래 있었음
-    //     · [2026-04-21 v2.1] apiCancelBooking이 사람 개입 의미로 auto_cancelled=false
-    //       로 변경됨 → 이 Race가 운영에서 드러남
-    //     · pending_expired(②)는 [P2 v6]에서 이미 프론트 DB 쓰기 제거함
-    //       → 노쇼(①)도 동일 원칙 적용 (대칭화 완료)
-    //
-    //   해결 원칙 (v2.1 설계 재확인):
-    //     · "auto_cancelled=true는 cron만 쓸 수 있다"
-    //       - 사람 개입  = auto_cancelled=false (User/Admin 취소·거절)
-    //       - cron 개입 = auto_cancelled=true (노쇼/기한초과)
-    //     · 프론트는 낙관적 UI만 담당 (setBookings로 state만 업데이트)
-    //     · DB 저장은 auto-cancel-bookings cron이 단독 수행 (cancelled_by='system' 보장)
-    //     · send-notification('noshow')도 cron이 자동 발송 (예약자+참석자 이메일+인앱)
-    //     · Realtime 구독(subscribeBookings)이 cron 결과를 프론트에 푸시하여 최종 동기화
-    //
-    //   최악 지연: 5분 (cron 주기). 이미 체크인 기한 초과된 상태이므로 업무상 허용 가능
     const toCancel=bookings.filter(b=>
       tsDate(b.start_at)===today &&
       !b.checkedIn && !b.autoCancelled && !b.earlyEnded &&
@@ -1047,13 +988,11 @@ function AppContent() {
     );
     if(toCancel.length>0){
       const ids=new Set(toCancel.map(b=>b.id));
-      // 낙관적 UI 업데이트만 (DB 쓰기 없음)  // ← [변경 설명: apiCancelBooking 호출 제거]
       setBookings(prev => prev.map(b => ids.has(b.id) ? {...b, autoCancelled:true} : b));
-      // DB 저장 제거:
-      //   Promise.all(toCancel.map(b => apiCancelBooking(b.id))).catch(console.error);
-      //   → apiCancelBooking은 v2.1에서 cancelled_by='user'를 써서 Race Condition 유발
-      //   → auto-cancel-bookings cron이 단독으로 noshow UPDATE 수행 (cancelled_by='system')
-      //   → send-notification('noshow')도 cron이 자동 발송 (예약자·참석자 이메일+인앱)
+      Promise.all(toCancel.map(b => apiCancelBooking(b.id))).catch(console.error);
+      // ← [2026-04-18 P2] 예약자 인앱 알림 제거
+      //   auto-cancel-bookings Edge Fn이 5분마다 실행되며 noshow 처리 후
+      //   send-notification('noshow')가 booker + attendees에게 자동 INSERT
     }
 
     // ② pending 승인 기한 초과: start_at 1분 전 이후 경과
