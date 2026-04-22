@@ -1234,8 +1234,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
         </div>
 
         {/* ── 하단 버튼 (모달 전체 너비) ── */}
-        {/* ← [2026-04-22] 모달 버튼 영역 gap 8로 통일 */}
-        <div style={{display:"flex",gap:8,padding:"16px 28px 20px",borderTop:"1px solid #F1F5F9",flexShrink:0,background:"#fff"}}>
+        <div style={{display:"flex",gap:10,padding:"16px 28px 20px",borderTop:"1px solid #F1F5F9",flexShrink:0,background:"#fff"}}>
           <Button variant="ghost"   flex onClick={onClose}>취소</Button>
           <Button variant="primary" flex disabled={!canSubmit} loading={isSubmitting}
             onClick={async ()=>{

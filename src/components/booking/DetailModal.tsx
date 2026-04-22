@@ -296,7 +296,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         const btnWrap = (children: React.ReactNode) => (
           <div style={{
             padding: 8,
-            display:"flex", gap:8, flexShrink:0,
+            display:"flex", gap:16, flexShrink:0,
           }}>
             {children}
           </div>
