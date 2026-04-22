@@ -182,7 +182,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
                   4개 상태 박스 모두 동일 규격으로 통일 */}
             {status.type==="BUSY" && (
               <div style={{background:"#FEF2F2",borderRadius:12,padding:"8px 12px",minHeight:62,
-                display:"flex",flexDirection:"column",justifyContent:"flex-start"}}>
+                display:"flex",flexDirection:"column",justifyContent:"center"}}>
                 <div style={{fontSize:11,color:"#DC2626",fontWeight:600,marginBottom:6,lineHeight:1.5}}>현재 사용 중</div>
                 <div style={{fontSize:14,color:"#111",fontWeight:600,lineHeight:1.5}}>{status.booking?.title}</div>
                 <div style={{fontSize:12,color:"#6A7282",marginTop:4,lineHeight:1.5}}>{fmtTimeFull(status.endTime)}까지 · {status.minsLeft}분 남음</div>
@@ -190,7 +190,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
             )}
             {status.type==="SOON" && (
               <div style={{background:"#FFFBEB",borderRadius:12,padding:"8px 12px",minHeight:62,
-                display:"flex",flexDirection:"column",justifyContent:"flex-start"}}>
+                display:"flex",flexDirection:"column",justifyContent:"center"}}>
                 <div style={{fontSize:11,color:"#D97706",fontWeight:600,marginBottom:6,lineHeight:1.5}}>사용 예정</div>
                 <div style={{fontSize:14,color:"#111",fontWeight:600,lineHeight:1.5}}>{status.minsUntil}분 후 사용 시작</div>
                 <div style={{fontSize:12,color:"#6A7282",marginTop:4,lineHeight:1.5}}>{fmtTimeFull(status.nextStart)} 부터</div>
@@ -199,13 +199,13 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
             {status.type==="AVAILABLE" && r.is_admin_only && (
               /* 에메랄드 안내 메시지 (승인 후 확정) */
               <div style={{background:"#E6FFB0",borderRadius:12,padding:"8px 12px",minHeight:62,
-                display:"flex",flexDirection:"column",justifyContent:"flex-start"}}>
+                display:"flex",flexDirection:"column",justifyContent:"center"}}>
                 <div style={{fontSize:12,color:"#111",fontWeight:500,lineHeight:1.5}}>관리자 승인 후 예약이 확정됩니다</div>
               </div>
             )}
             {status.type==="AVAILABLE" && !r.is_admin_only && (
               <div style={{background:"#E8F4FF",borderRadius:12,padding:"8px 12px",minHeight:62,
-                display:"flex",flexDirection:"column",justifyContent:"flex-start"}}>
+                display:"flex",flexDirection:"column",justifyContent:"center"}}>
                 <div style={{fontSize:11,color:"#0369A1",fontWeight:600,marginBottom:4,lineHeight:1.5}}>예약 가능</div>
                 <div style={{fontSize:13,color:"#111",fontWeight:600,lineHeight:1.5}}>지금 바로 이용 가능합니다</div>
               </div>
