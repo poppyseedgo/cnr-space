@@ -61,6 +61,8 @@ interface BookingStatusBadgeProps {
   size?:        'md' | 'sm' | 'xs'
   /** 지정 시 해당 타입의 뱃지만 렌더. 미지정 시 전체 자동 판별. */
   only?:        BadgeType[]
+  /** ← [피그마 180:534 신규] 'square' = BookingDetailModal 사각형 칩(radius 8) / 기본 'pill' */
+  shape?:       'pill' | 'square'
 }
 
 /** size별 chip modifier 클래스 — tokens.css 정의 */
@@ -77,6 +79,7 @@ export function BookingStatusBadge({
   currentUser = '',
   size = 'md',
   only,
+  shape = 'pill',
 }: BookingStatusBadgeProps) {
   const now     = nowMinutes()
   const isToday = tsDate(b.start_at) === todayStr()
@@ -166,11 +169,13 @@ export function BookingStatusBadge({
 
   if (!hasAny) return null
 
-  const sizeClass = SIZE_CLASS[size]
-  const gap = size === 'xs' ? 3 : 5
+  const sizeClass  = SIZE_CLASS[size]
+  // ← [피그마 180:534] shape='square'면 chip--square modifier 자동 추가 (radius 8)
+  const shapeClass = shape === 'square' ? 'chip--square' : ''
+  const gap = size === 'xs' ? 3 : shape === 'square' ? 4 : 5 // ← [피그마] 사각칩은 gap 4
 
   const C = ({ cls, children }: { cls: string; children: React.ReactNode }) => (
-    <span className={`chip ${sizeClass} ${cls}`.trim()}>{children}</span>
+    <span className={`chip ${sizeClass} ${shapeClass} ${cls}`.trim().replace(/\s+/g, ' ')}>{children}</span>
   )
 
   return (
@@ -202,7 +207,7 @@ export function BookingStatusBadge({
 
       {/* ⑨ 진행 중 */}
       {show('active') && isAct && !b.autoCancelled && (
-        <span className={`chip ${sizeClass}`.trim()} style={{ background: (r?.color ?? '#6366F1') + '18', color: r?.color ?? '#6366F1' }}>
+        <span className={`chip ${sizeClass} ${shapeClass}`.trim().replace(/\s+/g, ' ')} style={{ background: (r?.color ?? '#6366F1') + '18', color: r?.color ?? '#6366F1' }}>
           진행 중
         </span>
       )}
