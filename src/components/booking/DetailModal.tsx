@@ -1,8 +1,8 @@
 import { useBreakpoint } from '../../hooks/useBreakpoint'
-import { AlertTriangle, Building2, CheckCircle2, Clock, FileText, Monitor, ShieldCheck, ShieldX, User, Users } from 'lucide-react'
+import { AlertTriangle, Building2, CheckCircle2, Clock, FileText, Monitor, ShieldCheck, ShieldX, User, Users, X } from 'lucide-react'
 import { useState } from 'react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
-  fmtTSRange, fmtTSFull, fmtDateFull, fmtTSDateFull, fmtTimeFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
+  fmtTSRange, fmtTimeFull, fmtTSFull, fmtTSRangeFull, fmtDateFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../../utils/time'
 import { getFloor } from '../../data/floors'
@@ -12,10 +12,7 @@ import { AttendeeChip } from '../common/AttendeeChip'
 import { UserChip } from '../common/UserChip'
 import { BookingStatusBadge } from '../common/BookingStatusBadge'
 import { MetaBadge } from '../common/MetaBadge'
-import { Button } from '../common/Button'
-// ← [2026-04-21] 피그마 전면 재설계 반영
-import { IconClose } from '../common/IconClose'
-import { StatusChipSquare } from '../common/StatusChipSquare'
+import { Button } from '../common/Button' 
 
 export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser, rooms:rp=[], users:up=[], isAdmin=false, onApprove=null, onReject=null, onForceCancel=null}: any) {
   const { isMobile } = useBreakpoint();
@@ -39,45 +36,11 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
   // 관리자 거절 인라인 flow 상태
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectReasonInput, setRejectReasonInput] = useState('');
-
-  // ── [2026-04-21] 시간 차이 계산 (피그마 "1시간 15분" 뱃지용)
-  const durationMin = em - sm  // 분 단위
-  const durationLabel = (() => {
-    if (durationMin <= 0) return ''
-    const h = Math.floor(durationMin / 60)
-    const m = durationMin % 60
-    if (h === 0) return `${m}분`
-    if (m === 0) return `${h}시간`
-    return `${h}시간 ${m}분`
-  })()
-
-  // ── [2026-04-21] StatusChipSquare 라벨·variant 결정 (헤더 전용)
-  //   우선순위: rejected > cancelled(admin/user) > expired > noshow > pending > confirmed(에메랄드) > checkedIn/using > done
-  const squareStatus = (() => {
-    if (b.status === 'rejected') return { variant: 'solid' as const, status: 'rejected' as const, label: '거절됨' }
-    if (b.status === 'cancelled' && b.cancelledBy === 'admin') return { variant: 'solid' as const, status: 'admin' as const, label: '관리자 강제취소' }
-    if (b.status === 'cancelled' && b.cancelledBy === 'user')  return { variant: 'solid' as const, status: 'cancelled' as const, label: '예약자 취소' }
-    if (isExpiredPending) return { variant: 'solid' as const, status: 'expired' as const, label: '승인기한초과 취소' }
-    // 노쇼: autoCancelled + system + !checkedIn
-    if (b.autoCancelled && b.cancelledBy === 'system' && !b.checkedIn) {
-      return { variant: 'solid' as const, status: 'noshow' as const, label: '노쇼' }
-    }
-    if (b.status === 'pending') return { variant: 'solid' as const, status: 'pending' as const, label: '승인 대기' }
-    if (b.earlyEnded) return { variant: 'solid' as const, status: 'early-end' as const, label: '조기반납' }
-    if (b.checkedIn && isAct)  return { variant: 'solid' as const, status: 'using' as const, label: '진행 중' }
-    if (isAct && !b.checkedIn) return { variant: 'solid' as const, status: 'pending' as const, label: '체크인 대기' }
-    if (!isFuture && !isAct)   return { variant: 'solid' as const, status: 'done' as const, label: '종료' }
-    if (b.status === 'confirmed' && r?.is_admin_only) {
-      return { variant: 'solid' as const, status: 'approved' as const, label: '승인완료' }
-    }
-    return null
-  })()
-
   return(
     <div className="anm" style={{
       background:"#fff",
-      borderRadius: isMobile ? "20px 20px 0 0" : 24,          // ← [피그마] 16 → 24
-      width:"100%", maxWidth: isMobile ? "100%" : 500,         // ← [피그마] 460 → 500 (본문 460 + 패딩)
+      borderRadius: isMobile ? "20px 20px 0 0" : 16,
+      width:"100%", maxWidth: isMobile ? "100%" : 460,
       maxHeight: isMobile ? "88vh" : "90vh",
       boxShadow:"0 20px 60px rgba(0,0,0,0.15)",
       overflow:"hidden", display:"flex", flexDirection:"column",
@@ -85,208 +48,119 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
       position:"relative",
     }}>
       {isMobile && <div style={{width:36,height:4,background:"#E2E8F0",borderRadius:2,position:"absolute",top:8,left:"50%",transform:"translateX(-50%)",zIndex:1}}/>}
-
-      {/* ══════════════ [피그마 node 180:535] BookingModalHeader ══════════════
-          padding 20px 16px, borderBottom 제거, 배경 그라디언트(흰→투명 페이드)
-          헤더: [내 예약 outline chip] + [상태 solid chip]  +  X 닫기
-                [회의 제목 21px SemiBold]                                 */}
-      <div style={{
-        padding: isMobile ? "20px 20px 24px" : "20px 20px 28px",
-        background: "linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(255,255,255,1) 60%, rgba(255,255,255,0) 100%)",
-        display: "flex", justifyContent: "space-between", alignItems: "flex-start",
-        flexShrink: 0, position: "relative", zIndex: 2,
-      }}>
-        <div style={{flex:1, minWidth:0, display:"flex", flexDirection:"column", gap: 8}}>
-          {/* StatusBadge row (네모칩) */}
-          <div style={{display:"flex", gap:4, alignItems:"center", flexWrap:"wrap"}}>
-            {isOwner && <StatusChipSquare variant="outline">내 예약</StatusChipSquare>}
-            {!isOwner && b.attendees?.some((a: any) => a.name === currentUser) && (
-              <StatusChipSquare variant="outline">참석</StatusChipSquare>
+      <div style={{padding: isMobile ? "20px 20px 16px" : "20px 24px 16px", overflowY:"auto", flex:1}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+          <div style={{flex:1,minWidth:0,marginRight:12}}>
+            <div style={{marginBottom:8}}>
+              <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} currentUser={currentUser} />
+            </div>
+            <div style={{fontSize: isMobile ? 17 : 20, fontWeight:600, color:"#111111", wordBreak:"break-word"}}>{b.title}</div>
+            {/* ← [P2 v7] 반복/참석자 인라인 하드코딩 제거 → MetaBadge 공통 컴포넌트 사용
+                 · 이전: 🔁/👤 이모지 + 하드코딩 색상 (HomeView/BookingListTable와 불일치)
+                 · 변경: MetaBadge type='recurring'/'guest' → tokens.css 색상 토큰 자동 적용 */}
+            {b.recurGroupId && (
+              <div style={{marginTop:6}}>
+                <MetaBadge type="recurring" size="sm" />
+              </div>
             )}
-            {b.recurGroupId && <StatusChipSquare variant="outline">반복</StatusChipSquare>}
-            {squareStatus && (
-              <StatusChipSquare variant={squareStatus.variant} status={squareStatus.status}>
-                {squareStatus.label}
-              </StatusChipSquare>
+            {b.user !== currentUser && b.attendees?.some((a: any) => a.name === currentUser) && (
+              <div style={{marginTop:6}}>
+                <MetaBadge type="guest" size="sm" />
+              </div>
             )}
           </div>
-          {/* 회의 제목 */}
-          <div style={{
-            fontSize: isMobile ? 18 : 21, fontWeight: 600, color: "#111",
-            lineHeight: 1.5, wordBreak: "break-word",
-          }}>{b.title}</div>
+          <button className="btn" onClick={onClose}
+            style={{width:32,height:32,borderRadius:"50%",background:"#F1F5F9",
+              color:"#64748B",flexShrink:0,
+              display:"flex",alignItems:"center",justifyContent:"center"}}><X size={14} strokeWidth={1.8}/></button>
         </div>
-        <button className="btn" onClick={onClose}
-          style={{width:32, height:32, borderRadius:"50%", background:"transparent",
-            border:"none", cursor:"pointer", flexShrink:0,
-            display:"flex", alignItems:"center", justifyContent:"center"}}>
-          <IconClose size={20}/>
-        </button>
-      </div>
-
-      {/* ══════════════ [피그마 node 180:545] Hero (본문) ══════════════
-          정보 행: label 16px SemiBold #96A0B3 width 100, 값 16px Regular #111
-          각 행 border-bottom 0.5px #F1F5F9, py 10px                     */}
-      <div style={{padding: isMobile ? "0 20px 16px" : "0 20px 20px", overflowY:"auto", flex:1,
-        display:"flex", flexDirection:"column", gap:16}}>
-
-        {/* ── 정보 행들 (회의실 → 위치 → 날짜 → 시간 → 메모 → 예약자 → 참석자) ── */}
-        <div style={{display:"flex", flexDirection:"column"}}>
-
-          {/* 회의실 — room_name만 (스펙 삭제) */}
-          <InfoRow label="회의실">
-            <span style={{fontSize:16, color:"#111", fontWeight:400, lineHeight:1.5}}>
-              {r?.room_name ?? '-'}
-            </span>
-          </InfoRow>
-
-          {/* 위치 — floor 정보 */}
-          <InfoRow label="위치">
-            <span style={{fontSize:16, color:"#111", fontWeight:400, lineHeight:1.5}}>
-              {floor?.floor_name ?? '-'}
-            </span>
-          </InfoRow>
-
-          {/* 날짜 */}
-          <InfoRow label="날짜">
-            <span style={{fontSize:16, color:"#111", fontWeight:400, lineHeight:1.5}}>
-              {fmtTSDateFull(b.start_at)}
-            </span>
-          </InfoRow>
-
-          {/* 시간 — duration XS 뱃지 */}
-          <InfoRow label="시간">
-            <div style={{display:"flex", alignItems:"center", gap:6, flexWrap:"wrap"}}>
-              {b.earlyEnded && b.originalEndAt ? (
-                <>
-                  <span style={{color:"#94A3B8", textDecoration:"line-through", fontSize:14}}>
-                    {fmtTSFull(b.start_at)} – {fmtTSFull(b.originalEndAt!)}
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+          {[
+            [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Building2 size={11} strokeWidth={1.8}/>회의실</span>, <span style={{color:r?.color,fontWeight:600}}>{r?.room_name ?? '-'}</span>, r ? `${r.capacity}인` : ''],
+            [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Clock size={11} strokeWidth={1.8}/>시간</span>,
+              b.earlyEnded && b.originalEndAt
+                ? <span>
+                    <span style={{color:"#94A3B8",textDecoration:"line-through",fontSize:12}}>
+                      {fmtTSFull(b.start_at)} – {fmtTSFull(b.originalEndAt!)}
+                    </span>
+                    <br/>
+                    <span style={{fontWeight:600}}>{fmtTSFull(b.start_at)} – {fmtTSFull(b.end_at)}</span>
+                    <span style={{fontSize:11,color:"#7C3AED",marginLeft:6}}>반납</span>
                   </span>
-                  <span style={{fontSize:16, color:"#111", fontWeight:400, lineHeight:1.5}}>
-                    {fmtTSFull(b.start_at)} – {fmtTSFull(b.end_at)}
-                  </span>
-                  <span style={{fontSize:11, color:"#7C3AED"}}>반납</span>
-                </>
-              ) : (
-                <>
-                  <span style={{fontSize:16, color:"#111", fontWeight:400, lineHeight:1.5}}>
-                    {fmtTSFull(b.start_at)} – {fmtTSFull(b.end_at)}
-                  </span>
-                  {/* duration XS 뱃지 (피그마 node 191:375) — border 0.5px #AFAFAF, radius 4, fs 9 Medium */}
-                  {durationLabel && (
-                    <span style={{
-                      display:"inline-flex", alignItems:"center", justifyContent:"center",
-                      padding:"1px 4px", borderRadius:4,
-                      border:"0.5px solid #AFAFAF",
-                      fontSize:9, fontWeight:500, color:"#AFAFAF",
-                      lineHeight:1.5, whiteSpace:"nowrap",
-                    }}>{durationLabel}</span>
-                  )}
-                </>
-              )}
-            </div>
-          </InfoRow>
-
-          {/* 메모 — 있을 때만 노출 */}
-          {b.memo && (
-            <InfoRow label="메모">
-              <div style={{fontSize:16, color:"#111", fontWeight:400, lineHeight:1.5, whiteSpace:"pre-wrap", wordBreak:"break-word"}}>
-                {b.memo}
+                : `${fmtTSFull(b.start_at)} – ${fmtTSFull(b.end_at)}`,
+              fmtTSDateFull(b.start_at)],
+            features.length>0&&[<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Monitor size={11} strokeWidth={1.8}/>설비</span>, features.map(f=>f.feature_name).join(", "), null],
+            b.memo&&[<span style={{display:"inline-flex",alignItems:"center",gap:4}}><FileText size={11} strokeWidth={1.8}/>메모</span>, b.memo, null],
+          ].filter(Boolean).map(([label,main,sub],i)=>(
+            <div key={i} style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
+              <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0}}>{label}</div>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:13,color:"#111111",fontWeight:600,wordBreak:"break-word"}}>{main}</div>
+                {sub&&<div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>{sub}</div>}
               </div>
-            </InfoRow>
-          )}
+            </div>
+          ))}
 
-          {/* 예약자 — 아바타 24 + 이름 14 Medium + 부서 11 Regular rgba(17,17,17,0.35) */}
-          {(() => {
+          {/* 예약자 */}
+          {(()=>{
             const owner = (up as any[]).find(u => u.user_id === b.user_id)
             return (
-              <InfoRow label="예약자">
-                <div style={{display:"flex", alignItems:"center", gap:7}}>
+              <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
+                <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0,display:"flex",alignItems:"center",gap:4}}>
+                  <User size={11} strokeWidth={1.8}/>예약자
+                </div>
+                <div style={{display:"flex",alignItems:"center"}}>
                   <UserChip
                     name={b.user}
                     avatarUrl={owner?.avatar_url ?? null}
-                    variant="sm"
+                    variant="md"
                     userInfo={owner}
                   />
                 </div>
-              </InfoRow>
+              </div>
             )
           })()}
 
-          {/* 거절 사유 — 있을 때만 노출 */}
+          {/* 참석자 — email로 users에서 avatar_url·dept 역조회 (패턴 B) */}
           {(b as any).reject_reason && (
-            <InfoRow label="거절 사유" labelColor="#DC2626">
-              <div style={{fontSize:14, color:"#DC2626", wordBreak:"break-word", lineHeight:1.5}}>
-                {(b as any).reject_reason}
+            <div style={{background:"#FEF2F2",border:"1px solid #FCA5A5",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
+              <div style={{fontSize:11,color:"#DC2626",minWidth:60,fontWeight:600,flexShrink:0,display:"flex",alignItems:"center",gap:4}}>
+                거절 사유
               </div>
-            </InfoRow>
+              <div style={{fontSize:13,color:"#DC2626",wordBreak:"break-word"}}>{(b as any).reject_reason}</div>
+            </div>
           )}
 
-          {/* 참석자 — 2-column grid, 아바타 24 + 이름 14 Medium */}
           {b.attendees && b.attendees.length > 0 && (
-            <InfoRow label="참석자" align="flex-start">
-              <div style={{
-                display:"grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                columnGap: 10, rowGap: 10,
-                flex: 1, minWidth: 0,
-              }}>
-                {b.attendees.map((a: any, idx: number) => {
+            <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
+              <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0,paddingTop:2,display:"flex",alignItems:"center",gap:4}}>
+                <Users size={11} strokeWidth={1.8}/>참석자
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {b.attendees.map((a, idx) => {
                   const u = (up as any[]).find(u => u.email === a.email)
                   return (
-                    <div key={a.email || idx} style={{display:"flex", alignItems:"center", gap:7, minWidth:0}}>
-                      <AttendeeChip
-                        name={a.name || a.email}
-                        avatarUrl={u?.avatar_url ?? null}
-                        dept={u?.dept}
-                        userInfo={u}
-                      />
-                    </div>
+                    <AttendeeChip
+                      key={a.email || idx}
+                      name={a.name || a.email}
+                      avatarUrl={u?.avatar_url ?? null}
+                      dept={u?.dept}
+                      userInfo={u}
+                    />
                   )
                 })}
               </div>
-            </InfoRow>
+            </div>
           )}
         </div>
-
-        {/* ── 하단 알림박스 — nci일 때: 체크인 안내 ── */}
-        {nci && (
-          <div style={{
-            background:"#FFF7ED", borderRadius:12, padding:"8px 12px", minHeight:62,
-            display:"flex", flexDirection:"column", justifyContent:"flex-start",
-            border:"1px solid #FED7AA",
-          }}>
-            <div style={{display:"flex", alignItems:"flex-start", gap:6}}>
-              <AlertTriangle size={14} strokeWidth={1.8} style={{flexShrink:0, marginTop:2, color:"#92400E"}}/>
-              <span style={{fontSize:12, color:"#92400E", lineHeight:1.5}}>
-                회의 시작 후 <strong>{CHECKIN_WINDOW_MIN}분 이내</strong> 체크인 필요
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* ── 에메랄드 승인 안내 (pending일 때) ── */}
-        {b.status === 'pending' && !b.autoCancelled && (
-          <div style={{
-            background:"#E6FFB0", borderRadius:12, padding:"8px 12px", minHeight:62,
-            display:"flex", flexDirection:"column", justifyContent:"flex-start",
-          }}>
-            <div style={{fontSize:12, color:"#111", fontWeight:500, lineHeight:1.5}}>
-              관리자 승인 후 예약이 확정됩니다
-            </div>
-          </div>
-        )}
+        {nci&&<div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400E",display:"flex",alignItems:"flex-start",gap:6}}>
+          <AlertTriangle size={14} strokeWidth={1.8} style={{flexShrink:0,marginTop:1}}/><span>회의 시작 후 <strong>{CHECKIN_WINDOW_MIN}분 이내</strong> 체크인 필요</span>
+        </div>}
       </div>
       {/* 버튼 영역 - 항상 하단 고정 */}
       {(()=>{
-        // ← [2026-04-21] 피그마 Modal Bottom (node 180:620) 반영
-        //   padding: 8px, borderTop 제거, 배경 그라디언트, gap 16,
-        //   버튼 h:56 radius:16 fs:14 SemiBold
         const btnWrap = (children: React.ReactNode) => (
-          <div style={{
-            padding: 8,
-            display:"flex", gap:16, flexShrink:0,
-          }}>
+          <div style={{padding: isMobile?"12px 20px 24px":"12px 24px 20px", display:"flex", gap:8, flexShrink:0, borderTop:"1px solid #F1F5F9"}}>
             {children}
           </div>
         )
@@ -319,7 +193,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         if (isAdmin && !isOwner) {
           // 거절 사유 입력 flow
           if (showRejectInput) return (
-            <div style={{flexShrink:0}}>
+            <div style={{flexShrink:0, borderTop:"1px solid #F1F5F9"}}>
               <div style={{padding: isMobile?"12px 20px 0":"12px 24px 0"}}>
                 <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"12px 14px",marginBottom:8}}>
                   <div style={{fontSize:11,color:"#92400E",marginBottom:8,fontWeight:600}}>⚠️ 거절 시 예약이 즉시 취소되며 신청자에게 알림이 발송됩니다</div>
@@ -377,45 +251,6 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
       })()}
     </div>
   );
-}
-
-// ─── InfoRow ───────────────────────────────────────────────────────────────
-// [2026-04-21 신규] BookingDetailModal 피그마 재설계 - 정보 행 공통 컴포넌트
-// 피그마 스펙 (node 180:550 등):
-//  · border-bottom 0.5px #F1F5F9
-//  · padding: 10px 0 (py 10)
-//  · label: 16px SemiBold #96A0B3, width 100px
-//  · value: 16px Regular #111 (children으로 전달)
-//  · align: 기본 center, '참석자'는 flex-start
-interface InfoRowProps {
-  label: string
-  labelColor?: string
-  align?: 'center' | 'flex-start'
-  children: React.ReactNode
-}
-function InfoRow({ label, labelColor = '#96A0B3', align = 'center', children }: InfoRowProps) {
-  return (
-    <div style={{
-      display: 'flex', alignItems: align,
-      padding: '10px 0',
-      borderBottom: '0.5px solid #F1F5F9',
-      width: '100%',
-    }}>
-      <div style={{
-        width: 100, flexShrink: 0,
-        display: 'flex', alignItems: 'center',
-      }}>
-        <span style={{
-          fontSize: 16, fontWeight: 600, color: labelColor,
-          lineHeight: 1.5,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{label}</span>
-      </div>
-      <div style={{flex: 1, minWidth: 0, display: 'flex', alignItems: align === 'flex-start' ? 'flex-start' : 'center'}}>
-        {children}
-      </div>
-    </div>
-  )
 }
 
 // ─── Booking Done Modal ────────────────────────────────────────────────────────
