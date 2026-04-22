@@ -615,7 +615,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 <span style={{background:"#FEF3C7",color:"#92400E",fontSize:10,fontWeight:600,padding:"3px 10px",borderRadius:999}}>승인 필요</span>
               )}
               {isAdminRoom && isSel && (
-                <span style={{background:"#FEF3C7",color:"#92400E",fontSize:10,fontWeight:600,padding:"3px 10px",borderRadius:999}}>HR 승인 후 확정</span>
+                <span style={{background:"#FEF3C7",color:"#92400E",fontSize:10,fontWeight:600,padding:"3px 10px",borderRadius:999}}>승인 후 확정</span>
               )}
             </div>
             <div style={{fontSize:15,fontWeight:600,color:isSel?"#fff":"#111",marginBottom:4}}>{r.room_name}</div>

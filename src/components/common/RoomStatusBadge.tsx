@@ -66,10 +66,10 @@ export function RoomStatusBadge({ status, isAdminOnly = false }: RoomStatusBadge
         </>
       )}
 
-      {/* ── [2026-04-21] 에메랄드룸 "HR 승인 후 확정" 칩 — 상태 무관 항상 표시 ── */}
-      {/* 피그마 node 195:1071 스펙: bg #E6FFB0, text #111, fs 11 SemiBold, radius 24, padding 4px 12px */}
+      {/* ── [2026-04-21] 에메랄드룸 "승인 후 확정" 칩 — 상태 무관 항상 표시 ── */}
+      {/* 피그마 node 195:1071: bg #E6FFB0, text #111, fs 11 SemiBold, radius 24, padding 4px 12px */}
       {isAdminOnly && (
-        <span className="chip chip-admin-approval">HR 승인 후 확정</span>
+        <span className="chip chip-admin-approval">승인 후 확정</span>
       )}
 
     </div>
