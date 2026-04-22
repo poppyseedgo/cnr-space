@@ -61,13 +61,12 @@
 }
 
 /* ── 칩 사이즈 modifier ─────────────────────────────────────────────────────
-   base .chip (md) : font-size 11px / padding 3px 10px / font-weight 500 — index.css 정의
-   .chip--sm       : font-size  9px / padding 2px 7px  / font-weight 500
-   .chip--xs       : font-size 10px / padding 2px 4px  / border-radius 4px / font-weight 500 / line-height 1.5
+   base .chip (md) : font-size 11px / padding 3px 10px  — index.css 정의
+   .chip--sm       : font-size  9px / padding 2px 7px
+   .chip--xs       : font-size 10px / padding 2px 4px   / border-radius 4px / font-weight 500 / line-height 1.5
                      — [2026-04-21] 고지 지정 최종값
-   ← [2026-04-21] 모든 chip font-weight 500으로 통일
 ─────────────────────────────────────────────────────────────────────────── */
-.chip--sm { font-size: 9px; font-weight: 500; padding: 2px 7px; }
+.chip--sm { font-size: 9px;  padding: 2px 7px; }
 .chip--xs {
   font-size: 10px;
   font-weight: 500;
