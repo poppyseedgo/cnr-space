@@ -518,7 +518,7 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
             if (b.room_id !== room.room_id) return false
             // ← [v2.1] autoCancelled=true 건만 노쇼 후보 (기한초과 제외는 getSlotState가 담당)
             if (!b.autoCancelled) return false
-            const st = getSlotState(b, now, isToday, currentUser, !!room?.is_admin_only)
+            const st = getSlotState(b, now, isToday, currentUser)
             return st.isNoshow   // 노쇼만 포함 (기한초과는 isNoshow=false로 자연 제외)
           })
           const dot = getRoomDot(room.room_id)

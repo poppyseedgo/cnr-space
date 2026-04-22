@@ -5,14 +5,10 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../utils/time'
 
-import {
-  cancelBooking as apiCancelBooking,
-  upsertBookingAttendees,
-  loadMyBookings,                        // ← [v2.1 fix] MyPage 시간 오류 수정
-  subscribeBookings,                     // ← [v2.1 fix] Realtime 구독
-} from '../lib/api'
+import { cancelBooking as apiCancelBooking, upsertBookingAttendees } from '../lib/api'
 import { WeeklyView } from '../components/layout/CalendarShell'
 import { BookingStatusBadge } from '../components/common/BookingStatusBadge'
+import { supabase } from '../lib/supabase'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../types'
 
@@ -55,30 +51,25 @@ import { Button } from '../components/common/Button'
  *   · 설계 문서: 예약상태관리_설계문서_v2.1.md
  */
 
-// ─── 노쇼 판별 ────────────────────────────────────────────────────────────────
-// ← [2026-04-21 update] 자연 배타성 공식 적용
-//   노쇼 본질: "체크인 대상이었던 예약이 체크인 안 함"
-//   · (status='confirmed' OR 'cancelled') — 체크인 대상 상태
-//     - 'confirmed': v2.1 정상 노쇼
-//     - 'cancelled': v1.x 레거시 버그 데이터 (원래 confirmed였던 것)
-//     - 'pending'은 체크인 대상 자체가 아니므로 자연 제외 (기한초과와 배타)
-//   · autoCancelled + system + !checkedIn
+// ─── 노쇼 판별 (v2.1) ─────────────────────────────────────────────────────────
+// ← [2026-04-21 v2.1] BookingListTable과 동일 로직 — 단일 진실 원천
+//   노쇼 정의: status='confirmed' + autoCancelled=true + cancelledBy='system'
+//            + !checkedIn + !earlyEnded (체크인 안 한 것만)
 function isNoshow(b: Booking): boolean {
-  return (b.status === 'confirmed' || b.status === 'cancelled')
+  return b.status === 'confirmed'
       && !!b.autoCancelled
       && b.cancelledBy === 'system'
       && !b.checkedIn
+      && !b.earlyEnded
 }
 
-// ─── 취소 판별 (User/Admin 취소 + 거절 + 기한초과) ────────────────────────────
-// ← [2026-04-21 update] 배타성: 노쇼는 제외
-//   중요: status='cancelled' + cancelledBy='system'인 레거시 데이터는 노쇼이므로
-//         isCancelled에서 제외되어야 함 → !isNoshow(b) 가드 추가
+// ─── 취소 판별 (v2.1) ─────────────────────────────────────────────────────────
+// ← [2026-04-21 v2.1] BookingListTable과 동일 로직
+//   취소 카테고리: Admin 거절 + User/Admin 취소 + 기한초과 (노쇼 제외)
 function isCancelled(b: Booking): boolean {
-  if (isNoshow(b)) return false                                   // ← 노쇼 우선 제외
-  if (b.status === 'rejected') return true                        // Admin 거절
-  if (b.status === 'cancelled') return true                       // User/Admin 취소
-  if (b.status === 'pending' && b.autoCancelled) return true      // 기한초과
+  if (b.status === 'rejected') return true
+  if (b.status === 'cancelled') return true
+  if (b.status === 'pending' && b.autoCancelled) return true
   return false
 }
 
@@ -87,16 +78,8 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   const [tab, setTab] = useState<"upcoming"|"completed"|"cancelled"|"noshow">("upcoming");
   const [statYear, setStatYear] = useState(()=>new Date().getFullYear());
   const [statMonth, setStatMonth] = useState(()=>new Date().getMonth());
-  // ← [2026-04-21 fix] tick: 10초마다 갱신하여 today/now가 자동으로 최신 반영되도록
-  //   · 기존 문제: todayStr()/nowMinutes()가 컴포넌트 마운트 시점에만 계산 → 자정 넘으면 stale
-  //   · 해결: tick state 변경 시 함수 컴포넌트 재실행 → today/now 재계산
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const iv = setInterval(() => setTick(t => t + 1), 10000);
-    return () => clearInterval(iv);
-  }, []);
-  const today = todayStr();          // ← tick 덕분에 매 10초 갱신됨
-  const now = nowMinutes();          // ← tick 덕분에 매 10초 갱신됨
+  const today = todayStr();
+  const now = nowMinutes();
   const allUsers = up;
   const allRooms = rp;
   const userInfo = allUsers.find(u=>u.name===currentUser);
@@ -121,68 +104,77 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
     }
   }, [allMyBookings])
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // 내 예약 전체 fetch + 실시간 동기화
-  // ═══════════════════════════════════════════════════════════════════════
-  //
-  // [2026-04-21 P0 fix] MyPage 시간 오류 + 실시간 반영 누락 버그 수정
-  //
-  // 기존 문제:
-  //   ① 자체 mapRow에서 utcToKST 변환 누락 → 시간이 UTC로 표시됨 (9시간 차이)
-  //   ② user_id/originalEndAt/reject_reason/processedBy* 필드 누락
-  //   ③ Realtime 구독 없음 → 예약 생성/변경/취소가 실시간 반영 안 됨
-  //   ④ visibilitychange 없음 → 탭 복귀 시에도 갱신 안 됨
-  //
-  // 해결:
-  //   · api.ts의 loadMyBookings() 공용 함수 사용 (rowToBooking 재활용)
-  //     → utcToKST 자동 적용 + 모든 필드 완전 매핑
-  //   · subscribeBookings로 Realtime 구독 (다른 사람/Edge Function 변경 반영)
-  //   · visibilitychange로 탭 복귀 시 자동 refresh
-  //   · 500ms 디바운스 (App.tsx와 동일 패턴)
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── 내 예약 전체 fetch (예약자 + 참석자 모두 포함) ──────────────────────────
+  // 정책: 내가 예약자이거나 참석자로 등록된 예약 모두 = 내 예약
   useEffect(() => {
     if (!authUserId) return;
+    setAllLoading(true);
 
-    let cancelled = false;                     // 언마운트 시 setState 방지
-    let realtimeDebounce: ReturnType<typeof setTimeout> | null = null;
-
-    // 재사용 가능한 refresh 함수
-    const refresh = async () => {
-      if (cancelled) return;
-      setAllLoading(true);
-      try {
-        const data = await loadMyBookings(authUserId, currentUserEmail);
-        if (!cancelled) setAllMyBookings(data);
-      } finally {
-        if (!cancelled) setAllLoading(false);
-      }
-    };
-
-    // ① 초기 로드
-    refresh();
-
-    // ② Realtime 구독 (예약 INSERT/UPDATE/DELETE 시 500ms 디바운스 후 refresh)
-    const unsubscribe = subscribeBookings(() => {
-      if (realtimeDebounce) clearTimeout(realtimeDebounce);
-      realtimeDebounce = setTimeout(() => { refresh(); }, 500);
+    const mapRow = (row: any) => ({
+      id:            row.id,
+      room_id:       row.room_id,
+      title:         row.title,
+      memo:          row.memo ?? '',
+      attendees:     (row.booking_attendees ?? []).map((a: any) => ({
+        email: a.email ?? '',
+        name:  a.name  ?? '',
+      })),
+      start_at:      row.start_at,
+      end_at:        row.end_at,
+      user:          row.user_name,
+      dept:          row.user_dept,
+      checkedIn:     row.checked_in,
+      autoCancelled: row.auto_cancelled,
+      cancelledBy:   row.cancelled_by ?? null,
+      status:        row.status ?? 'confirmed',
+      earlyEnded:    row.early_ended ?? false,
+      recurGroupId:  row.recur_group_id ?? null,
+      createdAt:     new Date(row.created_at).getTime(),
     });
 
-    // ③ 탭 복귀 시 refresh (자리 비운 사이 변경된 예약 반영)
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        refresh();
+    Promise.all([
+      // ① 내가 예약자인 예약
+      supabase
+        .from('bookings')
+        .select('*, booking_attendees(email, name)')
+        .eq('user_id', authUserId)
+        .order('start_at', { ascending: false }),
+
+      // ② 내가 참석자인 예약 ID 목록
+      currentUserEmail
+        ? supabase
+            .from('booking_attendees')
+            .select('booking_id')
+            .eq('email', currentUserEmail)
+        : Promise.resolve({ data: [] as any[], error: null }),
+    ]).then(async ([bookerRes, attendeeRes]) => {
+      const bookerRows   = bookerRes.data ?? [];
+      const attendeeIds  = (attendeeRes.data ?? []).map((a: any) => a.booking_id);
+
+      // ③ 참석자 예약 상세 조회 (예약자 목록과 중복 제거)
+      let attendeeRows: any[] = [];
+      if (attendeeIds.length > 0) {
+        const bookerSet = new Set(bookerRows.map((r: any) => r.id));
+        const idsToFetch = attendeeIds.filter((id: string) => !bookerSet.has(id));
+        if (idsToFetch.length > 0) {
+          const { data } = await supabase
+            .from('bookings')
+            .select('*, booking_attendees(email, name)')
+            .in('id', idsToFetch)
+            .order('start_at', { ascending: false });
+          attendeeRows = data ?? [];
+        }
       }
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
 
-    return () => {
-      cancelled = true;
-      if (realtimeDebounce) clearTimeout(realtimeDebounce);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-      unsubscribe();
-    };
+      // ④ 합치고 날짜 내림차순 정렬
+      const merged = [...bookerRows, ...attendeeRows]
+        .sort((a: any, b: any) => b.start_at.localeCompare(a.start_at));
+
+      setAllMyBookings(merged.map(mapRow));
+      setAllLoading(false);
+    });
+
   }, [authUserId, currentUserEmail]);
-
 
   const cancelBooking = async (id) => {
     // ← [v2.1] 롤백 안전장치: 원본 booking snapshot 저장
@@ -430,14 +422,8 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
 // ─── My Booking Weekly View ────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
 export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, onCheckIn, onEarlyEnd, onCancel, onNewBooking, authUser}: {bookings:any[], currentUser:string, rooms?:any[], onDetail:(b:any)=>void, onCheckIn:(id:string)=>void, onEarlyEnd:(id:string)=>void, onCancel:(id:string)=>void, onNewBooking:()=>void, authUser:any}) {
-  // ← [2026-04-21 fix] tick: 자정 경계 + 진행 중 판정 시간 자동 갱신
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const iv = setInterval(() => setTick(t => t + 1), 10000);
-    return () => clearInterval(iv);
-  }, []);
-  const today = todayStr()           // ← tick 덕분에 매 10초 갱신
-  const now   = nowMinutes()         // ← tick 덕분에 매 10초 갱신
+  const today = todayStr()
+  const now   = nowMinutes()
   const [selectedDate, setSelectedDate] = useState(today)
   const { isMobile } = useBreakpoint()
 

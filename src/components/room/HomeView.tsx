@@ -258,21 +258,13 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
             //     3. status='pending'   + autoCancelled → pendingExpired
             //     4. status='confirmed' + autoCancelled → noshow
             //     5. status='confirmed' 정상 흐름 (checkin/using/done 등)
-            // ← [2026-04-21 update] 레거시 데이터 호환 판정
-            //   · pendingExpired: 에메랄드 + pending + autoCancelled + 시작시간 지남
-            //   · noshow: autoCancelled + system + !checkedIn (status 무관 → 레거시 호환)
-            //   · 판정 순서: pendingExpired 먼저 체크하여 배타성 확보
-            const isAdminRoom = !!r?.is_admin_only
-            const sm = tsMin(b.start_at)
             const cardState: string =
                 b.status === 'rejected'                                                          ? "rejected"
-              : b.status === 'cancelled' && b.cancelledBy === 'admin'                            ? "adminCancel"
-              : b.status === 'cancelled' && b.cancelledBy === 'user'                             ? "userCancel"
-              // 기한초과: 에메랄드 + pending + autoCancelled + 시작시간 지남
-              : isAdminRoom && b.status === 'pending' && b.autoCancelled && sm < now             ? "pendingExpired"
-              // 노쇼: (confirmed OR cancelled) + autoCancelled + system + !checkedIn (자연 배타)
-              : (b.status === 'confirmed' || b.status === 'cancelled')
-                && b.autoCancelled && b.cancelledBy === 'system' && !b.checkedIn                 ? "noshow"
+              : b.status === 'cancelled' && b.cancelledBy === 'admin'                            ? "adminCancel"     // ← [v2.1 변경] status 조건 추가
+              : b.status === 'cancelled' && b.cancelledBy === 'user'                             ? "userCancel"      // ← [v2.1 추가] User 취소 명시
+              : b.status === 'pending'   && b.autoCancelled && b.cancelledBy === 'system'        ? "pendingExpired"  // ← [v2.1 변경] status='pending'
+              : b.status === 'confirmed' && b.autoCancelled && b.cancelledBy === 'system'
+                  && !b.checkedIn && !b.earlyEnded                                               ? "noshow"          // ← [v2.1 변경] !checkedIn 추가
               : b.earlyEnded                      ? "earlyEnded"
               : b.checkedIn && isActive           ? "using"
               : b.checkedIn                       ? "done"

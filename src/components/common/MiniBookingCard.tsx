@@ -54,18 +54,7 @@ export type CardState =
   | 'earlyEnded' | 'using' | 'done' | 'checkin' | 'pending' | 'soon' | 'waiting'
 
 // ─── cardState 판정 (v2.1) ───────────────────────────────────────────────────
-// ✅ [2026-04-21 update] 레거시 데이터 호환 판정 로직 적용
-//   · isExpiredPending: 에메랄드 + pending + autoCancelled + 시작시간 지남
-//     (status='pending'이 강력한 맥락, cron 지연 시에도 UX 즉시 반영)
-//   · isNoshow: autoCancelled + system + !checkedIn
-//     (status 조건 없음 → 레거시 status='cancelled' 데이터도 호환)
-//   · 배타성은 판정 순서로 확보 (isExpiredPending 먼저 → isNoshow 다음)
-export function judgeCardState(
-  b: Booking,
-  now: number,
-  isToday: boolean,
-  isAdminRoom: boolean = false,
-): CardState {
+export function judgeCardState(b: Booking, now: number, isToday: boolean): CardState {
   const sm       = tsMin(b.start_at)
   const em       = tsMin(b.end_at)
   const isActive = isToday && sm <= now && now < em
@@ -79,11 +68,9 @@ export function judgeCardState(
   if (b.status === 'rejected')                                                    return 'rejected'
   if (b.status === 'cancelled' && b.cancelledBy === 'admin')                      return 'adminCancel'
   if (b.status === 'cancelled' && b.cancelledBy === 'user')                       return 'userCancel'
-  // 기한초과: 에메랄드 + pending + autoCancelled + 시작시간 지남
-  if (isAdminRoom && b.status === 'pending' && b.autoCancelled && sm < now)       return 'pendingExpired'
-  // 노쇼: (confirmed OR cancelled) + autoCancelled + system + !checkedIn (자연 배타)
-  if ((b.status === 'confirmed' || b.status === 'cancelled')
-      && b.autoCancelled && b.cancelledBy === 'system' && !b.checkedIn)           return 'noshow'
+  if (b.status === 'pending'   && b.autoCancelled && b.cancelledBy === 'system')  return 'pendingExpired'
+  if (b.status === 'confirmed' && b.autoCancelled && b.cancelledBy === 'system'
+      && !b.checkedIn && !b.earlyEnded)                                           return 'noshow'
   if (b.earlyEnded)                                                               return 'earlyEnded'
   if (b.checkedIn && isActive)                                                    return 'using'
   if (b.checkedIn)                                                                return 'done'
@@ -156,7 +143,7 @@ export function MiniBookingCard({
   const now     = nowMinutes()
   const isToday = tsDate(b.start_at) === today
 
-  const cs      = judgeCardState(b, now, isToday, !!r?.is_admin_only)
+  const cs      = judgeCardState(b, now, isToday)
   const S       = getButtonStyle(cs)
   const opacity = getOpacity(cs)
 
