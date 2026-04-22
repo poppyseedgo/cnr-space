@@ -686,14 +686,9 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       )}
 
       {/* ════ 헤더 (고정) ════ */}
-      {/* ← [2026-04-21] borderBottom 제거, 배경 그라디언트로 경계 표현 */}
-      <div style={{
-        padding: isMobile ? "20px 20px 24px" : "24px 28px 32px",
-        background: "linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(255,255,255,1) 60%, rgba(255,255,255,0) 100%)",
-        display:"flex",
-        justifyContent:"space-between", alignItems:"center", flexShrink:0,
-        position:"relative", zIndex: 2,
-      }}>
+      <div style={{padding: isMobile?"20px 20px 12px":"24px 28px 18px",
+        borderBottom:"1px solid #F1F5F9",display:"flex",
+        justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
 
         {isMobile ? (
           /* 모바일 헤더: 스텝 인디케이터 포함 */

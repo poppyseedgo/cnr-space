@@ -1102,8 +1102,7 @@ function AppContent() {
     return (
       <div style={{background:'#F3F4F8', minHeight:'100vh'}}>
         {/* 헤더 스켈레톤 — 좌:로고pill / 중:nav2개 / 우:유저pill */}
-        {/* ← [2026-04-21] borderBottom 제거 (메인 헤더와 일관성) */}
-        <div style={{background:'#fff', height:60,
+        <div style={{background:'#fff', height:60, borderBottom:'1px solid #E2E8F0',
           display:'flex', alignItems:'center', padding:'0 28px'}}>
           {/* 좌: 로고 */}
           <div className="sk-block" style={{width:120, height:36, borderRadius:999, flexShrink:0}} />
@@ -1124,17 +1123,7 @@ function AppContent() {
     <div className={dark ? "dark" : ""}>
     <div className="dark:bg-slate-900 min-h-screen text-slate-800 dark:text-slate-200" style={{background:"#F3F4F8"}}>
 {/* ── Header ── */}
-      {/* ← [2026-04-21] border-b 제거, 헤더 하단에 흰색→투명 그라디언트 오버레이로 경계 표현 */}
-      <header className="bg-white dark:bg-slate-800 sticky top-0 z-[100]">
-        {/* 하단 16px 그라디언트 페이드 영역 (헤더 아래로 돌출) */}
-        <div style={{
-          position: 'absolute',
-          left: 0, right: 0, bottom: -16,
-          height: 16,
-          background: 'linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 100%)',
-          pointerEvents: 'none',
-          zIndex: 1,
-        }} />
+      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-[100]">
         <div className="max-w-[1400px] mx-auto px-3 sm:px-7">
           <div className="grid items-center gap-3" style={{gridTemplateColumns:"1fr auto 1fr", height:52}} data-desktop-height="64">
 
