@@ -7,7 +7,6 @@ interface UserAvatarProps {
   bgColor?:   string
   textColor?: string
   fontSize?:  number
-  fontWeight?: number   // ← [2026-04-21] 피그마 detail variant (Medium 500) 지원용
   className?: string
 }
 
@@ -15,20 +14,15 @@ interface UserAvatarProps {
  * UserAvatar
  * - avatarUrl 있으면 이미지 표시
  * - 없거나 로드 실패 시 이름 첫 글자 이니셜 표시
- *
- * ✅ 변경 이력
- *  - [2026-04-21] fontWeight prop 추가. 기본값 800 유지(기존 동작 보존),
- *    UserChip detail variant에서 Medium(500)으로 override
  */
 export function UserAvatar({
   name,
   avatarUrl,
-  size       = 36,
-  bgColor    = '#111',
-  textColor  = '#fff',
+  size      = 36,
+  bgColor   = '#111',
+  textColor = '#fff',
   fontSize,
-  fontWeight = 800,
-  className  = '',
+  className = '',
 }: UserAvatarProps) {
   const [imgError, setImgError] = useState(false)
 
@@ -68,8 +62,7 @@ export function UserAvatar({
         background: bgColor,
         color:      textColor,
         fontSize:   resolvedFontSize,
-        fontWeight,
-        lineHeight: 1.3,
+        fontWeight: 800,
       }}
       className={className}
     >

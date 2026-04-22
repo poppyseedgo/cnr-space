@@ -78,7 +78,6 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
       background:"#fff",
       borderRadius: isMobile ? "20px 20px 0 0" : 24,          // ← [피그마] 16 → 24
       width:"100%", maxWidth: isMobile ? "100%" : 500,         // ← [피그마] 460 → 500 (본문 460 + 패딩)
-      minHeight: isMobile ? undefined : 500,                   // ← [2026-04-21] 피그마 min-height 500px 적용
       maxHeight: isMobile ? "88vh" : "90vh",
       boxShadow:"0 20px 60px rgba(0,0,0,0.15)",
       overflow:"hidden", display:"flex", flexDirection:"column",
@@ -197,19 +196,16 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
             </InfoRow>
           )}
 
-          {/* 예약자 — ← [2026-04-21] UserChip detail variant (피그마 node 202:1178)
-               아바타 24 bg #000, 이름 14 Medium + 부서 11 Regular rgba(17,17,17,0.35) */}
+          {/* 예약자 — 아바타 24 + 이름 14 Medium + 부서 11 Regular rgba(17,17,17,0.35) */}
           {(() => {
             const owner = (up as any[]).find(u => u.user_id === b.user_id)
             return (
               <InfoRow label="예약자">
-                <div style={{display:"flex", alignItems:"center"}}>
+                <div style={{display:"flex", alignItems:"center", gap:7}}>
                   <UserChip
                     name={b.user}
                     avatarUrl={owner?.avatar_url ?? null}
-                    variant="detail"
-                    showDept
-                    dept={b.user_dept ?? owner?.dept}
+                    variant="sm"
                     userInfo={owner}
                   />
                 </div>
@@ -226,8 +222,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
             </InfoRow>
           )}
 
-          {/* 참석자 — 2-column grid, 아바타 24 + 이름 14 Medium (피그마 node 202:1184)
-               ← [2026-04-21] AttendeeChip variant="plain" 사용 (배경 없이 UserChip detail 그대로) */}
+          {/* 참석자 — 2-column grid, 아바타 24 + 이름 14 Medium */}
           {b.attendees && b.attendees.length > 0 && (
             <InfoRow label="참석자" align="flex-start">
               <div style={{
@@ -239,13 +234,12 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
                 {b.attendees.map((a: any, idx: number) => {
                   const u = (up as any[]).find(u => u.email === a.email)
                   return (
-                    <div key={a.email || idx} style={{display:"flex", alignItems:"center", minWidth:0}}>
+                    <div key={a.email || idx} style={{display:"flex", alignItems:"center", gap:7, minWidth:0}}>
                       <AttendeeChip
                         name={a.name || a.email}
                         avatarUrl={u?.avatar_url ?? null}
                         dept={u?.dept}
                         userInfo={u}
-                        variant="plain"
                       />
                     </div>
                   )
