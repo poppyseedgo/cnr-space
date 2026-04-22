@@ -218,17 +218,14 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // ← [2026-04-21 update] 자연 배타성 공식
-  //   노쇼 본질: "체크인 대상이었던 예약이 체크인 안 함"
-  //   · (status='confirmed' OR 'cancelled') — 체크인 대상 상태
-  //     - 'confirmed': v2.1 정상 노쇼
-  //     - 'cancelled': v1.x 레거시 버그 데이터 호환
-  //     - 'pending'은 체크인 대상 자체가 아님 → 자연 배타 (기한초과와 분리)
-  //   · autoCancelled + system + !checkedIn
+  // ← [v2.1] isNoshow: status='confirmed' + cancelledBy='system' + !checkedIn
+  //   v2.1 노쇼 정의: cron이 start_at+10분 후 체크인 없는 confirmed 예약을 자동 처리
+  //   · earlyEnded는 조기반납을 구분하는 플래그 → 여기 필요 없음 (checkedIn=true라 자동 배제)
+  //   기한초과(status='pending'+autoCancelled)는 별개 → status='confirmed' 조건으로 배제
   const isNoshow = (b: Booking) =>
-    (b.status === 'confirmed' || b.status === 'cancelled')
-    && !!b.autoCancelled
-    && b.cancelledBy === 'system'
+    b.status === 'confirmed'                  // ← [v2.1 추가] 기한초과 제외
+    && b.autoCancelled
+    && b.cancelledBy === 'system'              // ← [v2.1 추가] system만 (admin 강제취소와 구분)
     && !b.checkedIn
 
   // 타입별 필터
@@ -296,15 +293,13 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
     const csvRows = sorted.map(b => {
       const r = rooms.find(rm => rm.room_id === b.room_id)
       // ← [v2.1] CSV 상태 문자열: 정확한 카테고리 구분
-      // ← [2026-04-21 update] 자연 배타성 공식
-      //   isNoshow는 status='confirmed'||'cancelled'만 판정 → 기한초과(pending)와 자연 분리
       const statusLabel =
           b.status==='rejected' ? '거절'
-        : b.status==='pending'&&b.autoCancelled ? '기한초과'
-        : isNoshow(b) ? '노쇼'
         : b.status==='cancelled'&&b.cancelledBy==='admin' ? '관리자강제취소'
         : b.status==='cancelled'&&b.cancelledBy==='user' ? '취소'
+        : b.status==='pending'&&b.autoCancelled ? '기한초과'
         : b.status==='pending' ? '승인대기'
+        : isNoshow(b) ? '노쇼'
         : b.checkedIn||b.earlyEnded ? '완료'
         : '예정'
       return { 회의명:b.title, 회의실:r?.room_name??'', 날짜:tsDate(b.start_at), 시작:b.start_at.slice(11,16), 종료:b.end_at.slice(11,16), 예약자:b.user, 부서:b.dept, 상태:statusLabel }
@@ -345,18 +340,15 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
               {paged.map(b => {
                 const r = rooms.find(rm => rm.room_id === b.room_id)
                 // ← [v2.1] 인라인 상태 뱃지 판정 재작성
-                //   우선순위 (배타성 보장): rejected > pendingExpired > noshow > adminCancel > userCancel > pending > 완료 > 예정
-                // ← [2026-04-21 update]
-                //   · 자연 배타성: 기한초과(status='pending') vs 노쇼(status='confirmed'|'cancelled')
-                //   · status 값으로 구조적 분리되므로 순서 무관이지만 가독성 위해 유지
+                //   우선순위 (배타성 보장): rejected > cancelled(user/admin) > pending_expired > noshow > pending > 완료 > 예정
+                //   v2.1: User/Admin 취소는 status='cancelled' (autoCancelled=false)로 구분
                 const status =
                     b.status === 'rejected'                                                     ? {l:'거절',    c:'#DC2626',bg:'#FEF2F2'}
-                  : b.status === 'pending'   && b.autoCancelled                                 ? {l:'기한초과', c:'#94A3B8',bg:'#F1F5F9'}
-                  : (b.status === 'confirmed' || b.status === 'cancelled')
-                    && b.autoCancelled && b.cancelledBy === 'system' && !b.checkedIn            ? {l:'노쇼',    c:'#DC2626',bg:'#FEF2F2'}
                   : b.status === 'cancelled' && b.cancelledBy === 'admin'                       ? {l:'강제취소', c:'#111',   bg:'#F1F5F9'}
                   : b.status === 'cancelled' && b.cancelledBy === 'user'                        ? {l:'취소',    c:'#94A3B8',bg:'#F1F5F9'}
+                  : b.status === 'pending'   && b.autoCancelled                                 ? {l:'기한초과', c:'#94A3B8',bg:'#F1F5F9'}
                   : b.status === 'pending'                                                      ? {l:'승인대기', c:'#D97706',bg:'#FEF3C7'}
+                  : b.autoCancelled && !b.checkedIn                                             ? {l:'노쇼',    c:'#DC2626',bg:'#FEF2F2'}
                   : b.checkedIn || b.earlyEnded                                                 ? {l:'완료',    c:'#16A34A',bg:'#DCFCE7'}
                   :                                                                               {l:'예정',    c:'#3B82F6',bg:'#EFF6FF'}
                 return (
@@ -803,12 +795,12 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
   const td = todayStr()
   const filtered  = useMemo(() => rangeData, [rangeData])
   const past      = useMemo(() => filtered.filter(b => tsDate(b.start_at) < td && b.status !== 'pending'), [filtered, td])
-  // ← [2026-04-21 update] 자연 배타성 공식
-  //   노쇼: (status='confirmed' OR 'cancelled') + autoCancelled + system + !checkedIn
-  //   · 'pending'은 체크인 대상 자체가 아님 → 자연 배타
+  // ← [v2.1] isNoshow: status='confirmed' + autoCancelled + cancelledBy='system' + !checkedIn
+  //   기한초과(pending+autoCancelled), admin 강제취소(cancelledBy='admin')와 구분
+  //   earlyEnded는 조기반납의 유일한 플래그 → 여기 필요 없음 (checkedIn=true라 자동 배제)
   const isNoshow  = (b: Booking) =>
-    (b.status === 'confirmed' || b.status === 'cancelled')
-    && !!b.autoCancelled
+    b.status === 'confirmed'
+    && b.autoCancelled
     && b.cancelledBy === 'system'
     && !b.checkedIn
   const confirmed = useMemo(() => filtered.filter(b => !b.autoCancelled && b.status !== 'rejected' && b.status !== 'cancelled'), [filtered])
@@ -1093,14 +1085,13 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
   const [cancelModal,  setCancelModal] =useState<Booking|null>(null)
   const [cancelReason, setCancelReason]=useState('')
   const [cancelling,   setCancelling]  =useState(false)
-  // ← [2026-04-21 update] 자연 배타성 공식
-  //   노쇼: (status='confirmed' OR 'cancelled') + autoCancelled + system + !checkedIn
-  //   · 'confirmed': v2.1 정상 노쇼
-  //   · 'cancelled': v1.x 레거시 버그 데이터 호환
-  //   · 'pending'은 체크인 대상 자체가 아님 → 자연 배타 (기한초과와 분리)
+  // ← [v2.1] isNoshow 재작성
+  //   · status='confirmed' + autoCancelled + cancelledBy='system' + !checkedIn
+  //   · earlyEnded는 조기반납의 유일한 플래그 → 여기 필요 없음 (checkedIn=true라 자동 배제)
+  //   · admin 강제취소는 status='cancelled'+cancelledBy='admin' (autoCancelled=false)으로 완전히 분리됨
   const isNoshow=(b:Booking)=>
-    (b.status==='confirmed'||b.status==='cancelled')
-    && !!b.autoCancelled
+    b.status==='confirmed'
+    && b.autoCancelled
     && b.cancelledBy==='system'
     && !b.checkedIn
   const filtered=useMemo(()=>bookings.filter(b=>{
@@ -1109,18 +1100,14 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
     if(filterRoom!=='ALL'&&b.room_id!==Number(filterRoom))return false
     if(filterUser&&!b.user.toLowerCase().includes(filterUser.toLowerCase()))return false
     // ← [v2.1] 필터 재작성 — status 기반 명확한 분기
-    //   upcoming:    예정 (아직 안 온 확정 예약) — 취소/노쇼/거절/체크인/조기종료 모두 제외
+    //   upcoming:    미래, 취소/노쇼/거절 모두 제외 (autoCancelled=false + cancelled/rejected 제외)
     //   completed:   체크인 또는 조기종료 + 확정 상태 (취소/노쇼 제외)
     //   cancelled:   사람 취소(user/admin) + 거절 + 기한초과 (노쇼 제외)
     //   noshow:      노쇼만 (isNoshow 사용)
     //   adminCancel: Admin 강제취소만 (status='cancelled'+cancelledBy='admin')
-    // ← [2026-04-21 update]
-    //   · cancelled 탭에서 레거시 노쇼 제외 (!isNoshow 가드) — 레거시 data 호환
-    //   · upcoming 탭에서 체크인/조기종료 예약 제외 → completed와 배타성 확보
-    //     (오늘 체크인 완료한 예약이 upcoming+completed 양쪽에 나타나던 버그 수정)
-    if(filterStatus==='upcoming'&&(b.autoCancelled||b.status==='cancelled'||b.status==='rejected'||d<today||b.checkedIn||b.earlyEnded))return false
+    if(filterStatus==='upcoming'&&(b.autoCancelled||b.status==='cancelled'||b.status==='rejected'||d<today))return false
     if(filterStatus==='completed'&&!((b.checkedIn||b.earlyEnded)&&!b.autoCancelled&&b.status==='confirmed'))return false
-    if(filterStatus==='cancelled'&&!((b.status==='cancelled'||b.status==='rejected'||(b.status==='pending'&&b.autoCancelled))&&!isNoshow(b)))return false
+    if(filterStatus==='cancelled'&&!(b.status==='cancelled'||b.status==='rejected'||(b.status==='pending'&&b.autoCancelled)))return false
     if(filterStatus==='noshow'&&!isNoshow(b))return false
     if(filterStatus==='adminCancel'&&!(b.status==='cancelled'&&b.cancelledBy==='admin'))return false
     return true
@@ -1128,16 +1115,13 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
   const totalPages=Math.max(1,Math.ceil(filtered.length/PER_PAGE))
   const paged=filtered.slice((page-1)*PER_PAGE,page*PER_PAGE)
   // ← [v2.1] stats: 각 탭의 카운트를 v2.1 필터와 동일하게 계산
-  // ← [2026-04-21 update]
-  //   · cancelled 카운트에서도 !isNoshow 가드 (배타성)
-  //   · upcoming 카운트에서도 !checkedIn && !earlyEnded 가드 (배타성)
   const stats={
     all:filtered.length,
-    upcoming:filtered.filter(b=>!b.autoCancelled&&b.status!=='rejected'&&b.status!=='cancelled'&&tsDate(b.start_at)>=today&&!b.checkedIn&&!b.earlyEnded).length,
+    upcoming:filtered.filter(b=>!b.autoCancelled&&b.status!=='rejected'&&b.status!=='cancelled'&&tsDate(b.start_at)>=today).length,
     completed:filtered.filter(b=>(b.checkedIn||b.earlyEnded)&&!b.autoCancelled&&b.status==='confirmed').length,
-    cancelled:filtered.filter(b=>(b.status==='cancelled'||b.status==='rejected'||(b.status==='pending'&&b.autoCancelled))&&!isNoshow(b)).length,
+    cancelled:filtered.filter(b=>b.status==='cancelled'||b.status==='rejected'||(b.status==='pending'&&b.autoCancelled)).length,
     noshow:filtered.filter(isNoshow).length,
-    adminCancel:filtered.filter(b=>b.status==='cancelled'&&b.cancelledBy==='admin'&&!isNoshow(b)).length,
+    adminCancel:filtered.filter(b=>b.status==='cancelled'&&b.cancelledBy==='admin').length,
   }
   // ★ App.tsx의 adminForceCancelBooking 콜백 위임 (알림·이메일·audit 모두 App에서 처리)
   const doCancel=async(id:string)=>{
@@ -1146,26 +1130,22 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
     catch(err:any){ showToast(err.message??'취소 중 오류','error') }
     finally{ setCancelling(false); setCancelModal(null); setCancelReason('') }
   }
-  // ← [v2.1] getBadge 판정 순서
-  //   rejected > pendingExpired > noshow > adminCancel > userCancel > pending > 완료 > 예정 > 종료
-  // ← [2026-04-21 update] 자연 배타성 공식 적용
-  //   · 기한초과: status='pending' (체크인 대상 아님)
-  //   · 노쇼: status='confirmed' OR 'cancelled' (체크인 대상) — isNoshow 헬퍼가 판정
-  //   · status 값으로 구조적 분리되므로 순서 무관이지만 가독성 위해 유지
+  // ← [v2.1] getBadge 재작성: 배타성 우선순위로 명확히 재정렬
+  //   우선순위: rejected > adminCancel > userCancel > pendingExpired > pending > noshow > 완료 > 예정 > 종료
   const getBadge=(b:Booking)=>{
     const d=tsDate(b.start_at)
     // ① 거절 (최우선)
     if(b.status==='rejected')return<span style={{background:'#FEE2E2',color:'#DC2626',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>거절</span>
-    // ② 기한초과 (status='pending' + autoCancelled) — 노쇼보다 먼저 체크 (배타성)
-    if(b.status==='pending'&&b.autoCancelled)return<span style={{background:'#F1F5F9',color:'#94A3B8',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>기한초과</span>
-    // ③ 노쇼 (cancelledBy='system') — cancelled류보다 먼저 체크 (레거시 호환)
-    if(isNoshow(b))return<span style={{background:'#FEF3C7',color:'#D97706',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>노쇼</span>
-    // ④ Admin 강제취소 (status='cancelled' + cancelledBy='admin')
+    // ② Admin 강제취소 (status='cancelled' + cancelledBy='admin')
     if(b.status==='cancelled'&&b.cancelledBy==='admin')return<span style={{background:'#111',color:'#fff',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,display:'inline-flex',alignItems:'center',gap:3}}><AlertTriangle size={9} strokeWidth={1.8}/>관리자 강제취소</span>
-    // ⑤ User 취소 (status='cancelled' + cancelledBy='user')
+    // ③ User 취소 (status='cancelled' + cancelledBy='user')
     if(b.status==='cancelled'&&b.cancelledBy==='user')return<span style={{background:'#F1F5F9',color:'#94A3B8',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>취소</span>
-    // ⑥ 승인대기
+    // ④ 기한초과 (status='pending' + autoCancelled)
+    if(b.status==='pending'&&b.autoCancelled)return<span style={{background:'#F1F5F9',color:'#94A3B8',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>기한초과</span>
+    // ⑤ 승인대기
     if(b.status==='pending')return<span style={{background:'#FEF3C7',color:'#92400E',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>승인대기</span>
+    // ⑥ 노쇼
+    if(isNoshow(b))return<span style={{background:'#FEF3C7',color:'#D97706',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>노쇼</span>
     // ⑦ 완료 (체크인 또는 조기종료)
     if(b.checkedIn||b.earlyEnded)return<span style={{background:'#DCFCE7',color:'#16A34A',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>완료</span>
     // ⑧ 예정 (미래)
@@ -1210,16 +1190,14 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
                 border:filterStatus===s.id?'none':'1px solid #E2E8F0'}}>{s.l}</button>
           ))}
           <button className="btn" onClick={()=>{
-            // ← [v2.1] getStatus: CSV 내보내기용 상태 문자열
-            // ← [2026-04-21 update] 자연 배타성 공식
-            //   isNoshow는 status='confirmed'||'cancelled'만 판정 → 기한초과(pending)와 자연 분리
+            // ← [v2.1] getStatus: CSV 내보내기용 상태 문자열 (getBadge와 동일한 우선순위)
             const getStatus=(b:Booking)=>
                 b.status==='rejected' ? '거절'
-              : isNoshow(b) ? '노쇼'
               : b.status==='cancelled'&&b.cancelledBy==='admin' ? '관리자강제취소'
               : b.status==='cancelled'&&b.cancelledBy==='user' ? '취소'
               : b.status==='pending'&&b.autoCancelled ? '기한초과'
               : b.status==='pending' ? '승인대기'
+              : isNoshow(b) ? '노쇼'
               : b.checkedIn||b.earlyEnded ? '완료'
               : '예정'
             const csvRows=filtered.map(b=>{const r=rooms.find(rm=>rm.room_id===b.room_id);return{회의명:b.title,회의실:r?.room_name??'',날짜:tsDate(b.start_at),시작:b.start_at.slice(11,16),종료:b.end_at.slice(11,16),예약자:b.user,부서:b.dept,상태:getStatus(b)}})
