@@ -189,14 +189,17 @@ export function MiniBookingCard({
       {/* 상단 영역 — ← [2026-04-21] flex gap:4로 요소 간격 통일 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {/* ① 반복 + 참석자 뱃지 + 제목 (같은 줄, gap 6) — ← [피그마 node 63:5905]
-             규칙: 반복·참석자 뱃지만 제목 앞 위치, 다른 상태칩은 아래 줄
-             ← [2026-04-22] 외부 <span> 래퍼 제거 — flex 자식 중앙정렬 정확성 */}
+             규칙: 반복·참석자 뱃지만 제목 앞 위치, 다른 상태칩은 아래 줄 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
           {b.recurGroupId && (
-            <MetaBadge type="recurring" size="xs" />
+            <span style={{ flexShrink: 0 }}>
+              <MetaBadge type="recurring" size="xs" />
+            </span>
           )}
           {b.user !== currentUser && (
-            <MetaBadge type="guest" size="xs" />
+            <span style={{ flexShrink: 0 }}>
+              <MetaBadge type="guest" size="xs" />
+            </span>
           )}
           <span
             style={{
