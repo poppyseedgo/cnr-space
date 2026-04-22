@@ -1,7 +1,7 @@
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { AlertTriangle, CheckCircle2, Clock, ShieldCheck, ShieldX } from 'lucide-react'
 import { useState } from 'react'
-import { todayStr, nowMinutes, tsDate, tsMin, fmtTSFull, fmtDateFull, CHECKIN_WINDOW_MIN } from '../../utils/time'
+import { todayStr, nowMinutes, tsDate, tsMin, fmtTSFull, fmtTSDateFull, CHECKIN_WINDOW_MIN } from '../../utils/time'
 import { getFloor } from '../../data/floors'
 
 import { AttendeeChip } from '../common/AttendeeChip'
@@ -108,8 +108,10 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
           <InfoRow label="회의실" value={r?.room_name ?? '-'} />
           {/* 위치 — floor */}
           <InfoRow label="위치" value={floor?.floor_name ?? '-'} />
-          {/* 날짜 */}
-          <InfoRow label="날짜" value={fmtDateFull(b.start_at)} />
+          {/* 날짜 ← [2026-04-22 HOTFIX] fmtDateFull(b.start_at)은 'YYYY-MM-DD' 문자열을 기대하는데
+                 b.start_at은 timestamp ISO라 파싱 실패 → 'NaN년 NaN월 NaN일' 표시.
+                 fmtTSDateFull(내부에서 tsDate로 KST 날짜 추출 후 포맷) 사용. */}
+          <InfoRow label="날짜" value={fmtTSDateFull(b.start_at)} />
           {/* 시간 + 소요시간 칩 */}
           <InfoRow
             label="시간"

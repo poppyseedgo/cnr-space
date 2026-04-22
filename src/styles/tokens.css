@@ -67,9 +67,10 @@
 .chip--sm { font-size: 9px;  padding: 2px 7px; }
 /* ← [피그마 반영] chip--xs: 9px / padding 1px 4px / radius 4 (RoomModal StatusBadge-XS 기준) */
 .chip--xs { font-size: 9px;  padding: 1px 4px; border-radius: 4px; }
-/* ← [피그마 180:534 신규] chip--square: BookingDetailModal 전용 사각형 칩 modifier
-      · border-radius 24(pill) → 8(사각), padding 4 10 또는 4 12 */
-.chip--square { border-radius: 8px; padding: 4px 10px; }
+/* ← [피그마 180:534 / 2026-04-22] chip--square: BookingDetailModal 전용 사각형 칩 modifier
+      · border-radius 24(pill) → 8(사각), padding 4 10
+      · font-size 12 (base .chip의 11 override — 피그마 최신 스펙 반영) */
+.chip--square { border-radius: 8px; padding: 4px 10px; font-size: 12px; }
 
 /* ── 상태 칩 색상 클래스 (단일 소스 — index.css 중복 제거됨) ── */
 .chip-available     { background: var(--color-available-bg);     color: var(--color-available-text); font-weight: 500; }
