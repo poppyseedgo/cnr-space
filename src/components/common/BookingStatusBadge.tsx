@@ -180,6 +180,9 @@ export function BookingStatusBadge({
 
   return (
     <div style={{ display: 'inline-flex', gap, flexWrap: 'wrap', alignItems: 'center' }}>
+      {/* ← [피그마 180:534] 내 예약은 항상 맨 앞. sm 소형카드 제외, 노쇼(생성자 박제)도 표시 */}
+      {show('mine') && isOwner && (!b.autoCancelled || isNoshow) && !isRejected && size !== 'sm' && <C cls="chip-mine">내 예약</C>}
+
       {/* ① 거절됨 — 최우선, 단독 표시 */}
       {show('rejected') && isRejected && <C cls="chip-rejected">거절됨</C>}
 
@@ -202,27 +205,24 @@ export function BookingStatusBadge({
       {/* ⑦ 승인완료 */}
       {show('approved') && isApproved && <C cls="chip-approved">승인완료</C>}
 
-      {/* ⑧ 내 예약 — sm 소형카드 제외, 노쇼(생성자 박제)도 표시 */}
-      {show('mine') && isOwner && (!b.autoCancelled || isNoshow) && !isRejected && size !== 'sm' && <C cls="chip-mine">내 예약</C>}
-
-      {/* ⑨ 진행 중 */}
+      {/* ⑧ 진행 중 */}
       {show('active') && isAct && !b.autoCancelled && (
         <span className={`chip ${sizeClass} ${shapeClass}`.trim().replace(/\s+/g, ' ')} style={{ background: (r?.color ?? '#6366F1') + '18', color: r?.color ?? '#6366F1' }}>
           진행 중
         </span>
       )}
 
-      {/* ⑩ 체크인 대기 / 완료 */}
+      {/* ⑨ 체크인 대기 / 완료 */}
       {show('checkin-wait') && nci && <C cls="chip-checkin-wait">체크인 대기</C>}
       {show('checkin-done') && b.checkedIn && isAct && <C cls="chip-success">체크인 완료</C>}
 
-      {/* ⑪ 종료 */}
+      {/* ⑩ 종료 */}
       {show('past') && isPast && <C cls="chip-done">종료</C>}
 
-      {/* ⑫ 조기반납 */}
+      {/* ⑪ 조기반납 */}
       {show('early-end') && b.earlyEnded && <C cls="chip-earlyend">조기반납</C>}
 
-      {/* ⑬ N분 후 카운트다운 */}
+      {/* ⑫ N분 후 카운트다운 */}
       {show('countdown') && !isAct && !b.autoCancelled && isToday && tl > 0 && tl <= 10 && (
         <C cls="chip-countdown">{tl}분 후</C>
       )}
