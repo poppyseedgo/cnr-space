@@ -573,8 +573,8 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
 
       <div className={`${D.cardPadding} flex flex-col flex-1`}> {/* ← [패딩/gap density 분기] */}
 
-        {/* ① 상태 칩 — ← [2026-04-21] 에메랄드룸이면 "승인 후 확정" 칩 항상 표시 */}
-        <RoomStatusBadge status={status} isAdminOnly={!!r.is_admin_only} />
+        {/* ① 상태 칩 */}
+        <RoomStatusBadge status={status} />
 
         {/* ② 회의실명 */}
         <div style={{fontSize:D.roomNameSize, fontWeight:600, letterSpacing:"-0.3px", lineHeight:1.2, /* ← [폰트 크기 density 분기] */

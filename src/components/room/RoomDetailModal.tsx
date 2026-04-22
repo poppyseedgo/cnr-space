@@ -84,7 +84,7 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
             {/* ← [피그마] 제목 20 → 24 (SemiBold) */}
             <div style={{fontSize: isMobile ? 20 : 24, fontWeight:600, color:"#111", lineHeight:1.5}}>{r.room_name}</div>
-            <RoomStatusBadge status={status} isAdminOnly={!!r.is_admin_only} />
+            <RoomStatusBadge status={status} />
           </div>
           {/* ← [피그마] subtitle 12 #64748B → 14 #6A7282 Regular, 내용 room_name_ko만 */}
           <div style={{fontSize:14,color:"#6A7282",fontWeight:400,lineHeight:1.5}}>{r.room_name_ko}</div>
