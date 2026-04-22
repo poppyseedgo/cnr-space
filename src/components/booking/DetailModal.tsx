@@ -97,31 +97,34 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         display: "flex", justifyContent: "space-between", alignItems: "flex-start",
         flexShrink: 0, position: "relative", zIndex: 2,
       }}>
-        <div style={{flex:1, minWidth:0, display:"flex", flexDirection:"column"}}>
-          {/* StatusBadge row — 칩 있을 때만 렌더 + row에 margin-bottom 8로 타이틀과 간격 */}
-          {(() => {
-            const showAttendChip = !isOwner && !!b.attendees?.some((a: any) => a.name === currentUser)
-            const hasAnyChip = isOwner || showAttendChip || !!b.recurGroupId || !!squareStatus
-            if (!hasAnyChip) return null
-            return (
-              <div style={{display:"flex", gap:4, alignItems:"center", flexWrap:"wrap", marginBottom: 8}}>
-                {isOwner && <StatusChipSquare variant="outline">내 예약</StatusChipSquare>}
-                {showAttendChip && <StatusChipSquare variant="outline">참석</StatusChipSquare>}
-                {b.recurGroupId && <StatusChipSquare variant="outline">반복</StatusChipSquare>}
-                {squareStatus && (
-                  <StatusChipSquare variant={squareStatus.variant} status={squareStatus.status}>
-                    {squareStatus.label}
-                  </StatusChipSquare>
-                )}
-              </div>
-            )
-          })()}
-          {/* 회의 제목 */}
-          <div style={{
-            fontSize: isMobile ? 18 : 21, fontWeight: 600, color: "#111",
-            lineHeight: 1.5, wordBreak: "break-word",
-          }}>{b.title}</div>
-        </div>
+        {(() => {
+          // ← [2026-04-22] 상태칩 존재 여부 선계산 — 하나도 없으면 row 자체 렌더 안 함
+          //   이유: 빈 <div> + flex gap 8 → 타이틀 위 빈 공간 생김
+          const showAttendChip = !isOwner && !!b.attendees?.some((a: any) => a.name === currentUser)
+          const hasChips = isOwner || showAttendChip || !!b.recurGroupId || !!squareStatus
+          return (
+            <div style={{flex:1, minWidth:0, display:"flex", flexDirection:"column", gap: hasChips ? 8 : 0}}>
+              {/* StatusBadge row — 칩이 하나라도 있을 때만 렌더 */}
+              {hasChips && (
+                <div style={{display:"flex", gap:4, alignItems:"center", flexWrap:"wrap"}}>
+                  {isOwner && <StatusChipSquare variant="outline">내 예약</StatusChipSquare>}
+                  {showAttendChip && <StatusChipSquare variant="outline">참석</StatusChipSquare>}
+                  {b.recurGroupId && <StatusChipSquare variant="outline">반복</StatusChipSquare>}
+                  {squareStatus && (
+                    <StatusChipSquare variant={squareStatus.variant} status={squareStatus.status}>
+                      {squareStatus.label}
+                    </StatusChipSquare>
+                  )}
+                </div>
+              )}
+              {/* 회의 제목 */}
+              <div style={{
+                fontSize: isMobile ? 18 : 21, fontWeight: 600, color: "#111",
+                lineHeight: 1.5, wordBreak: "break-word",
+              }}>{b.title}</div>
+            </div>
+          )
+        })()}
         <button className="btn" onClick={onClose}
           style={{width:32, height:32, borderRadius:"50%", background:"transparent",
             border:"none", cursor:"pointer", flexShrink:0,
