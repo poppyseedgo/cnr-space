@@ -35,7 +35,8 @@ const VARIANT_STYLES: Record<ButtonVariant, React.CSSProperties> = {
 
 const SIZE_STYLES: Record<ButtonSize, React.CSSProperties> = {
   sm: { padding: '6px 12px',  fontSize: 12, fontWeight: 600, border: 0, borderRadius: 8  },
-  lg: { padding: '13px',      fontSize: 14, fontWeight: 600, border: 0, borderRadius: 12 },
+  // ← [피그마 반영] lg: height 56 / padding '16px 0' / radius 16 / 14px SemiBold (RoomModal 기준)
+  lg: { padding: '16px 0',    fontSize: 14, fontWeight: 600, border: 0, borderRadius: 16, height: 56 },
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
