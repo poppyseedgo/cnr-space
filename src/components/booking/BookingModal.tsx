@@ -2,18 +2,6 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
- *  - [2026-04-22 HOTFIX] 반복예약 기능 임시 비활성화 (Phase 1 긴급 차단)
- *      · 증상: 반복예약이 "시작일~1달" 안내와 달리 DB에 12월 말까지 생성됨
- *              → 일반 사용자 정책 위반(30일 제한)
- *              → 오늘 하루 동안 288건 오염 데이터 누적 → SQL DELETE로 정리 완료
- *      · 조치 (버튼 근본 수정 전 임시 차단):
- *        1) 모바일/데스크톱 모두 "매일"/"매주" 옵션 disabled + opacity 0.5 처리
- *        2) 상단에 "반복 예약은 현재 점검 중입니다" 경고 배너 표시
- *        3) handleSubmit onClick 핸들러에서 recur를 강제로 "NEVER"로 세팅
- *           (DevTools 조작 등 우회 시도 대응)
- *      · 복구: 반복예약 생성 로직(allDates 계산 + maxDate 적용)을 근본 수정 후 해제
- *      · 참고: 이 수정은 UI 차단만 담당. DB 저장 로직(onSubmit)의 버그는 별도 세션에서 수정.
- *
  *  - [2026-04-19 P1] 과거 날짜 방어 로직 추가 (App.tsx 전역 보정 제거에 따른 이동)
  *      · 배경: App.tsx 10초 tick에서 selectedDate를 강제로 today로 갱신하던 로직이
  *              캘린더 과거 날짜 탐색을 막아버리는 버그를 일으켜 제거됨.
@@ -24,7 +12,7 @@
  *              · 달력 초기 월/연도도 보정된 날짜 기준으로 계산
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { AlertCircle, AlertTriangle, Ban, Calendar, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, Ban, Calendar, Check, CheckCircle2, ChevronDown, ChevronUp, Clock } from 'lucide-react'
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
@@ -38,6 +26,7 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, B
 import { UserAvatar } from '../common/UserAvatar'
 import { AttendeeChip } from '../common/AttendeeChip'
 import { Button } from '../common/Button' 
+import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22] 모달 X 버튼 공통화
 
 export function BookingModal({prefill, date:initDate, editBooking=null, onClose, onSubmit, onUpdate, bookings, isAdmin=false, currentUser="홍길동", currentUserEmail="", rooms:roomsProp=[], users:usersProp=[]}) {
   // ── 모든 hooks를 최상단에 선언 ──────────────────────────────────────────────
@@ -731,9 +720,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
         ) : (
           <div style={{fontSize:18,fontWeight:600,color:"#111"}}>{editBooking ? "예약 변경" : "새 회의실 예약"}</div>
         )}
-        <button className="btn" onClick={onClose}
-          style={{background:"none",color:"#94A3B8",fontSize:22,marginLeft:12,flexShrink:0,
-            padding:"4px",lineHeight:1,display:"flex",alignItems:"center"}}><X size={10} strokeWidth={1.8}/></button>
+        {/* ← [피그마 2026-04-22] 헤더 X → ModalCloseButton 공통 컴포넌트 */}
+        <ModalCloseButton onClick={onClose} style={{marginLeft:12}} />
       </div>
 
       {/* ════ 모바일: 2-Step Wizard ════ */}
@@ -823,41 +811,25 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               {/* 참석자 */}
               {AttendeeSection()}
               {/* 반복 예약 */}
-              {/* ← [2026-04-22 HOTFIX] 반복예약 기능 임시 비활성화
-                   이유: 한 달치만 생성되어야 하는데 DB에 12월까지 생성되는 심각한 버그 발견
-                   조치: NEVER 외 옵션 disabled 처리 + 점검 중 배너 표시
-                   복구: 반복예약 로직 근본 수정 후 해제 */}
               {!editBooking && <div>
                 <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:6,letterSpacing:"0.4px"}}>반복 예약</label>
-                {/* ← [2026-04-22 HOTFIX] 점검 중 안내 배너 */}
-                <div style={{padding:"8px 12px",background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:8,fontSize:11,color:"#92400E",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
-                  <AlertTriangle size={12} strokeWidth={1.8} style={{flexShrink:0}}/>
-                  <span>반복 예약은 오남용으로 사용을 일시중지합니다. 정책확정 전까지, 단일 예약만 가능합니다.</span>
-                </div>
                 <div style={{display:"flex",flexDirection:"column",gap:6}}>
                   {[
                     {val:"NEVER",      label:"반복 안함",      sub:"단일 예약"},
                     {val:"EVERY_DAY",  label:"매일",           sub:"시작일부터 매일"},
                     {val:"EVERY_WEEK", label:"매주",           sub:`매주 ${DAY_NAMES[dateToObj(bookingDate).getDay()]}요일`},
-                  ].map(o=>{
-                    // ← [2026-04-22 HOTFIX] NEVER 외 disabled
-                    const isDisabled = o.val !== "NEVER";
-                    return (
-                    <button key={o.val} onClick={()=>{ if(!isDisabled) setRecur(o.val); }}
-                      disabled={isDisabled}
+                  ].map(o=>(
+                    <button key={o.val} onClick={()=>setRecur(o.val)}
                       style={{display:"flex",alignItems:"center",justifyContent:"space-between",
                         padding:"11px 14px",borderRadius:10,border:`1.5px solid ${recur===o.val?"#111":"#E2E8F0"}`,
-                        background:recur===o.val?"#111":(isDisabled?"#F1F5F9":"#F8FAFC"),
-                        cursor:isDisabled?"not-allowed":"pointer",textAlign:"left",transition:"all 0.13s",
-                        opacity:isDisabled?0.5:1}}>
+                        background:recur===o.val?"#111":"#F8FAFC",cursor:"pointer",textAlign:"left",transition:"all 0.13s"}}>
                       <div>
                         <div style={{fontSize:13,fontWeight:600,color:recur===o.val?"#fff":"#374151"}}>{o.label}</div>
                         <div style={{fontSize:11,color:recur===o.val?"rgba(255,255,255,0.55)":"#94A3B8",marginTop:1}}>{o.sub}</div>
                       </div>
                       {recur===o.val && <CheckCircle2 size={14} strokeWidth={1.8} color="#fff"/>}
                     </button>
-                    );
-                  })}
+                  ))}
                 </div>
                 {recur!=="NEVER" && (
                   <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6}}>
@@ -964,7 +936,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 if(!canSubmit)return;
                 submitTimerRef.current = setTimeout(()=>setIsSubmitting(true), 250);
                 try {
-                  editBooking ? await onUpdate({...form},bookingDate) : await onSubmit({...form,recur:"NEVER"},bookingDate) /* ← [2026-04-22 HOTFIX] 반복예약 점검 중 — 강제 NEVER */;
+                  editBooking ? await onUpdate({...form},bookingDate) : await onSubmit({...form,recur},bookingDate);
                 } finally {
                   if(submitTimerRef.current) clearTimeout(submitTimerRef.current);
                   setIsSubmitting(false);
@@ -1183,36 +1155,24 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 onBlur={e=>e.target.style.borderColor="#E2E8F0"}/>
             </div>
             {/* 반복 예약 */}
-            {/* ← [2026-04-22 HOTFIX] 반복예약 기능 임시 비활성화 (모바일과 동일) */}
             {!editBooking && <div>
               <label style={{fontSize:13,fontWeight:600,color:"#111",display:"block",marginBottom:8}}>반복 예약</label>
-              {/* ← [2026-04-22 HOTFIX] 점검 중 안내 배너 */}
-              <div style={{padding:"8px 12px",background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:8,fontSize:12,color:"#92400E",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
-                <AlertTriangle size={14} strokeWidth={1.8} style={{flexShrink:0}}/>
-                <span>반복 예약은 오남용으로 사용을 일시중지합니다. 정책확정 전까지, 단일 예약만 가능합니다.</span>
-              </div>
               <div style={{display:"flex",gap:8}}>
                 {[
                   {val:"NEVER",      label:"반복 안함", sub:"단일"},
                   {val:"EVERY_DAY",  label:"매일",      sub:"시작일~1달"},
                   {val:"EVERY_WEEK", label:"매주",      sub:`매주 ${DAY_NAMES[dateToObj(bookingDate).getDay()]}요일`},
-                ].map(o=>{
-                  // ← [2026-04-22 HOTFIX] NEVER 외 disabled
-                  const isDisabled = o.val !== "NEVER";
-                  return (
-                  <button key={o.val} onClick={()=>{ if(!isDisabled) setRecur(o.val); }}
-                    disabled={isDisabled}
+                ].map(o=>(
+                  <button key={o.val} onClick={()=>setRecur(o.val)}
                     style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,
                       padding:"12px 8px",borderRadius:10,
                       border:`1.5px solid ${recur===o.val?"#111":"#E2E8F0"}`,
-                      background:recur===o.val?"#111":(isDisabled?"#F1F5F9":"#F8FAFC"),
-                      cursor:isDisabled?"not-allowed":"pointer",transition:"all 0.13s",
-                      opacity:isDisabled?0.5:1}}>
+                      background:recur===o.val?"#111":"#F8FAFC",
+                      cursor:"pointer",transition:"all 0.13s"}}>
                     <span style={{fontSize:13,fontWeight:600,color:recur===o.val?"#fff":"#374151"}}>{o.label}</span>
                     <span style={{fontSize:10,color:recur===o.val?"rgba(255,255,255,0.5)":"#94A3B8",textAlign:"center"}}>{o.sub}</span>
                   </button>
-                  );
-                })}
+                ))}
               </div>
               {recur!=="NEVER" && (
                 <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6}}>
@@ -1272,7 +1232,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 if(!canSubmit)return;
                 submitTimerRef.current = setTimeout(()=>setIsSubmitting(true), 250);
                 try {
-                  editBooking ? await onUpdate({...form},bookingDate) : await onSubmit({...form,recur:"NEVER"},bookingDate) /* ← [2026-04-22 HOTFIX] 반복예약 점검 중 — 강제 NEVER */;
+                  editBooking ? await onUpdate({...form},bookingDate) : await onSubmit({...form,recur},bookingDate);
                 } finally {
                   if(submitTimerRef.current) clearTimeout(submitTimerRef.current);
                   setIsSubmitting(false);

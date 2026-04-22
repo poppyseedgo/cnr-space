@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { X, AlertTriangle } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { fmtTSDateFull, fmtTSRangeFull } from '../../utils/time'
 import type { Booking, Room } from '../../types'
 import { Button } from '../common/Button'
+import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22] 모달 X 버튼 공통화
 
 /**
  * ConfirmCancelModal — 예약 취소 확인 다이얼로그
@@ -102,20 +103,8 @@ export function ConfirmCancelModal({ booking: b, room: r, onConfirm, onClose }: 
               정말 취소하시겠습니까?
             </div>
           </div>
-          <button
-            onClick={onClose}
-            disabled={loading}
-            style={{
-              width: 28, height: 28, borderRadius: '50%', background: '#F1F5F9',
-              color: '#64748B', flexShrink: 0, marginLeft: 8,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.4 : 1,
-              border: 'none',
-            }}
-          >
-            <X size={13} strokeWidth={1.8} />
-          </button>
+          {/* ← [피그마 2026-04-22] ModalCloseButton 공통화 (loading 중이면 disabled) */}
+          <ModalCloseButton onClick={onClose} disabled={loading} style={{marginLeft:8}} />
         </div>
 
         {/* 예약 요약 카드 */}

@@ -1,18 +1,45 @@
 import { useBreakpoint } from '../../hooks/useBreakpoint'
-import { AlertTriangle, Building2, CheckCircle2, Clock, FileText, Monitor, ShieldCheck, ShieldX, User, Users, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock, ShieldCheck, ShieldX } from 'lucide-react'
 import { useState } from 'react'
-import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
-  fmtTSRange, fmtTimeFull, fmtTSFull, fmtTSRangeFull, fmtDateFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
-  fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
-  DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../../utils/time'
+import { todayStr, nowMinutes, tsDate, tsMin, fmtTSFull, fmtDateFull, CHECKIN_WINDOW_MIN } from '../../utils/time'
 import { getFloor } from '../../data/floors'
-import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 
 import { AttendeeChip } from '../common/AttendeeChip'
 import { UserChip } from '../common/UserChip'
 import { BookingStatusBadge } from '../common/BookingStatusBadge'
 import { MetaBadge } from '../common/MetaBadge'
-import { Button } from '../common/Button' 
+import { Button } from '../common/Button'
+import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22] 모달 X 버튼 공통화
+
+/**
+ * BookingDetailModal (export name: DetailModal)
+ *
+ * ✅ 변경 이력
+ *  - [2026-04-22 피그마 UI 재구성] Figma node 180:534 절대 기준 적용 (로직 무수정)
+ *    · 헤더: 사각 상태칩(chip--square, radius 8) + 제목 21px SemiBold
+ *    · 정보 리스트: 카드형(#F8FAFC) → 0.5px #F1F5F9 구분선형
+ *        회의실(room_name만) / 위치(floor) / 날짜 / 시간(+소요시간 칩) / 메모(있을 때만)
+ *        / 예약자(아바타+이름+부서) / 참석자(2-grid 아바타+이름)
+ *    · 에메랄드룸 전용 알림박스(bg #E6FFB0, rounded 12, padding 8·12, min-h 62) Hero 하단 배치
+ *    · 모달 radius 16→24, Footer padding 8·gap 16·버튼 height 56·radius 16 (Button lg 공통 반영분 활용)
+ *    · 공통 컴포넌트 수정: chip-mine 피그마화(0.5px 검정 테두리),
+ *      chip--square modifier 신설, UserAvatar 기본값(#000/#E7E7E7/fw 500),
+ *      UserChip md(24/gap 7, dept prop 지원), AttendeeChip 평문화(조회 모드)
+ *    · 로직 완전 보존: 버튼 분기 전체(isAdmin/isOwner/showRejectInput/adminCanApprove 등)
+ *      /메모 표시 조건/props 시그니처 전부 원본 그대로
+ */
+
+// ── 시간 소요 포맷터 (피그마 180:534 '1시간 15분' 칩) ─────────────────────────
+// 순수 표시 유틸 — 기능 로직 아님. utils에 의존하지 않도록 파일 로컬 함수로 정의.
+function fmtDuration(startISO: string, endISO: string): string {
+  const diffMin = tsMin(endISO) - tsMin(startISO)
+  if (diffMin <= 0) return ''
+  const h = Math.floor(diffMin / 60)
+  const m = diffMin % 60
+  if (h > 0 && m > 0) return `${h}시간 ${m}분`
+  if (h > 0)          return `${h}시간`
+  return `${m}분`
+}
 
 export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser, rooms:rp=[], users:up=[], isAdmin=false, onApprove=null, onReject=null, onForceCancel=null}: any) {
   const { isMobile } = useBreakpoint();
@@ -39,7 +66,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
   return(
     <div className="anm" style={{
       background:"#fff",
-      borderRadius: isMobile ? "20px 20px 0 0" : 16,
+      borderRadius: isMobile ? "20px 20px 0 0" : 24, // ← [피그마] 16 → 24
       width:"100%", maxWidth: isMobile ? "100%" : 460,
       maxHeight: isMobile ? "88vh" : "90vh",
       boxShadow:"0 20px 60px rgba(0,0,0,0.15)",
@@ -48,119 +75,147 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
       position:"relative",
     }}>
       {isMobile && <div style={{width:36,height:4,background:"#E2E8F0",borderRadius:2,position:"absolute",top:8,left:"50%",transform:"translateX(-50%)",zIndex:1}}/>}
-      <div style={{padding: isMobile ? "20px 20px 16px" : "20px 24px 16px", overflowY:"auto", flex:1}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
-          <div style={{flex:1,minWidth:0,marginRight:12}}>
-            <div style={{marginBottom:8}}>
-              <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} currentUser={currentUser} />
-            </div>
-            <div style={{fontSize: isMobile ? 17 : 20, fontWeight:600, color:"#111111", wordBreak:"break-word"}}>{b.title}</div>
-            {/* ← [P2 v7] 반복/참석자 인라인 하드코딩 제거 → MetaBadge 공통 컴포넌트 사용
-                 · 이전: 🔁/👤 이모지 + 하드코딩 색상 (HomeView/BookingListTable와 불일치)
-                 · 변경: MetaBadge type='recurring'/'guest' → tokens.css 색상 토큰 자동 적용 */}
+
+      {/* ── Header [피그마] padding 16/20, gap 8(배지↔제목), border-bottom 제거 ── */}
+      <div style={{padding: isMobile ? "20px 20px 14px" : "16px 20px", flexShrink:0}}>
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12}}>
+          <div style={{flex:1, minWidth:0, display:"flex", flexDirection:"column", gap:8 /* ← [피그마] 배지↔제목 gap 8 */}}>
+            {/* ← [피그마] 사각 상태칩: shape='square' 로 BookingStatusBadge 전체에 chip--square 적용 */}
+            <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} currentUser={currentUser} shape="square" />
+            {/* ← [피그마] 제목 21px SemiBold #111 */}
+            <div style={{fontSize: isMobile ? 18 : 21, fontWeight:600, color:"#111", lineHeight:1.5, wordBreak:"break-word"}}>{b.title}</div>
+            {/* ← [P2 v7] 반복/참석자 메타 뱃지 — 피그마엔 없지만 기능(정보성) 유지. 스크린샷에 노출 안 되더라도 로직 보존 */}
             {b.recurGroupId && (
-              <div style={{marginTop:6}}>
-                <MetaBadge type="recurring" size="sm" />
-              </div>
+              <div><MetaBadge type="recurring" size="sm" /></div>
             )}
             {b.user !== currentUser && b.attendees?.some((a: any) => a.name === currentUser) && (
-              <div style={{marginTop:6}}>
-                <MetaBadge type="guest" size="sm" />
-              </div>
+              <div><MetaBadge type="guest" size="sm" /></div>
             )}
           </div>
-          <button className="btn" onClick={onClose}
-            style={{width:32,height:32,borderRadius:"50%",background:"#F1F5F9",
-              color:"#64748B",flexShrink:0,
-              display:"flex",alignItems:"center",justifyContent:"center"}}><X size={14} strokeWidth={1.8}/></button>
+          {/* ← [피그마 2026-04-22] Close 공통 컴포넌트로 교체 */}
+          <ModalCloseButton onClick={onClose} />
         </div>
-        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
-          {[
-            [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Building2 size={11} strokeWidth={1.8}/>회의실</span>, <span style={{color:r?.color,fontWeight:600}}>{r?.room_name ?? '-'}</span>, r ? `${r.capacity}인` : ''],
-            [<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Clock size={11} strokeWidth={1.8}/>시간</span>,
-              b.earlyEnded && b.originalEndAt
-                ? <span>
-                    <span style={{color:"#94A3B8",textDecoration:"line-through",fontSize:12}}>
-                      {fmtTSFull(b.start_at)} – {fmtTSFull(b.originalEndAt!)}
-                    </span>
-                    <br/>
-                    <span style={{fontWeight:600}}>{fmtTSFull(b.start_at)} – {fmtTSFull(b.end_at)}</span>
-                    <span style={{fontSize:11,color:"#7C3AED",marginLeft:6}}>반납</span>
-                  </span>
-                : `${fmtTSFull(b.start_at)} – ${fmtTSFull(b.end_at)}`,
-              fmtTSDateFull(b.start_at)],
-            features.length>0&&[<span style={{display:"inline-flex",alignItems:"center",gap:4}}><Monitor size={11} strokeWidth={1.8}/>설비</span>, features.map(f=>f.feature_name).join(", "), null],
-            b.memo&&[<span style={{display:"inline-flex",alignItems:"center",gap:4}}><FileText size={11} strokeWidth={1.8}/>메모</span>, b.memo, null],
-          ].filter(Boolean).map(([label,main,sub],i)=>(
-            <div key={i} style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
-              <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0}}>{label}</div>
-              <div style={{minWidth:0}}>
-                <div style={{fontSize:13,color:"#111111",fontWeight:600,wordBreak:"break-word"}}>{main}</div>
-                {sub&&<div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>{sub}</div>}
-              </div>
-            </div>
-          ))}
+      </div>
 
-          {/* 예약자 */}
+      {/* ── Body (Hero) [피그마] padding 20, gap 16 ── */}
+      <div style={{padding: isMobile ? "0 20px 16px" : "0 20px 16px", overflowY:"auto", flex:1,
+        display:"flex", flexDirection:"column", gap:16}}>
+
+        {/* ── 정보 리스트: 0.5px #F1F5F9 구분선형 (피그마) ── */}
+        <div style={{display:"flex", flexDirection:"column"}}>
+          {/* 회의실 — room_name만 (capacity 제거) */}
+          <InfoRow label="회의실" value={r?.room_name ?? '-'} />
+          {/* 위치 — floor */}
+          <InfoRow label="위치" value={floor?.floor_name ?? '-'} />
+          {/* 날짜 */}
+          <InfoRow label="날짜" value={fmtDateFull(b.start_at)} />
+          {/* 시간 + 소요시간 칩 */}
+          <InfoRow
+            label="시간"
+            value={
+              b.earlyEnded && b.originalEndAt ? (
+                <span style={{display:"inline-flex", alignItems:"center", gap:6, flexWrap:"wrap"}}>
+                  <span style={{color:"#94A3B8", textDecoration:"line-through"}}>
+                    {fmtTSFull(b.start_at)} – {fmtTSFull(b.originalEndAt)}
+                  </span>
+                  <span>{fmtTSFull(b.start_at)} – {fmtTSFull(b.end_at)}</span>
+                  <span className="chip chip--xs" style={{border:"0.5px solid #7C3AED", color:"#7C3AED", background:"transparent", fontWeight:500}}>조기반납</span>
+                </span>
+              ) : (
+                <span style={{display:"inline-flex", alignItems:"center", gap:6, flexWrap:"wrap"}}>
+                  <span>{fmtTSFull(b.start_at)} – {fmtTSFull(b.end_at)}</span>
+                  {/* ← [피그마 191:375] 소요시간 칩: border 0.5px #AFAFAF, text 9px Medium #AFAFAF, radius 4 */}
+                  <span className="chip chip--xs" style={{border:"0.5px solid #AFAFAF", color:"#AFAFAF", background:"transparent", fontWeight:500}}>
+                    {fmtDuration(b.start_at, b.end_at)}
+                  </span>
+                </span>
+              )
+            }
+          />
+          {/* 메모 — 있을 때만 (피그마 스크린샷 지시) */}
+          {b.memo && (
+            <InfoRow label="메모" value={b.memo} alignTop />
+          )}
+          {/* 예약자 — 아바타+이름+부서 (UserChip dept prop) */}
           {(()=>{
-            const owner = (up as any[]).find(u => u.user_id === b.user_id)
+            const owner = (up as any[]).find((u:any) => u.user_id === b.user_id)
             return (
-              <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
-                <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0,display:"flex",alignItems:"center",gap:4}}>
-                  <User size={11} strokeWidth={1.8}/>예약자
-                </div>
-                <div style={{display:"flex",alignItems:"center"}}>
+              <InfoRow
+                label="예약자"
+                value={
                   <UserChip
                     name={b.user}
                     avatarUrl={owner?.avatar_url ?? null}
                     variant="md"
                     userInfo={owner}
+                    dept={owner?.dept ?? b.dept}
                   />
-                </div>
-              </div>
+                }
+              />
             )
           })()}
-
-          {/* 참석자 — email로 users에서 avatar_url·dept 역조회 (패턴 B) */}
-          {(b as any).reject_reason && (
-            <div style={{background:"#FEF2F2",border:"1px solid #FCA5A5",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
-              <div style={{fontSize:11,color:"#DC2626",minWidth:60,fontWeight:600,flexShrink:0,display:"flex",alignItems:"center",gap:4}}>
-                거절 사유
-              </div>
-              <div style={{fontSize:13,color:"#DC2626",wordBreak:"break-word"}}>{(b as any).reject_reason}</div>
-            </div>
-          )}
-
+          {/* 참석자 — 2-grid (피그마 repeat(2, fit-content), gap 10) */}
           {b.attendees && b.attendees.length > 0 && (
-            <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",display:"flex",gap:10}}>
-              <div style={{fontSize:11,color:"#94A3B8",minWidth:60,fontWeight:600,flexShrink:0,paddingTop:2,display:"flex",alignItems:"center",gap:4}}>
-                <Users size={11} strokeWidth={1.8}/>참석자
-              </div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {b.attendees.map((a, idx) => {
-                  const u = (up as any[]).find(u => u.email === a.email)
-                  return (
-                    <AttendeeChip
-                      key={a.email || idx}
-                      name={a.name || a.email}
-                      avatarUrl={u?.avatar_url ?? null}
-                      dept={u?.dept}
-                      userInfo={u}
-                    />
-                  )
-                })}
-              </div>
-            </div>
+            <InfoRow
+              label="참석자"
+              alignTop
+              value={
+                <div style={{
+                  display:"grid",
+                  gridTemplateColumns:"repeat(2, minmax(0, 1fr))",
+                  columnGap:10, rowGap:10,
+                  flex:1,
+                }}>
+                  {b.attendees.map((a:any, idx:number) => {
+                    const u = (up as any[]).find((u:any) => u.email === a.email)
+                    return (
+                      <AttendeeChip
+                        key={a.email || idx}
+                        name={a.name || a.email}
+                        avatarUrl={u?.avatar_url ?? null}
+                        dept={u?.dept}
+                        userInfo={u}
+                      />
+                    )
+                  })}
+                </div>
+              }
+            />
+          )}
+          {/* 거절 사유 — 있을 때만 (기능 유지) */}
+          {(b as any).reject_reason && (
+            <InfoRow
+              label="거절 사유"
+              alignTop
+              value={<span style={{color:"#DC2626", wordBreak:"break-word"}}>{(b as any).reject_reason}</span>}
+            />
           )}
         </div>
-        {nci&&<div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400E",display:"flex",alignItems:"flex-start",gap:6}}>
-          <AlertTriangle size={14} strokeWidth={1.8} style={{flexShrink:0,marginTop:1}}/><span>회의 시작 후 <strong>{CHECKIN_WINDOW_MIN}분 이내</strong> 체크인 필요</span>
-        </div>}
+
+        {/* ── 에메랄드룸 알림박스 [피그마 189:346] bg #E6FFB0, rounded 12, padding 8·12, min-h 62 ── */}
+        {r?.is_admin_only && (
+          <div style={{background:"#E6FFB0", borderRadius:12, padding:"8px 12px", minHeight:62,
+            display:"flex", flexDirection:"column", alignItems:"flex-start", justifyContent:"flex-start"}}>
+            <p style={{fontSize:12, fontWeight:500, color:"#000", lineHeight:1.5, margin:0}}>
+              관리자 승인 후 예약이 확정됩니다
+            </p>
+          </div>
+        )}
+
+        {/* ── 미체크인 경고 (기능 유지) ── */}
+        {nci && (
+          <div style={{background:"#FFF7ED", border:"1px solid #FED7AA", borderRadius:10, padding:"10px 14px",
+            fontSize:12, color:"#92400E", display:"flex", alignItems:"flex-start", gap:6}}>
+            <AlertTriangle size={14} strokeWidth={1.8} style={{flexShrink:0, marginTop:1}}/>
+            <span>회의 시작 후 <strong>{CHECKIN_WINDOW_MIN}분 이내</strong> 체크인 필요</span>
+          </div>
+        )}
       </div>
       {/* 버튼 영역 - 항상 하단 고정 */}
       {(()=>{
         const btnWrap = (children: React.ReactNode) => (
-          <div style={{padding: isMobile?"12px 20px 24px":"12px 24px 20px", display:"flex", gap:8, flexShrink:0, borderTop:"1px solid #F1F5F9"}}>
+          // ← [피그마] padding 8 / gap 16 / border-top 제거 (Button lg 공통에서 height 56 radius 16 자동 적용)
+          <div style={{padding: isMobile?"8px 20px 24px":8, display:"flex", gap:16, flexShrink:0}}>
             {children}
           </div>
         )
@@ -193,8 +248,8 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         if (isAdmin && !isOwner) {
           // 거절 사유 입력 flow
           if (showRejectInput) return (
-            <div style={{flexShrink:0, borderTop:"1px solid #F1F5F9"}}>
-              <div style={{padding: isMobile?"12px 20px 0":"12px 24px 0"}}>
+            <div style={{flexShrink:0}}>
+              <div style={{padding: isMobile?"8px 20px 0":"8px 20px 0"}}>
                 <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"12px 14px",marginBottom:8}}>
                   <div style={{fontSize:11,color:"#92400E",marginBottom:8,fontWeight:600}}>⚠️ 거절 시 예약이 즉시 취소되며 신청자에게 알림이 발송됩니다</div>
                   <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:6}}>거절 사유 (신청자에게 전달됩니다)</label>
@@ -251,6 +306,46 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
       })()}
     </div>
   );
+}
+
+// ─── InfoRow 헬퍼 ──────────────────────────────────────────────────────────────
+// 피그마 180:534 정보 리스트 1행 (0.5px #F1F5F9 구분선, padding 10 0)
+//   · 라벨: 16px SemiBold #96A0B3, width 100px 고정 (모바일은 auto)
+//   · 값:   16px Regular #111 (line-height 1.5)
+//   · alignTop: true → align-items flex-start (참석자/메모 처럼 여러 줄)
+interface InfoRowProps {
+  label:     string
+  value:     React.ReactNode
+  alignTop?: boolean
+}
+function InfoRow({ label, value, alignTop = false }: InfoRowProps) {
+  return (
+    <div style={{
+      padding:      "10px 0",
+      borderBottom: "0.5px solid #F1F5F9",
+      display:      "flex",
+      alignItems:   alignTop ? "flex-start" : "center",
+      width:        "100%",
+    }}>
+      <div style={{
+        fontSize:   16,
+        fontWeight: 600,
+        color:      "#96A0B3",
+        width:      100,
+        flexShrink: 0,
+        lineHeight: 1.5,
+      }}>{label}</div>
+      <div style={{
+        fontSize:   16,
+        fontWeight: 400,
+        color:      "#111",
+        lineHeight: 1.5,
+        flex:       1,
+        minWidth:   0,
+        wordBreak:  "break-word",
+      }}>{value}</div>
+    </div>
+  )
 }
 
 // ─── Booking Done Modal ────────────────────────────────────────────────────────

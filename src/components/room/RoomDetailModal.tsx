@@ -5,6 +5,7 @@ import { todayStr, nowMinutes, tsDate, tsMin, fmtTimeFull, fmtTSFull, getRoomSta
 import { getFloor } from '../../data/floors'
 import { Button } from '../common/Button'
 import { RoomStatusBadge } from '../common/RoomStatusBadge'  // ← [신규] 공통 상태 뱃지 사용
+import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22] 모달 X 버튼 공통화
 
 /**
  * RoomDetailModal
@@ -87,14 +88,8 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
             {r.room_name_ko ?? ''}
           </div>
         </div>
-        {/* ← [피그마] Close 32×32, 투명 배경, 아이콘 20px (hover 시만 연회색) */}
-        <button className="btn" onClick={onClose}
-          onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background='#F1F5F9'}}
-          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background='transparent'}}
-          style={{width:32,height:32,borderRadius:"50%",background:"transparent",
-            color:"#111",flexShrink:0,border:"none",cursor:"pointer",
-            transition:"background .15s",
-            display:"flex",alignItems:"center",justifyContent:"center"}}><X size={20} strokeWidth={1.8}/></button>
+        {/* ← [피그마 2026-04-22] Close 공통 컴포넌트로 교체 (ModalCloseButton md = 32×32 / 아이콘 20) */}
+        <ModalCloseButton onClick={onClose} />
       </div>
 
       {/* ── 본문: 데스크톱 2컬럼 / 모바일 1컬럼 ── */}
