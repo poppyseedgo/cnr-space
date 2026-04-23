@@ -130,9 +130,17 @@ export function BookingStatusBadge({
   //     · cron이 처리한 경우 status='cancelled' + start_at 근방 (보통 now~start_at+몇초)
   //     · 프론트가 선점한 경우 status='pending' + now는 start_at 전후
   //     · 핵심: cancelled_by='system'이면서 노쇼 시점(start_at+10분)에 도달 안 한 경우
+  //  ← [2026-04-24 HOTFIX] isToday 가드 추가 (slotHelpers와 동일 원칙)
+  //    tsMin()은 당일 자정 기준 분, nowMinutes()는 "오늘"의 분.
+  //    두 값은 같은 날짜일 때만 의미 있는 비교.
+  //    isToday=false(과거/미래 날짜)에서 `now < sm + 10` 비교하면,
+  //    예: 어제 09:00(sm=540) 건을 오늘 01:40(now=100)에 조회 시
+  //        100 < 550 = true로 오판정되어 "기한초과"로 표시됨 (실제로는 노쇼)
+  //    해결: isToday일 때만 시간 비교, 아닐 때는 status만으로 판정.
   const isExpiredPending = isSystemCancel
-                           && (b.status === 'pending' || now < sm + 10)
+                           && (b.status === 'pending' || (isToday && now < sm + 10))
   // ③-2 노쇼: start_at + 10분 경과 + status='cancelled' (또는 confirmed 단계 건)
+  //     (또는 isToday=false인 과거 날짜의 status='confirmed' + system 취소 건)
   const isNoshow         = isSystemCancel && !isExpiredPending
 
   // ── 진행 상태 판별 ──────────────────────────────────────────────
