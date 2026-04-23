@@ -589,15 +589,19 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
           </div>
         )}
 
-        {/* 헤더: 시간축 */}
-        <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 9, background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+        {/* 헤더: 시간축
+            ← [2026-04-23 v9] 스타일 조정:
+            · 배경 #F8FAFC → #FFF
+            · 폰트 크기 11 → 12
+            · 폰트 두께 600 → 500 */}
+        <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 9, background: '#FFF', borderBottom: '1px solid #E2E8F0' }}>
           <div style={{ width: LW, minWidth: LW, flexShrink: 0, borderRight: '1px solid #E2E8F0',
-            padding: '10px 16px', fontSize: 11, fontWeight:600, color: '#94A3B8',
-            position: 'sticky', left: 0, zIndex: 9, background: '#F8FAFC' }}>회의실</div>
+            padding: '10px 16px', fontSize: 12, fontWeight: 500, color: '#94A3B8',
+            position: 'sticky', left: 0, zIndex: 9, background: '#FFF' }}>회의실</div>
           {HOURS.map(h => (
             <div key={h} style={{ width: CW, minWidth: CW, textAlign: 'center', padding: '10px 0',
-              fontSize: 11, fontWeight: 600, color: '#64748B',
-              borderRight: '1px solid #E2E8F0', flexShrink: 0, background: '#F8FAFC' }}>
+              fontSize: 12, fontWeight: 500, color: '#64748B',
+              borderRight: '1px solid #E2E8F0', flexShrink: 0, background: '#FFF' }}>
               {h < 12 ? `오전 ${h}` : h === 12 ? '정오' : `오후 ${h-12}`}시
             </div>
           ))}
