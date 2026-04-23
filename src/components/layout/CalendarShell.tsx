@@ -39,11 +39,60 @@ const IcoDpForward = () => (
 )
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─── [2026-04-23] 예약 가능 기간 정책 ────────────────────────────────────────
+// 일반 사용자: 오늘 ~ 오늘+30일 범위만 예약 가능
+// Admin: 30일 제한 없음, 단 '과거는 1분이라도 불가'
+// 과거 차단:
+//   · 어제까지는 모두 차단 (Admin 포함)
+//   · 오늘 날짜의 이미 지나간 시각도 차단 (Admin 포함)
+// BookingModal UI는 이미 막고 있으나, 캘린더 뷰에서 뚫려있는 문제 해결
+const BOOKING_LIMIT_DAYS = 30
+
+/** 날짜 문자열(YYYY-MM-DD)이 예약 가능 '날짜'인지 판정
+ *  · 과거 날짜는 항상 false (Admin도 과거는 불가)
+ *  · isAdmin=true면 오늘 이후는 무제한 (30일 제한 없음)
+ *  · 일반 사용자는 오늘 ~ 오늘+30일 범위만 true
+ *  용도: Monthly 뷰의 날짜 셀 판정
+ */
+function isDateBookable(ds: string, today: string, isAdmin: boolean): boolean {
+  if (ds < today) return false                  // 과거 날짜: 모두 차단 (Admin 포함)
+  if (isAdmin) return true                      // Admin: 오늘 이후 무제한
+  // 일반 사용자: 30일 이내만
+  const [ty, tm, td] = today.split('-').map(Number)
+  const [dy, dm, dd] = ds.split('-').map(Number)
+  const todayUTC = Date.UTC(ty, tm - 1, td)
+  const dsUTC    = Date.UTC(dy, dm - 1, dd)
+  const diffDays = Math.round((dsUTC - todayUTC) / (1000 * 60 * 60 * 24))
+  return diffDays <= BOOKING_LIMIT_DAYS
+}
+
+/** 특정 날짜의 특정 '시간 슬롯'이 예약 가능한지 판정
+ *  · isDateBookable 조건 + 오늘 날짜의 지나간 시각 추가 차단
+ *  · 슬롯 시작 시각이 현재보다 과거면 차단 (Admin 포함, 1분이라도 과거 불가)
+ *  용도: Daily/Weekly 뷰의 시간 슬롯 판정
+ *
+ *  @param ds       'YYYY-MM-DD'
+ *  @param hour     0~23 (슬롯 시작 시)
+ *  @param today    'YYYY-MM-DD' (todayStr())
+ *  @param nowMin   오늘 기준 분 단위 현재 시각 (nowMinutes())
+ *  @param isAdmin  관리자 여부
+ */
+function isSlotBookable(
+  ds: string, hour: number, today: string, nowMin: number, isAdmin: boolean
+): boolean {
+  // 1) 날짜 단위 판정 먼저
+  if (!isDateBookable(ds, today, isAdmin)) return false
+  // 2) 오늘 날짜의 슬롯이면 시간도 체크
+  //    슬롯 시작 시각(hour*60)이 현재 시각(nowMin) 이하면 과거 → 차단
+  if (ds === today && hour * 60 <= nowMin) return false
+  return true
+}
+
 // ─── CalendarShell ────────────────────────────────────────────────────────────
 export function CalendarShell({
   bookings, rooms: roomsProp = [], selectedDate, setSelectedDate,
   calView, setCalView, onBookingClick, onNewBooking, onCheckIn,
-  filterFloor, setFilterFloor, currentUser = '',
+  filterFloor, setFilterFloor, currentUser = '', isAdmin = false,
 }) {
   const { isMobile } = useBreakpoint()
   const VIEWS = [{ id: 'daily', label: '일' }, { id: 'weekly', label: '주' }, { id: 'monthly', label: '월' }]
@@ -329,15 +378,15 @@ export function CalendarShell({
         </div>
       </div>
 
-      {calView === 'monthly' && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d => { setSelectedDate(d); setCalView('daily') }} onBookingClick={onBookingClick} rooms={allRooms} currentUser={currentUser} />}
-      {calView === 'daily'   && <DailyView   bookings={dailyBks}  selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid, h) => onNewBooking(selectedDate, h, rid)} onCheckIn={onCheckIn} rooms={allRooms} currentUser={currentUser} />}
-      {calView === 'weekly'  && <WeeklyView  bookings={weekBks}   selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(d, h) => onNewBooking(d, h, undefined)} rooms={allRooms} currentUser={currentUser} />}
+      {calView === 'monthly' && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d => { setSelectedDate(d); setCalView('daily') }} onBookingClick={onBookingClick} rooms={allRooms} currentUser={currentUser} isAdmin={isAdmin} />}
+      {calView === 'daily'   && <DailyView   bookings={dailyBks}  selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid, h) => onNewBooking(selectedDate, h, rid)} onCheckIn={onCheckIn} rooms={allRooms} currentUser={currentUser} isAdmin={isAdmin} />}
+      {calView === 'weekly'  && <WeeklyView  bookings={weekBks}   selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(d, h) => onNewBooking(d, h, undefined)} rooms={allRooms} currentUser={currentUser} isAdmin={isAdmin} />}
     </div>
   )
 }
 
 // ─── Monthly View ─────────────────────────────────────────────────────────────
-export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick, rooms: mvRooms = [], currentUser = '' }) {
+export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick, rooms: mvRooms = [], currentUser = '', isAdmin = false }) {
   const d = dateToObj(selectedDate), year = d.getFullYear(), month = d.getMonth()
   const firstDay = new Date(year, month, 1).getDay()
   const dim = new Date(year, month + 1, 0).getDate()
@@ -375,12 +424,20 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
           })
           const isToday = ds === today, isSel = ds === selectedDate
           const dow = (firstDay + day - 1) % 7
+          // ← [2026-04-23] 예약 가능 기간 정책: 오늘 + 30일 (과거는 Admin도 차단)
+          const bookable = isDateBookable(ds, today, isAdmin)
+          const tooltipMsg = !bookable
+            ? (ds < today ? '과거 날짜는 예약할 수 없습니다' : '예약은 오늘부터 30일 이내만 가능합니다')
+            : ''
           return (
-            <div key={day} onClick={() => onDayClick(ds)}
+            <div key={day} onClick={() => { if (bookable) onDayClick(ds) }}
+              title={tooltipMsg}
               style={{
                 minHeight: 110, borderRight: '1px solid #F1F5F9', borderBottom: '1px solid #F1F5F9',
-                padding: '7px 6px', cursor: 'pointer', overflow: 'hidden',
-                background: isSel ? '#EEF2FF' : isToday ? '#F0FDF4' : '#fff', transition: 'background 0.12s',
+                padding: '7px 6px', cursor: bookable ? 'pointer' : 'not-allowed', overflow: 'hidden',
+                background: !bookable ? '#F8FAFC' : isSel ? '#EEF2FF' : isToday ? '#F0FDF4' : '#fff',
+                opacity: !bookable ? 0.5 : 1,
+                transition: 'background 0.12s',
               }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
                 <span style={{
@@ -419,11 +476,14 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
 }
 
 // ─── Daily View ───────────────────────────────────────────────────────────────
-export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, onCheckIn, rooms: dvRooms = [], currentUser = '' }) {
+export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, onCheckIn, rooms: dvRooms = [], currentUser = '', isAdmin = false }) {
   const isToday = selectedDate === todayStr(), now = nowMinutes()
   const CW = 160, RH = 80, LW = 224
   const rooms = (dvRooms as any[]).filter(r => r.is_active)
   const totalW = CW * HOURS.length
+  // ← [2026-04-23] 예약 가능 기간 정책: 시간 슬롯 단위 판정 (아래 map 내부에서)
+  //   오늘 날짜라도 지나간 시간은 차단 (Admin 포함, 1분이라도 과거 불가)
+  const todayStrVal = todayStr()
 
   const nowLeft = isToday ? ((now - 7*60) / 60) * CW : 0
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -536,16 +596,29 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
 
               {/* 시간 셀 */}
               <div style={{ flex: 1, position: 'relative', height: RH, display: 'flex', overflow: 'hidden' }}>
-                {HOURS.map(h => (
-                  <div key={h} onClick={() => onEmptyClick(room.room_id, h)}
-                    style={{ width: CW, minWidth: CW, flexShrink: 0, borderRight: '1px solid #F1F5F9', cursor: 'pointer', position: 'relative', transition: 'background 0.1s' }}
-                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(30,41,59,0.04)'}
-                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
-                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: '25%', borderLeft: '1px dashed #F8FAFC', pointerEvents: 'none' }} />
-                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', borderLeft: '1px dashed #F1F5F9', pointerEvents: 'none' }} />
-                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: '75%', borderLeft: '1px dashed #F8FAFC', pointerEvents: 'none' }} />
-                  </div>
-                ))}
+                {HOURS.map(h => {
+                  // ← [2026-04-23] 슬롯 단위 예약 가능성 판정
+                  //   · 과거 날짜 전체 차단 (Admin 포함)
+                  //   · 오늘 날짜라도 현재 시각 이전 슬롯 차단 (Admin 포함)
+                  //   · 30일 초과는 일반 사용자만 차단
+                  const slotBookable = isSlotBookable(selectedDate, h, todayStrVal, now, isAdmin)
+                  const tooltipMsg = !slotBookable
+                    ? (selectedDate < todayStrVal || (selectedDate === todayStrVal && h * 60 <= now)
+                        ? '과거 시간은 예약할 수 없습니다'
+                        : '예약은 오늘부터 30일 이내만 가능합니다')
+                    : ''
+                  return (
+                    <div key={h} onClick={() => { if (slotBookable) onEmptyClick(room.room_id, h) }}
+                      title={tooltipMsg}
+                      style={{ width: CW, minWidth: CW, flexShrink: 0, borderRight: '1px solid #F1F5F9', cursor: slotBookable ? 'pointer' : 'not-allowed', position: 'relative', transition: 'background 0.1s', opacity: slotBookable ? 1 : 0.4 }}
+                      onMouseEnter={e => { if (slotBookable) (e.currentTarget as HTMLElement).style.background = 'rgba(30,41,59,0.04)' }}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
+                      <div style={{ position: 'absolute', top: 0, bottom: 0, left: '25%', borderLeft: '1px dashed #F8FAFC', pointerEvents: 'none' }} />
+                      <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', borderLeft: '1px dashed #F1F5F9', pointerEvents: 'none' }} />
+                      <div style={{ position: 'absolute', top: 0, bottom: 0, left: '75%', borderLeft: '1px dashed #F8FAFC', pointerEvents: 'none' }} />
+                    </div>
+                  )
+                })}
 
                 {/* 현재 시간선 */}
                 {isToday && (() => {
@@ -624,7 +697,7 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
 }
 
 // ─── Weekly View ──────────────────────────────────────────────────────────────
-export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick, rooms = [], currentUser = '' }) {
+export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick, rooms = [], currentUser = '', isAdmin = false }) {
   const today     = todayStr()
   const now       = nowMinutes()
   const HOUR_H    = 140   // 1시간 행 높이 (Figma 스펙)
@@ -775,18 +848,30 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
                   const cellBks  = getCellBks(ds, h)
                   const visible  = cellBks.slice(0, 5)
                   const overflow = cellBks.length - 5
+                  // ← [2026-04-23] 슬롯 단위 예약 가능성 판정
+                  //   · 과거 날짜 전체 차단 (Admin 포함)
+                  //   · 오늘 날짜라도 현재 시각 이전 슬롯 차단 (Admin 포함)
+                  //   · 30일 초과는 일반 사용자만 차단
+                  const bookable = isSlotBookable(ds, h, today, now, isAdmin)
+                  const tooltipMsg = !bookable
+                    ? (ds < today || (ds === today && h * 60 <= now)
+                        ? '과거 시간은 예약할 수 없습니다'
+                        : '예약은 오늘부터 30일 이내만 가능합니다')
+                    : ''
                   return (
                     <div key={ds}
-                      onClick={() => onEmptyClick(ds, h)}
+                      onClick={() => { if (bookable) onEmptyClick(ds, h) }}
+                      title={tooltipMsg}
                       style={{
                         flex: 1, minWidth: 0, padding: '4px 5px',
                         borderRight: i < days.length - 1 ? '1px solid #F1F5F9' : 'none',
-                        cursor: 'pointer',
-                        background: isToday2 ? '#FAFEFF' : 'transparent',
+                        cursor: bookable ? 'pointer' : 'not-allowed',
+                        background: !bookable ? '#F8FAFC' : isToday2 ? '#FAFEFF' : 'transparent',
+                        opacity: !bookable ? 0.5 : 1,
                         minHeight: HOUR_H, transition: 'background 0.1s',
                       }}
-                      onMouseEnter={e => { if (visible.length === 0) (e.currentTarget as HTMLElement).style.background = isToday2 ? '#F0FEFF' : '#F8FAFC' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isToday2 ? '#FAFEFF' : 'transparent' }}>
+                      onMouseEnter={e => { if (bookable && visible.length === 0) (e.currentTarget as HTMLElement).style.background = isToday2 ? '#F0FEFF' : '#F8FAFC' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = !bookable ? '#F8FAFC' : isToday2 ? '#FAFEFF' : 'transparent' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         {visible.map(b => (
                           <div key={b.id}
