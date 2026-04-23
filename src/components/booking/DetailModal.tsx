@@ -203,8 +203,16 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
           )}
         </div>
 
-        {/* ── 에메랄드룸 알림박스 [피그마 189:346] bg #E6FFB0, rounded 12, padding 8·12, min-h 62 ── */}
-        {r?.is_admin_only && (
+        {/* ── 에메랄드룸 알림박스 [피그마 189:346] bg #E6FFB0, rounded 12, padding 8·12, min-h 62 ──
+            ← [2026-04-23] 노출 조건 타이트닝 (근본 원인 해결)
+            기존: r?.is_admin_only (에메랄드룸이면 승인 완료/취소/거절된 건에도 계속 노출됨)
+            변경: 에메랄드룸 AND status='pending' AND !autoCancelled
+                  · 승인완료(confirmed) → 숨김 ✅
+                  · 거절(rejected)      → 숨김 ✅
+                  · 관리자 취소(admin cancel) → 숨김 ✅
+                  · 기한초과 만료(pending+autoCancelled) → 숨김 ✅
+                  · 승인 대기 중인 pending만 노출 */}
+        {r?.is_admin_only && b.status === 'pending' && !b.autoCancelled && (
           <div style={{background:"#E6FFB0", borderRadius:12, padding:"8px 12px", minHeight:62,
             display:"flex", flexDirection:"column", alignItems:"flex-start", justifyContent:"flex-start"}}>
             <p style={{fontSize:12, fontWeight:500, color:"#000", lineHeight:1.5, margin:0}}>
@@ -225,8 +233,8 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
       {/* 버튼 영역 - 항상 하단 고정 */}
       {(()=>{
         const btnWrap = (children: React.ReactNode) => (
-          // ← [피그마] padding 8 / gap 16 / border-top 제거 (Button lg 공통에서 height 56 radius 16 자동 적용)
-          <div style={{padding: isMobile?"8px 20px 24px":8, display:"flex", gap:16, flexShrink:0}}>
+          // ← [2026-04-24] 버튼 간격 gap 16 → 8 (요청: 간격 축소)
+          <div style={{padding: isMobile?"8px 20px 24px":8, display:"flex", gap:8, flexShrink:0}}>
             {children}
           </div>
         )
