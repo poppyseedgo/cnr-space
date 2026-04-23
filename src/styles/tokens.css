@@ -116,10 +116,12 @@
 .chip-mine.chip--xs { background: #fff; color: #000; border: 0.5px solid #000; padding: 1px 4px; border-radius: 4px; }
 /* ← [2026-04-24] DetailModal 전용 내 예약 칩 오버라이드
       · .chip--square(padding 8 14 / radius 10) 위에 .chip-mine의 기본(padding 4 10 / pill radius 24)이
-        덮어쓰는 것을 무효화 — padding·radius 모두 토큰으로 재지정
+        덮어쓰는 것을 무효화 — padding·radius 모두 재지정
+      · padding: 7px 10px (2026-04-24 요청 반영)
+        · 상하 7: border 1px 포함해도 다른 칩(padding 8)과 외곽 높이 동일하게 맞추기 위함
       · border/bg/color는 .chip-mine 유지 (투명 bg + 1px #000 border + #111 text) */
 .chip-mine.chip--square {
-  padding:       var(--chip-square-padding);
+  padding:       7px 10px;
   border-radius: var(--chip-square-radius);
 }
 /* ← [2026-04-24] DetailModal 전용 승인완료 칩 오버라이드 (동일 사유) */
