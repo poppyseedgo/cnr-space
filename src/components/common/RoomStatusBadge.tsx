@@ -3,7 +3,7 @@ import { fmtTimeFull } from '../../utils/time'
 
 interface RoomStatusBadgeProps {
   status: RoomStatus
-  /** ← [신규] 관리자 전용(에메랄드) 룸이면 '승인 후 확정' 칩 추가 노출 */
+  /** ← [신규] 관리자 전용(에메랄드) 룸이면 'HR 승인 후 확정' 칩 추가 노출 */
   isAdminRoom?: boolean
 }
 
@@ -16,7 +16,7 @@ interface RoomStatusBadgeProps {
  * SOON      → N분 뒤 사용 + HH:MM 부터
  * BUSY      → ● 사용중  [체크인 대기 | 체크인 완료]  [N분 뒤 종료]
  *
- * isAdminRoom=true 일 때 위 상태 앞에 '승인 후 확정' 칩을 항상 노출 (에메랄드룸 표식)
+ * isAdminRoom=true 일 때 위 상태 앞에 'HR 승인 후 확정' 칩을 항상 노출 (에메랄드룸 표식)
  */
 export function RoomStatusBadge({ status, isAdminRoom = false }: RoomStatusBadgeProps) {
   const { type, minsUntil, minsLeft, checkedIn, checkinWaiting, nextStart } = status
@@ -67,7 +67,7 @@ export function RoomStatusBadge({ status, isAdminRoom = false }: RoomStatusBadge
 
       {/* ← [신규 피그마 195:1071] 에메랄드(관리자 전용) 룸 표식 — 항상 노출 */}
       {isAdminRoom && (
-        <span className="chip chip-approval-required">승인 후 확정</span>
+        <span className="chip chip-approval-required">HR 승인 후 확정</span>
       )}
 
     </div>
