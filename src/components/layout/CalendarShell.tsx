@@ -507,9 +507,10 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
               </div>
               {/* ← [2026-04-24] 예약 리스트: flex-1 + overflow-hidden
                    · 셀 높이에 들어갈 수 있는 만큼만 노출, 초과분은 +N개로 표시
-                   · 주간뷰와 동일한 CompactCard 스타일 사용 (isToday 기반 검정/회색 테마) */}
+                   · 주간뷰와 동일한 CompactCard 스타일 사용 (isToday 기반 검정/회색 테마)
+                   ← [2026-04-24 v2] 노출 카드 수 3 → 4 (6주 월에서도 거의 다 보이도록) */}
               <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden' }}>
-                {dbs.slice(0, 3).map(b => (
+                {dbs.slice(0, 4).map(b => (
                   <CalendarCompactCard
                     key={b.id}
                     booking={b}
@@ -517,7 +518,7 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
                     onClick={e => { e.stopPropagation(); onBookingClick(b) }}
                   />
                 ))}
-                {dbs.length > 3 && <div style={{ fontSize: 9, color: '#94A3B8', paddingLeft: 3, flexShrink: 0 }}>+{dbs.length-3}개</div>}
+                {dbs.length > 4 && <div style={{ fontSize: 9, color: '#94A3B8', paddingLeft: 3, flexShrink: 0 }}>+{dbs.length-4}개</div>}
               </div>
             </div>
           )
