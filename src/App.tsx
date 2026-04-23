@@ -760,8 +760,11 @@ function AppContent() {
   const cancelBooking = useCallback(async (id) => {
     // 취소 전 예약 정보 먼저 저장 (낙관적 업데이트 전에)
     const targetBooking = bookings.find(b => b.id === id);
+    // ← [2026-04-23 HOTFIX Phase 3] 실패 롤백용 원본 status 저장
+    const originalStatus = targetBooking?.status;
     // 낙관적 UI 업데이트
-    setBookings(prev => prev.map(b => b.id===id ? {...b, autoCancelled:true} : b));
+    // ← [2026-04-23 HOTFIX Phase 3] status:'cancelled' 추가 (api.ts cancelBooking과 동기화)
+    setBookings(prev => prev.map(b => b.id===id ? {...b, status: 'cancelled', autoCancelled:true, cancelledBy: 'user'} : b));
     setModal(null);
     try {
       await apiCancelBooking(id)
@@ -779,7 +782,8 @@ function AppContent() {
         });
       }
     } catch (err: any) {
-      setBookings(prev => prev.map(b => b.id===id ? {...b, autoCancelled:false} : b));
+      // ← [2026-04-23 HOTFIX Phase 3] status도 원본으로 복원 (낙관적 UI 수정 대응)
+      setBookings(prev => prev.map(b => b.id===id ? {...b, status: originalStatus, autoCancelled:false, cancelledBy: null} : b));
       showToast(err.message ?? "취소에 실패했습니다.", "error");
     }
   }, [bookings, showToast, sendNotification]);

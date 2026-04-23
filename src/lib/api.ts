@@ -262,8 +262,15 @@ export async function adminForceCancel(id: string): Promise<void> {
 }
 
 // ── 취소 ─────────────────────────────────────────────────────────────────────
+// ── 취소 ─────────────────────────────────────────────────────────────────────
+// ← [2026-04-23 HOTFIX Phase 3] status: 'cancelled' 추가
+//   증상: 사용자가 취소한 예약이 캘린더 뷰에 표시됨
+//   원인: status='confirmed' 유지된 채 auto_cancelled=true만 저장 → 활성 예약으로 오인
+//   해결: status='cancelled' 명시 저장으로 isShownInCalendar의 status 기반 필터가 정확히 작동
+//   주의: auto_cancelled=true는 유지 (isUserCancel 판정 플래그 그대로 사용, 뱃지 정상 표시)
+//   연관: Phase 2 adminForceCancel과 동일 패턴
 export async function cancelBooking(id: string): Promise<void> {
-  await updateBooking(id, { autoCancelled: true, cancelledBy: 'user' })
+  await updateBooking(id, { status: 'cancelled', autoCancelled: true, cancelledBy: 'user' })
 }
 
 /**
