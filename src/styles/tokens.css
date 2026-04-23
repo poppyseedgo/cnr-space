@@ -59,6 +59,15 @@
   --color-recurring-bg:   #E1F5EE;  --color-recurring-text: #0F6E56;  /* 민트 — 2곳(인디고/민트) 색 통일 */
   --color-guest-bg:       #F0FDF4;  --color-guest-text:     #15803D;  /* 연초록 — 기존 HomeView 색 유지 */
 
+  /* ── [2026-04-24] DetailModal 전용 Square 칩 사이즈 토큰 ──
+        · 모든 square 칩(내 예약/사용완료/승인완료 등)에 일관 적용
+        · 개별 상태 클래스에서 padding·radius 오버라이드 방지 */
+  --chip-square-radius:       10px;
+  --chip-square-padding:      8px 14px;
+  --chip-square-font-size:    12px;
+  --chip-square-font-weight:  500;
+  --chip-square-line-height:  14px;
+
   --shadow-card:     0 2px 8px rgba(0,0,0,0.06);
   --shadow-card-lg:  0 8px 32px rgba(0,0,0,0.10);
   --radius-full: 9999px;
@@ -69,18 +78,23 @@
    base .chip        : font-size 12px / padding 3px 10px / fw 500 — index.css 정의
    .chip--sm         : font-size  9px / padding 2px 7px
    .chip--xs         : font-size  9px / padding 1px 4px / border-radius 4px  — 캘린더 슬롯 XS
-   .chip--square     : font-size 12px / padding 8px 14px / border-radius 8px / line-height 14px — DetailModal 전용
+   .chip--square     : font-size 12px / padding 8px 14px / border-radius 10px / line-height 14px — DetailModal 전용
+                       ※ 사이즈는 :root의 --chip-square-* 토큰으로 통제
 ─────────────────────────────────────────────────────────────────────────── */
 .chip--sm { font-size: 9px;  padding: 2px 7px; }
 /* ← [피그마 반영] chip--xs: 9px / padding 1px 4px / radius 4 (RoomModal StatusBadge-XS 기준) */
 .chip--xs { font-size: 9px;  padding: 1px 4px; border-radius: 4px; }
 /* ← [피그마 212:322 / 2026-04-24] chip--square: DetailModal 전용 사각형 칩 modifier
-      · border-radius: 8
-      · padding: 8 14
-      · font-size: 12
-      · font-weight: 500 Medium
-      · line-height: 14px */
-.chip--square { border-radius: 8px; padding: 8px 14px; font-size: 12px; font-weight: 500; line-height: 14px; }
+      · 사이즈는 :root의 --chip-square-* 토큰으로 일관 관리
+      · radius 8 → 10 (2026-04-24 요청)
+      · padding 8 14 / font-size 12 / line-height 14px / font-weight 500 */
+.chip--square {
+  border-radius: var(--chip-square-radius);
+  padding:       var(--chip-square-padding);
+  font-size:     var(--chip-square-font-size);
+  font-weight:   var(--chip-square-font-weight);
+  line-height:   var(--chip-square-line-height);
+}
 
 /* ── 상태 칩 색상 클래스 (단일 소스 — index.css 중복 제거됨) ── */
 .chip-available     { background: var(--color-available-bg);     color: var(--color-available-text); font-weight: 500; }
@@ -101,11 +115,18 @@
       · base .chip-mine(padding 4 10)을 덮어써서 슬롯 내부에서 컴팩트하게 표시 */
 .chip-mine.chip--xs { background: #fff; color: #000; border: 0.5px solid #000; padding: 1px 4px; border-radius: 4px; }
 /* ← [2026-04-24] DetailModal 전용 내 예약 칩 오버라이드
-      · .chip--square(padding 8 14) 위에 .chip-mine의 기본 padding(4 10)이 덮어쓰는 것을 무효화
-      · padding만 .chip--square 값으로 재지정, border/bg/color는 .chip-mine 유지 */
-.chip-mine.chip--square { padding: 8px 14px; }
+      · .chip--square(padding 8 14 / radius 10) 위에 .chip-mine의 기본(padding 4 10 / pill radius 24)이
+        덮어쓰는 것을 무효화 — padding·radius 모두 토큰으로 재지정
+      · border/bg/color는 .chip-mine 유지 (투명 bg + 1px #000 border + #111 text) */
+.chip-mine.chip--square {
+  padding:       var(--chip-square-padding);
+  border-radius: var(--chip-square-radius);
+}
 /* ← [2026-04-24] DetailModal 전용 승인완료 칩 오버라이드 (동일 사유) */
-.chip-approval-required.chip--square { padding: 8px 14px; }
+.chip-approval-required.chip--square {
+  padding:       var(--chip-square-padding);
+  border-radius: var(--chip-square-radius);
+}
 .chip-admin         { background: var(--color-admin-bg);         color: var(--color-admin-text); }
 .chip-earlyend      { background: var(--color-earlyend-bg);      color: var(--color-earlyend-text); opacity: 1; }  /* ← [2026-04-23] opacity:1 명시 (흐림 방지) */
 .chip-countdown     { background: var(--color-countdown-bg);     color: var(--color-countdown-text); }
