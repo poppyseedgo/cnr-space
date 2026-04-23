@@ -54,6 +54,9 @@ export function AttendeeChip({ name, avatarUrl, userInfo, onRemove }: AttendeeCh
   }
 
   // ── 조회 모드 (피그마 180:534): 평문 — 아바타 + 이름 ─────────────────────
+  //   ← [2026-04-23 재수정] 이전에 추가했던 wrap(내부 줄바꿈) 제거.
+  //      대신 부모 grid 쪽에서 auto-fit으로 긴 칩이면 열이 1열로 무너지도록 함
+  //      → 이름은 한 줄 유지, 칩 자체가 아래로 떨어지는 구조.
   return (
     <UserChip
       name={name}

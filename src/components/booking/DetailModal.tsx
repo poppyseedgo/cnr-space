@@ -157,10 +157,15 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
               />
             )
           })()}
-          {/* 참석자 — 2-grid (피그마 repeat(2, fit-content), gap 10)
-               ← [2026-04-23] (1) email 기준 dedup — DB에 동일 참석자가 2회 들어가 있을 때 UI에서 1회만 노출
-                               (2) grid 셀 폭을 명시적으로 100%로 제한 → 긴 이름이 셀 밖으로 밀지 못하게,
-                                   칩은 UserChip wrap으로 셀 내부에서 줄바꿈 */}
+          {/* 참석자 — 반응형 grid
+               ← [2026-04-23 재수정] 사용자 지시(스크린샷 2): 긴 이름이 2-grid에 안 맞을 때
+                 내부 줄바꿈(X) → 칩 자체가 한 줄 전체를 차지하고 다음 칩은 아래로 내려오도록.
+                 방식: repeat(auto-fit, minmax(220px, 1fr))
+                   · 모든 칩이 220px 이하이면 2열로 배치
+                   · 한 칩이라도 220px을 넘어야 하면 grid가 1열로 자동 축소 → 칩들이 세로 스택
+                   · 220px 기준: 아바타(24) + gap(7) + 이름 14px Medium 약 13~15자까지 2열 유지
+                 이름 자체는 UserChip 기본값(nowrap)으로 한 줄 유지. 모달 overflow는
+                 부모 InfoRow value의 flex:1 + minWidth:0으로 차단 */}
           {b.attendees && b.attendees.length > 0 && (() => {
             const seen = new Set<string>()
             const uniqueAttendees = (b.attendees as any[]).filter((a:any) => {
@@ -177,24 +182,21 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
                 value={
                   <div style={{
                     display:"grid",
-                    gridTemplateColumns:"repeat(2, minmax(0, 1fr))",
+                    gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))",
                     columnGap:10, rowGap:10,
-                    flex:1,
                     width:"100%",
                     minWidth:0,
                   }}>
                     {uniqueAttendees.map((a:any, idx:number) => {
                       const u = (up as any[]).find((u:any) => u.email === a.email)
                       return (
-                        // ← grid item wrapper: 셀 너비에 강제 고정, overflow 차단
-                        <div key={a.email || idx} style={{ minWidth:0, width:"100%", overflow:"hidden" }}>
-                          <AttendeeChip
-                            name={a.name || a.email}
-                            avatarUrl={u?.avatar_url ?? null}
-                            dept={u?.dept}
-                            userInfo={u}
-                          />
-                        </div>
+                        <AttendeeChip
+                          key={a.email || idx}
+                          name={a.name || a.email}
+                          avatarUrl={u?.avatar_url ?? null}
+                          dept={u?.dept}
+                          userInfo={u}
+                        />
                       )
                     })}
                   </div>
