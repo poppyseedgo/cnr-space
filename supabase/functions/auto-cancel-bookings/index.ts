@@ -228,6 +228,21 @@ Deno.serve(async () => {
       console.log(`[auto-cancel] noshow 알림 발송: ${booking.id} (${booking.title})`)
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // ← [2026-04-23 HOTFIX] ②번 리마인더 + ③번 기한초과 로직 긴급 정지
+    // ═══════════════════════════════════════════════════════════════════════
+    // 증상: 진행 중인 회의를 기한초과로 오인식 + 체크인된 예약을 사용자 취소로 덮어씀
+    //       → 데이터 파괴 발생 중 (cancelled_by가 system이 아닌 'user'로 기록되는 원인 추적 중)
+    // 조치: 파괴적 로직 차단 — ②번과 ③번을 블록 주석 처리
+    //   · ①번 노쇼 자동 처리는 유지 (정상 작동 중, 영향 없음)
+    //   · ②번 리마인더 정지
+    //   · ③번 기한초과 자동 취소 정지 (근본 원인)
+    // 복구 예정: auto-cancel-bookings를 3개 함수로 분리 후 (근무시간 외 야간 작업)
+    //   · process-noshow/
+    //   · send-pending-reminder/
+    //   · process-pending-expired/  ← 정지 상태로 배포, 근본 원인 해결 후 재가동
+    // ═══════════════════════════════════════════════════════════════════════
+    /*
     // ─── 2. 승인 기한 10분 전 알림 (Admin 전용) ────────────────────────
     // ← [2026-04-17] start_at 범위 양방향 제한
     const reminderWindowStart = new Date(now.getTime() + 9  * 60 * 1000).toISOString()
@@ -341,6 +356,11 @@ Deno.serve(async () => {
       stats.pendingExpired++
       console.log(`[auto-cancel] pending_expired 처리: ${booking.id} (${booking.title})`)
     }
+    */
+    // ═══════════════════════════════════════════════════════════════════════
+    // ← [2026-04-23 HOTFIX] ②+③ 정지 상태 로그 (모니터링 용이)
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('[auto-cancel] ⚠️ pending_expiring + pending_expired 로직 정지 상태 (2026-04-23 HOTFIX)')
 
     console.log('[auto-cancel] 전체 완료:', JSON.stringify(stats))
     return new Response(
