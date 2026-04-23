@@ -64,7 +64,7 @@
         · 개별 상태 클래스에서 padding·radius 오버라이드 방지 */
   --chip-square-radius:       10px;
   --chip-square-padding:      8px 14px;
-  --chip-square-font-size:    12px;
+  --chip-square-font-size:    13px;
   --chip-square-font-weight:  500;
   --chip-square-line-height:  14px;
 
@@ -78,7 +78,7 @@
    base .chip        : font-size 12px / padding 3px 10px / fw 500 — index.css 정의
    .chip--sm         : font-size  9px / padding 2px 7px
    .chip--xs         : font-size  9px / padding 1px 4px / border-radius 4px  — 캘린더 슬롯 XS
-   .chip--square     : font-size 12px / padding 8px 14px / border-radius 10px / line-height 14px — DetailModal 전용
+   .chip--square     : font-size 13px / padding 8px 14px / border-radius 10px / line-height 14px — DetailModal 전용
                        ※ 사이즈는 :root의 --chip-square-* 토큰으로 통제
 ─────────────────────────────────────────────────────────────────────────── */
 .chip--sm { font-size: 9px;  padding: 2px 7px; }
