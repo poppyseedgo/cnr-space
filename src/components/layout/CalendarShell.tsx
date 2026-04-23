@@ -530,6 +530,22 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
   // ← [2026-04-23] Daily 뷰 차단 슬롯용 커스텀 툴팁
   const { getHandlers: getDailyTooltipHandlers, tooltipNode: dailyTooltipNode } = useBlockedTooltip()
 
+  // ─── [2026-04-23] "15분 단위 올림" 규칙 ────────────────────────────────
+  // 예약은 15분 간격으로만 생성 가능 → 슬롯 폭도 15분 단위로 정렬
+  //   · 실제 점유 시간 n분 → 슬롯 폭 = Math.ceil(n / 15) * 15 분
+  //   · 최소 15분 폭 보장 (n < 15분인 경우도 15분 슬롯으로 표시)
+  //
+  // 적용 대상:
+  //   · 노쇼 박제 슬롯: 시점에 관계없이 15분 폭 고정 (기존 동작과 동일)
+  //   · 조기반납 슬롯: 실제 종료 시각 기준으로 15분 올림
+  //     예) 1시간 3분 사용 → 75분 폭 / 1시간 18분 → 90분 폭 / 55분 → 60분 폭
+  //   · 일반 예약 슬롯: 정상 예약은 애초에 15분 단위로 생성되므로 영향 없음
+  //     (보수적으로 전 케이스에 적용해도 결과 동일 — 회귀 방지 장치)
+  const QUANTIZE_MIN = 15
+  const quantizeMin = (n: number) => Math.max(QUANTIZE_MIN, Math.ceil(n / QUANTIZE_MIN) * QUANTIZE_MIN)
+  // 분 → 슬롯 폭(px) 변환 (여백 14 차감은 호출부에서 처리)
+  const minToPx = (n: number) => (n / 60) * CW
+
   const nowLeft = isToday ? ((now - 7*60) / 60) * CW : 0
   const scrollRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -697,11 +713,15 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                      · 예약자 폰트: 8px → 10px Pretendard Medium #2A2A2A */}
                 {rBksCancelled.map(b => {
                   const sm       = tsMin(b.start_at)
-                  const left     = ((sm-7*60)/60)*CW+2
-                  const width    = (15/60)*CW-4  // 15분 고정 폭 (원래 예약 시간 무시)
+                  // ← [2026-04-23] "15분 단위 올림" 규칙 적용
+                  //   노쇼: 시점 무관 15분 폭 고정 (기존과 동일, quantize 함수 사용으로 명시성↑)
+                  //   여백: 예약 슬롯과 통일 (top 6 / bottom 8 / left +6 / width -14)
+                  const occupiedMin = quantizeMin(15)
+                  const left  = ((sm-7*60)/60)*CW + 6
+                  const width = Math.max(minToPx(occupiedMin) - 14, 20)
                   return (
                     <div key={b.id} onClick={e => { e.stopPropagation(); onBlockClick(b) }}
-                      style={{ position: 'absolute', top: 6, bottom: 6, left, width,
+                      style={{ position: 'absolute', top: 6, bottom: 8, left, width,
                         background: '#FFEAEA',
                         borderRadius: 10,                               // ← [Figma 242:529] rounded-[10px]
                         padding: 8,                                     // ← [Figma 242:529] p-[8px]
@@ -746,12 +766,17 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                 {rBks.map(b => {
                   const st = getSlotState(b, now, isToday, currentUser)
                   const { sm, em, isNoshow, isExpiredPending, isEnded, isAct, isMyBooking } = st
-                  // ← [2026-04-23 v6] 슬롯 여백 미세 보정 (실제 렌더 기준)
-                  //   이론: 상하좌우 6px 균등
-                  //   실측: bottom/right이 시각적으로 2px 부족 → 각각 +2
-                  //   최종: top 6 / bottom 8 / left-offset 6 / width 차감 14 (우측 8)
-                  //   · Math.max(..., 20)로 짧은 예약 최소 폭 보장
-                  const left = ((sm-7*60)/60)*CW+6, width = Math.max(((em-sm)/60)*CW-14, 20)
+                  // ← [2026-04-23 v7] "15분 단위 올림" 규칙 적용
+                  //   · 실제 지속시간 (em - sm)을 15분 단위로 올림 → 슬롯 폭 고정
+                  //   · 조기반납: 1시간 3분 사용 → 75분 폭 / 1시간 18분 → 90분 폭 / 55분 → 60분 폭
+                  //   · 정상 예약: 15분 배수로 생성되므로 quantize 결과 = 원본 (영향 0)
+                  //   · 예외: isAct(진행 중)은 '진행 중인 실제 시간'을 반영해야 하므로 미적용
+                  //     (진행 중에 사라지는 분 단위 표시를 15분 단위로 고정시키면 UX 이상함)
+                  //   여백: top 6 / bottom 8 / left-offset 6 / width 차감 14 (상하좌우 균등 인지)
+                  const actualMin   = em - sm
+                  const occupiedMin = isEnded ? quantizeMin(actualMin) : actualMin
+                  const left  = ((sm-7*60)/60)*CW + 6
+                  const width = Math.max(minToPx(occupiedMin) - 14, 20)
                   const { titleColor, subColor } = getSlotColors({
                     variant: 'daily', isAct, isEnded, isNoshow, isExpiredPending
                   })
