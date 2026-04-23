@@ -703,18 +703,31 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                     <div key={b.id} onClick={e => { e.stopPropagation(); onBlockClick(b) }}
                       style={{ position: 'absolute', top: 6, bottom: 6, left, width,
                         background: '#FFEAEA',
-                        borderRadius: 10,                               // ← [Figma 242:529] rounded-[10px] (12 → 10)
-                        padding: 8,                                     // ← [Figma 242:529] p-[8px] (6 → 8)
+                        borderRadius: 10,                               // ← [Figma 242:529] rounded-[10px]
+                        padding: 8,                                     // ← [Figma 242:529] p-[8px]
                         cursor: 'pointer', overflow: 'hidden', zIndex: 1,
-                        display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                        display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                        minWidth: 0,                                    // ← [2026-04-23] flex 자식 수축 허용 (세로 짤림 방지 핵심)
+                      }}>
                       {/* 상단: 노쇼 칩 */}
-                      <span className="chip chip--xs chip-noshow" style={{ alignSelf: 'flex-start' }}>노쇼</span>
-                      {/* 하단: 예약자명 */}
+                      <span className="chip chip--xs chip-noshow" style={{ alignSelf: 'flex-start', flexShrink: 0 }}>노쇼</span>
+                      {/* 하단: 예약자명
+                          ← [2026-04-23 v5] height 짤림 방지 (요청: 글자가 위아래로 잘리는 문제)
+                          원인: lineHeight: 1 + overflow: hidden 조합에서
+                                한글/descender(j,g,p,y 등) 글자의 상하 여백이 라인박스를 넘어 잘림
+                          해결: lineHeight 1 → 1.5 (일반 안전 행간)
+                                padding 상하 1px 추가 — 폰트 렌더링 엣지 여유
+                          ellipsis: 긴 이름은 가로 잘림 유지 (폭 한계 30px) */}
                       {b.user && (
                         <span style={{
-                          display: 'block', fontSize: 10, fontWeight: 500, color: '#2A2A2A',
+                          display: 'block', width: '100%', minWidth: 0,
+                          fontSize: 10, fontWeight: 500, color: '#2A2A2A',
                           fontFamily: "'Pretendard', -apple-system, sans-serif",
-                          lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          lineHeight: 1.5,                              // ← [2026-04-23 v5] 1 → 1.5 (height 짤림 방지 핵심)
+                          padding: '1px 0',                             // ← [2026-04-23 v5] 상하 여유 1px
+                          whiteSpace: 'nowrap',
+                          wordBreak: 'keep-all',
+                          overflow: 'hidden', textOverflow: 'ellipsis',
                         }}>{b.user}</span>
                       )}
                     </div>

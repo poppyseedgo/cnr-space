@@ -140,8 +140,13 @@ export function BookingStatusBadge({
   const isApproved = adminRoom && b.status === 'confirmed' && !b.autoCancelled
   const nci       = isAct && !b.checkedIn
   const isFuture  = tsDate(b.start_at) > todayStr() || (isToday && sm > now)
-  // 과거: 진행 중도 미래도 아니고, 취소·거절·earlyEnded·pending도 아닌 경우
-  const isPast    = !isAct && !isFuture && !b.autoCancelled && !b.earlyEnded
+  // ← [2026-04-23] 조기반납도 '사용완료'에 포함 (earlyEnded는 조기 사용완료의 서브셋)
+  //   기존: !b.earlyEnded 제외 → 조기반납이면 사용완료 칩 안 나옴
+  //   변경: 조기반납도 실제로 끝난 예약이므로 사용완료(isPast)에 포함
+  //   결과: earlyEnded 예약은 "조기반납" 칩 + "사용완료" 칩 세트로 표시
+  //   안전: isPast = !isAct && !isFuture 조건이 '시작 시간 지남'을 이미 보장
+  //         미래 예약이 earlyEnded=true인 경우는 데이터 오염 — 방어 불필요
+  const isPast    = !isAct && !isFuture && !b.autoCancelled
                     && b.status !== 'pending' && b.status !== 'rejected'
   const tl        = sm - now
   const isOwner   = !!currentUser && b.user === currentUser
@@ -154,7 +159,7 @@ export function BookingStatusBadge({
     (show('expired-pending') && isExpiredPending) ||
     (show('admin-cancel')    && isAdminCancel) ||
     (show('noshow')          && isNoshow) ||
-    (show('user-cancel')     && isUserCancel) ||
+    (show('user-cancel')     && isUserCancel && isOwner) ||
     // ← [P2 v7] pending 뱃지는 '자동취소되지 않은 진짜 승인 대기'만
     //   isExpiredPending이 status='pending' 상태도 커버하므로 중복 방지
     (show('pending')         && b.status === 'pending' && !b.autoCancelled) ||
@@ -195,8 +200,8 @@ export function BookingStatusBadge({
       {/* ④ 노쇼 (system 자동취소) */}
       {show('noshow') && isNoshow && <C cls="chip-noshow">노쇼</C>}
 
-      {/* ⑤ 사용자 직접 취소 — 본인·타인·관리자 시점 모두에서 표시 (이전: isOwner 제한 → 관리자가 타인 취소 건 상태 확인 불가했음) */}
-      {show('user-cancel') && isUserCancel && <C cls="chip-neutral">취소됨</C>}
+      {/* ⑤ 사용자 직접 취소 — 본인 컨텍스트(MyPage)에서만 */}
+      {show('user-cancel') && isUserCancel && isOwner && <C cls="chip-neutral">취소됨</C>}
 
       {/* ── 이하 정상 상태 (취소 없는 경우) ── */}
       {/* ⑥ 승인 대기 */}
@@ -216,11 +221,15 @@ export function BookingStatusBadge({
       {show('checkin-wait') && nci && <C cls="chip-checkin-wait">체크인 대기</C>}
       {show('checkin-done') && b.checkedIn && isAct && <C cls="chip-success">체크인 완료</C>}
 
-      {/* ⑩ 종료 (피그마 212:328 — 라벨 '사용완료', bg #000 / text #FFF / fw 500) */}
-      {show('past') && isPast && <C cls="chip-done">사용완료</C>}
-
-      {/* ⑪ 조기반납 */}
+      {/* ⑩ 조기반납 — '사용완료'보다 먼저 (Figma 242:427 순서)
+          ← [2026-04-23] 조기반납도 사용완료의 서브셋으로 처리됨
+          · earlyEnded=true면 '조기반납' + '사용완료' 세트로 표시 */}
       {show('early-end') && b.earlyEnded && <C cls="chip-earlyend">조기반납</C>}
+
+      {/* ⑪ 사용완료 (이전 '종료')
+          ← [2026-04-23] 라벨 '종료' → '사용완료' 통일 (Figma 242:439 스펙)
+          · isPast 조건에서 !earlyEnded 제외 → 조기반납도 사용완료에 포함 */}
+      {show('past') && isPast && <C cls="chip-done">사용완료</C>}
 
       {/* ⑫ N분 후 카운트다운 */}
       {show('countdown') && !isAct && !b.autoCancelled && isToday && tl > 0 && tl <= 10 && (
