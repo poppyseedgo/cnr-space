@@ -224,16 +224,16 @@ export function CalendarSlotCard({
               aria-hidden
             />
           )}
-          {/* 제목 — 2줄 wrap (실사용 요청 유지) */}
+          {/* 제목 — 1줄 ellipsis (Figma 242:432 스펙)
+              ← [2026-04-24] 2줄 wrap → 1줄 ellipsis로 변경
+                 · 긴 제목은 "..." 처리, 슬롯 높이 일관성 유지 */}
           <div style={{
             flex: 1, minWidth: 0,
             fontSize: 11, fontWeight: 500, color: titleColor,
             lineHeight: 1.25,
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical' as const,
+            whiteSpace: 'nowrap',
             overflow: 'hidden',
-            wordBreak: 'break-word',
+            textOverflow: 'ellipsis',
             fontFamily: "'Pretendard', -apple-system, sans-serif",
           }}>
             {b.title}
