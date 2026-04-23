@@ -240,12 +240,15 @@ export function CalendarSlotCard({
           </div>
         </div>
 
-        {/* 시간 + 이름 컨테이너 (Figma 242:433) — leading-[10px], gap 4 */}
+        {/* 시간 + 이름 컨테이너 (Figma 242:433)
+            ← [2026-04-24] 실제 렌더 기준 미세 보정:
+            · lineHeight: 10px → 12px (한글 descender 여유 확보)
+            · gap: 4 → 2 (두 줄 간격 타이트하게) */}
         <div style={{
-          display: 'flex', flexDirection: 'column', gap: 4, width: '100%',
+          display: 'flex', flexDirection: 'column', gap: 2, width: '100%',
           fontFamily: "'Pretendard', -apple-system, sans-serif",
           color: subColor, fontSize: 10, fontWeight: 500,
-          lineHeight: '10px',   // ← [2026-04-23 v13] Figma leading-[10px]
+          lineHeight: '12px',
         }}>
           <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {fmtTSRange(b.start_at, b.end_at)}
