@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { SlotContent } from '../calendar/SlotContent'
-import { getSlotState, getSlotColors, isShownInDailyView } from '../calendar/slotHelpers'
+import { getSlotState, getSlotColors, isShownInDailyView, isShownInCalendar } from '../calendar/slotHelpers'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import {
   todayStr, nowMinutes, tsDate, tsMin, fmtTS,
@@ -116,14 +116,26 @@ export function CalendarShell({
 
   // ── 뷰별 데이터 ──
   const weekStart = getWeekStart(selectedDate)
+  const nowForCal  = nowMinutes()
+  const todayForCal = todayStr()
+  // ← [2026-04-23 HOTFIX] weekBks에 isShownInCalendar + 노쇼 제외 필터 추가
+  //   기존: 날짜 범위만 필터링 → WeeklyView 내부에서 autoCancelled 체크 (누락 발생)
+  //   변경: 공통 필터(isShownInCalendar)로 취소/거절/기한초과 건 미리 제거
+  //   추가: Weekly 뷰는 활성 예약만 표시 (노쇼 박제 없음, 기존 설계 유지)
   const weekBks = filteredBks.filter(b => {
     const d = tsDate(b.start_at)
-    return d >= weekStart && d <= addDays(weekStart, 6)
+    if (d < weekStart || d > addDays(weekStart, 6)) return false
+    const isToday = d === todayForCal
+    if (!isShownInCalendar(b, nowForCal, isToday)) return false
+    // Weekly는 활성 예약만 표시 (노쇼 박제 없음 - 기존 설계 유지)
+    const st = getSlotState(b, nowForCal, isToday, '')
+    return !st.isNoshow
   })
   // ← [P2 v7] 자체 판별 제거 → slotHelpers.isShownInDailyView 단일 진실 원천 사용
   //   기존: `!b.autoCancelled || (b.cancelledBy === 'system' && b.status !== 'rejected')`
   //   변경: 의미 있는 이름의 유틸 함수로 분리 (판별 규칙 변경 시 한 곳만 수정)
   //   hotfix: isShownInDailyView가 now/isToday를 받아 '노쇼만 박제'/'기한초과 제외' 분리
+  //   [2026-04-23 HOTFIX] isShownInDailyView는 isShownInCalendar wrapper로 바뀜
   const dailyNow     = nowMinutes()
   const dailyIsToday = selectedDate === todayStr()
   const dailyBks = filteredBks.filter(b =>
@@ -330,6 +342,7 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
   const firstDay = new Date(year, month, 1).getDay()
   const dim = new Date(year, month + 1, 0).getDate()
   const today = todayStr()
+  const now = nowMinutes()  // ← [2026-04-23 HOTFIX] isShownInCalendar용
   const cells: (number | null)[] = []
   for (let i = 0; i < firstDay; i++) cells.push(null)
   for (let i = 1; i <= dim; i++) cells.push(i)
@@ -347,7 +360,19 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
         {cells.map((day, idx) => {
           if (!day) return <div key={`e${idx}`} style={{ minHeight: 110, borderRight: '1px solid #F1F5F9', borderBottom: '1px solid #F1F5F9', background: '#FAFAFA', overflow: 'hidden' }} />
           const ds = `${year}-${fmt2(month+1)}-${fmt2(day)}`
-          const dbs = bookings.filter(b => tsDate(b.start_at) === ds && !b.autoCancelled)
+          // ← [2026-04-23 HOTFIX] !b.autoCancelled → isShownInCalendar + 노쇼 제외
+          //   기존: status='cancelled'+auto_cancelled=false 건이 통과되어 취소건 표시됨
+          //   변경: 공통 필터로 취소/거절/기한초과 모두 정확히 제거
+          //   유지: Monthly는 활성 예약만 표시 (노쇼 박제 없음 - 기존 설계 유지)
+          //         노쇼 박제는 Daily/Timeline에만 표시 — Weekly/Monthly는 간결함 우선
+          const isTodayCell = ds === today
+          const dbs = bookings.filter(b => {
+            if (tsDate(b.start_at) !== ds) return false
+            if (!isShownInCalendar(b, now, isTodayCell)) return false
+            // Monthly는 활성 예약만 표시 (노쇼 박제 없음)
+            const st = getSlotState(b, now, isTodayCell, '')
+            return !st.isNoshow
+          })
           const isToday = ds === today, isSel = ds === selectedDate
           const dow = (firstDay + day - 1) % 7
           return (
@@ -460,17 +485,26 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
         {/* 바디: 회의실별 행 */}
         {rooms.map((room, ri) => {
           const floor = getFloor(room.floor_id)
-          const rBks = bookings.filter(b => b.room_id === room.room_id && !b.autoCancelled)
+          // ← [2026-04-23 HOTFIX] !b.autoCancelled → isShownInCalendar + 노쇼 제외
+          //   rBks: 일반 예약 슬롯 (활성 예약)
+          //   rBksCancelled: 노쇼 박제 슬롯 (회색 대시 박스)
+          //   두 그룹이 중복되지 않도록 rBks에서 노쇼는 제외
+          const rBks = bookings.filter(b => {
+            if (b.room_id !== room.room_id) return false
+            if (!isShownInCalendar(b, now, isToday)) return false
+            // 노쇼는 rBksCancelled에서 별도 렌더 → 여기서 제외
+            const st = getSlotState(b, now, isToday, currentUser)
+            return !st.isNoshow
+          })
           // ← [P2 v7 hotfix] 노쇼만 박제 표시 — 기한초과는 제외 (일반 취소와 동일 처리)
           //   정책: 노쇼는 "이 시간에 노쇼 있었다"는 기록 목적이라 박제,
           //         기한초과는 "승인되지 않아 일어나지 않은 약속"이라 제외
-          //   변경: isShownInDailyView가 이미 기한초과 제외하므로 rBks에서도 자동 제외됨
-          //         여기서는 isNoshow만 명시적으로 별도 슬롯 렌더
+          //   [2026-04-23 HOTFIX] autoCancelled 의존성 제거, isNoshow만 체크
           const rBksCancelled = bookings.filter(b => {
             if (b.room_id !== room.room_id) return false
-            if (!b.autoCancelled || b.status === 'rejected') return false
+            if (b.status === 'rejected') return false
             const st = getSlotState(b, now, isToday, currentUser)
-            return st.isNoshow   // 노쇼만 포함 (기한초과 제외)
+            return st.isNoshow   // 노쇼만 포함 (기한초과/사용자취소 제외)
           })
           const dot = getRoomDot(room.room_id)
 
@@ -614,6 +648,8 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
   const getCellBks = (day: string, hour: number) =>
     bookings.filter(b => {
       if (tsDate(b.start_at) !== day) return false
+      // ← [2026-04-23 HOTFIX] 상위 weekBks에서 isShownInCalendar + !isNoshow로 이미 필터링됨
+      //   이 조건들은 방어적 중복 — autoCancelled가 true인 건이 여기 올 일은 없지만 유지
       if (b.autoCancelled) return false
       if (b.status === 'rejected') return false
       return Math.floor(tsMin(b.start_at) / 60) === hour

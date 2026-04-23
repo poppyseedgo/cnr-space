@@ -3,9 +3,20 @@ import type { Booking } from '../../types'
 
 /**
  * 캘린더 슬롯 공통 상태 계산
- * Weekly / Daily / Timeline 세 뷰에서 동일하게 사용
+ * Weekly / Daily / Timeline / Monthly 네 뷰에서 동일하게 사용
  *
  * ✅ 변경 이력
+ *  - [2026-04-23 HOTFIX] 캘린더 뷰에 취소 예약이 표시되는 버그 해결
+ *     · 증상: '사용자 취소' 예약이 모든 캘린더 뷰(Daily/Weekly/Monthly/Timeline)에 표시됨
+ *     · 원인: 필터 기준이 auto_cancelled=true 였는데, DB에 취소 예약 중 상당수가
+ *             auto_cancelled=false로 저장되어 있음 (마이그레이션 데이터 29건 + 오염 8건)
+ *             → '!b.autoCancelled'에서 "정상 예약"으로 오인되어 통과됨
+ *     · 해결: 취소 판정 기준을 auto_cancelled → status='cancelled'로 변경
+ *            · status는 결정적 상태값 — 취소/거절/확정/승인대기 판별의 진실 원천
+ *            · auto_cancelled는 '어떻게 취소됐는지'의 부수 플래그 (신뢰하지 않음)
+ *     · 추가: 캘린더 전 뷰 공통 필터 함수 isShownInCalendar 신설
+ *            5개 뷰(Daily/Weekly/Monthly/Timeline-정상/Timeline-노쇼)에서 동일하게 호출
+ *
  *  - [2026-04-19 P2 v7] pending_expired 노쇼 오판 해결 (판별 로직 통일)
  *     · 기존: `isNoshow = autoCancelled && cancelledBy==='system' && status!=='rejected'`
  *             → pending_expired(시스템 취소)도 노쇼로 오분류됨
@@ -27,32 +38,52 @@ export interface SlotState {
 }
 
 /**
- * 일간 뷰에 표시할 예약인지 판별
+ * 캘린더 뷰에 표시할 예약인지 판별 (공통 함수, 모든 뷰 사용)
  *
- * 정책 (박제 정책):
- *  · 활성 예약 (autoCancelled=false) → 표시
- *  · 노쇼 (체크인 없이 start_at+10분 경과 후 시스템 자동 취소) → **박제 표시**
- *    └ "이 시간에 노쇼가 있었다"는 기록을 남기기 위함
- *  · 기한초과 (pending_expired, 시작 전 자동 취소) → **제외** (일반 취소와 동일)
- *    └ 애초에 승인되지 않아 "일어나지 않은 약속"이므로 기록 불필요
- *  · 사용자/관리자 수동 취소 → 제외 (기존)
- *  · 관리자 거절 → 제외 (기존)
+ * 공통 화면(캘린더)에서 보여야 하는 예약:
+ *   · 활성 예약 (status='confirmed' 또는 'pending')
+ *   · 노쇼 (system 취소 + 시작 후 10분 경과) → 박제 표시
  *
- * ← [2026-04-19 P2 v7 hotfix] 기한초과가 일간 뷰에 잔존하던 버그 수정
- *     · 기존: `cancelledBy === 'system'`이면 전부 포함 → 기한초과도 표시됨
- *     · 수정: getSlotState로 isNoshow만 정확히 필터링 (기한초과 분리 후 제외)
- *     · 판별 동기화: getSlotState의 시간축 분리와 완전히 일치
+ * 제외되는 예약:
+ *   · 사용자 취소 (status='cancelled' + cancelled_by='user')
+ *   · 관리자 강제취소 (status='cancelled' + cancelled_by='admin')
+ *   · 거절 (status='rejected')
+ *   · 기한초과 (pending_expired: status='pending' + 시작 전 또는 직후 10분 이내 system 취소)
+ *   · 데이터 오염 (status='cancelled' + cancelled_by=NULL 또는 기타) — 모두 안전하게 숨김
+ *
+ * 판정 기준: status (결정적) + cancelled_by (보조)
+ *   · auto_cancelled 플래그는 의존하지 않음 (DB 데이터에 혼재된 상태)
+ *
+ * ← [2026-04-23 HOTFIX] 신설: 5개 캘린더 뷰(Daily/Weekly/Monthly/Timeline-일반/Timeline-노쇼)
+ *     모두에서 이 함수를 사용해 판정 로직 통일
+ */
+export function isShownInCalendar(b: Booking, now: number, isToday: boolean): boolean {
+  // ① 거절 → 제외 (auto_cancelled 값과 무관)
+  if (b.status === 'rejected') return false
+
+  // ② 취소된 예약 → cancelled_by로 분기
+  if (b.status === 'cancelled') {
+    // 시스템 취소가 아닌 모든 취소 (user/admin/NULL) → 제외
+    if (b.cancelledBy !== 'system') return false
+    // 시스템 취소 중에서는 노쇼만 박제 표시
+    const st = getSlotState(b, now, isToday, '')
+    return st.isNoshow
+  }
+
+  // ③ 활성 예약 (confirmed/pending) → 기한초과만 제외하고 표시
+  const st = getSlotState(b, now, isToday, '')
+  if (st.isExpiredPending) return false
+
+  return true
+}
+
+/**
+ * 일간 뷰에 표시할 예약인지 판별 (하위 호환용 wrapper)
+ *
+ * ← [2026-04-23] isShownInCalendar로 통합됨. 기존 호출처 유지 위해 wrapper로 남김.
  */
 export function isShownInDailyView(b: Booking, now: number, isToday: boolean): boolean {
-  // 거절 → 무조건 제외 (autoCancelled 값과 무관)
-  if (b.status === 'rejected') return false
-  // 활성 예약 (취소 안 됨)
-  if (!b.autoCancelled) return true
-  // 취소된 예약: 사용자/관리자 수동 취소 → 제외
-  if (b.cancelledBy !== 'system') return false
-  // 시스템 취소 중: 노쇼만 박제, 기한초과는 제외
-  const st = getSlotState(b, now, isToday, '')
-  return st.isNoshow
+  return isShownInCalendar(b, now, isToday)
 }
 
 export function getSlotState(
