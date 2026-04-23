@@ -744,7 +744,7 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                   //   · opacity: isEnded(조기반납/사용완료) 0.7 → 1 (흐림 제거)
                   //   · noshow만 #F1F5F9 + opacity 0.55 유지 (박제 의도)
                   const slotBg =
-                    isAct   ? '#111111' :      // 진행 중 → 검정
+                    isAct   ? '#1D1D1D' :      // 진행 중 → 검정 (Figma 242:392 bg-[#1d1d1d])
                     isNoshow ? '#F1F5F9' :      // 노쇼 → 회색 박제
                     '#FFFFFF'                   // 그 외(미래/과거/조기반납/사용완료) → 흰색
                   return (

@@ -148,14 +148,14 @@ export function getSlotColors(opts: {
   }
   if (variant === 'daily') {
     // ← [2026-04-23 v3] 배경색 정책 재변경:
-    //   · 진행 중(isAct): 배경 #111 (검정) → 텍스트 흰색
-    //   · 그 외(미래/과거/조기반납/사용완료): 배경 #fff (흰색) → 텍스트 검정
+    //   · 진행 중(isAct): 배경 #1D1D1D (검정, Figma 242:392) → 제목 흰색 / 서브 #94A3B8
+    //   · 그 외(미래/과거/조기반납/사용완료): 배경 #fff (흰색) → 텍스트 검정 / 서브 #94A3B8
     //   · noshow/expired: 흐린 회색 (별도 처리)
-    //   호환: isAct가 최우선 판정, cancelled-like는 기존 로직 유지
+    //   · 서브 색은 Active/Deactive 공통 #94A3B8 (Figma 일관성)
     if (isAct) {
       return {
         titleColor: '#fff',
-        subColor:   'rgba(255,255,255,0.75)',
+        subColor:   '#94A3B8',   // ← [2026-04-23 v4] rgba(255,255,255,0.75) → #94A3B8 (Figma 242:395)
       }
     }
     return {
