@@ -197,41 +197,65 @@ export function CalendarSlotCard({
         transition: 'all 0.12s',
       }}
     >
-      {/* 상단: 제목 + 시간 + 예약자 */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, overflow: 'hidden' }}>
-        {/* 제목 — 2줄 wrap (긴 제목 감싸기) */}
-        <div style={{
-          fontSize: 11, fontWeight: 500, color: titleColor,
-          lineHeight: 1.25,
-          display: '-webkit-box',
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical' as const,
-          overflow: 'hidden',
-          wordBreak: 'break-word',
-          fontFamily: "'Pretendard', -apple-system, sans-serif",
-        }}>
-          {b.title}
-        </div>
-        {/* 시간 */}
-        <div style={{
-          fontSize: 10, fontWeight: 500, color: subColor,
-          lineHeight: 1.5,
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          fontFamily: "'Pretendard', -apple-system, sans-serif",
-        }}>
-          {fmtTSRange(b.start_at, b.end_at)}
-        </div>
-        {/* 예약자명 */}
-        {b.user && (
+      {/* ← [2026-04-23 v13] Figma 242:427 구조 정확 반영:
+          outer(242:555) gap 4
+          └─ inner(242:428) gap 6: title row + time+name container
+          칩 row: outer 레벨 (justify-end)
+
+          변경 포인트:
+          · 제목 row에 isAct면 6×6 #FF6E6E 깜빡임 닷 추가 (243:632)
+          · 제목-시간 gap: 4 → 6 (Figma 242:428 gap-[6px])
+          · 시간/이름 lineHeight: 1.5 → 10px (Figma 242:433 leading-[10px])
+          · 제목: 2줄 wrap은 실사용 요청 유지 (Figma 1줄 ellipsis와 의도적 불일치) */}
+
+      {/* 상단: 제목 행 + 시간/이름 컨테이너 (Figma 242:555 + 242:428) */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, overflow: 'hidden', width: '100%' }}>
+
+        {/* 제목 row (Figma 242:429): 닷 + 제목 수평 배치 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, width: '100%', minWidth: 0 }}>
+          {/* 사용 중 깜빡임 닷 (Figma 243:632) — isAct에만 렌더 */}
+          {isAct && (
+            <span
+              className="slot-active-dot"
+              style={{
+                width: 6, height: 6, borderRadius: '50%',
+                background: '#FF6E6E', flexShrink: 0,
+              }}
+              aria-hidden
+            />
+          )}
+          {/* 제목 — 2줄 wrap (실사용 요청 유지) */}
           <div style={{
-            fontSize: 10, fontWeight: 500, color: subColor,
-            lineHeight: 1.5,
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            flex: 1, minWidth: 0,
+            fontSize: 11, fontWeight: 500, color: titleColor,
+            lineHeight: 1.25,
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical' as const,
+            overflow: 'hidden',
+            wordBreak: 'break-word',
             fontFamily: "'Pretendard', -apple-system, sans-serif",
           }}>
-            {b.user}
+            {b.title}
           </div>
-        )}
+        </div>
+
+        {/* 시간 + 이름 컨테이너 (Figma 242:433) — leading-[10px], gap 4 */}
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 4, width: '100%',
+          fontFamily: "'Pretendard', -apple-system, sans-serif",
+          color: subColor, fontSize: 10, fontWeight: 500,
+          lineHeight: '10px',   // ← [2026-04-23 v13] Figma leading-[10px]
+        }}>
+          <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {fmtTSRange(b.start_at, b.end_at)}
+          </div>
+          {b.user && (
+            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {b.user}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 하단: 칩 row — 컴팩트 모드에서는 숨김 */}

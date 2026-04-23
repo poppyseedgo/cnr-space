@@ -98,7 +98,7 @@
       · base .chip-mine(padding 4 10)을 덮어써서 슬롯 내부에서 컴팩트하게 표시 */
 .chip-mine.chip--xs { background: #fff; color: #000; border: 0.5px solid #000; padding: 1px 4px; border-radius: 4px; }
 .chip-admin         { background: var(--color-admin-bg);         color: var(--color-admin-text); }
-.chip-earlyend      { background: var(--color-earlyend-bg);      color: var(--color-earlyend-text); }
+.chip-earlyend      { background: var(--color-earlyend-bg);      color: var(--color-earlyend-text); opacity: 1; }  /* ← [2026-04-23] opacity:1 명시 (흐림 방지) */
 .chip-countdown     { background: var(--color-countdown-bg);     color: var(--color-countdown-text); }
 .chip-checkin-wait  { background: var(--color-checkin-wait-bg);  color: var(--color-checkin-wait-text); }
 .chip-done          { background: var(--color-done-bg);          color: var(--color-done-text); }
@@ -144,6 +144,15 @@
 @keyframes fadeIn  { from { opacity: 0 } to { opacity: 1 } }
 @keyframes scaleIn { from { opacity: 0; transform: scale(0.96) } to { opacity: 1; transform: scale(1) } }
 
+/* ← [2026-04-23] 사용 중 슬롯 깜빡임 닷 (Figma 243:632 #FF6E6E) */
+@keyframes slotActiveDotBlink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+.slot-active-dot {
+  animation: slotActiveDotBlink 1.4s ease-in-out infinite;
+}
+
 /* 터치 디바이스 hover 비활성화 */
 @media (hover: none) {
   .room-card:hover  { transform: none !important; box-shadow: none !important; }
@@ -153,4 +162,5 @@
 /* 모션 감소 접근성 */
 @media (prefers-reduced-motion: reduce) {
   .anm, .anm-fade, .anm-scale { animation: none !important; }
+  .slot-active-dot { animation: none !important; }  /* ← [2026-04-23] 닷 깜빡임도 정지 */
 }

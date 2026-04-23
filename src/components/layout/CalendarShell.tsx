@@ -640,9 +640,15 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
               onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#FAFAFA'}
               onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#fff'}>
 
-              {/* 회의실명 셀 (sticky left) */}
+              {/* 회의실명 셀 (sticky left)
+                  ← [2026-04-23 v13 Figma 243:612] 스펙 반영:
+                  · padding: '0 16px' → '12px' (전방향)
+                  · 이름: 13px SemiBold → 15px Medium + letterSpacing 0.45 + leading-none
+                  · 층/인원: 11px → 10px Regular + leading-none
+                  · 이름-층 gap: 2 → 6 */}
               <div style={{ width: LW, minWidth: LW, flexShrink: 0, borderRight: '1px solid #E2E8F0',
-                padding: '0 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center',
+                padding: 12,                                       // ← [v13] '0 16px' → 12 전방향
+                display: 'flex', flexDirection: 'column', justifyContent: 'center',
                 position: 'sticky', left: 0, background: '#fff', zIndex: 5,
                 boxShadow: 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -652,9 +658,20 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                       background: dot === 'busy' ? '#EF4444' : '#22C55E',
                     }} />
                   )}
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight:600, color: '#111111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{room.room_name}</div>
-                    <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{floor?.floor_name} · {room?.capacity}인</div>
+                  <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 /* ← [v13] Figma 243:614 gap-[6px] */ }}>
+                    <div style={{
+                      fontSize: 15, fontWeight: 500, color: '#000',        // ← [v13] 13 SemiBold → 15 Medium
+                      lineHeight: 1,                                        // ← [v13] leading-none
+                      letterSpacing: '0.45px',                              // ← [v13] tracking-[0.45px]
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      fontFamily: "'Pretendard', -apple-system, sans-serif",
+                    }}>{room.room_name}</div>
+                    <div style={{
+                      fontSize: 10, fontWeight: 400, color: '#94A3B8',      // ← [v13] 11 → 10 Regular
+                      lineHeight: 1,                                        // ← [v13] leading-none
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      fontFamily: "'Pretendard', -apple-system, sans-serif",
+                    }}>{floor?.floor_name} · {room?.capacity}인</div>
                   </div>
                 </div>
               </div>
