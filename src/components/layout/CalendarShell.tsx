@@ -553,15 +553,7 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
     scrollRef.current.scrollLeft = isToday ? Math.max(0, nowLeft - 120) : 0
   }, [selectedDate, isToday, nowLeft])
 
-  // 회의실 현재 상태 dot (오늘만)
-  const getRoomDot = (roomId: number): 'busy' | 'available' | null => {
-    if (!isToday) return null
-    const busy = bookings.some(b =>
-      b.room_id === roomId && !b.autoCancelled && !b.earlyEnded &&
-      tsMin(b.start_at) <= now && now < tsMin(b.end_at)
-    )
-    return busy ? 'busy' : 'available'
-  }
+  // ← [2026-04-23] getRoomDot 함수 완전 삭제 — 회의실 상태 dot 표시 불필요 (요청)
 
   return (
     <div ref={scrollRef} style={{ background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', overflowX: 'auto', overflowY: 'visible' }}>
@@ -631,7 +623,7 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
             const st = getSlotState(b, now, isToday, currentUser)
             return st.isNoshow   // 노쇼만 포함 (기한초과/사용자취소 제외)
           })
-          const dot = getRoomDot(room.room_id)
+          // ← [2026-04-23] dot 변수 삭제 (getRoomDot 함수 제거와 함께)
 
           return (
             <div key={room.room_id}
@@ -642,37 +634,33 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
 
               {/* 회의실명 셀 (sticky left)
                   ← [2026-04-23 v13 Figma 243:612] 스펙 반영:
-                  · padding: '0 16px' → '12px' (전방향)
-                  · 이름: 13px SemiBold → 15px Medium + letterSpacing 0.45 + leading-none
-                  · 층/인원: 11px → 10px Regular + leading-none
-                  · 이름-층 gap: 2 → 6 */}
+                  · padding: 12 (전방향)
+                  · 이름: 15px Medium + letterSpacing 0.45 + leading-none
+                  · 층/인원: 10px Regular + leading-none
+                  · 이름-층 gap: 6
+                  ← [2026-04-23 v14] 추가 변경:
+                  · justify-content: center → flex-start (위에서부터 정렬)
+                  · 상태 dot(초록/빨강) 완전 제거 — 이에 따라 flex wrapper 불필요 */}
               <div style={{ width: LW, minWidth: LW, flexShrink: 0, borderRight: '1px solid #E2E8F0',
-                padding: 12,                                       // ← [v13] '0 16px' → 12 전방향
-                display: 'flex', flexDirection: 'column', justifyContent: 'center',
+                padding: 12,
+                display: 'flex', flexDirection: 'column',
+                justifyContent: 'flex-start',                       // ← [v14] center → flex-start
                 position: 'sticky', left: 0, background: '#fff', zIndex: 5,
                 boxShadow: 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {dot && (
-                    <span style={{
-                      width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-                      background: dot === 'busy' ? '#EF4444' : '#22C55E',
-                    }} />
-                  )}
-                  <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 /* ← [v13] Figma 243:614 gap-[6px] */ }}>
-                    <div style={{
-                      fontSize: 15, fontWeight: 500, color: '#000',        // ← [v13] 13 SemiBold → 15 Medium
-                      lineHeight: 1,                                        // ← [v13] leading-none
-                      letterSpacing: '0.45px',                              // ← [v13] tracking-[0.45px]
-                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                      fontFamily: "'Pretendard', -apple-system, sans-serif",
-                    }}>{room.room_name}</div>
-                    <div style={{
-                      fontSize: 10, fontWeight: 400, color: '#94A3B8',      // ← [v13] 11 → 10 Regular
-                      lineHeight: 1,                                        // ← [v13] leading-none
-                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                      fontFamily: "'Pretendard', -apple-system, sans-serif",
-                    }}>{floor?.floor_name} · {room?.capacity}인</div>
-                  </div>
+                <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 /* ← [v13] Figma 243:614 gap-[6px] */ }}>
+                  <div style={{
+                    fontSize: 15, fontWeight: 500, color: '#000',
+                    lineHeight: 1,
+                    letterSpacing: '0.45px',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    fontFamily: "'Pretendard', -apple-system, sans-serif",
+                  }}>{room.room_name}</div>
+                  <div style={{
+                    fontSize: 10, fontWeight: 400, color: '#94A3B8',
+                    lineHeight: 1,
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    fontFamily: "'Pretendard', -apple-system, sans-serif",
+                  }}>{floor?.floor_name} · {room?.capacity}인</div>
                 </div>
               </div>
 
