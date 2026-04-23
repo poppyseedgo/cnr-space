@@ -784,15 +784,15 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                     variant: 'daily', isAct, isEnded, isNoshow, isExpiredPending
                   })
                   const slotRoom = (dvRooms as any[]).find(r => r.room_id === b.room_id)
-                  // ← [2026-04-23 v3] 배경색 정책 변경 + 내 예약 border 삭제 + opacity 정리
-                  //   · slotBg: 진행 중만 #111(검정), 그 외 전부 흰색 (미래/과거/조기반납/사용완료)
-                  //   · slotBorder: '내 예약' 두꺼운 검정 border 삭제 → 하단 칩으로만 표시
-                  //   · opacity: isEnded(조기반납/사용완료) 0.7 → 1 (흐림 제거)
-                  //   · noshow만 #F1F5F9 + opacity 0.55 유지 (박제 의도)
+                  // ← [2026-04-23 v10 해석B] 배경 규칙 반전 (단순화):
+                  //   · 사용 중(isAct): 흰 배경 — 진행 중 유일한 흰색
+                  //   · 노쇼 박제: #F1F5F9 (이 파일의 rBksCancelled 별도 렌더 경로는 #FFEAEA)
+                  //   · 그 외 모두(미래 예약/사용 완료/조기반납): #1D1D1D 검정
+                  //   기존 해석A(미래만 검정)를 해석B(진행중 제외 전부 검정)로 대체
                   const slotBg =
-                    isAct   ? '#1D1D1D' :      // 진행 중 → 검정 (Figma 242:392 bg-[#1d1d1d])
-                    isNoshow ? '#F1F5F9' :      // 노쇼 → 회색 박제
-                    '#FFFFFF'                   // 그 외(미래/과거/조기반납/사용완료) → 흰색
+                    isAct    ? '#FFFFFF' :     // 사용 중 → 흰색
+                    isNoshow ? '#F1F5F9' :     // 노쇼 → 회색 박제 (방어)
+                    '#1D1D1D'                   // 그 외(예약됨/사용완료/조기반납) → 검정
                   return (
                     <div key={b.id} onClick={e => { e.stopPropagation(); onBlockClick(b) }}
                       style={{
@@ -807,7 +807,7 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                         opacity: isNoshow ? 0.55 : 1,   // ← [2026-04-23 v3] isEnded 0.7 → 1
                         transition: 'all 0.12s',
                       }}
-                      onMouseEnter={e => { if (!isNoshow) (e.currentTarget as HTMLElement).style.filter = isAct ? 'brightness(1.15)' : 'brightness(0.97)' }}
+                      onMouseEnter={e => { if (!isNoshow) (e.currentTarget as HTMLElement).style.filter = isAct ? 'brightness(0.97)' : 'brightness(1.15)' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.filter = 'none' }}>
                       <SlotContent booking={b} room={slotRoom} isAdminRoom={!!slotRoom?.is_admin_only} currentUser={currentUser}
                         titleColor={titleColor} subColor={subColor} variant="daily" thirdLine={b.user} />

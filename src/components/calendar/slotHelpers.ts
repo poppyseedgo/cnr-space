@@ -147,20 +147,28 @@ export function getSlotColors(opts: {
     }
   }
   if (variant === 'daily') {
-    // ← [2026-04-23 v3] 배경색 정책 재변경:
-    //   · 진행 중(isAct): 배경 #1D1D1D (검정, Figma 242:392) → 제목 흰색 / 서브 #94A3B8
-    //   · 그 외(미래/과거/조기반납/사용완료): 배경 #fff (흰색) → 텍스트 검정 / 서브 #94A3B8
+    // ← [2026-04-23 v10] 배경 규칙 반전:
+    //   · 사용 중(isAct): 흰 배경 → 제목 #000 / 서브 #94A3B8
+    //   · 그 외(미래/과거/조기반납/사용완료): 검정 배경 → 제목 #fff / 서브 #94A3B8
     //   · noshow/expired: 흐린 회색 (별도 처리)
-    //   · 서브 색은 Active/Deactive 공통 #94A3B8 (Figma 일관성)
+    //   이전 버전 역전: isAct가 유일한 흰 배경 케이스
     if (isAct) {
       return {
-        titleColor: '#fff',
-        subColor:   '#94A3B8',   // ← [2026-04-23 v4] rgba(255,255,255,0.75) → #94A3B8 (Figma 242:395)
+        titleColor: '#000000',
+        subColor:   '#94A3B8',
       }
     }
+    // cancelledLike(노쇼/만료)는 #FFEAEA or #F1F5F9 배경이라 텍스트도 별도 톤
+    if (isCancelledLike) {
+      return {
+        titleColor: '#94A3B8',
+        subColor:   '#CBD5E1',
+      }
+    }
+    // 나머지 (예약됨/사용완료/조기반납): 검정 배경 → 흰 텍스트
     return {
-      titleColor: isCancelledLike ? '#94A3B8' : '#000000',
-      subColor:   isCancelledLike ? '#CBD5E1' : '#94A3B8',
+      titleColor: '#FFFFFF',
+      subColor:   '#94A3B8',
     }
   }
   // timeline
