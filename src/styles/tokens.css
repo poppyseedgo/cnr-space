@@ -41,7 +41,13 @@
   /* ← [피그마 212:328] 사용완료(done): 기존 연회색 #F1F5F9/#64748B → 검정 #000/흰색 #FFF */
   --color-done-bg:         #000;    --color-done-text:         #fff;
   --color-noshow-bg:       #FEE2E2; --color-noshow-text:       #B91C1C;  /* ← [변경] pending과 구분, 부드러운 빨강 */
-  --color-approved-bg:     #DCFCE7; --color-approved-text:     #166534;
+  /* ← [2026-04-23 Figma 242:446 반영] 승인완료 칩 공통 토큰 변경
+        · 기존: #DCFCE7 / #166534 (녹색 계열)
+        · 변경: #E6FFB0 / #111 (연한 라임 bg + 검정 텍스트)
+        · 영향: BookingStatusBadge 'approved' 뱃지가 쓰이는 모든 화면 일괄 반영
+          (홈 / 마이페이지 / 캘린더 Daily·Weekly·Monthly / 룸 상세 / 예약 상세 등)
+        · 미영향: AdminPage 탭 필터 UI(1789)는 칩이 아니라 탭 버튼이므로 별개 유지 */
+  --color-approved-bg:     #E6FFB0; --color-approved-text:     #111;
   --color-expired-bg:      #E2E8F0; --color-expired-text:      #64748B;  /* ← [변경] done과 구분, 더 탁한 회색 */
   --color-rejected-bg:     #FEE2E2; --color-rejected-text:     #991B1B;
 
