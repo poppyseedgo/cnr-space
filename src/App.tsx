@@ -860,10 +860,13 @@ function AppContent() {
   // ── 관리자 강제 취소 ────────────────────────────────────────────────────────
   const adminForceCancelBooking = useCallback(async (id: string, reason: string) => {
     const targetB = bookings.find(b => b.id === id)
+    // ← [2026-04-23 HOTFIX] 실패 롤백용 원본 status 저장
+    const originalStatus = targetB?.status
     try {
       await adminForceCancel(id)
       // 낙관적 UI 업데이트
-      setBookings(prev => prev.map(b => b.id === id ? { ...b, autoCancelled: true, cancelledBy: 'admin' } : b))
+      // ← [2026-04-23 HOTFIX] status:'cancelled' 추가 (api.ts adminForceCancel과 동기화)
+      setBookings(prev => prev.map(b => b.id === id ? { ...b, status: 'cancelled', autoCancelled: true, cancelledBy: 'admin' } : b))
 
       // Audit log
       insertAuditLog({
@@ -891,7 +894,8 @@ function AppContent() {
       showToast('예약이 강제 취소되었습니다.', 'info')
     } catch (err: any) {
       // 실패 시 롤백
-      setBookings(prev => prev.map(b => b.id === id ? { ...b, autoCancelled: false, cancelledBy: null } : b))
+      // ← [2026-04-23 HOTFIX] status도 원본으로 복원 (낙관적 UI 수정 대응)
+      setBookings(prev => prev.map(b => b.id === id ? { ...b, status: originalStatus, autoCancelled: false, cancelledBy: null } : b))
       showToast(err.message ?? '취소 중 오류가 발생했습니다.', 'error')
     }
   }, [bookings, rooms, users, currentUser, showToast, sendNotification])

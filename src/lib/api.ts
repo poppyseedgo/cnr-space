@@ -252,8 +252,13 @@ export async function updateBooking(
 }
 
 /** 관리자 강제 취소 — cancelled_by: 'admin' 으로 저장해 일반 취소·노쇼와 구분 */
+// ← [2026-04-23 HOTFIX] status: 'cancelled' 추가
+//   증상: 관리자 강제 취소된 예약이 캘린더 뷰에 표시됨
+//   원인: status='confirmed' 유지된 채 auto_cancelled=true만 저장 → 활성 예약으로 오인
+//   해결: status='cancelled' 명시 저장으로 isShownInCalendar의 status 기반 필터가 정확히 작동
+//   주의: auto_cancelled=true는 유지 (isAdminCancel 판정 플래그 그대로 사용)
 export async function adminForceCancel(id: string): Promise<void> {
-  await updateBooking(id, { autoCancelled: true, cancelledBy: 'admin' })
+  await updateBooking(id, { status: 'cancelled', autoCancelled: true, cancelledBy: 'admin' })
 }
 
 // ── 취소 ─────────────────────────────────────────────────────────────────────
