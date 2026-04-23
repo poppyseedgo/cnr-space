@@ -233,7 +233,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
             const S = {
               waiting:    {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:true},
               soon:       {label:"체크인 대기",  btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                showBtn:true},
-              pending:    {label:"승인 대기",    btnBg:"#FEF3C7", btnColor:"#92400E", disabled:true,  action:null,                showBtn:true},
+              pending:    {label:"승인 대기",    btnBg:"#E6FFB0", btnColor:"#111",    disabled:true,  action:null,                showBtn:true},
               checkin:    {label:"체크인",       btnBg:"#16A34A", btnColor:"#fff",    disabled:false, action:()=>onCheckIn(b.id), showBtn:true},
               using:      {label:"조기반납",     btnBg:"#111111", btnColor:"#fff",    disabled:false, action:()=>onEarlyEnd(b.id),showBtn:true},
               noshow:        {label:null,           btnBg:"",        btnColor:"",        disabled:true,  action:null,                showBtn:false},
@@ -511,7 +511,7 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
       <div className={`${D.cardPadding} flex flex-col flex-1`}> {/* ← [패딩/gap density 분기] */}
 
         {/* ① 상태 칩 */}
-        <RoomStatusBadge status={status} />
+        <RoomStatusBadge status={status} isAdminRoom={!!r.is_admin_only} />
 
         {/* ② 회의실명 */}
         <div style={{fontSize:D.roomNameSize, fontWeight:600, letterSpacing:"-0.3px", lineHeight:1.2, /* ← [폰트 크기 density 분기] */
