@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { SlotContent } from '../calendar/SlotContent'
 import { getSlotState, getSlotColors, isShownInDailyView, isShownInCalendar } from '../calendar/slotHelpers'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
+import { useBlockedTooltip } from '../../hooks/useBlockedTooltip'  // ← [2026-04-23] 차단 영역 마우스 추적 툴팁
 import {
   todayStr, nowMinutes, tsDate, tsMin, fmtTS,
   fmt2, DAY_NAMES, MONTH_NAMES, HOURS,
@@ -95,6 +96,8 @@ export function CalendarShell({
   filterFloor, setFilterFloor, currentUser = '', isAdmin = false,
 }) {
   const { isMobile } = useBreakpoint()
+  // ← [2026-04-23] 데이트피커 차단 셀용 커스텀 툴팁
+  const { getHandlers: getDpTooltipHandlers, tooltipNode: dpTooltipNode } = useBlockedTooltip()
   const VIEWS = [{ id: 'daily', label: '일' }, { id: 'weekly', label: '주' }, { id: 'monthly', label: '월' }]
 
   const navigate = (dir: number) => {
@@ -285,20 +288,23 @@ export function CalendarShell({
                       // 차단 대상 = 30일 초과 (과거는 조회 허용)
                       const blocked = !bookable && !isPastDate
                       const tooltipMsg = blocked ? '예약은 오늘부터 30일 이내만 가능합니다' : ''
+                      // ← [2026-04-23] 훅 핸들러를 변수로 받아 기존 hover 효과와 수동 합성
+                      const dpH = getDpTooltipHandlers({ blocked, message: tooltipMsg })
                       return (
                         <div key={day}
                           onClick={() => { if (!blocked) { setSelectedDate(ds); setShowDatePicker(false) } }}
-                          title={tooltipMsg}
+                          aria-label={blocked ? tooltipMsg : undefined}                 // ← [2026-04-23] 접근성: 스크린리더용
                           style={{
                             textAlign: 'center', padding: '5px 2px', borderRadius: 6,
                             fontSize: 12, fontWeight: isSel||isToday2 ? 700 : 400,
-                            cursor: blocked ? 'not-allowed' : 'pointer',
+                            cursor: blocked ? 'default' : 'pointer',                    // ← [2026-04-23] not-allowed → default (OS 금지 아이콘 제거)
                             background: isSel ? '#111111' : isToday2 ? '#EFF6FF' : 'transparent',
                             color: isSel ? '#fff' : isToday2 ? '#3B82F6' : dow===0 ? '#EF4444' : dow===6 ? '#3B82F6' : '#374151',
                             opacity: !isSel && blocked ? 0.35 : 1,
                           }}
-                          onMouseEnter={e => { if (!isSel && !blocked) (e.currentTarget as HTMLElement).style.background = '#F1F5F9' }}
-                          onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = isToday2 ? '#EFF6FF' : 'transparent' }}>
+                          onMouseEnter={e => { dpH.onMouseEnter(e); if (!isSel && !blocked) (e.currentTarget as HTMLElement).style.background = '#F1F5F9' }}  // ← [2026-04-23] 훅 핸들러 합성
+                          onMouseMove={dpH.onMouseMove}                                                                                                        // ← [2026-04-23] 훅: 마우스 추적
+                          onMouseLeave={e => { dpH.onMouseLeave(); if (!isSel) (e.currentTarget as HTMLElement).style.background = isToday2 ? '#EFF6FF' : 'transparent' }}>
                           {day}
                         </div>
                       )
@@ -394,6 +400,7 @@ export function CalendarShell({
       {calView === 'monthly' && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d => { setSelectedDate(d); setCalView('daily') }} onBookingClick={onBookingClick} rooms={allRooms} currentUser={currentUser} isAdmin={isAdmin} />}
       {calView === 'daily'   && <DailyView   bookings={dailyBks}  selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid, h) => onNewBooking(selectedDate, h, rid)} onCheckIn={onCheckIn} rooms={allRooms} currentUser={currentUser} isAdmin={isAdmin} />}
       {calView === 'weekly'  && <WeeklyView  bookings={weekBks}   selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(d, h) => onNewBooking(d, h, undefined)} rooms={allRooms} currentUser={currentUser} isAdmin={isAdmin} />}
+      {dpTooltipNode /* ← [2026-04-23] 데이트피커 차단 셀용 커스텀 툴팁 Portal 렌더 */}
     </div>
   )
 }
@@ -405,6 +412,8 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
   const dim = new Date(year, month + 1, 0).getDate()
   const today = todayStr()
   const now = nowMinutes()  // ← [2026-04-23 HOTFIX] isShownInCalendar용
+  // ← [2026-04-23] Monthly 뷰 차단 셀용 커스텀 툴팁
+  const { getHandlers: getMonthlyTooltipHandlers, tooltipNode: monthlyTooltipNode } = useBlockedTooltip()
   const cells: (number | null)[] = []
   for (let i = 0; i < firstDay; i++) cells.push(null)
   for (let i = 1; i <= dim; i++) cells.push(i)
@@ -451,12 +460,19 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
             ? (isPastDate ? '과거 날짜는 예약할 수 없습니다 (조회만 가능)' : '예약은 오늘부터 30일 이내만 가능합니다')
             : ''
           const dimmed = !bookable && !isPastDate
+          // ← [2026-04-23] 차단 셀(30일 초과)에만 커스텀 툴팁 — blocked=dimmed
+          const mtH = getMonthlyTooltipHandlers({ blocked: dimmed, message: tooltipMsg })
           return (
-            <div key={day} onClick={() => { if (canNavigate) onDayClick(ds) }}  // ← [2026-04-23 BUGFIX] bookable → canNavigate (과거 조회 허용)
-              title={tooltipMsg}
+            <div key={day} onClick={() => { if (canNavigate) onDayClick(ds) }}
+              aria-label={!canNavigate ? tooltipMsg : undefined}   // ← [2026-04-23] 접근성: 스크린리더용
+              onMouseEnter={mtH.onMouseEnter}                       // ← [2026-04-23] 커스텀 툴팁: 진입
+              onMouseMove={mtH.onMouseMove}                         // ← [2026-04-23] 커스텀 툴팁: 이동
+              onMouseLeave={mtH.onMouseLeave}                       // ← [2026-04-23] 커스텀 툴팁: 이탈
               style={{
                 minHeight: 110, borderRight: '1px solid #F1F5F9', borderBottom: '1px solid #F1F5F9',
-                padding: '7px 6px', cursor: canNavigate ? 'pointer' : 'not-allowed', overflow: 'hidden',  // ← [2026-04-23 BUGFIX] bookable → canNavigate
+                padding: '7px 6px',
+                cursor: dimmed ? 'default' : (canNavigate ? 'pointer' : 'default'),  // ← [2026-04-23] not-allowed 제거, dimmed/비활성은 default
+                overflow: 'hidden',
                 background: dimmed ? '#F8FAFC' : isSel ? '#EEF2FF' : isToday ? '#F0FDF4' : '#fff',
                 opacity: dimmed ? 0.5 : 1,
                 transition: 'background 0.12s',
@@ -493,6 +509,7 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
           )
         })}
       </div>
+      {monthlyTooltipNode /* ← [2026-04-23] Monthly 차단 셀용 커스텀 툴팁 Portal 렌더 */}
     </div>
   )
 }
@@ -506,6 +523,8 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
   // ← [2026-04-23] 예약 가능 기간 정책: 시간 슬롯 단위 판정 (아래 map 내부에서)
   //   오늘 날짜라도 지나간 시간은 차단 (Admin 포함, 1분이라도 과거 불가)
   const todayStrVal = todayStr()
+  // ← [2026-04-23] Daily 뷰 차단 슬롯용 커스텀 툴팁
+  const { getHandlers: getDailyTooltipHandlers, tooltipNode: dailyTooltipNode } = useBlockedTooltip()
 
   const nowLeft = isToday ? ((now - 7*60) / 60) * CW : 0
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -629,12 +648,19 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                     : ''
                   // 과거는 시각 효과 없이 클릭만 차단, 30일 초과만 흐리게
                   const dimmed = !slotBookable && !isPastSlot
+                  // ← [2026-04-23] 차단 슬롯(과거 or 30일 초과)에 커스텀 툴팁
+                  const dlH = getDailyTooltipHandlers({ blocked: !slotBookable, message: tooltipMsg })
                   return (
                     <div key={h} onClick={() => { if (slotBookable) onEmptyClick(room.room_id, h) }}
-                      title={tooltipMsg}
-                      style={{ width: CW, minWidth: CW, flexShrink: 0, borderRight: '1px solid #F1F5F9', cursor: slotBookable ? 'pointer' : 'not-allowed', position: 'relative', transition: 'background 0.1s', opacity: dimmed ? 0.4 : 1 }}
-                      onMouseEnter={e => { if (slotBookable) (e.currentTarget as HTMLElement).style.background = 'rgba(30,41,59,0.04)' }}
-                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
+                      aria-label={!slotBookable ? tooltipMsg : undefined}   // ← [2026-04-23] 접근성
+                      style={{
+                        width: CW, minWidth: CW, flexShrink: 0, borderRight: '1px solid #F1F5F9',
+                        cursor: slotBookable ? 'pointer' : 'default',       // ← [2026-04-23] not-allowed → default
+                        position: 'relative', transition: 'background 0.1s', opacity: dimmed ? 0.4 : 1,
+                      }}
+                      onMouseEnter={e => { dlH.onMouseEnter(e); if (slotBookable) (e.currentTarget as HTMLElement).style.background = 'rgba(30,41,59,0.04)' }}  // ← [2026-04-23] 훅 합성
+                      onMouseMove={dlH.onMouseMove}                                                                                                              // ← [2026-04-23] 마우스 추적
+                      onMouseLeave={e => { dlH.onMouseLeave(); (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
                       <div style={{ position: 'absolute', top: 0, bottom: 0, left: '25%', borderLeft: '1px dashed #F8FAFC', pointerEvents: 'none' }} />
                       <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', borderLeft: '1px dashed #F1F5F9', pointerEvents: 'none' }} />
                       <div style={{ position: 'absolute', top: 0, bottom: 0, left: '75%', borderLeft: '1px dashed #F8FAFC', pointerEvents: 'none' }} />
@@ -714,6 +740,7 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
           )
         })}
       </div>
+      {dailyTooltipNode /* ← [2026-04-23] Daily 차단 슬롯용 커스텀 툴팁 Portal 렌더 */}
     </div>
   )
 }
@@ -724,6 +751,8 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
   const now       = nowMinutes()
   const HOUR_H    = 140   // 1시간 행 높이 (Figma 스펙)
   const TIME_W    = 64    // 시간 레이블 열 너비
+  // ← [2026-04-23] Weekly 뷰 차단 슬롯용 커스텀 툴팁
+  const { getHandlers: getWeeklyTooltipHandlers, tooltipNode: weeklyTooltipNode } = useBlockedTooltip()
 
   const weekStart = getWeekStart(selectedDate)
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
@@ -871,7 +900,7 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
                   const visible  = cellBks.slice(0, 5)
                   const overflow = cellBks.length - 5
                   // ← [2026-04-23] 슬롯 단위 예약 가능성 판정
-                  //   · 과거는 기능만 차단 (opacity 1, cursor만 not-allowed)
+                  //   · 과거는 기능만 차단 (opacity 1, cursor default)
                   //   · 30일 초과는 시각적 구분 (opacity 0.5 + 배경 회색)
                   const bookable = isSlotBookable(ds, h, today, now, isAdmin)
                   const isPastSlot = ds < today || (ds === today && h * 60 <= now)
@@ -879,20 +908,23 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
                     ? (isPastSlot ? '과거 시간은 예약할 수 없습니다' : '예약은 오늘부터 30일 이내만 가능합니다')
                     : ''
                   const dimmed = !bookable && !isPastSlot
+                  // ← [2026-04-23] 차단 슬롯(과거 or 30일 초과)에 커스텀 툴팁
+                  const wkH = getWeeklyTooltipHandlers({ blocked: !bookable, message: tooltipMsg })
                   return (
                     <div key={ds}
                       onClick={() => { if (bookable) onEmptyClick(ds, h) }}
-                      title={tooltipMsg}
+                      aria-label={!bookable ? tooltipMsg : undefined}      // ← [2026-04-23] 접근성
                       style={{
                         flex: 1, minWidth: 0, padding: '4px 5px',
                         borderRight: i < days.length - 1 ? '1px solid #F1F5F9' : 'none',
-                        cursor: bookable ? 'pointer' : 'not-allowed',
+                        cursor: bookable ? 'pointer' : 'default',           // ← [2026-04-23] not-allowed → default
                         background: dimmed ? '#F8FAFC' : isToday2 ? '#FAFEFF' : 'transparent',
                         opacity: dimmed ? 0.5 : 1,
                         minHeight: HOUR_H, transition: 'background 0.1s',
                       }}
-                      onMouseEnter={e => { if (bookable && visible.length === 0) (e.currentTarget as HTMLElement).style.background = isToday2 ? '#F0FEFF' : '#F8FAFC' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = dimmed ? '#F8FAFC' : isToday2 ? '#FAFEFF' : 'transparent' }}>
+                      onMouseEnter={e => { wkH.onMouseEnter(e); if (bookable && visible.length === 0) (e.currentTarget as HTMLElement).style.background = isToday2 ? '#F0FEFF' : '#F8FAFC' }}  // ← [2026-04-23] 훅 합성
+                      onMouseMove={wkH.onMouseMove}                                                                                                                                              // ← [2026-04-23] 마우스 추적
+                      onMouseLeave={e => { wkH.onMouseLeave(); (e.currentTarget as HTMLElement).style.background = dimmed ? '#F8FAFC' : isToday2 ? '#FAFEFF' : 'transparent' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         {visible.map(b => (
                           <div key={b.id}
@@ -926,6 +958,7 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
           </div>
         </div>
       </div>
+      {weeklyTooltipNode /* ← [2026-04-23] Weekly 차단 슬롯용 커스텀 툴팁 Portal 렌더 */}
     </div>
   )
 }
