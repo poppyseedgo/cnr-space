@@ -702,8 +702,10 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                   return (
                     <div key={b.id} onClick={e => { e.stopPropagation(); onBlockClick(b) }}
                       style={{ position: 'absolute', top: 6, bottom: 6, left, width,
-                        background: '#FFEAEA', borderRadius: 12,
-                        padding: 6, cursor: 'pointer', overflow: 'hidden', zIndex: 1,
+                        background: '#FFEAEA',
+                        borderRadius: 10,                               // ← [Figma 242:529] rounded-[10px] (12 → 10)
+                        padding: 8,                                     // ← [Figma 242:529] p-[8px] (6 → 8)
+                        cursor: 'pointer', overflow: 'hidden', zIndex: 1,
                         display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                       {/* 상단: 노쇼 칩 */}
                       <span className="chip chip--xs chip-noshow" style={{ alignSelf: 'flex-start' }}>노쇼</span>
@@ -736,11 +738,11 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                     variant: 'daily', isAct, isEnded, isNoshow, isExpiredPending
                   })
                   const slotRoom = (dvRooms as any[]).find(r => r.room_id === b.room_id)
-                  // ← [2026-04-23] 흰 배경 기준 border/shadow 재설계
-                  //   · 기본: border 없음, 얕은 그림자로 카드 분리감
-                  //   · 내 예약: 검정 1.5px border (Figma 242:350 "내 예약" 칩과 별개로 슬롯 자체 강조)
-                  //   · 진행 중: 빨간 2px 외곽 (boxShadow로 링 형성, 기존 UX 유지)
-                  //   · 종료/노쇼: 회색 배경 + opacity로 흐리게 (기존 동일)
+                  // ← [2026-04-23 v2] 스타일 조정
+                  //   · padding: 6 → 8 (내부 여백 확대)
+                  //   · border-radius: 12 → 10 (모서리 살짝 덜 둥글게)
+                  //   · box-shadow: 전면 삭제 (진행 중 빨간 링 포함)
+                  //   · 기본 배경/테두리/내 예약 border는 유지 (요청 범위 밖)
                   const slotBg =
                     isNoshow ? '#F1F5F9' :
                     isEnded  ? '#F8FAFC' :
@@ -748,19 +750,17 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                   const slotBorder =
                     isMyBooking && !isNoshow && !isEnded ? '1.5px solid #000' :
                     'none'
-                  const slotShadow =
-                    isAct ? '0 0 0 2px #EF4444, 0 2px 8px rgba(239,68,68,0.15)' :
-                    isNoshow || isEnded ? 'none' :
-                    '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)'
                   return (
                     <div key={b.id} onClick={e => { e.stopPropagation(); onBlockClick(b) }}
                       style={{
                         position: 'absolute', top: 6, bottom: 6, left, width,
                         background: slotBg,
                         border: slotBorder,
-                        borderRadius: 12, padding: 6, cursor: 'pointer',
+                        borderRadius: 10,                                    // ← [2026-04-23 v2] 12 → 10
+                        padding: 8,                                          // ← [2026-04-23 v2] 6 → 8
+                        cursor: 'pointer',
                         zIndex: isNoshow ? 1 : isAct ? 5 : 3, overflow: 'hidden',
-                        boxShadow: slotShadow,
+                        // boxShadow: 전면 삭제됨 ← [2026-04-23 v2]
                         opacity: isNoshow ? 0.55 : isEnded ? 0.7 : 1,
                         transition: 'all 0.12s',
                       }}
