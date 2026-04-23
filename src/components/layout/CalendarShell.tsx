@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { SlotContent } from '../calendar/SlotContent'
-import { getSlotState, getSlotColors, isShownInDailyView, isShownInCalendar } from '../calendar/slotHelpers'
+import { CalendarSlotCard } from '../calendar/CalendarSlotCard'  // ← [2026-04-23] Daily 뷰 슬롯 전용 카드 (구 SlotContent 대체)
+import { getSlotState, isShownInDailyView, isShownInCalendar } from '../calendar/slotHelpers'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { useBlockedTooltip } from '../../hooks/useBlockedTooltip'  // ← [2026-04-23] 차단 영역 마우스 추적 툴팁
 import {
@@ -703,117 +703,63 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                   )
                 })()}
 
-                {/* 노쇼 박제 슬롯 */}
-                {/* ← [P2 v7 hotfix] 기한초과 분기 제거 — rBksCancelled가 이미 노쇼만 필터링함
-                     · 정책: 노쇼는 박제 (이 시간에 노쇼 있었다는 기록 목적)
-                     · 기한초과는 일반 취소와 동일하게 일간 뷰에서 사라짐
-                     · tokens.css의 chip-noshow 색상 토큰 자동 적용
-                     ← [2026-04-23 Figma 242:529] 노쇼 박제 슬롯 재디자인
-                     · bg: #F1F5F9(회색) → #FFEAEA(연한 빨강)
-                     · border: 1px dashed #D1D5DB → border 없음
-                     · radius: 5 → 12
-                     · padding: 2 5 → 6
-                     · 구조: justify-between (상단 노쇼 칩 / 하단 예약자명)
-                     · 예약자 폰트: 8px → 10px Pretendard Medium #2A2A2A */}
+                {/* 노쇼 박제 슬롯 — CalendarSlotCard 단일 컴포넌트로 통합
+                     ← [2026-04-23 v12] 렌더 로직을 CalendarSlotCard로 이관
+                     · 배경/border/칩/컴팩트(15분 폭) 분기 모두 컴포넌트 내부 담당
+                     · 호출부는 위치 계산(absolute top/left/width)만 책임 */}
                 {rBksCancelled.map(b => {
-                  const sm       = tsMin(b.start_at)
-                  // ← [2026-04-23 v8] "15분 단위 올림" + 여백 3px 기준 축소
-                  //   노쇼: 시점 무관 15분 폭 고정
-                  //   여백: top 3 / bottom 4 / left +3 / width -7 (시각적 3px 균등)
+                  const sm = tsMin(b.start_at)
+                  // 노쇼는 시점 무관 15분 폭 고정 → 컴팩트 모드 자동 적용
                   const occupiedMin = quantizeMin(15)
                   const left  = ((sm-7*60)/60)*CW + 3
                   const width = Math.max(minToPx(occupiedMin) - 7, 20)
                   return (
-                    <div key={b.id} onClick={e => { e.stopPropagation(); onBlockClick(b) }}
-                      style={{ position: 'absolute', top: 3, bottom: 4, left, width,
-                        background: '#FFEAEA',
-                        borderRadius: 10,                               // ← [Figma 242:529] rounded-[10px]
-                        padding: 8,                                     // ← [Figma 242:529] p-[8px]
-                        cursor: 'pointer', overflow: 'hidden', zIndex: 1,
-                        display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-                        minWidth: 0,                                    // ← [2026-04-23] flex 자식 수축 허용 (세로 짤림 방지 핵심)
-                      }}>
-                      {/* 상단: 노쇼 칩 */}
-                      <span className="chip chip--xs chip-noshow" style={{ alignSelf: 'flex-start', flexShrink: 0 }}>노쇼</span>
-                      {/* 하단: 예약자명
-                          ← [2026-04-23 v5] height 짤림 방지 (요청: 글자가 위아래로 잘리는 문제)
-                          원인: lineHeight: 1 + overflow: hidden 조합에서
-                                한글/descender(j,g,p,y 등) 글자의 상하 여백이 라인박스를 넘어 잘림
-                          해결: lineHeight 1 → 1.5 (일반 안전 행간)
-                                padding 상하 1px 추가 — 폰트 렌더링 엣지 여유
-                          ellipsis: 긴 이름은 가로 잘림 유지 (폭 한계 30px) */}
-                      {b.user && (
-                        <span style={{
-                          display: 'block', width: '100%', minWidth: 0,
-                          fontSize: 10, fontWeight: 500, color: '#2A2A2A',
-                          fontFamily: "'Pretendard', -apple-system, sans-serif",
-                          lineHeight: 1.5,                              // ← [2026-04-23 v5] 1 → 1.5 (height 짤림 방지 핵심)
-                          padding: '1px 0',                             // ← [2026-04-23 v5] 상하 여유 1px
-                          whiteSpace: 'nowrap',
-                          wordBreak: 'keep-all',
-                          overflow: 'hidden', textOverflow: 'ellipsis',
-                        }}>{b.user}</span>
-                      )}
-                    </div>
+                    <CalendarSlotCard
+                      key={b.id}
+                      booking={b}
+                      room={null}
+                      currentUser={currentUser}
+                      now={now}
+                      isToday={isToday}
+                      occupiedMin={occupiedMin}
+                      positionStyle={{ position: 'absolute', top: 3, bottom: 4, left, width, zIndex: 1 }}
+                      onClick={(e) => { e.stopPropagation(); onBlockClick(b) }}
+                    />
                   )
                 })}
 
-                {/* 예약 블록 */}
-                {/* ← [2026-04-23 Figma 242:427] 예약 슬롯 재디자인
-                     · bg: #111(검은 슬롯) → #fff(흰 슬롯)
-                     · border: 1.5px → 없음 (진행중만 빨간 보더)
-                     · radius: 8 → 12
-                     · padding: 5 8 → 6
-                     · 글씨색: 흰 배경 기준으로 titleColor/subColor 재매핑 (slotHelpers)
-                     · "내 예약" 강조: 테두리 검정 1.5px (기존 boxShadow 대체)
-                     · SlotContent: variant='daily' — justify-between 구조 적용 */}
+                {/* 예약 블록 — CalendarSlotCard 단일 컴포넌트로 통합
+                     ← [2026-04-23 v12] Figma 242:427 신규 스펙 반영
+                     · 15분 폭 규칙: compact 모드 자동 분기 (칩 숨김, 텍스트만)
+                     · 사용 중(isAct): 흰 배경 + 1px #373737 border
+                     · 그 외(예약됨/사용완료/조기반납): #1D1D1D 검정 배경 */}
                 {rBks.map(b => {
                   const st = getSlotState(b, now, isToday, currentUser)
-                  const { sm, em, isNoshow, isExpiredPending, isEnded, isAct, isMyBooking } = st
-                  // ← [2026-04-23 v8] "15분 단위 올림" + 여백 3px 기준 축소
-                  //   · 실제 지속시간 (em - sm)을 15분 단위로 올림 → 슬롯 폭 고정
-                  //   · 조기반납: 1시간 3분 사용 → 75분 폭 / 1시간 18분 → 90분 폭
-                  //   · 정상 예약: 15분 배수로 생성되므로 quantize 결과 = 원본 (영향 0)
-                  //   · 예외: isAct(진행 중)은 실시간 분 단위 반영 → quantize 미적용
-                  //   여백: top 3 / bottom 4 / left +3 / width -7 (시각적 3px 균등, 기존 6px → 축소)
+                  const { sm, em, isEnded, isAct, isNoshow } = st
+                  // 15분 단위 올림 (조기반납 제외 일반 예약은 원본 유지)
                   const actualMin   = em - sm
                   const occupiedMin = isEnded ? quantizeMin(actualMin) : actualMin
                   const left  = ((sm-7*60)/60)*CW + 3
                   const width = Math.max(minToPx(occupiedMin) - 7, 20)
-                  const { titleColor, subColor } = getSlotColors({
-                    variant: 'daily', isAct, isEnded, isNoshow, isExpiredPending
-                  })
                   const slotRoom = (dvRooms as any[]).find(r => r.room_id === b.room_id)
-                  // ← [2026-04-23 v10 해석B] 배경 규칙 반전 (단순화):
-                  //   · 사용 중(isAct): 흰 배경 — 진행 중 유일한 흰색
-                  //   · 노쇼 박제: #F1F5F9 (이 파일의 rBksCancelled 별도 렌더 경로는 #FFEAEA)
-                  //   · 그 외 모두(미래 예약/사용 완료/조기반납): #1D1D1D 검정
-                  //   기존 해석A(미래만 검정)를 해석B(진행중 제외 전부 검정)로 대체
-                  const slotBg =
-                    isAct    ? '#FFFFFF' :     // 사용 중 → 흰색
-                    isNoshow ? '#F1F5F9' :     // 노쇼 → 회색 박제 (방어)
-                    '#1D1D1D'                   // 그 외(예약됨/사용완료/조기반납) → 검정
                   return (
-                    <div key={b.id} onClick={e => { e.stopPropagation(); onBlockClick(b) }}
-                      style={{
-                        position: 'absolute', top: 3, bottom: 4, left, width,    // ← [v8] 여백 3px 기준 (bottom은 시각 보정 +1)
-                        background: slotBg,
-                        // ← [2026-04-23 v11 Figma 242:427] 사용 중 슬롯에만 border 1px #373737 적용
-                        //   box-sizing: border-box (index.css 전역 설정) → 박스 크기 영향 0
-                        border: isAct ? '1px solid #373737' : 'none',
-                        borderRadius: 10,     // ← [Figma 242:427] rounded-[10px]
-                        padding: 8,           // ← [Figma 242:427] p-[8px]
-                        cursor: 'pointer',
-                        zIndex: isNoshow ? 1 : isAct ? 5 : 3, overflow: 'hidden',
-                        // box-shadow 없음 (Figma 스펙)
-                        opacity: isNoshow ? 0.55 : 1,   // ← [2026-04-23 v3] isEnded 0.7 → 1
-                        transition: 'all 0.12s',
+                    <CalendarSlotCard
+                      key={b.id}
+                      booking={b}
+                      room={slotRoom}
+                      currentUser={currentUser}
+                      now={now}
+                      isToday={isToday}
+                      occupiedMin={occupiedMin}
+                      positionStyle={{
+                        position: 'absolute',
+                        top: 3, bottom: 4, left, width,
+                        zIndex: isNoshow ? 1 : isAct ? 5 : 3,
                       }}
+                      onClick={(e) => { e.stopPropagation(); onBlockClick(b) }}
                       onMouseEnter={e => { if (!isNoshow) (e.currentTarget as HTMLElement).style.filter = isAct ? 'brightness(0.97)' : 'brightness(1.15)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.filter = 'none' }}>
-                      <SlotContent booking={b} room={slotRoom} isAdminRoom={!!slotRoom?.is_admin_only} currentUser={currentUser}
-                        titleColor={titleColor} subColor={subColor} variant="daily" thirdLine={b.user} />
-                    </div>
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.filter = 'none' }}
+                    />
                   )
                 })}
               </div>
