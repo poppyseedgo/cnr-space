@@ -276,13 +276,22 @@ export function CalendarShell({
                       const ds = `${dpYear}-${fmt2(dpMonth+1)}-${fmt2(day)}`
                       const isSel = ds === selectedDate, isToday2 = ds === today
                       const dow = (dpFirstDay + day - 1) % 7
+                      // ← [2026-04-23] 데이트피커 시각적 예약 가능성 표시
+                      //   클릭은 자유 (뷰 이동 자유, 과거/미래 조회는 가능)
+                      //   단, 예약 불가 날짜는 흐리게 + 툴팁으로 UX 혼란 방지
+                      const bookable = isDateBookable(ds, today, isAdmin)
+                      const bookableTooltip = !bookable
+                        ? (ds < today ? '과거 날짜 (조회만 가능)' : '30일 초과 (조회만 가능, 예약 불가)')
+                        : ''
                       return (
                         <div key={day} onClick={() => { setSelectedDate(ds); setShowDatePicker(false) }}
+                          title={bookableTooltip}
                           style={{
                             textAlign: 'center', padding: '5px 2px', borderRadius: 6,
                             fontSize: 12, fontWeight: isSel||isToday2 ? 700 : 400, cursor: 'pointer',
                             background: isSel ? '#111111' : isToday2 ? '#EFF6FF' : 'transparent',
                             color: isSel ? '#fff' : isToday2 ? '#3B82F6' : dow===0 ? '#EF4444' : dow===6 ? '#3B82F6' : '#374151',
+                            opacity: !isSel && !bookable ? 0.35 : 1,
                           }}
                           onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = '#F1F5F9' }}
                           onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = isToday2 ? '#EFF6FF' : 'transparent' }}>
