@@ -649,9 +649,9 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                 boxShadow: 'none' }}>
                 <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 /* ← [v13] Figma 243:614 gap-[6px] */ }}>
                   <div style={{
-                    fontSize: 15, fontWeight: 500, color: '#000',
-                    lineHeight: 1,
-                    letterSpacing: '0.45px',
+                    fontSize: 16, fontWeight: 500, color: '#000',        // ← [v14] 15 → 16
+                    lineHeight: '17px',                                   // ← [v14] leading-none → 17px
+                    letterSpacing: 0,                                     // ← [v14] 0.45px → 0
                     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                     fontFamily: "'Pretendard', -apple-system, sans-serif",
                   }}>{room.room_name}</div>
