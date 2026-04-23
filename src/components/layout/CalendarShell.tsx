@@ -276,13 +276,15 @@ export function CalendarShell({
                       const ds = `${dpYear}-${fmt2(dpMonth+1)}-${fmt2(day)}`
                       const isSel = ds === selectedDate, isToday2 = ds === today
                       const dow = (dpFirstDay + day - 1) % 7
-                      // ← [2026-04-23] 데이트피커 시각적 예약 가능성 표시
-                      //   클릭은 자유 (뷰 이동 자유, 과거/미래 조회는 가능)
-                      //   단, 예약 불가 날짜는 흐리게 + 툴팁으로 UX 혼란 방지
+                      // ← [2026-04-23] 데이트피커는 조회 자유 (클릭 가능, 뷰 이동)
+                      //   단, 30일 초과 날짜는 시각 구분 (조회 가능, 예약 불가 안내)
+                      //   과거 날짜는 시각 효과 없음 (이미 지나간 예약 조회는 정상 동작)
                       const bookable = isDateBookable(ds, today, isAdmin)
-                      const bookableTooltip = !bookable
-                        ? (ds < today ? '과거 날짜 (조회만 가능)' : '30일 초과 (조회만 가능, 예약 불가)')
+                      const isPastDate = ds < today
+                      const bookableTooltip = !bookable && !isPastDate
+                        ? '30일 초과 (조회만 가능, 예약 불가)'
                         : ''
+                      const dimmed = !bookable && !isPastDate
                       return (
                         <div key={day} onClick={() => { setSelectedDate(ds); setShowDatePicker(false) }}
                           title={bookableTooltip}
@@ -291,7 +293,7 @@ export function CalendarShell({
                             fontSize: 12, fontWeight: isSel||isToday2 ? 700 : 400, cursor: 'pointer',
                             background: isSel ? '#111111' : isToday2 ? '#EFF6FF' : 'transparent',
                             color: isSel ? '#fff' : isToday2 ? '#3B82F6' : dow===0 ? '#EF4444' : dow===6 ? '#3B82F6' : '#374151',
-                            opacity: !isSel && !bookable ? 0.35 : 1,
+                            opacity: !isSel && dimmed ? 0.35 : 1,
                           }}
                           onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = '#F1F5F9' }}
                           onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = isToday2 ? '#EFF6FF' : 'transparent' }}>
@@ -434,18 +436,22 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
           const isToday = ds === today, isSel = ds === selectedDate
           const dow = (firstDay + day - 1) % 7
           // ← [2026-04-23] 예약 가능 기간 정책: 오늘 + 30일 (과거는 Admin도 차단)
+          //   · 과거는 기능만 차단 (opacity 1)
+          //   · 30일 초과는 시각적 구분 (opacity 0.5 + 배경 회색)
           const bookable = isDateBookable(ds, today, isAdmin)
+          const isPastDate = ds < today
           const tooltipMsg = !bookable
-            ? (ds < today ? '과거 날짜는 예약할 수 없습니다' : '예약은 오늘부터 30일 이내만 가능합니다')
+            ? (isPastDate ? '과거 날짜는 예약할 수 없습니다' : '예약은 오늘부터 30일 이내만 가능합니다')
             : ''
+          const dimmed = !bookable && !isPastDate
           return (
             <div key={day} onClick={() => { if (bookable) onDayClick(ds) }}
               title={tooltipMsg}
               style={{
                 minHeight: 110, borderRight: '1px solid #F1F5F9', borderBottom: '1px solid #F1F5F9',
                 padding: '7px 6px', cursor: bookable ? 'pointer' : 'not-allowed', overflow: 'hidden',
-                background: !bookable ? '#F8FAFC' : isSel ? '#EEF2FF' : isToday ? '#F0FDF4' : '#fff',
-                opacity: !bookable ? 0.5 : 1,
+                background: dimmed ? '#F8FAFC' : isSel ? '#EEF2FF' : isToday ? '#F0FDF4' : '#fff',
+                opacity: dimmed ? 0.5 : 1,
                 transition: 'background 0.12s',
               }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
@@ -607,19 +613,19 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
               <div style={{ flex: 1, position: 'relative', height: RH, display: 'flex', overflow: 'hidden' }}>
                 {HOURS.map(h => {
                   // ← [2026-04-23] 슬롯 단위 예약 가능성 판정
-                  //   · 과거 날짜 전체 차단 (Admin 포함)
-                  //   · 오늘 날짜라도 현재 시각 이전 슬롯 차단 (Admin 포함)
-                  //   · 30일 초과는 일반 사용자만 차단
+                  //   · 과거 날짜/시간 전체 차단 (Admin 포함) — 기능만 차단, 시각은 정상(opacity 1)
+                  //   · 30일 초과는 일반 사용자만 차단 — 시각적 구분 필요 (opacity 0.4)
                   const slotBookable = isSlotBookable(selectedDate, h, todayStrVal, now, isAdmin)
+                  const isPastSlot = selectedDate < todayStrVal || (selectedDate === todayStrVal && h * 60 <= now)
                   const tooltipMsg = !slotBookable
-                    ? (selectedDate < todayStrVal || (selectedDate === todayStrVal && h * 60 <= now)
-                        ? '과거 시간은 예약할 수 없습니다'
-                        : '예약은 오늘부터 30일 이내만 가능합니다')
+                    ? (isPastSlot ? '과거 시간은 예약할 수 없습니다' : '예약은 오늘부터 30일 이내만 가능합니다')
                     : ''
+                  // 과거는 시각 효과 없이 클릭만 차단, 30일 초과만 흐리게
+                  const dimmed = !slotBookable && !isPastSlot
                   return (
                     <div key={h} onClick={() => { if (slotBookable) onEmptyClick(room.room_id, h) }}
                       title={tooltipMsg}
-                      style={{ width: CW, minWidth: CW, flexShrink: 0, borderRight: '1px solid #F1F5F9', cursor: slotBookable ? 'pointer' : 'not-allowed', position: 'relative', transition: 'background 0.1s', opacity: slotBookable ? 1 : 0.4 }}
+                      style={{ width: CW, minWidth: CW, flexShrink: 0, borderRight: '1px solid #F1F5F9', cursor: slotBookable ? 'pointer' : 'not-allowed', position: 'relative', transition: 'background 0.1s', opacity: dimmed ? 0.4 : 1 }}
                       onMouseEnter={e => { if (slotBookable) (e.currentTarget as HTMLElement).style.background = 'rgba(30,41,59,0.04)' }}
                       onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
                       <div style={{ position: 'absolute', top: 0, bottom: 0, left: '25%', borderLeft: '1px dashed #F8FAFC', pointerEvents: 'none' }} />
@@ -858,15 +864,14 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
                   const visible  = cellBks.slice(0, 5)
                   const overflow = cellBks.length - 5
                   // ← [2026-04-23] 슬롯 단위 예약 가능성 판정
-                  //   · 과거 날짜 전체 차단 (Admin 포함)
-                  //   · 오늘 날짜라도 현재 시각 이전 슬롯 차단 (Admin 포함)
-                  //   · 30일 초과는 일반 사용자만 차단
+                  //   · 과거는 기능만 차단 (opacity 1, cursor만 not-allowed)
+                  //   · 30일 초과는 시각적 구분 (opacity 0.5 + 배경 회색)
                   const bookable = isSlotBookable(ds, h, today, now, isAdmin)
+                  const isPastSlot = ds < today || (ds === today && h * 60 <= now)
                   const tooltipMsg = !bookable
-                    ? (ds < today || (ds === today && h * 60 <= now)
-                        ? '과거 시간은 예약할 수 없습니다'
-                        : '예약은 오늘부터 30일 이내만 가능합니다')
+                    ? (isPastSlot ? '과거 시간은 예약할 수 없습니다' : '예약은 오늘부터 30일 이내만 가능합니다')
                     : ''
+                  const dimmed = !bookable && !isPastSlot
                   return (
                     <div key={ds}
                       onClick={() => { if (bookable) onEmptyClick(ds, h) }}
@@ -875,12 +880,12 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
                         flex: 1, minWidth: 0, padding: '4px 5px',
                         borderRight: i < days.length - 1 ? '1px solid #F1F5F9' : 'none',
                         cursor: bookable ? 'pointer' : 'not-allowed',
-                        background: !bookable ? '#F8FAFC' : isToday2 ? '#FAFEFF' : 'transparent',
-                        opacity: !bookable ? 0.5 : 1,
+                        background: dimmed ? '#F8FAFC' : isToday2 ? '#FAFEFF' : 'transparent',
+                        opacity: dimmed ? 0.5 : 1,
                         minHeight: HOUR_H, transition: 'background 0.1s',
                       }}
                       onMouseEnter={e => { if (bookable && visible.length === 0) (e.currentTarget as HTMLElement).style.background = isToday2 ? '#F0FEFF' : '#F8FAFC' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = !bookable ? '#F8FAFC' : isToday2 ? '#FAFEFF' : 'transparent' }}>
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = dimmed ? '#F8FAFC' : isToday2 ? '#FAFEFF' : 'transparent' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         {visible.map(b => (
                           <div key={b.id}
