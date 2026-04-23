@@ -276,26 +276,28 @@ export function CalendarShell({
                       const ds = `${dpYear}-${fmt2(dpMonth+1)}-${fmt2(day)}`
                       const isSel = ds === selectedDate, isToday2 = ds === today
                       const dow = (dpFirstDay + day - 1) % 7
-                      // ← [2026-04-23] 데이트피커는 조회 자유 (클릭 가능, 뷰 이동)
-                      //   단, 30일 초과 날짜는 시각 구분 (조회 가능, 예약 불가 안내)
-                      //   과거 날짜는 시각 효과 없음 (이미 지나간 예약 조회는 정상 동작)
+                      // ← [2026-04-23] 데이트피커 클릭 차단 정책
+                      //   · 과거 날짜: 시각 효과 없음, 클릭 가능 (과거 내역 조회)
+                      //   · 30일 초과 날짜: 시각 구분(opacity 0.35) + 클릭 불가 (정책 엄격 반영)
+                      //   · 현재~30일: 정상 클릭 가능
                       const bookable = isDateBookable(ds, today, isAdmin)
                       const isPastDate = ds < today
-                      const bookableTooltip = !bookable && !isPastDate
-                        ? '30일 초과 (조회만 가능, 예약 불가)'
-                        : ''
-                      const dimmed = !bookable && !isPastDate
+                      // 차단 대상 = 30일 초과 (과거는 조회 허용)
+                      const blocked = !bookable && !isPastDate
+                      const tooltipMsg = blocked ? '예약은 오늘부터 30일 이내만 가능합니다' : ''
                       return (
-                        <div key={day} onClick={() => { setSelectedDate(ds); setShowDatePicker(false) }}
-                          title={bookableTooltip}
+                        <div key={day}
+                          onClick={() => { if (!blocked) { setSelectedDate(ds); setShowDatePicker(false) } }}
+                          title={tooltipMsg}
                           style={{
                             textAlign: 'center', padding: '5px 2px', borderRadius: 6,
-                            fontSize: 12, fontWeight: isSel||isToday2 ? 700 : 400, cursor: 'pointer',
+                            fontSize: 12, fontWeight: isSel||isToday2 ? 700 : 400,
+                            cursor: blocked ? 'not-allowed' : 'pointer',
                             background: isSel ? '#111111' : isToday2 ? '#EFF6FF' : 'transparent',
                             color: isSel ? '#fff' : isToday2 ? '#3B82F6' : dow===0 ? '#EF4444' : dow===6 ? '#3B82F6' : '#374151',
-                            opacity: !isSel && dimmed ? 0.35 : 1,
+                            opacity: !isSel && blocked ? 0.35 : 1,
                           }}
-                          onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = '#F1F5F9' }}
+                          onMouseEnter={e => { if (!isSel && !blocked) (e.currentTarget as HTMLElement).style.background = '#F1F5F9' }}
                           onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = isToday2 ? '#EFF6FF' : 'transparent' }}>
                           {day}
                         </div>
