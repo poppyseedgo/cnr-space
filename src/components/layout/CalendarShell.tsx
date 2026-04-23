@@ -798,7 +798,9 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                       style={{
                         position: 'absolute', top: 3, bottom: 4, left, width,    // ← [v8] 여백 3px 기준 (bottom은 시각 보정 +1)
                         background: slotBg,
-                        // border: 삭제 ← [2026-04-23 v3] 내 예약 border 제거 (칩으로만 표시)
+                        // ← [2026-04-23 v11 Figma 242:427] 사용 중 슬롯에만 border 1px #373737 적용
+                        //   box-sizing: border-box (index.css 전역 설정) → 박스 크기 영향 0
+                        border: isAct ? '1px solid #373737' : 'none',
                         borderRadius: 10,     // ← [Figma 242:427] rounded-[10px]
                         padding: 8,           // ← [Figma 242:427] p-[8px]
                         cursor: 'pointer',
