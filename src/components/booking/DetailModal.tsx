@@ -98,8 +98,9 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         </div>
       </div>
 
-      {/* ── Body (Hero) [피그마] padding 20, gap 16 ── */}
-      <div style={{padding: isMobile ? "0 20px 16px" : "0 20px 16px", overflowY:"auto", flex:1,
+      {/* ── Body (Hero) [피그마] padding 20, gap 16 ──
+          ← [2026-04-24] padding-bottom 16 → 60 (본문-버튼 사이 여유 공간 확대) */}
+      <div style={{padding: isMobile ? "0 20px 60px" : "0 20px 60px", overflowY:"auto", flex:1,
         display:"flex", flexDirection:"column", gap:16}}>
 
         {/* ── 정보 리스트: 0.5px #F1F5F9 구분선형 (피그마) ── */}
