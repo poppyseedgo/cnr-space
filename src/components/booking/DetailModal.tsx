@@ -68,7 +68,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
       background:"#fff",
       borderRadius: isMobile ? "20px 20px 0 0" : 24, // ← [피그마] 16 → 24
       width:"100%", maxWidth: isMobile ? "100%" : 460,
-      minHeight: isMobile ? undefined : 500, // ← [피그마 2026-04-22] 데스크탑 min-height 500
+      minHeight: isMobile ? undefined : 460, // ← [2026-04-24] 500 → 460 (요청 반영)
       maxHeight: isMobile ? "88vh" : "90vh",
       boxShadow:"0 20px 60px rgba(0,0,0,0.15)",
       overflow:"hidden", display:"flex", flexDirection:"column",
