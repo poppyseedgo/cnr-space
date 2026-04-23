@@ -103,9 +103,17 @@ export function getSlotState(
   const isSystemCancel = b.autoCancelled && b.cancelledBy === 'system'
                          && !isRejected && !isUserCancel && !isAdminCancel
   // 기한초과: status='pending' 유지되거나, cancelled지만 start_at 도달 직후 (10분 이내)
+  //  ← [2026-04-24 HOTFIX] isToday 가드 추가
+  //    tsMin()은 당일 자정 기준 분 단위, nowMinutes()는 "오늘"의 분 단위.
+  //    두 값은 같은 날짜일 때만 의미 있는 비교가 됨.
+  //    isToday=false(과거/미래 날짜)에서 `now < sm + 10` 비교하면,
+  //    예: 어제 10:30(sm=630) + 오늘 01:05(now=65) → 65 < 640 = true로 오판정됨
+  //    → 어제 노쇼가 오늘 새벽~오전에 전부 isExpiredPending=true로 오판정되어
+  //       isNoshow=false가 되면서 캘린더 Daily 뷰에서 "노쇼 박제"가 사라지는 버그.
+  //    해결: isToday일 때만 시간 비교, 아닐 때는 status만 확인.
   const isExpiredPending = isSystemCancel
-                           && (b.status === 'pending' || now < sm + 10)
-  // 노쇼: 그 외 시스템 취소 (start_at + 10분 경과 이후)
+                           && (b.status === 'pending' || (isToday && now < sm + 10))
+  // 노쇼: 그 외 시스템 취소 (start_at + 10분 경과 이후, 또는 오늘이 아닌 과거 날짜)
   const isNoshow         = isSystemCancel && !isExpiredPending
 
   const isEnded     = b.earlyEnded
