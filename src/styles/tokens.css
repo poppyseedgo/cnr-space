@@ -68,16 +68,19 @@
 /* ── 칩 사이즈 modifier ─────────────────────────────────────────────────────
    base .chip        : font-size 12px / padding 3px 10px / fw 500 — index.css 정의
    .chip--sm         : font-size  9px / padding 2px 7px
-   .chip--xs         : font-size  9px / padding 1px 4px / border-radius 4px
-   .chip--square     : border-radius 8 / padding 4 10  (base font 12 그대로 사용)
+   .chip--xs         : font-size  9px / padding 1px 4px / border-radius 4px  — 캘린더 슬롯 XS
+   .chip--square     : font-size 11px / padding 4px 10px / border-radius 8px — DetailModal 전용
 ─────────────────────────────────────────────────────────────────────────── */
 .chip--sm { font-size: 9px;  padding: 2px 7px; }
 /* ← [피그마 반영] chip--xs: 9px / padding 1px 4px / radius 4 (RoomModal StatusBadge-XS 기준) */
 .chip--xs { font-size: 9px;  padding: 1px 4px; border-radius: 4px; }
-/* ← [피그마 180:534 / 2026-04-22] chip--square: BookingDetailModal 전용 사각형 칩 modifier
-      · border-radius 24(pill) → 8(사각), padding 4 10
-      · font-size는 base .chip(12px)과 동일 */
-.chip--square { border-radius: 8px; padding: 4px 10px; }
+/* ← [피그마 212:322 / 2026-04-24] chip--square: DetailModal 전용 사각형 칩 modifier
+      · border-radius: 8
+      · padding: 4 10 (일반) / 4 12 (승인 대기 등 일부 상태는 개별 오버라이드)
+      · font-size: 11 (base 12에서 축소)
+      · font-weight: 500 Medium
+      · line-height: 1.5 */
+.chip--square { border-radius: 8px; padding: 4px 10px; font-size: 11px; font-weight: 500; line-height: 1.5; }
 
 /* ── 상태 칩 색상 클래스 (단일 소스 — index.css 중복 제거됨) ── */
 .chip-available     { background: var(--color-available-bg);     color: var(--color-available-text); font-weight: 500; }

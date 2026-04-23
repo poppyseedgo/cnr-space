@@ -6,7 +6,7 @@ import { getFloor } from '../../data/floors'
 
 import { AttendeeChip } from '../common/AttendeeChip'
 import { UserChip } from '../common/UserChip'
-import { BookingStatusBadge } from '../common/BookingStatusBadge'
+import { DetailModalStatusBadge } from '../common/DetailModalStatusBadge'  // ← [2026-04-24] DetailModal 전용 상태 칩
 import { MetaBadge } from '../common/MetaBadge'
 import { Button } from '../common/Button'
 import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22] 모달 X 버튼 공통화
@@ -81,8 +81,11 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
       <div style={{padding: isMobile ? "20px 20px 14px" : "16px 20px", flexShrink:0}}>
         <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12}}>
           <div style={{flex:1, minWidth:0, display:"flex", flexDirection:"column", gap:8 /* ← [피그마] 배지↔제목 gap 8 */}}>
-            {/* ← [피그마] 사각 상태칩: shape='square' 로 BookingStatusBadge 전체에 chip--square 적용 */}
-            <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} currentUser={currentUser} shape="square" />
+            {/* ← [2026-04-24 Figma 212:322 / 212:324] DetailModal 전용 사각 상태칩
+                  · 기존 BookingStatusBadge(shape='square')를 DetailModalStatusBadge 래퍼로 교체
+                  · 캘린더 슬롯용 CalendarSlotBadge(XS)와 완전 분리된 독립 컴포넌트
+                  · 스펙: padding 4×10, radius 8, 11px Medium, lineHeight 1.5 */}
+            <DetailModalStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} currentUser={currentUser} />
             {/* ← [피그마] 제목 21px SemiBold #111 */}
             <div style={{fontSize: isMobile ? 18 : 21, fontWeight:600, color:"#111", lineHeight:1.5, wordBreak:"break-word"}}>{b.title}</div>
             {/* ← [P2 v7] 반복/참석자 메타 뱃지 — 피그마엔 없지만 기능(정보성) 유지. 스크린샷에 노출 안 되더라도 로직 보존 */}
