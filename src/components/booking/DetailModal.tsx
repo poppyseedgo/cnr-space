@@ -157,53 +157,42 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
               />
             )
           })()}
-          {/* 참석자 — 반응형 grid
-               ← [2026-04-23 재수정] 사용자 지시(스크린샷 2): 긴 이름이 2-grid에 안 맞을 때
-                 내부 줄바꿈(X) → 칩 자체가 한 줄 전체를 차지하고 다음 칩은 아래로 내려오도록.
-                 방식: repeat(auto-fit, minmax(220px, 1fr))
-                   · 모든 칩이 220px 이하이면 2열로 배치
-                   · 한 칩이라도 220px을 넘어야 하면 grid가 1열로 자동 축소 → 칩들이 세로 스택
-                   · 220px 기준: 아바타(24) + gap(7) + 이름 14px Medium 약 13~15자까지 2열 유지
-                 이름 자체는 UserChip 기본값(nowrap)으로 한 줄 유지. 모달 overflow는
-                 부모 InfoRow value의 flex:1 + minWidth:0으로 차단 */}
-          {b.attendees && b.attendees.length > 0 && (() => {
-            const seen = new Set<string>()
-            const uniqueAttendees = (b.attendees as any[]).filter((a:any) => {
-              const key = (a.email || a.name || '').toLowerCase()
-              if (!key || seen.has(key)) return false
-              seen.add(key)
-              return true
-            })
-            if (uniqueAttendees.length === 0) return null
-            return (
-              <InfoRow
-                label="참석자"
-                alignTop
-                value={
-                  <div style={{
-                    display:"grid",
-                    gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))",
-                    columnGap:10, rowGap:10,
-                    width:"100%",
-                    minWidth:0,
-                  }}>
-                    {uniqueAttendees.map((a:any, idx:number) => {
-                      const u = (up as any[]).find((u:any) => u.email === a.email)
-                      return (
-                        <AttendeeChip
-                          key={a.email || idx}
-                          name={a.name || a.email}
-                          avatarUrl={u?.avatar_url ?? null}
-                          dept={u?.dept}
-                          userInfo={u}
-                        />
-                      )
-                    })}
-                  </div>
-                }
-              />
-            )
-          })()}
+          {/* 참석자 — 2-grid (피그마 repeat(2, fit-content), gap 10)
+              ← [2026-04-23] 1열 무너짐 버그 수정 (근본 원인):
+                 · 기존: `flex: 1` 이 grid 컨테이너에 있어 부모가 flex가 아닌데도
+                   flex-basis 0% 해석 + minmax(0, 1fr) 조합으로 cell이 0까지 축소돼
+                   2열이 시각적으로 무너짐
+                 · 변경: flex 제거 + width 100% 명시 → grid가 부모 전체 폭을 사용
+                 · 효과: 일반 짧은 이름은 2열로 정상 배치
+                         긴 이름(셀 폭 초과) 시에만 ellipsis 처리
+                         필요 시 auto-fit으로 추가 반응형 전환 가능 */}
+          {b.attendees && b.attendees.length > 0 && (
+            <InfoRow
+              label="참석자"
+              alignTop
+              value={
+                <div style={{
+                  display:"grid",
+                  gridTemplateColumns:"repeat(2, minmax(0, 1fr))",
+                  columnGap:10, rowGap:10,
+                  width:"100%",     // ← [2026-04-23] flex:1 제거 + width 100% 명시
+                }}>
+                  {b.attendees.map((a:any, idx:number) => {
+                    const u = (up as any[]).find((u:any) => u.email === a.email)
+                    return (
+                      <AttendeeChip
+                        key={a.email || idx}
+                        name={a.name || a.email}
+                        avatarUrl={u?.avatar_url ?? null}
+                        dept={u?.dept}
+                        userInfo={u}
+                      />
+                    )
+                  })}
+                </div>
+              }
+            />
+          )}
           {/* 거절 사유 — 있을 때만 (기능 유지) */}
           {(b as any).reject_reason && (
             <InfoRow
