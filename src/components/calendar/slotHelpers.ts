@@ -147,13 +147,20 @@ export function getSlotColors(opts: {
     }
   }
   if (variant === 'daily') {
-    // ← [2026-04-23 Figma 242:427] Daily 슬롯이 검정 배경 → 흰 배경으로 변경됨
-    //   변경 전 (검정 배경): 제목 흰색 / 서브 회색
-    //   변경 후 (흰 배경): 제목 검정 / 서브 #94A3B8 (Figma 스펙)
-    //   noshow/expired/ended: 흐린 회색 계열로 유지 (가독성↓ 의도)
+    // ← [2026-04-23 v3] 배경색 정책 재변경:
+    //   · 진행 중(isAct): 배경 #111 (검정) → 텍스트 흰색
+    //   · 그 외(미래/과거/조기반납/사용완료): 배경 #fff (흰색) → 텍스트 검정
+    //   · noshow/expired: 흐린 회색 (별도 처리)
+    //   호환: isAct가 최우선 판정, cancelled-like는 기존 로직 유지
+    if (isAct) {
+      return {
+        titleColor: '#fff',
+        subColor:   'rgba(255,255,255,0.75)',
+      }
+    }
     return {
-      titleColor: isCancelledLike || isEnded ? '#94A3B8' : '#000000',
-      subColor:   isCancelledLike || isEnded ? '#CBD5E1' : '#94A3B8',
+      titleColor: isCancelledLike ? '#94A3B8' : '#000000',
+      subColor:   isCancelledLike ? '#CBD5E1' : '#94A3B8',
     }
   }
   // timeline

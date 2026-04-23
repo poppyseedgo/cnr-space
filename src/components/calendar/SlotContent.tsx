@@ -56,10 +56,18 @@ export function SlotContent({
       }}>
         {/* 상단: 제목 + 시간 + 예약자 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, overflow: 'hidden' }}>
-          {/* 제목 — 1줄 ellipsis (Figma 242:427 스펙) */}
+          {/* 제목 — 2줄 wrap (숨기지 않고 감싸기)
+              ← [2026-04-23] 1줄 ellipsis → 2줄 wrap으로 변경
+              · 기존: whiteSpace: nowrap + textOverflow: ellipsis (긴 제목 잘림)
+              · 변경: word-break + 2줄 clamp (긴 제목도 최대 2줄로 자연스럽게 감쌈) */}
           <div style={{
             fontSize: 11, fontWeight: 500, color: titleColor,
-            lineHeight: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            lineHeight: 1.25,
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical' as const,
+            overflow: 'hidden',
+            wordBreak: 'break-word',
             fontFamily: "'Pretendard', -apple-system, sans-serif",
           }}>
             {b.title}

@@ -738,33 +738,30 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                     variant: 'daily', isAct, isEnded, isNoshow, isExpiredPending
                   })
                   const slotRoom = (dvRooms as any[]).find(r => r.room_id === b.room_id)
-                  // ← [2026-04-23 v2] 스타일 조정
-                  //   · padding: 6 → 8 (내부 여백 확대)
-                  //   · border-radius: 12 → 10 (모서리 살짝 덜 둥글게)
-                  //   · box-shadow: 전면 삭제 (진행 중 빨간 링 포함)
-                  //   · 기본 배경/테두리/내 예약 border는 유지 (요청 범위 밖)
+                  // ← [2026-04-23 v3] 배경색 정책 변경 + 내 예약 border 삭제 + opacity 정리
+                  //   · slotBg: 진행 중만 #111(검정), 그 외 전부 흰색 (미래/과거/조기반납/사용완료)
+                  //   · slotBorder: '내 예약' 두꺼운 검정 border 삭제 → 하단 칩으로만 표시
+                  //   · opacity: isEnded(조기반납/사용완료) 0.7 → 1 (흐림 제거)
+                  //   · noshow만 #F1F5F9 + opacity 0.55 유지 (박제 의도)
                   const slotBg =
-                    isNoshow ? '#F1F5F9' :
-                    isEnded  ? '#F8FAFC' :
-                    '#FFFFFF'
-                  const slotBorder =
-                    isMyBooking && !isNoshow && !isEnded ? '1.5px solid #000' :
-                    'none'
+                    isAct   ? '#111111' :      // 진행 중 → 검정
+                    isNoshow ? '#F1F5F9' :      // 노쇼 → 회색 박제
+                    '#FFFFFF'                   // 그 외(미래/과거/조기반납/사용완료) → 흰색
                   return (
                     <div key={b.id} onClick={e => { e.stopPropagation(); onBlockClick(b) }}
                       style={{
                         position: 'absolute', top: 6, bottom: 6, left, width,
                         background: slotBg,
-                        border: slotBorder,
-                        borderRadius: 10,                                    // ← [2026-04-23 v2] 12 → 10
-                        padding: 8,                                          // ← [2026-04-23 v2] 6 → 8
+                        // border: 삭제 ← [2026-04-23 v3] 내 예약 border 제거 (칩으로만 표시)
+                        borderRadius: 10,     // ← [Figma 242:427] rounded-[10px]
+                        padding: 8,           // ← [Figma 242:427] p-[8px]
                         cursor: 'pointer',
                         zIndex: isNoshow ? 1 : isAct ? 5 : 3, overflow: 'hidden',
-                        // boxShadow: 전면 삭제됨 ← [2026-04-23 v2]
-                        opacity: isNoshow ? 0.55 : isEnded ? 0.7 : 1,
+                        // box-shadow 없음 (Figma 스펙)
+                        opacity: isNoshow ? 0.55 : 1,   // ← [2026-04-23 v3] isEnded 0.7 → 1
                         transition: 'all 0.12s',
                       }}
-                      onMouseEnter={e => { if (!isNoshow && !isEnded) (e.currentTarget as HTMLElement).style.filter = 'brightness(0.97)' }}
+                      onMouseEnter={e => { if (!isNoshow) (e.currentTarget as HTMLElement).style.filter = isAct ? 'brightness(1.15)' : 'brightness(0.97)' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.filter = 'none' }}>
                       <SlotContent booking={b} room={slotRoom} isAdminRoom={!!slotRoom?.is_admin_only} currentUser={currentUser}
                         titleColor={titleColor} subColor={subColor} variant="daily" thirdLine={b.user} />
