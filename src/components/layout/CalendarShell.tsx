@@ -437,21 +437,26 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
           })
           const isToday = ds === today, isSel = ds === selectedDate
           const dow = (firstDay + day - 1) % 7
-          // ← [2026-04-23] 예약 가능 기간 정책: 오늘 + 30일 (과거는 Admin도 차단)
-          //   · 과거는 기능만 차단 (opacity 1)
-          //   · 30일 초과는 시각적 구분 (opacity 0.5 + 배경 회색)
+          // ← [2026-04-23 v2] 예약 가능 기간 정책: 오늘 + 30일 (과거는 Admin도 예약 불가)
+          //   · 과거 날짜: 일간뷰로 '조회' 이동 허용 (데이트피커와 일관성) — 예약은 BookingModal/DB 트리거에서 차단
+          //   · 30일 초과: 완전 차단 (클릭 불가)
+          //   · dimmed(시각 구분): 30일 초과만 (과거는 opacity 1 유지 — 기록 조회 UX)
           const bookable = isDateBookable(ds, today, isAdmin)
           const isPastDate = ds < today
+          // ← [2026-04-23 BUGFIX] canNavigate: 클릭 허용 조건 (예약 가능 || 과거 조회)
+          //   기존: `if (bookable)`만 허용 → 과거 기록 조회 불가 (데이트피커와 불일치)
+          //   변경: 과거도 일간뷰 이동 허용. 30일 초과만 차단 유지
+          const canNavigate = bookable || isPastDate
           const tooltipMsg = !bookable
-            ? (isPastDate ? '과거 날짜는 예약할 수 없습니다' : '예약은 오늘부터 30일 이내만 가능합니다')
+            ? (isPastDate ? '과거 날짜는 예약할 수 없습니다 (조회만 가능)' : '예약은 오늘부터 30일 이내만 가능합니다')
             : ''
           const dimmed = !bookable && !isPastDate
           return (
-            <div key={day} onClick={() => { if (bookable) onDayClick(ds) }}
+            <div key={day} onClick={() => { if (canNavigate) onDayClick(ds) }}  // ← [2026-04-23 BUGFIX] bookable → canNavigate (과거 조회 허용)
               title={tooltipMsg}
               style={{
                 minHeight: 110, borderRight: '1px solid #F1F5F9', borderBottom: '1px solid #F1F5F9',
-                padding: '7px 6px', cursor: bookable ? 'pointer' : 'not-allowed', overflow: 'hidden',
+                padding: '7px 6px', cursor: canNavigate ? 'pointer' : 'not-allowed', overflow: 'hidden',  // ← [2026-04-23 BUGFIX] bookable → canNavigate
                 background: dimmed ? '#F8FAFC' : isSel ? '#EEF2FF' : isToday ? '#F0FDF4' : '#fff',
                 opacity: dimmed ? 0.5 : 1,
                 transition: 'background 0.12s',
