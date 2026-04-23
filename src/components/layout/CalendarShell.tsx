@@ -746,7 +746,12 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                 {rBks.map(b => {
                   const st = getSlotState(b, now, isToday, currentUser)
                   const { sm, em, isNoshow, isExpiredPending, isEnded, isAct, isMyBooking } = st
-                  const left = ((sm-7*60)/60)*CW+2, width = Math.max(((em-sm)/60)*CW-4, 20)
+                  // ← [2026-04-23] 슬롯 상하좌우 여백 6px 균등 통일
+                  //   기존: 좌우 2px / 상하 6px (비대칭)
+                  //   변경: 상하좌우 6px (균등)
+                  //   · left +6 (좌측 6px 여유) / width -12 (양쪽 6px씩 총 차감)
+                  //   · Math.max(..., 20)로 짧은 예약 최소 폭 보장
+                  const left = ((sm-7*60)/60)*CW+6, width = Math.max(((em-sm)/60)*CW-12, 20)
                   const { titleColor, subColor } = getSlotColors({
                     variant: 'daily', isAct, isEnded, isNoshow, isExpiredPending
                   })
