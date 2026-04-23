@@ -473,22 +473,13 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
 
   const today   = todayStr();
   const now     = nowMinutes();
-  // ← [2026-04-23 HOTFIX] '오늘 남은 예약' 필터 기준을 status 기반으로 변경
-  //   기존: !b.autoCancelled 기준 → DB의 auto=false+user 34건이 취소됐는데 통과됨
-  //   변경: status='confirmed' 또는 'pending'만 포함 (cancelled/rejected 완전 제외)
-  //   정책: 룸 카드는 "현재 시점의 실제 예약"만 표시 (사용자 취소, 거절 등 숨김)
-  //   주의: activeBk(진행 중)는 confirmed만 해당 (pending은 승인 전이라 진행 중 불가)
   const todayBks = bookings
-    .filter(b => b.room_id===r.room_id && tsDate(b.start_at)===today
-      && (b.status === 'confirmed' || b.status === 'pending')
-      && !b.earlyEnded)
+    .filter(b => b.room_id===r.room_id && tsDate(b.start_at)===today && !b.autoCancelled && !b.earlyEnded)
     .sort((a,b) => a.start_at.localeCompare(b.start_at));
 
-  // 현재 진행중인 예약 (confirmed만 해당 — pending은 승인 전이라 진행 중 불가)
-  const activeBk = todayBks.find(b =>
-    b.status === 'confirmed' && tsMin(b.start_at) <= now && now < tsMin(b.end_at)
-  );
-  // 다음 예약 (현재 시각 이후 가장 가까운 것, confirmed + pending 포함)
+  // 현재 진행중인 예약
+  const activeBk = todayBks.find(b => tsMin(b.start_at) <= now && now < tsMin(b.end_at));
+  // 다음 예약 (현재 시각 이후 가장 가까운 것)
   const nextBk   = todayBks.find(b => tsMin(b.start_at) > now);
 
   const features  = r.features ?? [];
