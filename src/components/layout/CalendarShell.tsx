@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { CalendarSlotCard } from '../calendar/CalendarSlotCard'  // ← [2026-04-23] Daily 뷰 슬롯 전용 카드 (구 SlotContent 대체)
+import { CalendarCompactCard } from '../calendar/CalendarCompactCard'  // ← [2026-04-24] Weekly/Monthly 공용 컴팩트 카드
 import { getSlotState, isShownInDailyView, isShownInCalendar } from '../calendar/slotHelpers'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { useBlockedTooltip } from '../../hooks/useBlockedTooltip'  // ← [2026-04-23] 차단 영역 마우스 추적 툴팁
@@ -420,16 +421,31 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
   while (cells.length % 7 !== 0) cells.push(null)
 
   return (
-    <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+    // ← [2026-04-24 v2] Monthly 뷰 full height 적용
+    //   · height: calc(100vh - 220px)로 상단 헤더/툴바 제외한 나머지 전체 차지
+    //   · min-height 560: 6주 월(최대)에서 각 행 최소 ~90px 확보
+    //   · grid rows를 auto(헤더) + 1fr repeat(6)으로 분할해 본체 행이 세로 공간 균등 차지
+    <div style={{
+      background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden',
+      height: 'calc(100vh - 220px)', minHeight: 560,
+      display: 'flex', flexDirection: 'column',
+    }}>
+      {/* ← [2026-04-24] 요일 헤더 배경 #F8FAFC → #FFF */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', background: '#fff', borderBottom: '1px solid #E2E8F0', flexShrink: 0 }}>
         {DAY_NAMES.map((n, i) => (
           <div key={n} style={{ padding: '10px 0', textAlign: 'center', fontSize: 12, fontWeight:600,
             color: i===0 ? '#EF4444' : i===6 ? '#3B82F6' : '#64748B' }}>{n}</div>
         ))}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(0,1fr))' }}>
+      {/* ← [2026-04-24] 본체 grid: flex 1로 남은 세로 공간 전체 차지 + rows 균등 분할 */}
+      <div style={{
+        flex: 1, minHeight: 0,
+        display: 'grid',
+        gridTemplateColumns: 'repeat(7,minmax(0,1fr))',
+        gridAutoRows: 'minmax(0, 1fr)',  // 모든 행이 남은 공간 균등 분할
+      }}>
         {cells.map((day, idx) => {
-          if (!day) return <div key={`e${idx}`} style={{ minHeight: 110, borderRight: '1px solid #F1F5F9', borderBottom: '1px solid #F1F5F9', background: '#FAFAFA', overflow: 'hidden' }} />
+          if (!day) return <div key={`e${idx}`} style={{ borderRight: '1px solid #F1F5F9', borderBottom: '1px solid #F1F5F9', background: '#FAFAFA', overflow: 'hidden' }} />
           const ds = `${year}-${fmt2(month+1)}-${fmt2(day)}`
           // ← [2026-04-23 HOTFIX] !b.autoCancelled → isShownInCalendar + 노쇼 제외
           //   기존: status='cancelled'+auto_cancelled=false 건이 통과되어 취소건 표시됨
@@ -469,15 +485,18 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
               onMouseMove={mtH.onMouseMove}                         // ← [2026-04-23] 커스텀 툴팁: 이동
               onMouseLeave={mtH.onMouseLeave}                       // ← [2026-04-23] 커스텀 툴팁: 이탈
               style={{
-                minHeight: 110, borderRight: '1px solid #F1F5F9', borderBottom: '1px solid #F1F5F9',
+                // ← [2026-04-24] minHeight 110 제거 (grid rows가 관리)
+                //     flex column으로 헤더 + 예약 리스트 분리
+                borderRight: '1px solid #F1F5F9', borderBottom: '1px solid #F1F5F9',
                 padding: '7px 6px',
-                cursor: dimmed ? 'default' : (canNavigate ? 'pointer' : 'default'),  // ← [2026-04-23] not-allowed 제거, dimmed/비활성은 default
+                cursor: dimmed ? 'default' : (canNavigate ? 'pointer' : 'default'),
                 overflow: 'hidden',
                 background: dimmed ? '#F8FAFC' : isSel ? '#EEF2FF' : isToday ? '#F0FDF4' : '#fff',
                 opacity: dimmed ? 0.5 : 1,
                 transition: 'background 0.12s',
+                display: 'flex', flexDirection: 'column', minHeight: 0,
               }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5, flexShrink: 0 }}>
                 <span style={{
                   width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   borderRadius: '50%', fontSize: 12, fontWeight: isToday ? 600 : 500,
@@ -486,24 +505,19 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
                 }}>{day}</span>
                 {dbs.length > 0 && <span style={{ fontSize: 9, color: '#94A3B8', fontWeight: 600 }}>{dbs.length}건</span>}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {dbs.slice(0, 3).map(b => {
-                  const r = (mvRooms as any[]).find(r => r.room_id === b.room_id)
-                  if (!r) return null
-                  const isMyBk = currentUser && b.user === currentUser
-                  return (
-                    <div key={b.id} onClick={e => { e.stopPropagation(); onBookingClick(b) }}
-                      style={{
-                        background: isMyBk ? r.color+'30' : r.color+'18',
-                        borderLeft: isMyBk ? '3px solid #111' : `2px solid ${r.color}`,
-                        borderRadius: 3, padding: '2px 5px', fontSize: 10, color: r.color,
-                        fontWeight: 600, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', cursor: 'pointer',
-                      }}>
-                      {fmtTS(b.start_at)} {b.title}
-                    </div>
-                  )
-                })}
-                {dbs.length > 3 && <div style={{ fontSize: 9, color: '#94A3B8', paddingLeft: 3 }}>+{dbs.length-3}개</div>}
+              {/* ← [2026-04-24] 예약 리스트: flex-1 + overflow-hidden
+                   · 셀 높이에 들어갈 수 있는 만큼만 노출, 초과분은 +N개로 표시
+                   · 주간뷰와 동일한 CompactCard 스타일 사용 (isToday 기반 검정/회색 테마) */}
+              <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden' }}>
+                {dbs.slice(0, 3).map(b => (
+                  <CalendarCompactCard
+                    key={b.id}
+                    booking={b}
+                    isToday={isToday}
+                    onClick={e => { e.stopPropagation(); onBookingClick(b) }}
+                  />
+                ))}
+                {dbs.length > 3 && <div style={{ fontSize: 9, color: '#94A3B8', paddingLeft: 3, flexShrink: 0 }}>+{dbs.length-3}개</div>}
               </div>
             </div>
           )
@@ -811,11 +825,7 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
       return Math.floor(tsMin(b.start_at) / 60) === hour
     })
 
-  const fmtAmPm = (ts: string) => {
-    const m = tsMin(ts), h = Math.floor(m / 60), min = m % 60
-    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
-    return `${h < 12 ? '오전' : '오후'} ${h12}:${fmt2(min)}`
-  }
+  // ← [2026-04-24] fmtAmPm 제거 (CalendarCompactCard 내부로 이관됨)
 
   // 요일별 색상
   const dayColor = (dow: number, isToday2: boolean) => {
@@ -959,22 +969,12 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
                       onMouseLeave={e => { wkH.onMouseLeave(); (e.currentTarget as HTMLElement).style.background = dimmed ? '#F8FAFC' : isToday2 ? '#FAFEFF' : 'transparent' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         {visible.map(b => (
-                          <div key={b.id}
+                          <CalendarCompactCard
+                            key={b.id}
+                            booking={b}
+                            isToday={isToday2}
                             onClick={e => { e.stopPropagation(); onBlockClick(b) }}
-                            style={{
-                              display: 'flex', alignItems: 'center', gap: 5,
-                              height: 20, padding: '0 8px', borderRadius: 6,
-                              background: isToday2 ? '#1F232A' : '#E7E7E7',
-                              color:      isToday2 ? '#FFFFFF' : '#1F232A',
-                              cursor: 'pointer', overflow: 'hidden', flexShrink: 0,
-                            }}>
-                            <span style={{ fontSize: 10, fontWeight: 400, flexShrink: 0, opacity: 0.7, whiteSpace: 'nowrap' }}>
-                              {fmtAmPm(b.start_at)}
-                            </span>
-                            <span style={{ fontSize: 10, fontWeight: 500, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1 }}>
-                              {b.title}
-                            </span>
-                          </div>
+                          />
                         ))}
                         {overflow > 0 && (
                           <div style={{ fontSize: 10, color: '#94A3B8', padding: '1px 6px', fontWeight: 600 }}>
