@@ -746,12 +746,12 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                 {rBks.map(b => {
                   const st = getSlotState(b, now, isToday, currentUser)
                   const { sm, em, isNoshow, isExpiredPending, isEnded, isAct, isMyBooking } = st
-                  // ← [2026-04-23] 슬롯 상하좌우 여백 6px 균등 통일
-                  //   기존: 좌우 2px / 상하 6px (비대칭)
-                  //   변경: 상하좌우 6px (균등)
-                  //   · left +6 (좌측 6px 여유) / width -12 (양쪽 6px씩 총 차감)
+                  // ← [2026-04-23 v6] 슬롯 여백 미세 보정 (실제 렌더 기준)
+                  //   이론: 상하좌우 6px 균등
+                  //   실측: bottom/right이 시각적으로 2px 부족 → 각각 +2
+                  //   최종: top 6 / bottom 8 / left-offset 6 / width 차감 14 (우측 8)
                   //   · Math.max(..., 20)로 짧은 예약 최소 폭 보장
-                  const left = ((sm-7*60)/60)*CW+6, width = Math.max(((em-sm)/60)*CW-12, 20)
+                  const left = ((sm-7*60)/60)*CW+6, width = Math.max(((em-sm)/60)*CW-14, 20)
                   const { titleColor, subColor } = getSlotColors({
                     variant: 'daily', isAct, isEnded, isNoshow, isExpiredPending
                   })
@@ -768,7 +768,7 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                   return (
                     <div key={b.id} onClick={e => { e.stopPropagation(); onBlockClick(b) }}
                       style={{
-                        position: 'absolute', top: 6, bottom: 6, left, width,
+                        position: 'absolute', top: 6, bottom: 8, left, width,    // ← [v6] bottom 6 → 8
                         background: slotBg,
                         // border: 삭제 ← [2026-04-23 v3] 내 예약 border 제거 (칩으로만 표시)
                         borderRadius: 10,     // ← [Figma 242:427] rounded-[10px]
