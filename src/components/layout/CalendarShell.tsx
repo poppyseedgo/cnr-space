@@ -517,7 +517,11 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
 // ─── Daily View ───────────────────────────────────────────────────────────────
 export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, onCheckIn, rooms: dvRooms = [], currentUser = '', isAdmin = false }) {
   const isToday = selectedDate === todayStr(), now = nowMinutes()
-  const CW = 160, RH = 80, LW = 224
+  // ← [2026-04-23] Figma 재설계: 슬롯 사이즈 확대
+  //   · CW 160 → 200 (예약 슬롯 가로 공간 확보, 제목 더 길게 노출)
+  //   · RH 80 → 92 (슬롯 세로 공간 확대, 제목/시간/예약자 3줄 + 칩 row 여유)
+  //   · LW 224 (좌측 회의실명 컬럼 너비는 유지)
+  const CW = 200, RH = 92, LW = 224
   const rooms = (dvRooms as any[]).filter(r => r.is_active)
   const totalW = CW * HOURS.length
   // ← [2026-04-23] 예약 가능 기간 정책: 시간 슬롯 단위 판정 (아래 map 내부에서)
@@ -683,7 +687,14 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                 {/* ← [P2 v7 hotfix] 기한초과 분기 제거 — rBksCancelled가 이미 노쇼만 필터링함
                      · 정책: 노쇼는 박제 (이 시간에 노쇼 있었다는 기록 목적)
                      · 기한초과는 일반 취소와 동일하게 일간 뷰에서 사라짐
-                     · tokens.css의 chip-noshow 색상 토큰 자동 적용 */}
+                     · tokens.css의 chip-noshow 색상 토큰 자동 적용
+                     ← [2026-04-23 Figma 242:529] 노쇼 박제 슬롯 재디자인
+                     · bg: #F1F5F9(회색) → #FFEAEA(연한 빨강)
+                     · border: 1px dashed #D1D5DB → border 없음
+                     · radius: 5 → 12
+                     · padding: 2 5 → 6
+                     · 구조: justify-between (상단 노쇼 칩 / 하단 예약자명)
+                     · 예약자 폰트: 8px → 10px Pretendard Medium #2A2A2A */}
                 {rBksCancelled.map(b => {
                   const sm       = tsMin(b.start_at)
                   const left     = ((sm-7*60)/60)*CW+2
@@ -691,22 +702,33 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                   return (
                     <div key={b.id} onClick={e => { e.stopPropagation(); onBlockClick(b) }}
                       style={{ position: 'absolute', top: 6, bottom: 6, left, width,
-                        background: '#F1F5F9', border: '1px dashed #D1D5DB', borderRadius: 5,
-                        padding: '2px 5px', cursor: 'pointer', opacity: 0.5, overflow: 'hidden', zIndex: 1 }}>
-                      <span className="chip chip--xs chip-noshow">노쇼</span>
-                      {b.user && <span style={{ display: 'block', fontSize: 8, color: '#9CA3AF', marginTop: 2,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.user}</span>}
+                        background: '#FFEAEA', borderRadius: 12,
+                        padding: 6, cursor: 'pointer', overflow: 'hidden', zIndex: 1,
+                        display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                      {/* 상단: 노쇼 칩 */}
+                      <span className="chip chip--xs chip-noshow" style={{ alignSelf: 'flex-start' }}>노쇼</span>
+                      {/* 하단: 예약자명 */}
+                      {b.user && (
+                        <span style={{
+                          display: 'block', fontSize: 10, fontWeight: 500, color: '#2A2A2A',
+                          fontFamily: "'Pretendard', -apple-system, sans-serif",
+                          lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>{b.user}</span>
+                      )}
                     </div>
                   )
                 })}
 
                 {/* 예약 블록 */}
+                {/* ← [2026-04-23 Figma 242:427] 예약 슬롯 재디자인
+                     · bg: #111(검은 슬롯) → #fff(흰 슬롯)
+                     · border: 1.5px → 없음 (진행중만 빨간 보더)
+                     · radius: 8 → 12
+                     · padding: 5 8 → 6
+                     · 글씨색: 흰 배경 기준으로 titleColor/subColor 재매핑 (slotHelpers)
+                     · "내 예약" 강조: 테두리 검정 1.5px (기존 boxShadow 대체)
+                     · SlotContent: variant='daily' — justify-between 구조 적용 */}
                 {rBks.map(b => {
-                  // ← [P2 v7] 자체 isNoshow 판별 제거 → slotHelpers.getSlotState 통일
-                  //   기존: `isNoshow = autoCancelled && cancelledBy==='system' && status!=='rejected'`
-                  //         → 시간축 분리 없어서 pending_expired도 noshow로 오분류됨
-                  //   이 슬롯에 오는 건 !autoCancelled이라 실제론 둘 다 false이지만
-                  //   변수명·의미·getSlotColors 인터페이스 일관성 위해 통일
                   const st = getSlotState(b, now, isToday, currentUser)
                   const { sm, em, isNoshow, isExpiredPending, isEnded, isAct, isMyBooking } = st
                   const left = ((sm-7*60)/60)*CW+2, width = Math.max(((em-sm)/60)*CW-4, 20)
@@ -714,24 +736,38 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                     variant: 'daily', isAct, isEnded, isNoshow, isExpiredPending
                   })
                   const slotRoom = (dvRooms as any[]).find(r => r.room_id === b.room_id)
+                  // ← [2026-04-23] 흰 배경 기준 border/shadow 재설계
+                  //   · 기본: border 없음, 얕은 그림자로 카드 분리감
+                  //   · 내 예약: 검정 1.5px border (Figma 242:350 "내 예약" 칩과 별개로 슬롯 자체 강조)
+                  //   · 진행 중: 빨간 2px 외곽 (boxShadow로 링 형성, 기존 UX 유지)
+                  //   · 종료/노쇼: 회색 배경 + opacity로 흐리게 (기존 동일)
+                  const slotBg =
+                    isNoshow ? '#F1F5F9' :
+                    isEnded  ? '#F8FAFC' :
+                    '#FFFFFF'
+                  const slotBorder =
+                    isMyBooking && !isNoshow && !isEnded ? '1.5px solid #000' :
+                    'none'
+                  const slotShadow =
+                    isAct ? '0 0 0 2px #EF4444, 0 2px 8px rgba(239,68,68,0.15)' :
+                    isNoshow || isEnded ? 'none' :
+                    '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)'
                   return (
                     <div key={b.id} onClick={e => { e.stopPropagation(); onBlockClick(b) }}
                       style={{
                         position: 'absolute', top: 6, bottom: 6, left, width,
-                        background: isNoshow ? '#F1F5F9' : isEnded ? '#E2E8F0' : '#111111',
-                        border: `1.5px solid ${isNoshow?'#E2E8F0':isEnded?'#CBD5E1':isAct?'#000':'#334155'}`,
-                        borderRadius: 8, padding: '5px 8px', cursor: 'pointer',
+                        background: slotBg,
+                        border: slotBorder,
+                        borderRadius: 12, padding: 6, cursor: 'pointer',
                         zIndex: isNoshow ? 1 : isAct ? 5 : 3, overflow: 'hidden',
-                        boxShadow: isMyBooking&&!isNoshow&&!isEnded
-                          ? '0 0 0 2px #fff, 0 0 0 3.5px #111, 0 2px 8px rgba(0,0,0,0.15)'
-                          : isAct ? '0 0 0 2px #EF4444, 0 2px 8px rgba(0,0,0,0.2)'
-                          : isNoshow||isEnded ? 'none' : '0 1px 4px rgba(0,0,0,0.15)',
-                        opacity: isNoshow ? 0.45 : isEnded ? 0.55 : 1, transition: 'all 0.12s',
+                        boxShadow: slotShadow,
+                        opacity: isNoshow ? 0.55 : isEnded ? 0.7 : 1,
+                        transition: 'all 0.12s',
                       }}
-                      onMouseEnter={e => { if (!isNoshow && !isEnded) (e.currentTarget as HTMLElement).style.filter = 'brightness(1.15)' }}
+                      onMouseEnter={e => { if (!isNoshow && !isEnded) (e.currentTarget as HTMLElement).style.filter = 'brightness(0.97)' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.filter = 'none' }}>
                       <SlotContent booking={b} room={slotRoom} isAdminRoom={!!slotRoom?.is_admin_only} currentUser={currentUser}
-                        titleColor={titleColor} subColor={subColor} gap={1.5} thirdLine={b.user} />
+                        titleColor={titleColor} subColor={subColor} variant="daily" thirdLine={b.user} />
                     </div>
                   )
                 })}
