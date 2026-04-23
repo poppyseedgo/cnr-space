@@ -155,8 +155,20 @@ Deno.serve(async () => {
     //     ④ 다음 cron: noshow_notified=true 이미 발송된 건 배제 (중복 방지)
     //
     // 대상 1: cron이 단독 처리할 건 (프론트 미선점)
+    // ← [2026-04-23 HOTFIX] cron 5분 주기 → 15분 오프셋(10,25,40,55) 최적화에 맞춰
+    //   시간 범위 60분 → 25분으로 축소
+    //   설계 의도:
+    //     · 예약 시각은 15분 단위 (15n), 노쇼 판정 시각도 15분 단위 (15n+10)
+    //     · cron 실행 시각을 10,25,40,55로 고정 → 노쇼 판정 시각과 완벽 동기화
+    //     · 매 cron 실행마다 직전 15분 동안 노쇼된 예약 1개 슬롯 처리
+    //     · 윈도우 [now-25분, now-10분) = 15분 윈도우 (cron 주기와 동일)
+    //     · cron 1번 놓쳐도 다음 실행에서 복구 가능
+    //   효과:
+    //     · 낭비율 66% → 0%
+    //     · 진행 중 장시간 회의 완전 보호 (25분 전보다 과거 시작한 예약 자동 제외)
+    //     · Disk IO 대폭 감소
     const noshowCutoff = new Date(now.getTime() - 10 * 60 * 1000).toISOString()
-    const noshowLowerBound = new Date(now.getTime() - 60 * 60 * 1000).toISOString()
+    const noshowLowerBound = new Date(now.getTime() - 25 * 60 * 1000).toISOString()
 
     // (1-a) 아직 프론트가 선점 안 한 건 → cron이 DB 기록
     const { data: noshowTargetsFresh, error: noshowErrFresh } = await supabase
@@ -229,18 +241,18 @@ Deno.serve(async () => {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // ← [2026-04-23 HOTFIX] ②번 리마인더 + ③번 기한초과 로직 긴급 정지
+    // ← [2026-04-23 HOTFIX] ②번 리마인더 + ③번 기한초과 로직 정지
     // ═══════════════════════════════════════════════════════════════════════
-    // 증상: 진행 중인 회의를 기한초과로 오인식 + 체크인된 예약을 사용자 취소로 덮어씀
-    //       → 데이터 파괴 발생 중 (cancelled_by가 system이 아닌 'user'로 기록되는 원인 추적 중)
-    // 조치: 파괴적 로직 차단 — ②번과 ③번을 블록 주석 처리
-    //   · ①번 노쇼 자동 처리는 유지 (정상 작동 중, 영향 없음)
-    //   · ②번 리마인더 정지
-    //   · ③번 기한초과 자동 취소 정지 (근본 원인)
-    // 복구 예정: auto-cancel-bookings를 3개 함수로 분리 후 (근무시간 외 야간 작업)
-    //   · process-noshow/
-    //   · send-pending-reminder/
-    //   · process-pending-expired/  ← 정지 상태로 배포, 근본 원인 해결 후 재가동
+    // 증상: 진행 중 회의를 기한초과로 오인식 + 체크인된 예약이 사용자 취소로 덮어써짐
+    //       (cancelled_by='user' 오염, 추적 트리거 emergency_log_user_cancel로 경로 추적 중)
+    // 조치: 파괴적 로직 차단 — ②번과 ③번 블록 주석 처리
+    //   · ①번 노쇼 자동 처리는 유지 (cron 15분 오프셋 주기에 최적화됨)
+    //   · ②번 리마인더 정지 (임시)
+    //   · ③번 기한초과 자동 취소 정지 (파괴 근본 원인 추정, 분리 후 재설계)
+    // 복구 예정: auto-cancel-bookings를 3개 Edge Function으로 분리 후 야간 배포
+    //   · process-noshow/            ← 유지 (이미 정상 작동)
+    //   · send-pending-reminder/     ← 복구 예정
+    //   · process-pending-expired/   ← 근본 원인 해결 후 재가동
     // ═══════════════════════════════════════════════════════════════════════
     /*
     // ─── 2. 승인 기한 10분 전 알림 (Admin 전용) ────────────────────────
@@ -360,7 +372,7 @@ Deno.serve(async () => {
     // ═══════════════════════════════════════════════════════════════════════
     // ← [2026-04-23 HOTFIX] ②+③ 정지 상태 로그 (모니터링 용이)
     // ═══════════════════════════════════════════════════════════════════════
-    console.log('[auto-cancel] ⚠️ pending_expiring + pending_expired 로직 정지 상태 (2026-04-23 HOTFIX)')
+    console.log('[auto-cancel] ⚠️ pending_expiring + pending_expired 정지 (2026-04-23 HOTFIX)')
 
     console.log('[auto-cancel] 전체 완료:', JSON.stringify(stats))
     return new Response(
