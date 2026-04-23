@@ -3,6 +3,10 @@
  *
  * 버그 수정:
  *  1. UTC→KST 변환: Supabase는 timestamptz를 UTC로 반환 → +9h 보정 필요
+ *  2. [2026-04-23] loadBookings/loadUsers/loadRooms: 일시 오류 재시도 로직 추가
+ *     - 배경: 초기 로드 silent failure로 users 빈 배열 → 참석자 검색 안됨 (5명 문의)
+ *     - 해결: Supabase 쿼리 블록을 withRetry로 감쌈 (3회, exponential backoff + jitter)
+ *     - 호환: 3회 모두 실패 시 기존대로 [] 반환 (호출부 시그니처 유지, 회귀 0)
  */
 
 import { supabase, isSupabaseEnabled } from './supabase'
@@ -18,6 +22,40 @@ function utcToKST(ts: string): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${k.getUTCFullYear()}-${pad(k.getUTCMonth()+1)}-${pad(k.getUTCDate())}` +
          `T${pad(k.getUTCHours())}:${pad(k.getUTCMinutes())}:${pad(k.getUTCSeconds())}+09:00`
+}
+
+// ── 재시도 헬퍼 ──────────────────────────────────────────────────────────────
+// [2026-04-23 신규] 일시 네트워크 오류 / RLS 경합 / JWT 갱신 충돌 등 transient failure 자동 복구
+//
+// 재시도 간격: exponential backoff + jitter (Thundering herd 방지)
+//   시도 1 실패 → 300ms × (0.5~1.5 지터) → 시도 2
+//   시도 2 실패 → 600ms × (0.5~1.5 지터) → 시도 3
+//   시도 3 실패 → throw (호출부 catch에서 빈 배열 반환)
+//
+// jitter가 필수인 이유: 동시에 여러 탭/사용자가 재시도하면 서버에 집중 요청이 몰릴 수 있음
+//   (이전 Thundering herd 이슈 회피 — 50 simultaneous loadBookings 사례 참고)
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  label: string,
+  maxAttempts = 3,
+  baseDelayMs = 300
+): Promise<T> {
+  let lastErr: unknown
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn()
+    } catch (e) {
+      lastErr = e
+      if (attempt < maxAttempts) {
+        const base   = baseDelayMs * Math.pow(2, attempt - 1)
+        const jitter = base * (0.5 + Math.random())  // 50%~150% 랜덤
+        console.warn(`[api] ${label} 실패 (시도 ${attempt}/${maxAttempts}), ${Math.round(jitter)}ms 후 재시도:`, e)
+        await new Promise(r => setTimeout(r, jitter))
+      }
+    }
+  }
+  // maxAttempts 소진 — 호출부가 catch로 처리 (기존 [] 반환 폴백 유지)
+  throw lastErr
 }
 
 // ── DB row → Booking ─────────────────────────────────────────────────────────
@@ -84,14 +122,18 @@ export async function loadBookings(): Promise<Booking[]> {
 
     // bookings + booking_attendees join 조회
     // bookings.attendees JSONB는 신규 예약에 저장 안 됨 → booking_attendees 테이블이 정본
-    const { data, error } = await supabase
-      .from('bookings')
-      .select('*, booking_attendees(email, name)')
-      .gte('start_at', from.toISOString())
-      .lte('start_at', to.toISOString())
-      .order('start_at', { ascending: true })
+    // ← [2026-04-23] withRetry: 일시 오류 시 최대 3회 재시도 (exponential backoff + jitter)
+    const data = await withRetry(async () => {
+      const { data, error } = await supabase
+        .from('bookings')
+        .select('*, booking_attendees(email, name)')
+        .gte('start_at', from.toISOString())
+        .lte('start_at', to.toISOString())
+        .order('start_at', { ascending: true })
+      if (error) throw error
+      return data
+    }, 'loadBookings')
 
-    if (error) throw error
     return (data ?? []).map(row => {
       const parsed = rowToBooking(row)
       // booking_attendees 테이블에서 attendees 파싱 (email이 유일 키)
@@ -101,7 +143,8 @@ export async function loadBookings(): Promise<Booking[]> {
       return parsed
     })
   } catch (e) {
-    console.error('[api] loadBookings 실패:', e)
+    // ← [2026-04-23] 재시도 3회 모두 실패 시 도달 — 기존대로 빈 배열 반환 (호환성 유지)
+    console.error('[api] loadBookings 최종 실패 (3회 재시도 소진 → 빈 배열 반환):', e)
     return []
   }
 }
@@ -347,12 +390,17 @@ export async function loadAllRooms(): Promise<Room[]> {
 
 export async function loadRooms(): Promise<Room[]> {
   try {
-    const [roomsRes, featuresRes, roomFeaturesRes] = await Promise.all([
-      supabase.from('rooms').select('*').eq('is_active', true).order('room_id'),
-      supabase.from('features').select('*'),
-      supabase.from('room_features').select('*, features(*)'),
-    ])
-    if (roomsRes.error) throw roomsRes.error
+    // ← [2026-04-23] withRetry: 3개 쿼리 Promise.all 전체 재시도
+    //   어느 한 쿼리(rooms/features/room_features)라도 실패하면 전체 재시도
+    const { roomsRes, featuresRes, roomFeaturesRes } = await withRetry(async () => {
+      const [roomsRes, featuresRes, roomFeaturesRes] = await Promise.all([
+        supabase.from('rooms').select('*').eq('is_active', true).order('room_id'),
+        supabase.from('features').select('*'),
+        supabase.from('room_features').select('*, features(*)'),
+      ])
+      if (roomsRes.error) throw roomsRes.error
+      return { roomsRes, featuresRes, roomFeaturesRes }
+    }, 'loadRooms')
 
     const features   = featuresRes.data  ?? []
     const rfMap      = new Map<number, Feature[]>()
@@ -379,7 +427,8 @@ export async function loadRooms(): Promise<Room[]> {
       features:     rfMap.get(row.room_id) ?? [],
     }))
   } catch (e) {
-    console.error('[api] loadRooms 실패:', e)
+    // ← [2026-04-23] 재시도 3회 모두 실패 시 도달 — 기존대로 빈 배열 반환 (호환성 유지)
+    console.error('[api] loadRooms 최종 실패 (3회 재시도 소진 → 빈 배열 반환):', e)
     return []
   }
 }
@@ -392,11 +441,17 @@ export async function saveRooms(_rooms: Room[]): Promise<void> {
 // ── profiles 테이블 전체 로드 (Supabase) ──────────────────────────────────────
 export async function loadUsers(): Promise<AppUser[]> {
   try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, employee_id, name, dept, role, email, is_active, avatar_url')
-      .order('name')
-    if (error) throw error
+    // ← [2026-04-23] withRetry: 일시 오류 시 최대 3회 재시도
+    //   중요: 이 함수가 빈 배열 반환 시 BookingModal 참석자 검색이 전부 실패
+    //   (메모리 기록 증상: "참석자 검색 안됨 - 5명 문의")
+    const data = await withRetry(async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, employee_id, name, dept, role, email, is_active, avatar_url')
+        .order('name')
+      if (error) throw error
+      return data
+    }, 'loadUsers')
 
     return (data ?? []).map(row => ({
       user_id:     row.id,
@@ -409,7 +464,8 @@ export async function loadUsers(): Promise<AppUser[]> {
       avatar_url:  row.avatar_url  ?? null,
     }))
   } catch (e) {
-    console.error('[api] loadUsers 실패:', e)
+    // ← [2026-04-23] 재시도 3회 모두 실패 시 도달 — 기존대로 빈 배열 반환 (호환성 유지)
+    console.error('[api] loadUsers 최종 실패 (3회 재시도 소진 → 빈 배열 반환):', e)
     return []
   }
 }
