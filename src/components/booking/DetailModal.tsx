@@ -157,34 +157,51 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
               />
             )
           })()}
-          {/* 참석자 — 2-grid (피그마 repeat(2, fit-content), gap 10) */}
-          {b.attendees && b.attendees.length > 0 && (
-            <InfoRow
-              label="참석자"
-              alignTop
-              value={
-                <div style={{
-                  display:"grid",
-                  gridTemplateColumns:"repeat(2, minmax(0, 1fr))",
-                  columnGap:10, rowGap:10,
-                  flex:1,
-                }}>
-                  {b.attendees.map((a:any, idx:number) => {
-                    const u = (up as any[]).find((u:any) => u.email === a.email)
-                    return (
-                      <AttendeeChip
-                        key={a.email || idx}
-                        name={a.name || a.email}
-                        avatarUrl={u?.avatar_url ?? null}
-                        dept={u?.dept}
-                        userInfo={u}
-                      />
-                    )
-                  })}
-                </div>
-              }
-            />
-          )}
+          {/* 참석자 — 2-grid (피그마 repeat(2, fit-content), gap 10)
+               ← [2026-04-23] (1) email 기준 dedup — DB에 동일 참석자가 2회 들어가 있을 때 UI에서 1회만 노출
+                               (2) grid 셀 폭을 명시적으로 100%로 제한 → 긴 이름이 셀 밖으로 밀지 못하게,
+                                   칩은 UserChip wrap으로 셀 내부에서 줄바꿈 */}
+          {b.attendees && b.attendees.length > 0 && (() => {
+            const seen = new Set<string>()
+            const uniqueAttendees = (b.attendees as any[]).filter((a:any) => {
+              const key = (a.email || a.name || '').toLowerCase()
+              if (!key || seen.has(key)) return false
+              seen.add(key)
+              return true
+            })
+            if (uniqueAttendees.length === 0) return null
+            return (
+              <InfoRow
+                label="참석자"
+                alignTop
+                value={
+                  <div style={{
+                    display:"grid",
+                    gridTemplateColumns:"repeat(2, minmax(0, 1fr))",
+                    columnGap:10, rowGap:10,
+                    flex:1,
+                    width:"100%",
+                    minWidth:0,
+                  }}>
+                    {uniqueAttendees.map((a:any, idx:number) => {
+                      const u = (up as any[]).find((u:any) => u.email === a.email)
+                      return (
+                        // ← grid item wrapper: 셀 너비에 강제 고정, overflow 차단
+                        <div key={a.email || idx} style={{ minWidth:0, width:"100%", overflow:"hidden" }}>
+                          <AttendeeChip
+                            name={a.name || a.email}
+                            avatarUrl={u?.avatar_url ?? null}
+                            dept={u?.dept}
+                            userInfo={u}
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                }
+              />
+            )
+          })()}
           {/* 거절 사유 — 있을 때만 (기능 유지) */}
           {(b as any).reject_reason && (
             <InfoRow

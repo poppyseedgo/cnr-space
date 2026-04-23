@@ -154,7 +154,7 @@ export function BookingStatusBadge({
     (show('expired-pending') && isExpiredPending) ||
     (show('admin-cancel')    && isAdminCancel) ||
     (show('noshow')          && isNoshow) ||
-    (show('user-cancel')     && isUserCancel && isOwner) ||
+    (show('user-cancel')     && isUserCancel) ||
     // ← [P2 v7] pending 뱃지는 '자동취소되지 않은 진짜 승인 대기'만
     //   isExpiredPending이 status='pending' 상태도 커버하므로 중복 방지
     (show('pending')         && b.status === 'pending' && !b.autoCancelled) ||
@@ -195,8 +195,8 @@ export function BookingStatusBadge({
       {/* ④ 노쇼 (system 자동취소) */}
       {show('noshow') && isNoshow && <C cls="chip-noshow">노쇼</C>}
 
-      {/* ⑤ 사용자 직접 취소 — 본인 컨텍스트(MyPage)에서만 */}
-      {show('user-cancel') && isUserCancel && isOwner && <C cls="chip-neutral">취소됨</C>}
+      {/* ⑤ 사용자 직접 취소 — 본인·타인·관리자 시점 모두에서 표시 (이전: isOwner 제한 → 관리자가 타인 취소 건 상태 확인 불가했음) */}
+      {show('user-cancel') && isUserCancel && <C cls="chip-neutral">취소됨</C>}
 
       {/* ── 이하 정상 상태 (취소 없는 경우) ── */}
       {/* ⑥ 승인 대기 */}
@@ -216,8 +216,8 @@ export function BookingStatusBadge({
       {show('checkin-wait') && nci && <C cls="chip-checkin-wait">체크인 대기</C>}
       {show('checkin-done') && b.checkedIn && isAct && <C cls="chip-success">체크인 완료</C>}
 
-      {/* ⑩ 종료 */}
-      {show('past') && isPast && <C cls="chip-done">종료</C>}
+      {/* ⑩ 종료 (피그마 212:328 — 라벨 '사용완료', bg #000 / text #FFF / fw 500) */}
+      {show('past') && isPast && <C cls="chip-done">사용완료</C>}
 
       {/* ⑪ 조기반납 */}
       {show('early-end') && b.earlyEnded && <C cls="chip-earlyend">조기반납</C>}
