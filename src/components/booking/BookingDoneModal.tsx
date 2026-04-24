@@ -1,3 +1,21 @@
+/**
+ * BookingDoneModal — 예약 완료 확인 모달
+ *
+ * 예약 생성 직후 나오는 "예약이 완료되었습니다" 확인 화면.
+ * 방금 생성한 예약의 요약 정보를 표시 (회의실, 시간, 예약자, 참석자 등).
+ *
+ * ✅ 변경 이력
+ *  - [2026-04-24 P4-A-2] 예약자·참석자 이름을 snapshot → live 데이터로 전환
+ *    · 배경: 팀즈/Azure AD 이름 변경 후 이 모달에 옛 이름이 표시되는 이슈
+ *            (예약은 새로 만든 건이지만 방금 저장된 user_name은 이미 snapshot)
+ *    · 원인: UserChip/AttendeeChip에 b.user / a.name (snapshot) 직접 전달
+ *    · 해결: P4-A-1 DetailModal과 동일 패턴 — users 배열에서 live 조회
+ *            · 예약자: users.find(user_id === b.user_id)?.name ?? b.user
+ *            · 참석자: users.find(email === a.email)?.name ?? a.name ?? a.email
+ *    · Fallback 유지: users 배열에 없는 외부인은 snapshot 표시 (정보 보존)
+ *    · 영향: 표시만 변경, 기능 로직 무수정
+ */
+
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { Building2, Calendar, ClipboardList, Clock, FileText, User, Users } from 'lucide-react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
@@ -66,7 +84,10 @@ export function BookingDoneModal({booking:b, onClose, rooms:rp=[], users:up=[]})
                 <User size={11} strokeWidth={1.8}/>예약자
               </div>
               <div style={{display:"flex",alignItems:"center"}}>
-                <UserChip name={b.user} avatarUrl={owner?.avatar_url ?? null} variant="md" userInfo={owner} />
+                {/* ← [2026-04-24 P4-A-2] 이름 live 우선 (P4-A-1 DetailModal과 동일 패턴)
+                       기존: name={b.user} (bookings.user_name snapshot)
+                       변경: name={owner?.name ?? b.user} — profiles.name 라이브, 퇴사자만 snapshot fallback */}
+                <UserChip name={owner?.name ?? b.user} avatarUrl={owner?.avatar_url ?? null} variant="md" userInfo={owner} />
               </div>
             </div>
           )
@@ -82,9 +103,15 @@ export function BookingDoneModal({booking:b, onClose, rooms:rp=[], users:up=[]})
               {b.attendees.map((a, idx) => {
                 const u = (up as any[]).find(u => u.email === a.email)
                 return (
+                  // ← [2026-04-24 P4-A-2] 이름 live 우선 (P4-A-1 DetailModal과 동일 패턴)
+                  //   기존: name={a.name || a.email} (booking_attendees.name snapshot)
+                  //   변경: name={u?.name ?? a.name ?? a.email}
+                  //     1순위: profiles.name live (DB 변경 자동 반영)
+                  //     2순위: a.name snapshot (외부인/퇴사자 대응)
+                  //     3순위: a.email (이름 누락 엣지)
                   <AttendeeChip
                     key={a.email || idx}
-                    name={a.name || a.email}
+                    name={u?.name ?? a.name ?? a.email}
                     avatarUrl={u?.avatar_url ?? null}
                     dept={u?.dept}
                     userInfo={u}
