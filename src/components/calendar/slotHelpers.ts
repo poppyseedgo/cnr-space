@@ -1,11 +1,21 @@
 import { tsMin } from '../../utils/time'
 import type { Booking } from '../../types'
+import { isBooker } from '../../utils/bookingOwnership'  // ← [2026-04-24 P5] isMyBooking 판정 UUID/email OR 기반
 
 /**
  * 캘린더 슬롯 공통 상태 계산
  * Weekly / Daily / Timeline / Monthly 네 뷰에서 동일하게 사용
  *
  * ✅ 변경 이력
+ *  - [2026-04-24 P5] isMyBooking 판정을 이름 비교 → isBooker(UUID/email OR)로 전환
+ *     · 배경: 팀즈/Azure AD 이름 변경 후 캘린더 슬롯의 "내 예약" 뱃지/스타일이 사라짐
+ *     · 원인: isMyBooking = b.user === currentUser (이름 snapshot 비교)
+ *     · 해결: isBooker(b, currentUserId, currentUserEmail) — UUID OR email 이중 복원
+ *     · 시그니처 변경: getSlotState(b, now, isToday, currentUserId='', currentUserEmail='')
+ *                    · 기존 currentUser 파라미터 제거 (이름 비교 완전 제거)
+ *                    · 호출부: CalendarSlotCard, isShownInCalendar 내부 — 모두 새 시그니처로 교체
+ *     · 원칙: 이름이 바뀌어도 부서가 바뀌어도 본인 예약으로 인식
+ *
  *  - [2026-04-23 HOTFIX] 캘린더 뷰에 취소 예약이 표시되는 버그 해결
  *     · 증상: '사용자 취소' 예약이 모든 캘린더 뷰(Daily/Weekly/Monthly/Timeline)에 표시됨
  *     · 원인: 필터 기준이 auto_cancelled=true 였는데, DB에 취소 예약 중 상당수가
@@ -66,12 +76,14 @@ export function isShownInCalendar(b: Booking, now: number, isToday: boolean): bo
     // 시스템 취소가 아닌 모든 취소 (user/admin/NULL) → 제외
     if (b.cancelledBy !== 'system') return false
     // 시스템 취소 중에서는 노쇼만 박제 표시
-    const st = getSlotState(b, now, isToday, '')
+    // ← [2026-04-24 P5] getSlotState 시그니처 변경 — isMyBooking 판정 불필요한 호출이므로 식별자 빈값 전달
+    const st = getSlotState(b, now, isToday)
     return st.isNoshow
   }
 
   // ③ 활성 예약 (confirmed/pending) → 기한초과만 제외하고 표시
-  const st = getSlotState(b, now, isToday, '')
+  // ← [2026-04-24 P5] getSlotState 시그니처 변경 — 동일
+  const st = getSlotState(b, now, isToday)
   if (st.isExpiredPending) return false
 
   return true
@@ -90,7 +102,8 @@ export function getSlotState(
   b: Booking,
   now: number,
   isToday: boolean,
-  currentUser = ''
+  currentUserId:    string = '',   // ← [2026-04-24 P5] 이름 → UUID 기반
+  currentUserEmail: string = '',   // ← [2026-04-24 P5] 이름 → email 기반 (OR 이중 복원)
 ): SlotState {
   const sm = tsMin(b.start_at)
   const em = tsMin(b.end_at)
@@ -120,7 +133,11 @@ export function getSlotState(
   const isAct       = isToday && sm <= now && now < em
                       && !isNoshow && !isExpiredPending && !isEnded
   const nci         = isAct && !b.checkedIn
-  const isMyBooking = !!currentUser && b.user === currentUser
+  // ← [2026-04-24 P5] 이름 비교 완전 제거 — isBooker(UUID OR email) 사용
+  //   기존: const isMyBooking = !!currentUser && b.user === currentUser
+  //   변경: isBooker 헬퍼 호출 — user_id/user_email 중 하나라도 일치하면 true
+  //   원칙: 이름이 바뀌어도 부서가 바뀌어도 본인 예약으로 인식
+  const isMyBooking = isBooker(b, currentUserId, currentUserEmail)
 
   return { sm, em, isExpiredPending, isNoshow, isEnded, isAct, nci, isMyBooking }
 }

@@ -1,4 +1,15 @@
 // ─── 변경 이력 ───────────────────────────────────────────────────────────────
+// [2026-04-24 P5] 캘린더 슬롯 이름 live + 뱃지 판정 UUID/email 전환
+//   · 이름 live 표시 (2곳):
+//     - L155 노쇼 박제 슬롯 예약자 이름
+//     - L258 일반 Daily 슬롯 예약자 이름
+//     → users 배열에서 user_id 매칭 → profiles.name 우선, snapshot fallback
+//   · isOwner 판정 (L173): b.user === currentUser → isBooker(UUID OR email)
+//   · 시그니처 확장: currentUserId, currentUserEmail, users prop 추가
+//   · getSlotState 호출 업데이트: (b, now, isToday, currentUserId, currentUserEmail)
+//   · 기존 currentUser prop 유지 (호환 — CalendarShell에서 아직 전달 중, 내부적으로는 미사용)
+//   · 원칙: 이름이 바뀌어도 부서가 바뀌어도 본인 예약으로 인식 (UUID/email OR)
+//
 // [2026-04-23] 신규 — 캘린더 Daily 뷰 예약 슬롯 전용 카드 컴포넌트
 //
 //   배경: Daily 뷰 슬롯은 배경색/border/텍스트색/칩 row가 다양한 상태 조건으로 얽혀
@@ -35,10 +46,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
-import type { Booking, Room } from '../../types'
+import type { Booking, Room, AppUser } from '../../types'  // ← [2026-04-24 P5] AppUser 추가 — users 배열에서 live 이름 조회
 import { fmtTSRange, tsDate, todayStr } from '../../utils/time'
 import { getSlotState } from './slotHelpers'
 import { CalendarSlotBadge, type DailySlotBadgeType } from './CalendarSlotBadge'
+import { isBooker } from '../../utils/bookingOwnership'  // ← [2026-04-24 P5] isOwner 판정 UUID/email OR 기반
 
 // ── 상수 ───────────────────────────────────────────────────────────────────
 const BG_ACTIVE   = '#FFFFFF'
@@ -57,7 +69,14 @@ const COMPACT_THRESHOLD_MIN = 15
 export interface CalendarSlotCardProps {
   booking:      Booking
   room?:        Room | null
+  /** @deprecated P5 이후 표시/판정 모두 UUID/email 기반. 호환성 유지용으로 남겨둠 */
   currentUser?: string
+  /** ← [2026-04-24 P5] 현재 로그인 사용자 UUID */
+  currentUserId?: string
+  /** ← [2026-04-24 P5] 현재 로그인 사용자 이메일 */
+  currentUserEmail?: string
+  /** ← [2026-04-24 P5] 전체 사용자 배열 (loadUsers live 데이터) — 예약자 이름 live 조회용 */
+  users?:       AppUser[]
   now:          number              // 현재 시각(분), 부모에서 주입해 일관 렌더
   isToday:      boolean
   /** quantize된 슬롯 폭 (분). 15면 컴팩트 모드, 그 이상이면 풀 모드 */
@@ -100,6 +119,9 @@ export function CalendarSlotCard({
   booking: b,
   room,
   currentUser = '',
+  currentUserId = '',     // ← [2026-04-24 P5]
+  currentUserEmail = '',  // ← [2026-04-24 P5]
+  users = [],             // ← [2026-04-24 P5] 예약자 이름 live 조회용
   now,
   isToday,
   occupiedMin,
@@ -109,8 +131,14 @@ export function CalendarSlotCard({
   onMouseMove,
   onMouseLeave,
 }: CalendarSlotCardProps) {
-  const st = getSlotState(b, now, isToday, currentUser)
+  // ← [2026-04-24 P5] getSlotState 시그니처 변경 — 이름 → UUID/email
+  const st = getSlotState(b, now, isToday, currentUserId, currentUserEmail)
   const { isAct, isEnded, isNoshow, isExpiredPending } = st
+
+  // ← [2026-04-24 P5] 예약자 이름 live 조회 — profiles.name 우선, snapshot은 fallback
+  //   원칙: 이름이 바뀌어도 users 배열의 현재 값이 즉시 반영됨
+  const owner = users.find(u => u.user_id === b.user_id)
+  const displayUserName = owner?.name ?? b.user
 
   // ─── 배경/텍스트 색 결정 ───────────────────────────────────────────────
   // 해석 B: isAct만 흰 배경, 노쇼는 #FFEAEA, 그 외 전부 검정
@@ -151,8 +179,8 @@ export function CalendarSlotCard({
       >
         {/* 상단: 노쇼 칩 */}
         <CalendarSlotBadge type="noshow" style={{ alignSelf: 'flex-start' }} />
-        {/* 하단: 예약자명 */}
-        {b.user && (
+        {/* 하단: 예약자명 ← [2026-04-24 P5] live 이름 (profiles.name) 우선, snapshot fallback */}
+        {displayUserName && (
           <span style={{
             display: 'block', width: '100%', minWidth: 0,
             fontSize: 10, fontWeight: 500, color: '#2A2A2A',
@@ -162,7 +190,7 @@ export function CalendarSlotCard({
             whiteSpace: 'nowrap',
             wordBreak: 'keep-all',
             overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>{b.user}</span>
+          }}>{displayUserName}</span>
         )}
       </div>
     )
@@ -170,7 +198,10 @@ export function CalendarSlotCard({
 
   // ─── 일반 예약 슬롯 렌더 (Figma 242:427 구조) ─────────────────────────
   // 칩 결정 (컴팩트 모드에서는 숨김)
-  const isOwner = !!currentUser && b.user === currentUser
+  // ← [2026-04-24 P5] 이름 비교 완전 제거 — isBooker(UUID OR email) 사용
+  //   기존: const isOwner = !!currentUser && b.user === currentUser
+  //   변경: isBooker 헬퍼 — user_id/user_email 중 하나라도 일치 → "내 예약" 뱃지 불변 표시
+  const isOwner = isBooker(b, currentUserId, currentUserEmail)
   const isAdminRoom = !!room?.is_admin_only
   const isFuture = tsDate(b.start_at) > todayStr() || (isToday && st.sm > now)
   const isPast = !isAct && !isFuture && !b.autoCancelled
@@ -253,9 +284,10 @@ export function CalendarSlotCard({
           <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {fmtTSRange(b.start_at, b.end_at)}
           </div>
-          {b.user && (
+          {/* ← [2026-04-24 P5] live 이름 표시 — profiles.name 우선, snapshot fallback */}
+          {displayUserName && (
             <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {b.user}
+              {displayUserName}
             </div>
           )}
         </div>

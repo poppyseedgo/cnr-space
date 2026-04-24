@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { CalendarSlotCard } from '../calendar/CalendarSlotCard'  // ← [2026-04-23] Daily 뷰 슬롯 전용 카드 (구 SlotContent 대체)
 import { CalendarCompactCard } from '../calendar/CalendarCompactCard'  // ← [2026-04-24] Weekly/Monthly 공용 컴팩트 카드
 import { getSlotState, isShownInDailyView, isShownInCalendar } from '../calendar/slotHelpers'
+import { isBooker } from '../../utils/bookingOwnership'  // ← [2026-04-24 P5] filterMine 필터 UUID/email OR 판정
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { useBlockedTooltip } from '../../hooks/useBlockedTooltip'  // ← [2026-04-23] 차단 영역 마우스 추적 툴팁
 import {
@@ -113,10 +114,21 @@ function isQuarterBookable(
 }
 
 // ─── CalendarShell ────────────────────────────────────────────────────────────
+// ✅ 변경 이력
+//   - [2026-04-24 P5] "내 예약만" 필터 및 Daily 슬롯 이름/뱃지 판정을 이름 비교 → UUID/email로 전환
+//     · 시그니처 확장: currentUserId, currentUserEmail, users prop 추가
+//     · L190 filterMine 필터: b.user === currentUser → isBooker(b, currentUserId, currentUserEmail)
+//     · CalendarSlotCard 호출 2곳(노쇼 박제 + 일반 예약): currentUserId/Email/users 전달
+//     · 기존 currentUser prop 유지 (호환성) — 내부 판정은 UUID/email 기반
+//     · 원칙: 이름이 바뀌어도 부서가 바뀌어도 본인 예약으로 인식
 export function CalendarShell({
   bookings, rooms: roomsProp = [], selectedDate, setSelectedDate,
   calView, setCalView, onBookingClick, onNewBooking, onCheckIn,
-  filterFloor, setFilterFloor, currentUser = '', isAdmin = false,
+  filterFloor, setFilterFloor, currentUser = '',
+  currentUserId = '',       // ← [2026-04-24 P5]
+  currentUserEmail = '',    // ← [2026-04-24 P5]
+  users = [],               // ← [2026-04-24 P5] 예약자 이름 live 조회용 (CalendarSlotCard로 전달)
+  isAdmin = false,
 }) {
   const { isMobile } = useBreakpoint()
   // ← [2026-04-23] 데이트피커 차단 셀용 커스텀 툴팁
@@ -187,7 +199,12 @@ export function CalendarShell({
     ? '전체 층'
     : (FLOORS.find(f => f.floor_id === parseInt(filterFloor))?.floor_name ?? '전체 층')
   const [filterMine, setFilterMine] = useState(false)
-  const filteredBks = filterMine ? floorFilteredBks.filter(b => b.user === currentUser) : floorFilteredBks
+  // ← [2026-04-24 P5] filterMine 필터 이름 비교 → isBooker(UUID OR email)
+  //   기존: floorFilteredBks.filter(b => b.user === currentUser) — 이름 변경 시 매칭 실패
+  //   변경: isBooker 헬퍼 — 이름 변경에도 본인 예약 정확히 필터링
+  const filteredBks = filterMine
+    ? floorFilteredBks.filter(b => isBooker(b, currentUserId, currentUserEmail))
+    : floorFilteredBks
 
   // ── 뷰별 데이터 ──
   const weekStart = getWeekStart(selectedDate)
@@ -833,6 +850,9 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                       booking={b}
                       room={null}
                       currentUser={currentUser}
+                      currentUserId={currentUserId}
+                      currentUserEmail={currentUserEmail}
+                      users={users}
                       now={now}
                       isToday={isToday}
                       occupiedMin={occupiedMin}
@@ -848,7 +868,8 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                      · 사용 중(isAct): 흰 배경 + 1px #373737 border
                      · 그 외(예약됨/사용완료/조기반납): #1D1D1D 검정 배경 */}
                 {rBks.map(b => {
-                  const st = getSlotState(b, now, isToday, currentUser)
+                  // ← [2026-04-24 P5] getSlotState 시그니처 변경 — 이름 → UUID/email
+                  const st = getSlotState(b, now, isToday, currentUserId, currentUserEmail)
                   const { sm, em, isEnded, isAct, isNoshow } = st
                   // 15분 단위 올림 (조기반납 제외 일반 예약은 원본 유지)
                   const actualMin   = em - sm
@@ -862,6 +883,9 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                       booking={b}
                       room={slotRoom}
                       currentUser={currentUser}
+                      currentUserId={currentUserId}
+                      currentUserEmail={currentUserEmail}
+                      users={users}
                       now={now}
                       isToday={isToday}
                       occupiedMin={occupiedMin}
