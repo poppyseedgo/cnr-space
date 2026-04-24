@@ -2,6 +2,13 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-04-24 P1-hotfix] DetailModal에 currentUserEmail prop 추가
+ *      · 배경: P1 최초 배포 후에도 편집 버튼 미노출 (이름 fallback 꼬임)
+ *      · 해결: DetailModal 판정식을 MyPage 방식(UUID + email)으로 통일
+ *      · 본 파일 변경: DetailModal 호출에 currentUserEmail={authUser?.email ?? ''} 1개 추가
+ *      · 짝: DetailModal.tsx — isMyBooking 헬퍼 import로 전환 (동시 배포)
+ *      · bookingOwnership.ts도 함수명 isBookingOwner → isMyBooking으로 리네이밍
+ *
  *  - [2026-04-24 P1 긴급] DetailModal에 currentUserId prop 전달 추가 (L1467 근방)
  *      · 목적: 예약자 판정을 이름 문자열 → UUID 기반으로 전환하기 위해
  *              DetailModal 호출 시 currentUserId={authUser?.user_id ?? ''} 추가
@@ -1473,10 +1480,11 @@ function AppContent() {
             {modal.type==="edit"         && <BookingModal prefill={{}} editBooking={modal.data} date={tsDate(modal.data.start_at)} onClose={()=>setModal(null)} onSubmit={async ()=>false} onUpdate={(form,date)=>updateBooking(form,date,modal.data.id)} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} />}
             {/* ← [P2 v8] onCancel={cancelBooking} → onCancel={confirmAndCancelBooking}
                   예약 상세에서만 confirm dialog 경유 (소형카드는 즉시 실행 유지) */}
-            {/* ← [2026-04-24 P1] DetailModal에 currentUserId={authUser?.user_id} prop 추가
-                  · 예약자 판정을 이름 → UUID 기반으로 전환
-                  · 팀즈에서 이름 변경한 사용자의 '본인 예약 취소/편집/체크인 권한 상실' 버그 해결 */}
-            {modal.type==="detail"      && <DetailModal booking={modal.data} onClose={()=>setModal(null)} onCheckIn={checkIn} onCancel={confirmAndCancelBooking} onEdit={(b)=>setModal({type:"edit",data:b})} currentUser={currentUser} currentUserId={authUser?.user_id ?? ''} rooms={rooms} users={users} isAdmin={isAdmin} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={adminForceCancelBooking} />}
+            {/* ← [2026-04-24 P1-hotfix] DetailModal에 currentUserEmail={authUser?.email} 추가
+                  · P1 최초 배포(이름 fallback 포함) 후에도 편집 버튼 미노출 → 헬퍼 단순화(isMyBooking)
+                  · MyPage allMyBookings와 동일 기준(UUID + attendee email)으로 판정
+                  · 참석자도 본인 예약으로 인정 (2026-04-08 정책과 일관) */}
+            {modal.type==="detail"      && <DetailModal booking={modal.data} onClose={()=>setModal(null)} onCheckIn={checkIn} onCancel={confirmAndCancelBooking} onEdit={(b)=>setModal({type:"edit",data:b})} currentUser={currentUser} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} isAdmin={isAdmin} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={adminForceCancelBooking} />}
             {modal.type==="bookingDone" && <BookingDoneModal booking={modal.data} onClose={()=>setModal(null)} rooms={rooms} users={users} />}
             {modal.type==="recurDone"    && <RecurDoneModal data={modal.data} onClose={()=>setModal(null)} />}
             {/* ← [P2 v8 신규] 예약 취소 확인 다이얼로그 */}

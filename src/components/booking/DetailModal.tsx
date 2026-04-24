@@ -10,13 +10,23 @@ import { DetailModalStatusBadge } from '../common/DetailModalStatusBadge'  // �
 import { MetaBadge } from '../common/MetaBadge'
 import { Button } from '../common/Button'
 import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22] 모달 X 버튼 공통화
-import { isBookingOwner } from '../../utils/bookingOwnership'  // ← [2026-04-24 P1] 예약자 판정 헬퍼 (이름 → UUID)
+import { isMyBooking } from '../../utils/bookingOwnership'  // ← [2026-04-24 P1-hotfix] MyPage 방식(UUID + email) 판정
 
 /**
  * BookingDetailModal (export name: DetailModal)
  *
  * ✅ 변경 이력
- *  - [2026-04-24 P1 긴급] 예약자 판정을 이름 문자열 비교 → UUID 비교로 전환
+ *  - [2026-04-24 P1-hotfix] 예약자 판정을 MyPage 방식(UUID + email)으로 재정렬
+ *    · 배경: P1 최초 배포(이름 fallback 포함 isBookingOwner) 후에도 편집 버튼 미노출
+ *            → 이름 fallback이 profiles.name 변경 시 snapshot과 꼬여 false 반환하는 엣지 케이스
+ *    · 해결: isMyBooking(b, currentUserId, currentUserEmail) — 이름 비교 완전 제거
+ *            · 예약자: b.user_id === currentUserId (MyPage allMyBookings 쿼리와 동일)
+ *            · 참석자: attendees email === currentUserEmail (booking_attendees 설계와 일관)
+ *    · 정책: 참석자도 편집/취소 권한 인정 (2026-04-08 정책, MyPage 표시 범위와 일관)
+ *    · 추가 prop: currentUserEmail (App.tsx에서 authUser.email 전달)
+ *    · 영향: DetailModal 내 isOwner 기반 6개 분기(canEdit/취소/체크인 등) 자동 복구
+ *
+ *  - [2026-04-24 P1 긴급] 예약자 판정을 이름 문자열 비교 → UUID 비교로 전환 (deprecated by P1-hotfix)
  *    · 증상: 팀즈에서 이름 변경한 사용자가 본인 예약의 '취소/편집/체크인' 버튼 미노출
  *    · 원인: isOwner = b.user === currentUser (이름 비교)
  *            → Admin 동기화로 profiles.name 변경 후 bookings.user_name(snapshot)과 불일치 → false
@@ -55,7 +65,7 @@ function fmtDuration(startISO: string, endISO: string): string {
   return `${m}분`
 }
 
-export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser, currentUserId='', rooms:rp=[], users:up=[], isAdmin=false, onApprove=null, onReject=null, onForceCancel=null}: any) {  // ← [2026-04-24 P1] currentUserId prop 추가 — App.tsx에서 authUser.user_id 전달
+export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser, currentUserId='', currentUserEmail='', rooms:rp=[], users:up=[], isAdmin=false, onApprove=null, onReject=null, onForceCancel=null}: any) {  // ← [2026-04-24 P1-hotfix] currentUserEmail 추가 — MyPage 방식 참석자 판정용
   const { isMobile } = useBreakpoint();
   const r=rp.find(r=>r.room_id===b.room_id);
   const floor=r ? getFloor(r.floor_id) : null;
@@ -63,10 +73,11 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
   const isToday=tsDate(b.start_at)===todayStr(),now=nowMinutes();
   const sm=tsMin(b.start_at),em=tsMin(b.end_at);
   const isAct=isToday&&sm<=now&&now<em&&!b.autoCancelled&&!b.earlyEnded,nci=isAct&&!b.checkedIn;
-  // ← [2026-04-24 P1] 이름 비교 → UUID 비교로 전환 (이름 변경에 불변)
-  //   기존: const isOwner=b.user===currentUser,tl=sm-now;
-  //   변경: isBookingOwner 헬퍼 — user_id(UUID) 우선 + 이름 fallback
-  const isOwner = isBookingOwner(b, currentUserId, currentUser);
+  // ← [2026-04-24 P1-hotfix] MyPage 방식(UUID + email)으로 통일 — 이름 비교 완전 제거
+  //   기존 P1: isBookingOwner(b, currentUserId, currentUser) — 이름 fallback이 꼬임 원인
+  //   현재:   isMyBooking(b, currentUserId, currentUserEmail) — snapshot 이름 영향 없음
+  //   정책:   예약자(user_id) OR 참석자(attendees.email) 모두 본인 예약으로 인정
+  const isOwner = isMyBooking(b, currentUserId, currentUserEmail);
   const tl = sm - now;
   // 변경 가능 조건: 본인 예약, 취소/체크인 안됨, 시작 전
   const isFuture = tsDate(b.start_at) > todayStr() || (tsDate(b.start_at) === todayStr() && sm > now);
