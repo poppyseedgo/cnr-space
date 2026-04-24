@@ -68,13 +68,18 @@ function isDateBookable(ds: string, today: string, isAdmin: boolean): boolean {
   return diffDays <= BOOKING_LIMIT_DAYS
 }
 
-/** 특정 날짜의 특정 '시간 슬롯'이 예약 가능한지 판정
- *  · isDateBookable 조건 + 오늘 날짜의 지나간 시각 추가 차단
- *  · 슬롯 시작 시각이 현재보다 과거면 차단 (Admin 포함, 1분이라도 과거 불가)
- *  용도: Daily/Weekly 뷰의 시간 슬롯 판정
+/** 특정 날짜의 '시간 블록(1시간)'이 예약 가능한지 판정
+ *  · isDateBookable 조건 + 블록 내 마지막 15분 슬롯(h:45)이 미래인 경우만 허용
+ *  · 용도: Daily/Weekly 뷰의 시간 블록 hover/cursor/툴팁 판정 (블록 단위 시각 피드백)
+ *
+ *  ← [2026-04-24] 15분 단위 클릭 지원으로 판정 기준 변경
+ *     기존: hour*60 <= nowMin → 10:00 <= 10:10 이므로 10시 블록 전체 차단 (버그)
+ *     변경: (hour+1)*60 - 15 <= nowMin → 블록의 마지막 15분 슬롯(h:45)이 과거여야 블록 차단
+ *     효과: 10:10 현재 → 10시 블록의 10:15/10:30/10:45 슬롯은 아직 미래 → 블록 클릭 허용
+ *          (실제 클릭 시 서브 슬롯 판정은 isQuarterBookable이 담당)
  *
  *  @param ds       'YYYY-MM-DD'
- *  @param hour     0~23 (슬롯 시작 시)
+ *  @param hour     0~23 (블록 시작 시)
  *  @param today    'YYYY-MM-DD' (todayStr())
  *  @param nowMin   오늘 기준 분 단위 현재 시각 (nowMinutes())
  *  @param isAdmin  관리자 여부
@@ -84,9 +89,26 @@ function isSlotBookable(
 ): boolean {
   // 1) 날짜 단위 판정 먼저
   if (!isDateBookable(ds, today, isAdmin)) return false
-  // 2) 오늘 날짜의 슬롯이면 시간도 체크
-  //    슬롯 시작 시각(hour*60)이 현재 시각(nowMin) 이하면 과거 → 차단
-  if (ds === today && hour * 60 <= nowMin) return false
+  // 2) 오늘 날짜의 블록이면 마지막 15분 슬롯(h:45) 기준으로 체크
+  //    (hour+1)*60 - 15 = h:45 시작 분. 이 값이 nowMin 이하면 블록 내 모든 슬롯이 과거
+  if (ds === today && (hour + 1) * 60 - 15 <= nowMin) return false   // ← [2026-04-24] 블록 단위 판정
+  return true
+}
+
+/** 블록 내 '15분 슬롯' 단위 예약 가능성 판정 (Daily 뷰 서브 슬롯용)
+ *  · clickedMin이 업무시간·30일·과거 조건을 모두 통과해야 true
+ *  · 과거 판정: 슬롯 시작 시각(clickedMin) ≤ 현재(nowMin) 이면 차단 (Admin 포함 1분이라도 과거 불가)
+ *  · 용도: DailyView onClick 내에서 quarter 좌표로 계산된 clickedMin 검증
+ *
+ *  ← [2026-04-24] 신규 — 시간 블록 내 15분 단위 클릭 지원
+ *     예: 10:10 현재, 10시 블록에서 offsetX=60px 클릭 → quarter=1 → clickedMin=615 (10:15)
+ *         → isQuarterBookable 통과 → BookingModal 프리필
+ */
+function isQuarterBookable(
+  ds: string, clickedMin: number, today: string, nowMin: number, isAdmin: boolean
+): boolean {
+  if (!isDateBookable(ds, today, isAdmin)) return false
+  if (ds === today && clickedMin <= nowMin) return false
   return true
 }
 
@@ -399,8 +421,10 @@ export function CalendarShell({
       </div>
 
       {calView === 'monthly' && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d => { setSelectedDate(d); setCalView('daily') }} onBookingClick={onBookingClick} rooms={allRooms} currentUser={currentUser} isAdmin={isAdmin} />}
-      {calView === 'daily'   && <DailyView   bookings={dailyBks}  selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid, h) => onNewBooking(selectedDate, h, rid)} onCheckIn={onCheckIn} rooms={allRooms} currentUser={currentUser} isAdmin={isAdmin} />}
-      {calView === 'weekly'  && <WeeklyView  bookings={weekBks}   selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(d, h) => onNewBooking(d, h, undefined)} rooms={allRooms} currentUser={currentUser} isAdmin={isAdmin} />}
+      {/* ← [2026-04-24] onEmptyClick 시그니처 변경: (rid, h) → (rid, startMin, endMin) — 15분 단위 클릭 지원 */}
+      {calView === 'daily'   && <DailyView   bookings={dailyBks}  selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid, startMin, endMin) => onNewBooking(selectedDate, rid, startMin, endMin)} onCheckIn={onCheckIn} rooms={allRooms} currentUser={currentUser} isAdmin={isAdmin} />}
+      {/* ← [2026-04-24] Weekly는 기존 1시간 프리필 유지 — 시(hour)를 분 단위로 변환만 */}
+      {calView === 'weekly'  && <WeeklyView  bookings={weekBks}   selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(d, h) => onNewBooking(d, undefined, h*60, (h+1)*60)} rooms={allRooms} currentUser={currentUser} isAdmin={isAdmin} />}
       {dpTooltipNode /* ← [2026-04-23] 데이트피커 차단 셀용 커스텀 툴팁 Portal 렌더 */}
     </div>
   )
@@ -685,8 +709,10 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                   // ← [2026-04-23] 슬롯 단위 예약 가능성 판정
                   //   · 과거 날짜/시간 전체 차단 (Admin 포함) — 기능만 차단, 시각은 정상(opacity 1)
                   //   · 30일 초과는 일반 사용자만 차단 — 시각적 구분 필요 (opacity 0.4)
+                  // ← [2026-04-24] 블록 단위 판정으로 변경 — 블록 내 마지막 15분(h:45)이 미래면 블록 허용
                   const slotBookable = isSlotBookable(selectedDate, h, todayStrVal, now, isAdmin)
-                  const isPastSlot = selectedDate < todayStrVal || (selectedDate === todayStrVal && h * 60 <= now)
+                  // ← [2026-04-24] isPastSlot도 블록 단위 과거 판정으로 통일 (기존: 블록 시작만 체크 → 부분 미래 블록을 과거로 오판정)
+                  const isPastSlot = selectedDate < todayStrVal || (selectedDate === todayStrVal && (h + 1) * 60 - 15 <= now)
                   const tooltipMsg = !slotBookable
                     ? (isPastSlot ? '과거 시간은 예약할 수 없습니다' : '예약은 오늘부터 30일 이내만 가능합니다')
                     : ''
@@ -695,7 +721,22 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                   // ← [2026-04-23] 차단 슬롯(과거 or 30일 초과)에 커스텀 툴팁
                   const dlH = getDailyTooltipHandlers({ blocked: !slotBookable, message: tooltipMsg })
                   return (
-                    <div key={h} onClick={() => { if (slotBookable) onEmptyClick(room.room_id, h) }}
+                    <div key={h}
+                      onClick={(e) => {
+                        if (!slotBookable) return
+                        // ← [2026-04-24] 15분 단위 클릭 지원
+                        //   블록 내 클릭 좌표(offsetX)로 quarter(0~3) 판정 → 15분 슬롯 시작 분 계산
+                        //   CW=200px, quarter 폭=50px → [0:0~49 / 1:50~99 / 2:100~149 / 3:150~199]
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                        const quarter = Math.min(3, Math.max(0, Math.floor((e.clientX - rect.left) / (CW / 4))))
+                        const clickedMin = h * 60 + quarter * 15
+                        // 과거 quarter 클릭은 무반응 (블록은 열려있지만 개별 슬롯은 차단)
+                        //   예: 10:10 현재, 10시 블록의 10:00 quarter 클릭 → 무반응 / 10:15 quarter 클릭 → 통과
+                        if (!isQuarterBookable(selectedDate, clickedMin, todayStrVal, now, isAdmin)) return
+                        // 기본 1시간 프리필, 업무시간 19:00 넘지 않게 clamp
+                        const endMin = Math.min(clickedMin + 60, 19 * 60)
+                        onEmptyClick(room.room_id, clickedMin, endMin)   // ← [2026-04-24] 시그니처 변경: (rid, startMin, endMin)
+                      }}
                       aria-label={!slotBookable ? tooltipMsg : undefined}   // ← [2026-04-23] 접근성
                       style={{
                         width: CW, minWidth: CW, flexShrink: 0, borderRight: '1px solid #F1F5F9',
