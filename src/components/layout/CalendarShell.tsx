@@ -684,7 +684,13 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                 padding: 12,
                 display: 'flex', flexDirection: 'column',
                 justifyContent: 'flex-start',                       // ← [v14] center → flex-start
-                position: 'sticky', left: 0, background: '#fff', zIndex: 5,
+                position: 'sticky', left: 0, background: '#fff', zIndex: 6,
+                // ← [2026-04-24 HOTFIX] z-index 5 → 6
+                //   근본 원인: 시간 셀 내부 예약 카드의 zIndex가 isAct일 때 5로 동률.
+                //   CSS에서 z-index가 같으면 DOM 순서가 나중인 요소가 위에 그려지는데
+                //   카드는 room-label보다 뒤에 배치되므로 카드가 회의실명 영역을 덮음.
+                //   room-label을 6으로 올려 카드(최대 5)보다 항상 위에 두되,
+                //   헤더(sticky top, zIndex 9)보다는 낮게 유지.
                 boxShadow: 'none' }}>
                 <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 /* ← [v13] Figma 243:614 gap-[6px] */ }}>
                   <div style={{
