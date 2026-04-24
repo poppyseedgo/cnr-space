@@ -219,7 +219,7 @@ export function CalendarSlotCard({
               className="slot-active-dot"
               style={{
                 width: 6, height: 6, borderRadius: '50%',
-                background: '#76c8ff', flexShrink: 0, // ← [2026-04-24] FF6E6E → BAE3FF (사용 중 닷 색상 변경)
+                background: '#FF6E6E', flexShrink: 0, // ← [2026-04-24] FF6E6E → BAE3FF (사용 중 닷 색상 변경)
               }}
               aria-hidden
             />
