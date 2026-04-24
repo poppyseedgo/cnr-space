@@ -1,5 +1,6 @@
 import type { Booking, Room } from '../../types'
 import { tsDate, tsMin, todayStr, nowMinutes } from '../../utils/time'
+import { isBooker } from '../../utils/bookingOwnership'  // ← [2026-04-24 P4-B] isOwner를 isBooker(UUID/email)로 교체
 
 /**
  * BookingStatusBadge — 예약 상태 뱃지 묶음
@@ -14,6 +15,16 @@ import { tsDate, tsMin, todayStr, nowMinutes } from '../../utils/time'
  *    - 예: "이 위치엔 승인 대기 뱃지만 보이기"
  *
  * ✅ 변경 이력
+ *  - [2026-04-24 P4-B] "내 예약" 뱃지 판정 이름 비교 → UUID/email 기반 (isBooker)
+ *    · 배경: 팀즈/Azure AD 이름 변경 후 '내 예약' 뱃지 사라지는 버그
+ *    · 원인: isOwner = b.user === currentUser (이름 snapshot 비교)
+ *    · 해결: isBooker(b, currentUserId, currentUserEmail) — UUID OR email 이중 복원
+ *    · 추가 prop: currentUserId?, currentUserEmail? (기존 currentUser prop은 Deprecated)
+ *    · 호환성: 기존 currentUser prop 유지 (제거하면 호출부 일괄 수정 필요)
+ *              → 새 prop 있으면 isBooker, 없으면 기존 이름 비교 fallback
+ *              → P4-B-3로 모든 호출부 전환 완료되면 다음 배포에서 fallback 제거 예정
+ *    · 짝 배포: DetailModalStatusBadge 래퍼 + MyPage/HomeView/DetailModal/BookingListTable 호출부
+ *
  *  - [2026-04-19 P2 v7] 판별 로직 전면 재설계 — pending_expired 노쇼 오표시 버그 해결
  *     · 증상: 승인 기한 초과로 자동 취소된 예약이 모든 화면에서 "노쇼" 뱃지로 표시됨
  *             (룸 상세 카드, 예약 상세, 캘린더 슬롯, 홈 카드 전부)
@@ -56,7 +67,12 @@ interface BookingStatusBadgeProps {
   room?:        Room
   /** is_admin_only 직접 전달 — room prop 없이도 승인완료 배지 표시 가능 */
   isAdminRoom?: boolean
+  /** @deprecated P4-B-3 이후 제거 예정. 대신 currentUserId + currentUserEmail 사용 */
   currentUser?: string
+  /** ← [2026-04-24 P4-B] 현재 로그인 사용자 UUID (authUser.user_id) */
+  currentUserId?: string
+  /** ← [2026-04-24 P4-B] 현재 로그인 사용자 이메일 (authUser.email) */
+  currentUserEmail?: string
   /** md = DetailModal·ListView / sm = 소형카드 / xs = 캘린더 슬롯 */
   size?:        'md' | 'sm' | 'xs'
   /** 지정 시 해당 타입의 뱃지만 렌더. 미지정 시 전체 자동 판별. */
@@ -77,6 +93,8 @@ export function BookingStatusBadge({
   room: r,
   isAdminRoom,
   currentUser = '',
+  currentUserId = '',      // ← [2026-04-24 P4-B]
+  currentUserEmail = '',   // ← [2026-04-24 P4-B]
   size = 'md',
   only,
   shape = 'pill',
@@ -157,7 +175,14 @@ export function BookingStatusBadge({
   const isPast    = !isAct && !isFuture && !b.autoCancelled
                     && b.status !== 'pending' && b.status !== 'rejected'
   const tl        = sm - now
-  const isOwner   = !!currentUser && b.user === currentUser
+  // ← [2026-04-24 P4-B] 예약자 판정을 이름 비교 → UUID/email 기반 isBooker로 전환
+  //   원칙: 이름이 바뀌어도 부서가 바뀌어도 본인 예약으로 인식
+  //   호환: 새 prop (currentUserId/Email) 전달되면 isBooker 사용
+  //         없으면 기존 이름 비교 fallback (P4-B-3 호출부 전환 완료 전까지만)
+  //   주의: P4-B-3 완료되면 fallback 제거해서 이름 비교 0건으로 마무리 예정
+  const isOwner = (currentUserId || currentUserEmail)
+    ? isBooker(b, currentUserId, currentUserEmail)
+    : (!!currentUser && b.user === currentUser)
 
   // ── only 필터 헬퍼 ─────────────────────────────────────────────
   const show = (t: BadgeType) => !only || only.includes(t)

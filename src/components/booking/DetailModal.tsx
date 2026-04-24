@@ -127,7 +127,8 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
                   · 기존 BookingStatusBadge(shape='square')를 DetailModalStatusBadge 래퍼로 교체
                   · 캘린더 슬롯용 CalendarSlotBadge(XS)와 완전 분리된 독립 컴포넌트
                   · 스펙: padding 4×10, radius 8, 11px Medium, lineHeight 1.5 */}
-            <DetailModalStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} currentUser={currentUser} />
+            <DetailModalStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} currentUser={currentUser} currentUserId={currentUserId} currentUserEmail={currentUserEmail} />
+            {/* ← [2026-04-24 P4-B] currentUserId/Email 추가 — 내부 BookingStatusBadge가 isBooker(UUID/email)로 "내 예약" 뱃지 판정 */}
             {/* ← [피그마] 제목 21px SemiBold #111 */}
             <div style={{fontSize: isMobile ? 18 : 21, fontWeight:600, color:"#111", lineHeight:1.5, wordBreak:"break-word"}}>{b.title}</div>
             {/* ← [P2 v7] 반복/참석자 메타 뱃지 — 피그마엔 없지만 기능(정보성) 유지. 스크린샷에 노출 안 되더라도 로직 보존 */}

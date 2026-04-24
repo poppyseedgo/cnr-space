@@ -4,6 +4,12 @@
  * 예약을 테이블 형태(날짜/회의명/회의실/예약자/상태)로 렌더링하는 공통 컴포넌트.
  *
  * ✅ 변경 이력
+ *  - [2026-04-24 P4-B] BookingStatusBadge에 currentUserId/currentUserEmail 전파
+ *    · 뱃지 내부 isBooker 판정(UUID/email 기반)을 사용하려면 prop 전달 필수
+ *    · props 시그니처에 currentUserId? 추가 (currentUserEmail은 기존)
+ *    · L325 BookingStatusBadge 호출에 두 prop 전달
+ *    · MyPage/AdminPage 호출부에서 각각 authUserId/email 전달받아 넘김
+ *
  *  - [2026-04-24 P4-A-3] 예약자 이름·아바타 역조회를 user_id 기반 + live 이름으로 전환
  *    · 배경 2건:
  *      ① 예약자 이름 snapshot 표시 (P4-A-1/A-2와 동일 버그)
@@ -51,6 +57,8 @@ interface BookingListTableProps {
   rooms:             Room[]
   users?:            AppUser[]
   currentUser:       string
+  /** ← [2026-04-24 P4-B] "내 예약" 뱃지 판정용 (UUID/email 기반 isBooker) */
+  currentUserId?:    string
   currentUserEmail?: string
   onDetail:          (b: Booking) => void
   loading?:          boolean
@@ -66,7 +74,7 @@ const PAGE_SIZE = 15
 
 // ─── Component ───────────────────────────────────────────────────────────────
 export function BookingListTable({
-  bookings, rooms, users = [], currentUser, onDetail,
+  bookings, rooms, users = [], currentUser, currentUserId = '', currentUserEmail = '', onDetail,
   loading = false, controlled, hideFilters = false, actionColumn,
 }: BookingListTableProps) {
   const today = todayStr()
@@ -348,7 +356,8 @@ export function BookingListTable({
 
                       {/* 상태 */}
                       <td style={{ padding: '10px 14px' }}>
-                        <BookingStatusBadge booking={b} room={room} isAdminRoom={!!room?.is_admin_only} size="sm" currentUser={currentUser}/>
+                        {/* ← [2026-04-24 P4-B] currentUserId/Email 추가 — "내 예약" 뱃지 판정 UUID/email 기반 */}
+                        <BookingStatusBadge booking={b} room={room} isAdminRoom={!!room?.is_admin_only} size="sm" currentUser={currentUser} currentUserId={currentUserId} currentUserEmail={currentUserEmail}/>
                       </td>
 
                       {/* 액션 컬럼 */}
