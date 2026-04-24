@@ -585,12 +585,42 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
   // 분 → 슬롯 폭(px) 변환 (여백 14 차감은 호출부에서 처리)
   const minToPx = (n: number) => (n / 60) * CW
 
-  const nowLeft = isToday ? ((now - 7*60) / 60) * CW : 0
+  // ── [2026-04-24] 현재시간 인디케이터 전용 precise now (소수점 분)
+  //   목적: 빨간 라인이 1분 단위로 뚝뚝 점프하는 현상 제거.
+  //   전략: App 전역 tick은 10초 유지(성능 영향 없음). 이 뷰에서만 1초마다
+  //        소수점 분 값을 갱신하여 인디케이터 위치 계산에 사용.
+  //   범위: preciseNowMin은 오직 nowLeft(빨간 라인 left)에만 영향.
+  //        예약 판정·pill 텍스트·스크롤 초기값 등 나머지는 기존 now(정수분) 그대로.
+  //   보간: 인디케이터 컨테이너에 transition: left 1s linear 부여 →
+  //        1초 단위 샘플 사이도 CSS가 자연스럽게 보간.
+  const [preciseNowMin, setPreciseNowMin] = useState(() => {
+    const d = new Date()
+    return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60
+  })
+  useEffect(() => {
+    if (!isToday) return
+    const iv = setInterval(() => {
+      const d = new Date()
+      setPreciseNowMin(d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60)
+    }, 1000)
+    return () => clearInterval(iv)
+  }, [isToday])
+
+  // ← [2026-04-24] nowLeft는 preciseNowMin 기반 (소수점 분) → 매 초 부드럽게 이동
+  //   기존: now(정수분) 기반 → 1분마다 픽셀 단위 점프
+  const nowLeft = isToday ? ((preciseNowMin - 7*60) / 60) * CW : 0
   const scrollRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!scrollRef.current) return
-    scrollRef.current.scrollLeft = isToday ? Math.max(0, nowLeft - 120) : 0
-  }, [selectedDate, isToday, nowLeft])
+    // ← [2026-04-24] 초기 스크롤 여백 120px → CW(200px) = 1시간.
+    //   현재 시간 빨간 라인 왼쪽에 '바로 직전 1시간 블록'이 완전히 보이도록 여유 확보.
+    //   기존 120px은 약 36분 여유만 줘서 현재 시간이 화면 왼쪽에 너무 붙어 답답했음.
+    //   ← [2026-04-24 추가] selectedDate 변경 또는 today 전환 시점에만 초기화.
+    //   preciseNowMin은 deps에서 제거 — 매 초 스크롤이 리셋되는 걸 방지.
+    const initialNowLeft = isToday ? ((now - 7*60) / 60) * CW : 0
+    scrollRef.current.scrollLeft = isToday ? Math.max(0, initialNowLeft - CW) : 0
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, isToday])
 
   // ← [2026-04-23] getRoomDot 함수 완전 삭제 — 회의실 상태 dot 표시 불필요 (요청)
 
@@ -598,10 +628,15 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
     <div ref={scrollRef} style={{ background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', overflowX: 'auto', overflowY: 'visible' }}>
       <div style={{ minWidth: LW + totalW, position: 'relative' }}>
 
-        {/* 현재시간 인디케이터 — pill(헤더 하단) + dot + #FF393C 세로 라인 */}
+        {/* 현재시간 인디케이터 — pill(헤더 하단) + dot + #FF393C 세로 라인
+             ← [2026-04-24] transition: left 1s linear 추가
+                · 내부 preciseNowMin이 1초마다 갱신 → 이 컨테이너 left가 1초 간격으로 변경
+                · CSS가 샘플 사이를 1초 linear로 보간 → 시각적으로 완전히 부드러운 이동
+                · linear를 쓰는 이유: 시간은 일정 속도로 흐른다는 의미에 맞음 */}
         {isToday && nowLeft >= 0 && nowLeft <= totalW && (
           <div style={{ position: 'absolute', zIndex: 8, pointerEvents: 'none',
-            top: 0, bottom: 0, left: LW + nowLeft, width: 0 }}>
+            top: 0, bottom: 0, left: LW + nowLeft, width: 0,
+            transition: 'left 1s linear', willChange: 'left' }}>
             {/* pill — 헤더 하단(top:29px = 헤더 48px - pill 19px 절반) */}
             <div style={{ position: 'absolute', top: 29, left: '50%', transform: 'translateX(-50%)',
               height: 19, padding: '0 8px', background: '#FF393C', borderRadius: 24,
