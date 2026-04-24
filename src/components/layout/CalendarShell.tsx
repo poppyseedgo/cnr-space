@@ -628,29 +628,31 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
     <div ref={scrollRef} style={{ background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', overflowX: 'auto', overflowY: 'visible' }}>
       <div style={{ minWidth: LW + totalW, position: 'relative' }}>
 
-        {/* 현재시간 인디케이터 — pill(헤더 하단) + dot + #FF393C 세로 라인
-             ← [2026-04-24] transition: left 1s linear 추가
-                · 내부 preciseNowMin이 1초마다 갱신 → 이 컨테이너 left가 1초 간격으로 변경
-                · CSS가 샘플 사이를 1초 linear로 보간 → 시각적으로 완전히 부드러운 이동
-                · linear를 쓰는 이유: 시간은 일정 속도로 흐른다는 의미에 맞음 */}
+        {/* 현재시간 인디케이터 — pill(헤더 중앙) + dot + #FF393C 세로 라인
+             ← [2026-04-24] A안 적용: 행별 시간선 삭제 후 상위 인디케이터 단일화
+                · pill top: 29 → 14  (헤더 ~48px 세로 중앙: (48-19)/2 ≈ 14)
+                · dot  top: 48 → 38  (헤더 하단 경계선 위에 걸치도록)
+                · line top: 53 → 48  (헤더 바로 아래부터 body 바닥까지 관통)
+                · zIndex 8/10/9 유지 (헤더 9 대비 pill/dot은 위, 라인은 아래)
+             ← [2026-04-24] transition: left 1s linear + preciseNowMin 기반 부드러운 이동 */}
         {isToday && nowLeft >= 0 && nowLeft <= totalW && (
           <div style={{ position: 'absolute', zIndex: 8, pointerEvents: 'none',
             top: 0, bottom: 0, left: LW + nowLeft, width: 0,
             transition: 'left 1s linear', willChange: 'left' }}>
-            {/* pill — 헤더 하단(top:29px = 헤더 48px - pill 19px 절반) */}
-            <div style={{ position: 'absolute', top: 29, left: '50%', transform: 'translateX(-50%)',
+            {/* pill — 헤더 세로 중앙(top:14) */}
+            <div style={{ position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)',
               height: 19, padding: '0 8px', background: '#FF393C', borderRadius: 24,
               display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', zIndex: 10 }}>
               <span style={{ fontSize: 11, fontWeight: 500, color: '#fff' }}>
                 {fmt2(Math.floor(now/60))}:{fmt2(now%60)}
               </span>
             </div>
-            {/* dot — pill 바로 아래 (top:48) */}
-            <div style={{ position: 'absolute', top: 48, left: '50%', transform: 'translateX(-50%)',
+            {/* dot — 헤더 하단 경계선 위(top:38) */}
+            <div style={{ position: 'absolute', top: 38, left: '50%', transform: 'translateX(-50%)',
               width: 10, height: 10, borderRadius: '50%',
               background: '#FF373B', border: '1.5px solid #fff', zIndex: 9 }} />
-            {/* 세로 라인 — dot 아래부터 바닥까지 */}
-            <div style={{ position: 'absolute', top: 53, bottom: 0, left: '50%',
+            {/* 세로 라인 — 헤더 바로 아래(top:48)부터 바닥까지 관통 */}
+            <div style={{ position: 'absolute', top: 48, bottom: 0, left: '50%',
               transform: 'translateX(-50%)', width: 2, background: '#FF393C' }} />
           </div>
         )}
@@ -794,16 +796,9 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                   )
                 })}
 
-                {/* 현재 시간선 */}
-                {isToday && (() => {
-                  const left = ((now-7*60)/60)*CW
-                  if (left < 0 || left > totalW) return null
-                  return (
-                    <div style={{ position: 'absolute', top: 0, bottom: 0, left, width: 2, background: '#EF4444', zIndex: 5, pointerEvents: 'none' }}>
-                      {ri === 0 && <div style={{ position: 'absolute', top: 4, left: -4, width: 10, height: 10, borderRadius: '50%', background: '#EF4444' }} />}
-                    </div>
-                  )
-                })()}
+                {/* 행별 현재시간선 제거됨 ← [2026-04-24] A안 적용.
+                     기존: 각 행마다 top:0~bottom 세로 라인 + ri===0일 때 dot. 9행 × 1라인 = 9개 중복,
+                     색상도 #EF4444(행별)와 #FF393C(상위) 두 가지 섞임. 상위 인디케이터 하나로 단일화. */}
 
                 {/* 노쇼 박제 슬롯 — CalendarSlotCard 단일 컴포넌트로 통합
                      ← [2026-04-23 v12] 렌더 로직을 CalendarSlotCard로 이관
