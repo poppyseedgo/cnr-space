@@ -2,6 +2,13 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-04-24 P2] HomeView 호출에 currentUserId prop 전달 추가
+ *      · 목적: HomeView "오늘 내 예약" 필터를 MyPage 방식(UUID + email)으로 통일
+ *      · 증상: 팀즈에서 이름 변경한 사용자의 홈 '오늘 내 예약' 카드 미표시
+ *              (bookings.user_name snapshot과 profiles.name(현재) 불일치)
+ *      · 본 파일 변경: HomeView 호출에 currentUserId={authUser?.user_id ?? ''} 추가
+ *      · 짝: HomeView.tsx — isMyBooking 헬퍼 도입, L137 조건식 교체
+ *
  *  - [2026-04-24 P1-hotfix] DetailModal에 currentUserEmail prop 추가
  *      · 배경: P1 최초 배포 후에도 편집 버튼 미노출 (이름 fallback 꼬임)
  *      · 해결: DetailModal 판정식을 MyPage 방식(UUID + email)으로 통일
@@ -1450,7 +1457,7 @@ function AppContent() {
               const s = `${fmt2(Math.floor(clampedStart/60))}:${fmt2(clampedStart%60)}`;
               const e = `${fmt2(Math.floor(clampedEnd/60))}:${fmt2(clampedEnd%60)}`;
               setModal({type:"new", prefill:{room_id:r.room_id, start:s, end:e}});
-            }} onDetail={(r)=>setModal({type:"roomDetail",data:r})} onBookingDetail={(b)=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={cancelBooking} currentUser={currentUser} currentUserEmail={authUser?.email ?? ''} dark={dark} />}
+            }} onDetail={(r)=>setModal({type:"roomDetail",data:r})} onBookingDetail={(b)=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={cancelBooking} currentUser={currentUser} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} dark={dark} />}{/* ← [2026-04-24 P2] currentUserId 추가 — HomeView "오늘 내 예약" 이름 snapshot 버그 수정 */}
           {view==="calendar" && <CalendarShell bookings={bookings} rooms={rooms} selectedDate={selectedDate} setSelectedDate={setSelectedDate} calView={calView} setCalView={setCalView} onBookingClick={b=>setModal({type:"detail",data:b})} onNewBooking={(d, rid, startMin, endMin) => setModal({type:"new", prefill:{room_id:rid, start: startMin!=null?`${fmt2(Math.floor(startMin/60))}:${fmt2(startMin%60)}`:undefined, end: endMin!=null?`${fmt2(Math.floor(endMin/60))}:${fmt2(endMin%60)}`:undefined}, date:d})} onCheckIn={checkIn} filterFloor={calFilterFloor} setFilterFloor={setCalFilterFloor} currentUser={currentUser} isAdmin={isAdmin} /> /* ← [2026-04-24] onNewBooking 시그니처 변경: (date, hour, rid) → (date, rid, startMin, endMin) — Daily 뷰 15분 단위 클릭 지원 */}
         </div>
       )}

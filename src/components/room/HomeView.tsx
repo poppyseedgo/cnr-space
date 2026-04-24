@@ -1,5 +1,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // [변경 이력]
+// 2026-04-24 (P2): "오늘 내 예약" 판정을 MyPage 방식(UUID + email)으로 통일
+//   - 배경: 팀즈에서 이름 변경한 사용자의 '오늘 내 예약' 카드 미표시 버그
+//   - 원인: L137 `b.user === currentUser` — 이름 snapshot 비교
+//           Admin 'Azure AD 동기화' 후 profiles.name 변경 → bookings.user_name(snapshot)과 불일치
+//   - 해결: isMyBooking(b, currentUserId, currentUserEmail) — UUID + email 조합
+//           · 예약자: b.user_id === currentUserId (이름 변경 불변)
+//           · 참석자: attendees.email === currentUserEmail (기존 로직 유지)
+//   - 변경: L137 조건식 한 줄 교체 + currentUserId prop 추가 (import + 시그니처)
+//   - 짝 배포: App.tsx HomeView 호출에 currentUserId={authUser?.user_id ?? ''} 추가
+//   - 리스크: 낮음 — 기존에 이미 email 비교 존재, 예약자 비교 기준만 이름→UUID
+//   - 기존 P1-hotfix(DetailModal)와 동일 패턴의 P2~P8 순차 배포 중
+//
 // 2026-04-17: 그리드 밀도 토글(comfortable 3열 / compact 5열) 추가
 //   - localStorage 'cnr-grid-density'에 선호도 저장
 //   - 데스크탑(1024px+)에서만 토글 노출, 모바일/태블릿은 기존 1/2열 유지
@@ -85,8 +97,9 @@ import { RoomStatusBadge } from '../common/RoomStatusBadge'
 import { BookingStatusBadge } from '../common/BookingStatusBadge'
 import { MetaBadge } from '../common/MetaBadge'  // ← [10차] 반복·참석자 뱃지 공통화
 import { RoomCardButtonArea } from './RoomCardButtonArea' // ← [6차] 공통 컴포넌트 추출
+import { isMyBooking } from '../../utils/bookingOwnership' // ← [2026-04-24 P2] MyPage 방식(UUID + email) 예약 판정
 
-export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearchQ, filterFloor, setFilterFloor, onBook, onDetail, onBookingDetail, onCheckIn, onEarlyEnd, onCancel, currentUser, currentUserEmail='', dark}) {
+export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearchQ, filterFloor, setFilterFloor, onBook, onDetail, onBookingDetail, onCheckIn, onEarlyEnd, onCancel, currentUser, currentUserId='', currentUserEmail='', dark}) {  // ← [2026-04-24 P2] currentUserId 추가 — MyPage 방식 예약자 판정용
   const { isMobile, isTablet } = useBreakpoint();
   const today = todayStr();
   const now   = nowMinutes();
@@ -131,11 +144,13 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
   const busy       = withStatus.filter(x => x.status.type==="BUSY");
 
   // 오늘 내 예약 — 직접 취소만 제외, 노쇼 자동취소는 유지 (예약자 + 참석자 모두 포함)
+  // ← [2026-04-24 P2] isMyBooking(UUID + email)로 통일 — 이름 snapshot 비교 제거
+  //   기존: (b.user === currentUser || (currentUserEmail && attendees.some(a=>a.email===currentUserEmail)))
+  //   변경: isMyBooking(b, currentUserId, currentUserEmail) — MyPage allMyBookings와 동일 기준
   const myBookingsBase = bookings.filter(b =>
     tsDate(b.start_at) === today &&
     b.cancelledBy !== 'user' &&
-    (b.user === currentUser ||
-     (currentUserEmail && (b.attendees ?? []).some((a: any) => a.email === currentUserEmail)))
+    isMyBooking(b, currentUserId, currentUserEmail)
   )
 
   const myBookings = [...myBookingsBase].sort((a, b) => {
