@@ -1,3 +1,20 @@
+/**
+ * BookingListTable — 예약 목록 테이블 (MyPage·AdminPage 공통)
+ *
+ * 예약을 테이블 형태(날짜/회의명/회의실/예약자/상태)로 렌더링하는 공통 컴포넌트.
+ *
+ * ✅ 변경 이력
+ *  - [2026-04-24 P4-A-3] 예약자 이름·아바타 역조회를 user_id 기반 + live 이름으로 전환
+ *    · 배경 2건:
+ *      ① 예약자 이름 snapshot 표시 (P4-A-1/A-2와 동일 버그)
+ *      ② users.find(u => u.name === b.user) — 이름 변경 시 매칭 실패 → 아바타 사라짐
+ *    · 원인: 이름(snapshot)을 식별자로 사용 → Azure 동기화 후 매칭 실패
+ *    · 해결: P4-A-1 DetailModal과 동일 패턴
+ *      · 역조회: users.find(u => u.user_id === b.user_id) (UUID 불변 식별자)
+ *      · 이름 표시: owner?.name ?? b.user (live 우선, snapshot fallback)
+ *    · 영향: 표시만 변경. 데드 코드(isMe)는 P7에서 정리 예정
+ */
+
 import { useState, useMemo } from 'react'
 import { Inbox } from 'lucide-react'
 import {
@@ -276,7 +293,10 @@ export function BookingListTable({
                 {pagedList.map(b => {
                   const room       = rooms.find(r => r.room_id === b.room_id)
                   const isMe       = b.user === currentUser
-                  const bookingUser = users.find(u => u.name === b.user)
+                  // ← [2026-04-24 P4-A-3] 역조회 기준 이름 → user_id로 전환 (P4-A-1 DetailModal과 동일 패턴)
+                  //   기존: users.find(u => u.name === b.user) — 이름 변경 시 매칭 실패 → 아바타 사라짐
+                  //   변경: users.find(u => u.user_id === b.user_id) — UUID 불변 식별자로 매칭
+                  const bookingUser = users.find(u => u.user_id === b.user_id)
                   const avatarUrl  = (bookingUser as any)?.avatar_url ?? null
 
                   return (
@@ -311,10 +331,16 @@ export function BookingListTable({
                         {room?.room_name ?? '—'}
                       </td>
 
-                      {/* 예약자: UserChip sm */}
+                      {/* 예약자: UserChip sm
+                          ← [2026-04-24 P4-A-3] 이름 live 우선 (P4-A-1 DetailModal과 동일 패턴)
+                             기존: name={b.user ?? '?'} (bookings.user_name snapshot)
+                             변경: name={bookingUser?.name ?? b.user ?? '?'}
+                               1순위: profiles.name live (DB 변경 자동 반영)
+                               2순위: b.user snapshot (퇴사자 등 fallback)
+                               3순위: '?' (이름 없음 엣지) */}
                       <td style={{ padding: '10px 14px' }}>
                         <UserChip
-                          name={b.user ?? '?'}
+                          name={bookingUser?.name ?? b.user ?? '?'}
                           avatarUrl={avatarUrl}
                           variant="sm"
                         />
