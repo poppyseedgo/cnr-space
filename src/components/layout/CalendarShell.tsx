@@ -754,37 +754,61 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                     : ''
                   // 과거는 시각 효과 없이 클릭만 차단, 30일 초과만 흐리게
                   const dimmed = !slotBookable && !isPastSlot
-                  // ← [2026-04-23] 차단 슬롯(과거 or 30일 초과)에 커스텀 툴팁
+                  // ← [2026-04-23] 차단 슬롯(과거 or 30일 초과)에 커스텀 툴팁 (블록 단위 훅 — 부모 div에서만 처리)
                   const dlH = getDailyTooltipHandlers({ blocked: !slotBookable, message: tooltipMsg })
                   return (
                     <div key={h}
-                      onClick={(e) => {
-                        if (!slotBookable) return
-                        // ← [2026-04-24] 15분 단위 클릭 지원
-                        //   블록 내 클릭 좌표(offsetX)로 quarter(0~3) 판정 → 15분 슬롯 시작 분 계산
-                        //   CW=200px, quarter 폭=50px → [0:0~49 / 1:50~99 / 2:100~149 / 3:150~199]
-                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                        const quarter = Math.min(3, Math.max(0, Math.floor((e.clientX - rect.left) / (CW / 4))))
-                        const clickedMin = h * 60 + quarter * 15
-                        // 과거 quarter 클릭은 무반응 (블록은 열려있지만 개별 슬롯은 차단)
-                        //   예: 10:10 현재, 10시 블록의 10:00 quarter 클릭 → 무반응 / 10:15 quarter 클릭 → 통과
-                        if (!isQuarterBookable(selectedDate, clickedMin, todayStrVal, now, isAdmin)) return
-                        // 기본 1시간 프리필, 업무시간 19:00 넘지 않게 clamp
-                        const endMin = Math.min(clickedMin + 60, 19 * 60)
-                        onEmptyClick(room.room_id, clickedMin, endMin)   // ← [2026-04-24] 시그니처 변경: (rid, startMin, endMin)
-                      }}
                       aria-label={!slotBookable ? tooltipMsg : undefined}   // ← [2026-04-23] 접근성
                       style={{
                         width: CW, minWidth: CW, flexShrink: 0, borderRight: '1px solid #F1F5F9',
-                        cursor: slotBookable ? 'pointer' : 'default',       // ← [2026-04-23] not-allowed → default
+                        cursor: 'default',                                   // ← [2026-04-24 v2] 블록 자체는 default — 클릭/hover는 quarter overlay가 담당
                         position: 'relative', transition: 'background 0.1s', opacity: dimmed ? 0.4 : 1,
                       }}
-                      onMouseEnter={e => { dlH.onMouseEnter(e); if (slotBookable) (e.currentTarget as HTMLElement).style.background = 'rgba(30,41,59,0.04)' }}  // ← [2026-04-23] 훅 합성
-                      onMouseMove={dlH.onMouseMove}                                                                                                              // ← [2026-04-23] 마우스 추적
-                      onMouseLeave={e => { dlH.onMouseLeave(); (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
+                      onMouseEnter={dlH.onMouseEnter}                       // ← [2026-04-24 v2] 블록 전체 배경 하이라이트 제거 — quarter가 개별 담당
+                      onMouseMove={dlH.onMouseMove}                          // ← [2026-04-23] 마우스 추적 (툴팁용)
+                      onMouseLeave={dlH.onMouseLeave}>
+                      {/* 15분 구분선 — quarter 경계 표시 (dashed, pointerEvents:none로 클릭 통과) */}
                       <div style={{ position: 'absolute', top: 0, bottom: 0, left: '25%', borderLeft: '1px dashed #F8FAFC', pointerEvents: 'none' }} />
                       <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', borderLeft: '1px dashed #F1F5F9', pointerEvents: 'none' }} />
                       <div style={{ position: 'absolute', top: 0, bottom: 0, left: '75%', borderLeft: '1px dashed #F8FAFC', pointerEvents: 'none' }} />
+
+                      {/* ← [2026-04-24 v2] 15분 quarter 개별 hover/click 영역 (오버레이 4개)
+                          배경: 기존 1시간 블록 전체 hover 방식 → 사용자가 1시간 단위 예약만 가능한 것으로 오해.
+                                onClick은 이미 15분 단위로 프리필되지만 hover 피드백이 1시간 단위라 시각/기능 불일치.
+                          해결: 4개 quarter overlay를 absolute 25%씩 배치하여 각각 독립 hover/click 처리.
+
+                          동작:
+                            · slotBookable=false(과거/30일 초과): overlay 미생성 → 블록 전체 툴팁 표시 (기존 UX 유지)
+                            · slotBookable=true: 4개 quarter overlay 렌더링
+                              - q=0 (h:00~h:15) / q=1 (h:15~h:30) / q=2 (h:30~h:45) / q=3 (h:45~(h+1):00)
+                              - quarterBookable 개별 판정: 과거 quarter는 cursor default + hover 무반응
+                                예: 10:10 현재 → 10시 블록의 q0(10:00)은 과거라 반응 없음, q1~q3만 반응
+                              - 미래 quarter hover: 배경 rgba(30,41,59,0.04) + cursor pointer
+
+                          zIndex 미지정: 소스 순서로 dashed(pointerEvents:none) 위, 예약 블록(absolute zIndex:1/3/5)
+                            아래 자연 stacking → 예약 블록 hover/click 정상 유지. */}
+                      {slotBookable && [0, 1, 2, 3].map(q => {
+                        const clickedMin = h * 60 + q * 15
+                        const quarterBookable = isQuarterBookable(selectedDate, clickedMin, todayStrVal, now, isAdmin)
+                        return (
+                          <div key={q}
+                            onClick={() => {
+                              if (!quarterBookable) return
+                              // 기본 1시간 프리필, 업무시간 19:00 넘지 않게 clamp
+                              const endMin = Math.min(clickedMin + 60, 19 * 60)
+                              onEmptyClick(room.room_id, clickedMin, endMin)   // ← [2026-04-24] 시그니처: (rid, startMin, endMin)
+                            }}
+                            style={{
+                              position: 'absolute', top: 0, bottom: 0,
+                              left: `${q * 25}%`, width: '25%',
+                              cursor: quarterBookable ? 'pointer' : 'default',
+                              transition: 'background 0.1s',
+                            }}
+                            onMouseEnter={e => { if (quarterBookable) (e.currentTarget as HTMLElement).style.background = 'rgba(30,41,59,0.04)' }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                          />
+                        )
+                      })}
                     </div>
                   )
                 })}
