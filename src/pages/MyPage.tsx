@@ -352,8 +352,8 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
                 <div>
                   <div className="text-xs font-semibold text-slate-900 dark:text-white leading-snug line-clamp-2 mb-1.5">{b.title}</div>
                   <div style={{marginBottom:4}}>
-                    {/* ← [2026-04-24 P4-B] currentUserId/Email 추가 — "내 예약" 뱃지 판정 UUID/email 기반 */}
-                    <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} size="sm" currentUser={currentUser} currentUserId={authUserId} currentUserEmail={currentUserEmail} />
+                    {/* ← [2026-04-24 P7-A] currentUser 전달 제거 — isBooker 판정은 currentUserId/Email로 충분 */}
+                    <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} size="sm" currentUserId={authUserId} currentUserEmail={currentUserEmail} />
                   </div>
                   <div className="text-[10px] text-slate-400">{r?.room_name ?? ''}</div>
                   <div className="text-[10px] text-slate-400 mt-0.5">{fmtTSRangeFull(b.start_at, b.end_at)}</div>

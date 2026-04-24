@@ -356,8 +356,8 @@ export function BookingListTable({
 
                       {/* 상태 */}
                       <td style={{ padding: '10px 14px' }}>
-                        {/* ← [2026-04-24 P4-B] currentUserId/Email 추가 — "내 예약" 뱃지 판정 UUID/email 기반 */}
-                        <BookingStatusBadge booking={b} room={room} isAdminRoom={!!room?.is_admin_only} size="sm" currentUser={currentUser} currentUserId={currentUserId} currentUserEmail={currentUserEmail}/>
+                        {/* ← [2026-04-24 P7-A] currentUser 전달 제거 */}
+                        <BookingStatusBadge booking={b} room={room} isAdminRoom={!!room?.is_admin_only} size="sm" currentUserId={currentUserId} currentUserEmail={currentUserEmail}/>
                       </td>
 
                       {/* 액션 컬럼 */}

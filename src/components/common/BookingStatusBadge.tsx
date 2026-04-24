@@ -15,6 +15,13 @@ import { isBooker } from '../../utils/bookingOwnership'  // ← [2026-04-24 P4-B
  *    - 예: "이 위치엔 승인 대기 뱃지만 보이기"
  *
  * ✅ 변경 이력
+ *  - [2026-04-24 P7-A] isOwner fallback 제거 — 이름 비교 코드 완전 삭제
+ *    · 호출부 4곳 (MyPage/HomeView/BookingListTable/DetailModal 경유 DetailModalStatusBadge)
+ *      모두 currentUserId/Email 전달 완료 확인 → fallback 불필요
+ *    · 원칙 달성: 판정 로직에서 b.user === currentUser 이름 비교 0건
+ *    · currentUser prop은 인터페이스 레벨 @deprecated로 유지 (호출부 호환성)
+ *    · 짝 배포: DetailModalStatusBadge + 호출부 4곳 currentUser prop 전달 제거
+ *
  *  - [2026-04-24 P4-B] "내 예약" 뱃지 판정 이름 비교 → UUID/email 기반 (isBooker)
  *    · 배경: 팀즈/Azure AD 이름 변경 후 '내 예약' 뱃지 사라지는 버그
  *    · 원인: isOwner = b.user === currentUser (이름 snapshot 비교)
@@ -175,14 +182,15 @@ export function BookingStatusBadge({
   const isPast    = !isAct && !isFuture && !b.autoCancelled
                     && b.status !== 'pending' && b.status !== 'rejected'
   const tl        = sm - now
-  // ← [2026-04-24 P4-B] 예약자 판정을 이름 비교 → UUID/email 기반 isBooker로 전환
-  //   원칙: 이름이 바뀌어도 부서가 바뀌어도 본인 예약으로 인식
-  //   호환: 새 prop (currentUserId/Email) 전달되면 isBooker 사용
-  //         없으면 기존 이름 비교 fallback (P4-B-3 호출부 전환 완료 전까지만)
-  //   주의: P4-B-3 완료되면 fallback 제거해서 이름 비교 0건으로 마무리 예정
-  const isOwner = (currentUserId || currentUserEmail)
-    ? isBooker(b, currentUserId, currentUserEmail)
-    : (!!currentUser && b.user === currentUser)
+  // ← [2026-04-24 P7-A] isOwner 판정 fallback 제거 — 이름 비교 0건 원칙 달성
+  //   기존(P4-B): (currentUserId || currentUserEmail) ? isBooker(...) : (b.user === currentUser)
+  //                ↑ 호환성 위해 이름 비교 fallback 유지
+  //   변경(P7-A): isBooker(...) 단일 경로
+  //                ↑ 호출부 4곳(MyPage/HomeView/BookingListTable/DetailModal) 모두
+  //                  currentUserId/Email 전달 완료 확인됨 → fallback 불필요
+  //   원칙: "이름이 바뀌어도 부서가 바뀌어도 본인 예약으로 인식" (UUID OR email 이중 복원)
+  //   주의: currentUser prop은 인터페이스 레벨에서 유지 (@deprecated), 내부 로직에서 참조 안 함
+  const isOwner = isBooker(b, currentUserId, currentUserEmail)
 
   // ── only 필터 헬퍼 ─────────────────────────────────────────────
   const show = (t: BadgeType) => !only || only.includes(t)

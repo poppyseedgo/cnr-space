@@ -1,4 +1,8 @@
 // ─── 변경 이력 ───────────────────────────────────────────────────────────────
+// [2026-04-24 P7-A] BookingStatusBadge 호출에서 currentUser 전달 제거
+//   · 내부 isBooker 판정은 currentUserId/Email로 충분 (이름 fallback 제거됨)
+//   · currentUser prop은 인터페이스 유지하되 전달 체인에서 제거
+//
 // [2026-04-24 P4-B] currentUserId, currentUserEmail prop 추가
 //   · BookingStatusBadge의 isBooker 기반 판정을 DetailModal에서 사용하려면
 //     래퍼도 prop을 투명하게 전파해야 함.
@@ -61,11 +65,11 @@ export function DetailModalStatusBadge({
     <BookingStatusBadge
       booking={booking}
       room={room}
-      currentUser={currentUser}
       currentUserId={currentUserId}        // ← [2026-04-24 P4-B] 투명 전파
       currentUserEmail={currentUserEmail}  // ← [2026-04-24 P4-B] 투명 전파
       isAdminRoom={isAdminRoom ?? !!room?.is_admin_only}
       shape="square"
     />
   )
+  // ← [2026-04-24 P7-A] currentUser 전달 제거 — isBooker 판정에 불필요, fallback 삭제됨
 }
