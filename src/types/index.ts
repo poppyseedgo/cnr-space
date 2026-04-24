@@ -91,6 +91,7 @@ export interface Booking {
   end_at: string
   user:              string
   user_id?:          string   // 예약자 UUID — users 배열에서 avatar_url 역조회용
+  user_email?:       string   // ← [2026-04-24 P3-2] 예약자 이메일 — UUID OR email 이중 복원 판정용 (isBooker)
   user_employee_id?: string   // 사번 (동명이인 구분용)
   dept:              string
   checkedIn:         boolean

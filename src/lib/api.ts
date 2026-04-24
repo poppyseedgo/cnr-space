@@ -7,6 +7,16 @@
  *     - 배경: 초기 로드 silent failure로 users 빈 배열 → 참석자 검색 안됨 (5명 문의)
  *     - 해결: Supabase 쿼리 블록을 withRetry로 감쌈 (3회, exponential backoff + jitter)
  *     - 호환: 3회 모두 실패 시 기존대로 [] 반환 (호출부 시그니처 유지, 회귀 0)
+ *  3. [2026-04-24 P3-2] bookings.user_email 컬럼 저장/읽기 추가
+ *     - 배경: 예약자 판정을 UUID OR email 이중 복원으로 확장 준비 (P3-3 선행 작업)
+ *     - 원칙: "이름이 바뀌어도 부서가 바뀌어도 본인 예약으로 인식" (고지 2026-04-24)
+ *     - 변경:
+ *       · bookingToRow 시그니처: (b, userId) → (b, userId, userEmail='')
+ *       · bookingToRow 저장 필드: user_email (빈 string → NULL)
+ *       · rowToBooking: user_email 읽기 추가 → Booking.user_email
+ *       · saveBookings / insertBooking: 두 호출부에서 user.email 전달
+ *     - 호환: 헬퍼(isMyBooking) 변경 없음 — 기능 동작 완전 동일, P3-3에서 OR 판정 전환
+ *     - 선행: P3-1 DB 마이그레이션 완료 (user_email 컬럼 + 백필 + 인덱스)
  */
 
 import { supabase, isSupabaseEnabled } from './supabase'
@@ -70,6 +80,7 @@ function rowToBooking(row: Record<string, any>): Booking {
     end_at:        utcToKST(row.end_at),
     user:          row.user_name,
     user_id:       row.user_id ?? undefined,   // 예약자 UUID — avatar 역조회용
+    user_email:    row.user_email ?? undefined,  // ← [2026-04-24 P3-2] 예약자 이메일 — isBooker OR 조건 판정용
     dept:          row.user_dept,
     checkedIn:     row.checked_in,
     autoCancelled: row.auto_cancelled,
@@ -88,7 +99,11 @@ function rowToBooking(row: Record<string, any>): Booking {
 }
 
 // ── Booking → DB row ─────────────────────────────────────────────────────────
-function bookingToRow(b: Booking, userId: string) {
+// ← [2026-04-24 P3-2] 시그니처 확장: userEmail 파라미터 추가
+//   · 목적: bookings.user_email 컬럼에 예약자 이메일 저장 — isBooker OR 조건 판정용
+//   · 호출부(saveBookings/insertBooking)는 supabase.auth.getUser()의 user.email을 전달
+//   · 빈 string은 허용(로그인 세션 없는 엣지 케이스) — DB NULL 허용 상태이므로 안전
+function bookingToRow(b: Booking, userId: string, userEmail: string = '') {
   return {
     id:             b.id,
     room_id:        b.room_id,
@@ -98,6 +113,7 @@ function bookingToRow(b: Booking, userId: string) {
     start_at:       b.start_at,  // +09:00 포함 → Supabase가 UTC로 저장
     end_at:         b.end_at,
     user_id:        userId,
+    user_email:     userEmail || null,  // ← [2026-04-24 P3-2] 빈 string은 NULL로 저장 (인덱스 WHERE IS NOT NULL 조건 준수)
     user_name:      b.user,
     user_dept:      b.dept,
     checked_in:     b.checkedIn,
@@ -180,7 +196,8 @@ export async function loadBookingsByRange(from: string, to: string): Promise<Boo
 export async function saveBookings(bookings: Booking[]): Promise<void> {
   if (!isSupabaseEnabled) { localSaveBookings(bookings); return }
   const { data: { user } } = await supabase.auth.getUser()
-  const rows = bookings.map(b => bookingToRow(b, user?.id ?? ''))
+  // ← [2026-04-24 P3-2] user.email도 함께 전달 — bookings.user_email 컬럼에 저장
+  const rows = bookings.map(b => bookingToRow(b, user?.id ?? '', user?.email ?? ''))
   const { error } = await supabase.from('bookings').upsert(rows, { onConflict: 'id' })
   if (error) console.error('[api] saveBookings 오류:', error)
 }
@@ -201,7 +218,8 @@ export async function insertBooking(booking: Booking): Promise<Booking> {
   if (conflict) throw new Error('해당 시간에 이미 예약이 있습니다.')
 
   const { data, error } = await supabase
-    .from('bookings').insert(bookingToRow(booking, user?.id ?? '')).select().single()
+    // ← [2026-04-24 P3-2] user.email도 함께 전달 — bookings.user_email 컬럼에 저장 (isBooker OR 판정용)
+    .from('bookings').insert(bookingToRow(booking, user?.id ?? '', user?.email ?? '')).select().single()
 
   if (error) {
     // DB Exclusion Constraint 위반 (23P01) — 동시 요청으로 인한 더블부킹 차단
