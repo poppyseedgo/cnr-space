@@ -439,7 +439,7 @@ export function CalendarShell({
 
       {calView === 'monthly' && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d => { setSelectedDate(d); setCalView('daily') }} onBookingClick={onBookingClick} rooms={allRooms} currentUser={currentUser} isAdmin={isAdmin} />}
       {/* ← [2026-04-24] onEmptyClick 시그니처 변경: (rid, h) → (rid, startMin, endMin) — 15분 단위 클릭 지원 */}
-      {calView === 'daily'   && <DailyView   bookings={dailyBks}  selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid, startMin, endMin) => onNewBooking(selectedDate, rid, startMin, endMin)} onCheckIn={onCheckIn} rooms={allRooms} currentUser={currentUser} isAdmin={isAdmin} />}
+      {calView === 'daily'   && <DailyView   bookings={dailyBks}  selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid, startMin, endMin) => onNewBooking(selectedDate, rid, startMin, endMin)} onCheckIn={onCheckIn} rooms={allRooms} currentUser={currentUser} currentUserId={currentUserId} currentUserEmail={currentUserEmail} users={users} isAdmin={isAdmin} />}{/* ← [2026-04-24 P5 FIX] DailyView 호출에 currentUserId/Email/users 전달 */}
       {/* ← [2026-04-24] Weekly는 기존 1시간 프리필 유지 — 시(hour)를 분 단위로 변환만 */}
       {calView === 'weekly'  && <WeeklyView  bookings={weekBks}   selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(d, h) => onNewBooking(d, undefined, h*60, (h+1)*60)} rooms={allRooms} currentUser={currentUser} isAdmin={isAdmin} />}
       {dpTooltipNode /* ← [2026-04-23] 데이트피커 차단 셀용 커스텀 툴팁 Portal 렌더 */}
@@ -571,7 +571,10 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
 }
 
 // ─── Daily View ───────────────────────────────────────────────────────────────
-export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, onCheckIn, rooms: dvRooms = [], currentUser = '', isAdmin = false }) {
+// ← [2026-04-24 P5 FIX] DailyView 시그니처에 P5 prop 3개 추가
+//   · 원인: CalendarShell 함수는 prop 받지만, 그 안에서 호출되는 DailyView 별도 함수라 자체 시그니처 필요
+//   · 사용처: L853/854 CalendarSlotCard 호출, L872 getSlotState 호출, L886/887 CalendarSlotCard 호출
+export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, onCheckIn, rooms: dvRooms = [], currentUser = '', currentUserId = '', currentUserEmail = '', users = [], isAdmin = false }) {
   const isToday = selectedDate === todayStr(), now = nowMinutes()
   // ← [2026-04-23] Figma 재설계: 슬롯 사이즈 확대
   //   · CW 160 → 200 (예약 슬롯 가로 공간 확보, 제목 더 길게 노출)

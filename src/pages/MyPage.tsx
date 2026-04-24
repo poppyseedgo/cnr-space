@@ -255,7 +255,10 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── My Booking Weekly View ────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
-export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, onCheckIn, onEarlyEnd, onCancel, onNewBooking, authUser}: {bookings:any[], currentUser:string, rooms?:any[], onDetail:(b:any)=>void, onCheckIn:(id:string)=>void, onEarlyEnd:(id:string)=>void, onCancel:(id:string)=>void, onNewBooking:()=>void, authUser:any}) {
+// ← [2026-04-24 P5 FIX] authUserId, currentUserEmail prop 추가
+//   · 사용처: L353 BookingStatusBadge 호출 시 isBooker 판정용 전달
+//   · 기존 authUser 객체도 유지 (다른 위치에서 사용 중)
+export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, onCheckIn, onEarlyEnd, onCancel, onNewBooking, authUser, authUserId = '', currentUserEmail = ''}: {bookings:any[], currentUser:string, rooms?:any[], onDetail:(b:any)=>void, onCheckIn:(id:string)=>void, onEarlyEnd:(id:string)=>void, onCancel:(id:string)=>void, onNewBooking:()=>void, authUser:any, authUserId?:string, currentUserEmail?:string}) {
   const today = todayStr()
   const now   = nowMinutes()
   const [selectedDate, setSelectedDate] = useState(today)
