@@ -633,10 +633,14 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                 · pill top: 29 → 14  (헤더 ~48px 세로 중앙: (48-19)/2 ≈ 14)
                 · dot  top: 48 → 38  (헤더 하단 경계선 위에 걸치도록)
                 · line top: 53 → 48  (헤더 바로 아래부터 body 바닥까지 관통)
-                · zIndex 8/10/9 유지 (헤더 9 대비 pill/dot은 위, 라인은 아래)
+             ← [2026-04-24 HOTFIX] 컨테이너 zIndex 8 → 10 (헤더 sticky 9보다 위).
+                근본 원인: position:absolute + zIndex:8로 새 stacking context 생성 →
+                자식 pill의 zIndex:10은 컨테이너 내부에서만 유효, 외부에서는 전체가 8 취급.
+                헤더(9) > 컨테이너(8) 이므로 헤더가 pill을 덮음.
+                컨테이너를 10으로 올려 헤더 위에 배치.
              ← [2026-04-24] transition: left 1s linear + preciseNowMin 기반 부드러운 이동 */}
         {isToday && nowLeft >= 0 && nowLeft <= totalW && (
-          <div style={{ position: 'absolute', zIndex: 8, pointerEvents: 'none',
+          <div style={{ position: 'absolute', zIndex: 10, pointerEvents: 'none',
             top: 0, bottom: 0, left: LW + nowLeft, width: 0,
             transition: 'left 1s linear', willChange: 'left' }}>
             {/* pill — 헤더 세로 중앙(top:14) */}
