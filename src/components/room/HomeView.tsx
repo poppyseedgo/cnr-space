@@ -97,7 +97,7 @@ import { RoomStatusBadge } from '../common/RoomStatusBadge'
 import { BookingStatusBadge } from '../common/BookingStatusBadge'
 import { MetaBadge } from '../common/MetaBadge'  // ← [10차] 반복·참석자 뱃지 공통화
 import { RoomCardButtonArea } from './RoomCardButtonArea' // ← [6차] 공통 컴포넌트 추출
-import { isMyBooking } from '../../utils/bookingOwnership' // ← [2026-04-24 P2] MyPage 방식(UUID + email) 예약 판정
+import { isMyBooking, isAttendee } from '../../utils/bookingOwnership' // ← [2026-04-24 P2/P6-C] isMyBooking(필터) + isAttendee(참석자 뱃지)
 
 export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearchQ, filterFloor, setFilterFloor, onBook, onDetail, onBookingDetail, onCheckIn, onEarlyEnd, onCancel, currentUser, currentUserId='', currentUserEmail='', dark}) {  // ← [2026-04-24 P2] currentUserId 추가 — MyPage 방식 예약자 판정용
   const { isMobile, isTablet } = useBreakpoint();
@@ -280,7 +280,12 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
                       <MetaBadge type="recurring" size="xs" />
                     </span>
                   )}
-                  {b.user !== currentUser && (
+                  {/* ← [2026-04-24 P6-C] 참석자 뱃지 표시 조건 이름 비교 → isAttendee(email) 전환
+                        기존: b.user !== currentUser
+                              · 틀린 로직 — "예약자가 아니면 참석자"로 해석 (제3자 예약에도 뱃지 붙음)
+                              · 이름 비교라 이름 변경 시 판정 깨짐
+                        변경: isAttendee(b, currentUserEmail) — 참석자 목록에 내 email 포함 여부 */}
+                  {isAttendee(b, currentUserEmail) && (
                     <span style={{ marginBottom: 3, display: 'inline-block' }}>
                       <MetaBadge type="guest" size="xs" />
                     </span>

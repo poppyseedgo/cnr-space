@@ -1504,7 +1504,7 @@ function AppContent() {
               onConfirm={modal.data.onConfirm}
               onClose={()=>setModal(null)}
             />}
-          {modal.type==="roomDetail"  && <RoomDetailModal room={modal.data} bookings={bookings} onClose={()=>setModal(null)} onBook={(status)=>{
+          {modal.type==="roomDetail"  && <RoomDetailModal room={modal.data} bookings={bookings} users={users} onClose={()=>setModal(null)} onBook={(status)=>{
               const now = nowMinutes();
               const snapStart = Math.ceil((now+1)/15)*15;
               const clampedStart = Math.min(Math.max(snapStart, 7*60), 18*60+45);

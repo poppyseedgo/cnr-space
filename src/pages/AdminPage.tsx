@@ -282,6 +282,9 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
               {paged.map(b => {
                 const r = rooms.find(rm => rm.room_id === b.room_id)
                 const status = b.status==='pending'?{l:'승인대기',c:'#D97706',bg:'#FEF3C7'}:b.autoCancelled&&!b.checkedIn&&!b.earlyEnded?{l:'노쇼',c:'#DC2626',bg:'#FEF2F2'}:b.autoCancelled?{l:'취소',c:'#94A3B8',bg:'#F1F5F9'}:b.checkedIn||b.earlyEnded?{l:'완료',c:'#16A34A',bg:'#DCFCE7'}:{l:'예정',c:'#3B82F6',bg:'#EFF6FF'}
+                // ← [2026-04-24 P6-B] 예약자 이름 live (profiles.name 우선, snapshot fallback)
+                const owner = (users as any[]).find(u => u.user_id === b.user_id)
+                const displayName = owner?.name ?? b.user ?? '?'
                 return (
                   <tr key={b.id}
                     onClick={() => { onDetail?.(b) }}
@@ -294,8 +297,8 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
                     <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{fmtTSRangeFull(b.start_at,b.end_at)}</td>
                     <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
                       <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                        <div style={{ width:22, height:22, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:500, flexShrink:0, background:'#F1EFE8', color:'#444441' }}>{(b.user??'?')[0]}</div>
-                        <span style={{ fontSize:12, fontWeight:500, color:'#111' }}>{b.user}</span>
+                        <div style={{ width:22, height:22, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:500, flexShrink:0, background:'#F1EFE8', color:'#444441' }}>{(displayName ?? '?')[0]}</div>
+                        <span style={{ fontSize:12, fontWeight:500, color:'#111' }}>{displayName}</span>
                       </div>
                     </td>
                     <td style={{ padding:'8px 12px' }}><span style={{ background:status.bg, color:status.c, fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:999 }}>{status.l}</span></td>
@@ -509,7 +512,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
         ))}
       </div>
       {activeTab==='dashboard' && <AdminDashboard bookings={bookings} rooms={rooms} users={users} isMobile={isMobile} onDetail={onDetail}/>}
-      {activeTab==='bookings'  && <AdminBookings  bookings={bookings} setBookings={setBookings} rooms={rooms} onForceCancel={onForceCancel} showToast={showToast} isMobile={isMobile} PER_PAGE={PER_PAGE} onDetail={onDetail}/>}
+      {activeTab==='bookings'  && <AdminBookings  bookings={bookings} setBookings={setBookings} rooms={rooms} users={users} onForceCancel={onForceCancel} showToast={showToast} isMobile={isMobile} PER_PAGE={PER_PAGE} onDetail={onDetail}/>}{/* ← [2026-04-24 P6-B] users 추가 — 예약자 이름 live */}
       {activeTab==='approvals' && <AdminApprovals bookings={bookings} rooms={rooms} users={users} onApprove={onApprove} onReject={onReject} showToast={showToast} isMobile={isMobile} onDetail={onDetail}/>}
       {activeTab==='rooms'     && <AdminRooms     showToast={showToast} isMobile={isMobile}/>}
       {activeTab==='users'     && <AdminUsers     users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile}/>}
@@ -893,12 +896,15 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {activeBookings.map(b => (
+                      {activeBookings.map(b => {
+                        // ← [2026-04-24 P6-B] 예약자 이름/부서 live (users prop 활용)
+                        const owner = (users as any[]).find((u:any) => u.user_id === b.user_id)
+                        return (
                         <tr key={b.id} style={{ borderBottom:'0.5px solid #F8FAFC' }}
                           onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='#FAFBFD'}
                           onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='transparent'}>
-                          <td style={{ padding:'9px 10px', fontWeight:600 }}>{b.user ?? '—'}</td>
-                          <td style={{ padding:'9px 10px', color:'#64748B', fontSize:11 }}>{b.dept ?? '—'}</td>
+                          <td style={{ padding:'9px 10px', fontWeight:600 }}>{owner?.name ?? b.user ?? '—'}</td>
+                          <td style={{ padding:'9px 10px', color:'#64748B', fontSize:11 }}>{owner?.dept ?? b.dept ?? '—'}</td>
                           <td style={{ padding:'9px 10px', color:'#64748B', fontSize:11 }}>{(b as any).roomObj?.room_name ?? '—'}</td>
                           <td style={{ padding:'9px 10px', color:'#64748B', fontSize:11, whiteSpace:'nowrap' }}>{fmtTime(tsTime(b.start_at))} ~ {fmtTime(tsTime(b.end_at))}</td>
                           <td style={{ padding:'9px 10px' }}>
@@ -908,7 +914,8 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
                             </span>
                           </td>
                         </tr>
-                      ))}
+                        )
+                      })}
                     </tbody>
                   </table>
               }
@@ -998,7 +1005,8 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
 }
 
 // ─── AdminBookings ─────────────────────────────────────────────────────────────
-export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, showToast, isMobile, PER_PAGE, onDetail }) {
+// ← [2026-04-24 P6-B] users prop 추가 — 예약자 이름 live 조회용 (L1113)
+export function AdminBookings({ bookings, setBookings, rooms, users = [], onForceCancel, showToast, isMobile, PER_PAGE, onDetail }) {
   const today=todayStr()
   const [dateFrom, setDateFrom]=useState(()=>{const d=new Date();return`${d.getFullYear()}-${fmt2(d.getMonth()+1)}-01`})
   const [dateTo,   setDateTo]  =useState(()=>{const d=new Date();d.setMonth(d.getMonth()+1,0);return`${d.getFullYear()}-${fmt2(d.getMonth()+1)}-${fmt2(d.getDate())}`})
@@ -1104,13 +1112,17 @@ export function AdminBookings({ bookings, setBookings, rooms, onForceCancel, sho
               <thead><tr style={{background:'#F8FAFC'}}>
                 {['회의명','회의실','날짜','시간','예약자','상태','관리'].map(h=><th key={h} style={{padding:'10px 14px',textAlign:'left',fontSize:11,fontWeight:600,color:'#94A3B8',whiteSpace:'nowrap',borderBottom:'1px solid #F1F5F9'}}>{h}</th>)}
               </tr></thead>
-              <tbody>{paged.map(b=>{const r=rooms.find(rm=>rm.room_id===b.room_id);const canCancel=!b.autoCancelled&&b.status!=='rejected';return(
+              <tbody>{paged.map(b=>{const r=rooms.find(rm=>rm.room_id===b.room_id);const canCancel=!b.autoCancelled&&b.status!=='rejected';
+                // ← [2026-04-24 P6-B] 예약자 이름 live — profiles.name 우선, snapshot fallback
+                const owner = (users as any[]).find((u:any) => u.user_id === b.user_id);
+                const displayName = owner?.name ?? b.user ?? '—';
+                return(
                 <tr key={b.id} style={{borderBottom:'1px solid #F8FAFC',cursor:'pointer'}} onClick={()=>onDetail&&onDetail(b)} onMouseEnter={e=>e.currentTarget.style.background='#FAFBFD'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                   <td style={{padding:'10px 14px',fontWeight:600,color:'#111',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{b.title}</td>
                   <td style={{padding:'10px 14px',color:'#64748B',whiteSpace:'nowrap'}}>{r?.room_name??'?'}</td>
                   <td style={{padding:'10px 14px',color:'#64748B',whiteSpace:'nowrap'}}>{fmtTSDateFull(b.start_at)}</td>
                   <td style={{padding:'10px 14px',color:'#64748B',whiteSpace:'nowrap'}}>{fmtTSRangeFull(b.start_at,b.end_at)}</td>
-                  <td style={{padding:'10px 14px',whiteSpace:'nowrap'}}><div style={{display:'flex',alignItems:'center',gap:7}}><div style={{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:500,flexShrink:0,background:'#F1EFE8',color:'#444441'}}>{(b.user??'?')[0]}</div><span style={{fontSize:13,fontWeight:500}}>{b.user??'—'}</span></div></td>
+                  <td style={{padding:'10px 14px',whiteSpace:'nowrap'}}><div style={{display:'flex',alignItems:'center',gap:7}}><div style={{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:500,flexShrink:0,background:'#F1EFE8',color:'#444441'}}>{(displayName ?? '?')[0]}</div><span style={{fontSize:13,fontWeight:500}}>{displayName}</span></div></td>
                   <td style={{padding:'10px 14px',whiteSpace:'nowrap'}}>{getBadge(b)}</td>
                   <td style={{padding:'10px 14px'}} onClick={e=>e.stopPropagation()}>{canCancel&&<Button variant='danger-outline' size='sm' onClick={()=>setCancelModal(b)}>강제 취소</Button>}</td>
                 </tr>

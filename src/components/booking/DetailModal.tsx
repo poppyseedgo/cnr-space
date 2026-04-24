@@ -10,7 +10,7 @@ import { DetailModalStatusBadge } from '../common/DetailModalStatusBadge'  // �
 import { MetaBadge } from '../common/MetaBadge'
 import { Button } from '../common/Button'
 import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22] 모달 X 버튼 공통화
-import { isMyBooking } from '../../utils/bookingOwnership'  // ← [2026-04-24 P1-hotfix] MyPage 방식(UUID + email) 판정
+import { isMyBooking, isAttendee } from '../../utils/bookingOwnership'  // ← [2026-04-24 P6-C] isAttendee 추가 — MetaBadge guest 조건 이름 비교 제거
 
 /**
  * BookingDetailModal (export name: DetailModal)
@@ -135,7 +135,14 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
             {b.recurGroupId && (
               <div><MetaBadge type="recurring" size="sm" /></div>
             )}
-            {b.user !== currentUser && b.attendees?.some((a: any) => a.name === currentUser) && (
+            {/* ← [2026-04-24 P6-C] 참석자 뱃지 표시 조건 이름 비교 → isAttendee(email) 전환
+                  기존: b.user !== currentUser && attendees.some(a => a.name === currentUser)
+                        · b.user(snapshot) vs currentUser(live name) 이름 비교
+                        · attendees의 a.name도 snapshot — 이름 변경 시 전부 false
+                  변경: isAttendee(b, currentUserEmail) — email 고정 식별자 기반
+                        · 참석자 목록에 내 email 포함 여부만 판정 (booking_attendees.email 단일 기준)
+                        · 예약자 OR 참석자 상호 배타 정책(§1.3)에 따라 예약자는 자동 제외됨 */}
+            {isAttendee(b, currentUserEmail) && (
               <div><MetaBadge type="guest" size="sm" /></div>
             )}
           </div>

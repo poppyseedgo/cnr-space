@@ -11,6 +11,18 @@ import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22
  * RoomDetailModal
  *
  * ✅ 변경 이력
+ *  - [2026-04-24 P6-A] 예약 리스트 예약자 이름을 live 데이터로 전환
+ *    · 배경: 룸 상세 모달의 '오늘 예약 리스트'에 예약자 이름이 snapshot으로 표시됨
+ *            (팀즈/Azure AD 이름 변경 후 profiles.name 최신값 미반영)
+ *    · 원인: L301 `<span>{b.user}</span>` — bookings.user_name (snapshot) 직접 출력
+ *    · 해결: users 배열에서 user_id 매칭 → profiles.name 라이브 우선, snapshot fallback
+ *            const owner = users.find(u => u.user_id === b.user_id)
+ *            <span>{owner?.name ?? b.user}</span>
+ *    · 시그니처 확장: users?: AppUser[] prop 추가
+ *    · 짝 배포: App.tsx L1507 RoomDetailModal 호출에 users={users} 전달
+ *    · 영향: 표시만 변경. 부서(dept)도 동일 패턴 적용(live 우선).
+ *    · 원칙: 이름이 바뀌어도 부서가 바뀌어도 live 값 즉시 반영
+ *
  *  - [2026-04-22 피그마 전면 재적용] Figma node 177:346 절대 기준 적용 (로직 무수정)
  *    · 피그마 수치 그대로 적용: Modal rounded 24, Header padding 16/20, 타이틀 24px, 서브 14px #6A7282,
  *      썸네일 rounded 16, 정보 리스트 0.5px 구분선형, 승인안내박스 rounded 12/bg #E6FFB0,
@@ -22,7 +34,7 @@ import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22
  *  - [2026-04-18 스타일 정리] 헤더 상태 chip을 인라인 하드코딩 → RoomStatusBadge로 교체
  */
 
-export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {room:any,bookings:any[],onClose:any,onBook:any,onDetail?:any}) {
+export function RoomDetailModal({room:r, bookings, users = [], onClose, onBook, onDetail}: {room:any,bookings:any[],users?:any[],onClose:any,onBook:any,onDetail?:any}) {  // ← [2026-04-24 P6-A] users prop 추가 — 예약자 이름 live 조회용
   const { isMobile } = useBreakpoint();
   const floor    = getFloor(r.floor_id);
   const features = r.features ?? [];
@@ -295,13 +307,22 @@ export function RoomDetailModal({room:r, bookings, onClose, onBook, onDetail}: {
                             </div>
                           </div>
 
-                          {/* ── Line2: 이름 · 부서 ── [피그마] gap 4 */}
-                          <div style={{display:"flex", alignItems:"center", gap:4, lineHeight:1.5}}>
-                            {/* ← [피그마] 이름 11px Medium #3A3F4A */}
-                            <span style={{fontSize:11, fontWeight:500, color:"#3A3F4A"}}>{b.user}</span>
-                            {/* ← [피그마] 부서 11px Regular #A2A7B2 */}
-                            <span style={{fontSize:11, fontWeight:400, color:"#A2A7B2"}}>{b.dept}</span>
-                          </div>
+                          {/* ── Line2: 이름 · 부서 ── [피그마] gap 4
+                              ← [2026-04-24 P6-A] 이름·부서 live 데이터 우선 (snapshot fallback)
+                                 · const owner = users.find(u => u.user_id === b.user_id)
+                                 · 이름: owner?.name ?? b.user  (profiles.name 우선)
+                                 · 부서: owner?.dept ?? b.dept  (profiles.dept 우선) */}
+                          {(() => {
+                            const owner = (users as any[]).find(u => u.user_id === b.user_id)
+                            return (
+                              <div style={{display:"flex", alignItems:"center", gap:4, lineHeight:1.5}}>
+                                {/* ← [피그마] 이름 11px Medium #3A3F4A */}
+                                <span style={{fontSize:11, fontWeight:500, color:"#3A3F4A"}}>{owner?.name ?? b.user}</span>
+                                {/* ← [피그마] 부서 11px Regular #A2A7B2 */}
+                                <span style={{fontSize:11, fontWeight:400, color:"#A2A7B2"}}>{owner?.dept ?? b.dept}</span>
+                              </div>
+                            )
+                          })()}
                         </div>
                       );
                     })}
