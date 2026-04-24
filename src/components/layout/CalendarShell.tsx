@@ -628,29 +628,17 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
     <div ref={scrollRef} style={{ background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', overflowX: 'auto', overflowY: 'visible' }}>
       <div style={{ minWidth: LW + totalW, position: 'relative' }}>
 
-        {/* 현재시간 인디케이터 — pill(헤더 중앙) + dot + #FF393C 세로 라인
-             ← [2026-04-24] A안 적용: 행별 시간선 삭제 후 상위 인디케이터 단일화
-                · pill top: 29 → 14  (헤더 ~48px 세로 중앙: (48-19)/2 ≈ 14)
-                · dot  top: 48 → 38  (헤더 하단 경계선 위에 걸치도록)
-                · line top: 53 → 48  (헤더 바로 아래부터 body 바닥까지 관통)
-             ← [2026-04-24 HOTFIX] 컨테이너 zIndex 8 → 10 (헤더 sticky 9보다 위).
-                근본 원인: position:absolute + zIndex:8로 새 stacking context 생성 →
-                자식 pill의 zIndex:10은 컨테이너 내부에서만 유효, 외부에서는 전체가 8 취급.
-                헤더(9) > 컨테이너(8) 이므로 헤더가 pill을 덮음.
-                컨테이너를 10으로 올려 헤더 위에 배치.
-             ← [2026-04-24] transition: left 1s linear + preciseNowMin 기반 부드러운 이동 */}
+        {/* 현재시간 인디케이터 — dot(헤더 하단 경계선) + 세로 라인만
+             ← [2026-04-24 최종] pill 제거 (헤더 시간 라벨 가림 문제 해결)
+                · pill 없음: 헤더 시간 라벨(정오시/오후 1시 등) 가독성 회복
+                · dot  top:38 (헤더 하단 경계선 위)
+                · line top:48 (헤더 바로 아래부터 바닥까지 관통)
+             ← 컨테이너 zIndex 10: dot이 헤더(9) 위에 떠야 하므로 유지
+             ← transition: left 1s linear + preciseNowMin 기반 부드러운 이동 */}
         {isToday && nowLeft >= 0 && nowLeft <= totalW && (
           <div style={{ position: 'absolute', zIndex: 10, pointerEvents: 'none',
             top: 0, bottom: 0, left: LW + nowLeft, width: 0,
             transition: 'left 1s linear', willChange: 'left' }}>
-            {/* pill — 헤더 세로 중앙(top:14) */}
-            <div style={{ position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)',
-              height: 19, padding: '0 8px', background: '#FF393C', borderRadius: 24,
-              display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', zIndex: 10 }}>
-              <span style={{ fontSize: 11, fontWeight: 500, color: '#fff' }}>
-                {fmt2(Math.floor(now/60))}:{fmt2(now%60)}
-              </span>
-            </div>
             {/* dot — 헤더 하단 경계선 위(top:38) */}
             <div style={{ position: 'absolute', top: 38, left: '50%', transform: 'translateX(-50%)',
               width: 10, height: 10, borderRadius: '50%',
