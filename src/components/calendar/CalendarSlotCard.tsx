@@ -203,7 +203,7 @@ export function CalendarSlotCard({
           칩 row: outer 레벨 (justify-end)
 
           변경 포인트:
-          · 제목 row에 isAct면 6×6 #FF6E6E 깜빡임 닷 추가 (243:632)
+          · 제목 row에 isAct면 6×6 #BAE3FF 닷 추가 (243:632, ← [2026-04-24] FF6E6E → BAE3FF)
           · 제목-시간 gap: 4 → 6 (Figma 242:428 gap-[6px])
           · 시간/이름 lineHeight: 1.5 → 10px (Figma 242:433 leading-[10px])
           · 제목: 2줄 wrap은 실사용 요청 유지 (Figma 1줄 ellipsis와 의도적 불일치) */}
@@ -219,7 +219,7 @@ export function CalendarSlotCard({
               className="slot-active-dot"
               style={{
                 width: 6, height: 6, borderRadius: '50%',
-                background: '#FF6E6E', flexShrink: 0,
+                background: '#BAE3FF', flexShrink: 0, // ← [2026-04-24] FF6E6E → BAE3FF (사용 중 닷 색상 변경)
               }}
               aria-hidden
             />
