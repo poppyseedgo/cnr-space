@@ -10,11 +10,25 @@ import { DetailModalStatusBadge } from '../common/DetailModalStatusBadge'  // �
 import { MetaBadge } from '../common/MetaBadge'
 import { Button } from '../common/Button'
 import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22] 모달 X 버튼 공통화
+import { isBookingOwner } from '../../utils/bookingOwnership'  // ← [2026-04-24 P1] 예약자 판정 헬퍼 (이름 → UUID)
 
 /**
  * BookingDetailModal (export name: DetailModal)
  *
  * ✅ 변경 이력
+ *  - [2026-04-24 P1 긴급] 예약자 판정을 이름 문자열 비교 → UUID 비교로 전환
+ *    · 증상: 팀즈에서 이름 변경한 사용자가 본인 예약의 '취소/편집/체크인' 버튼 미노출
+ *    · 원인: isOwner = b.user === currentUser (이름 비교)
+ *            → Admin 동기화로 profiles.name 변경 후 bookings.user_name(snapshot)과 불일치 → false
+ *            → canEdit, 취소 버튼, 체크인 버튼 등 isOwner 의존 분기 전부 차단
+ *    · 해결: isBookingOwner(b, currentUserId, currentUser) 헬퍼 사용
+ *            · user_id(UUID) 우선 — auth.users.id ON UPDATE CASCADE로 이름 변경에 불변
+ *            · user_id 누락 레거시 데이터는 이름 fallback 유지 (안전망)
+ *    · 신규 prop: currentUserId (App.tsx에서 authUser.user_id 전달)
+ *    · 영향: 논리만 변경, UI/스타일 무수정. 다른 분기(adminCanApprove 등) 원본 유지.
+ *    · 후속: 동일 패턴 9곳(HomeView/CalendarShell/slotHelpers/Badge/ListTable/MyPage/Admin)
+ *            은 P2~P8로 분리 배포 예정 — 본 P1은 '권한 손실' 긴급 복구에 한정.
+ *
  *  - [2026-04-22 피그마 UI 재구성] Figma node 180:534 절대 기준 적용 (로직 무수정)
  *    · 헤더: 사각 상태칩(chip--square, radius 8) + 제목 21px SemiBold
  *    · 정보 리스트: 카드형(#F8FAFC) → 0.5px #F1F5F9 구분선형
@@ -41,7 +55,7 @@ function fmtDuration(startISO: string, endISO: string): string {
   return `${m}분`
 }
 
-export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser, rooms:rp=[], users:up=[], isAdmin=false, onApprove=null, onReject=null, onForceCancel=null}: any) {
+export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser, currentUserId='', rooms:rp=[], users:up=[], isAdmin=false, onApprove=null, onReject=null, onForceCancel=null}: any) {  // ← [2026-04-24 P1] currentUserId prop 추가 — App.tsx에서 authUser.user_id 전달
   const { isMobile } = useBreakpoint();
   const r=rp.find(r=>r.room_id===b.room_id);
   const floor=r ? getFloor(r.floor_id) : null;
@@ -49,7 +63,11 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
   const isToday=tsDate(b.start_at)===todayStr(),now=nowMinutes();
   const sm=tsMin(b.start_at),em=tsMin(b.end_at);
   const isAct=isToday&&sm<=now&&now<em&&!b.autoCancelled&&!b.earlyEnded,nci=isAct&&!b.checkedIn;
-  const isOwner=b.user===currentUser,tl=sm-now;
+  // ← [2026-04-24 P1] 이름 비교 → UUID 비교로 전환 (이름 변경에 불변)
+  //   기존: const isOwner=b.user===currentUser,tl=sm-now;
+  //   변경: isBookingOwner 헬퍼 — user_id(UUID) 우선 + 이름 fallback
+  const isOwner = isBookingOwner(b, currentUserId, currentUser);
+  const tl = sm - now;
   // 변경 가능 조건: 본인 예약, 취소/체크인 안됨, 시작 전
   const isFuture = tsDate(b.start_at) > todayStr() || (tsDate(b.start_at) === todayStr() && sm > now);
   const canEdit  = isOwner && !b.autoCancelled && !b.checkedIn && isFuture;

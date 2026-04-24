@@ -2,6 +2,15 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-04-24 P1 긴급] DetailModal에 currentUserId prop 전달 추가 (L1467 근방)
+ *      · 목적: 예약자 판정을 이름 문자열 → UUID 기반으로 전환하기 위해
+ *              DetailModal 호출 시 currentUserId={authUser?.user_id ?? ''} 추가
+ *      · 증상: 팀즈에서 이름 변경한 사용자가 본인 예약의 취소/편집/체크인 버튼 미노출
+ *              (Admin Azure AD 동기화로 profiles.name 변경 후 bookings.user_name snapshot과 불일치)
+ *      · 짝: DetailModal.tsx isOwner 계산을 isBookingOwner() 헬퍼로 전환 (동시 배포)
+ *      · 본 파일은 prop 1개 전달 추가뿐, 다른 로직 무수정
+ *      · 후속: HomeView/CalendarShell/BookingStatusBadge 등 9곳 P2~P8 분리 배포 예정
+ *
  *  - [2026-04-22 HOTFIX] 캘린더 → 홈 예약 모달 날짜 꼬임 해결
  *      · 증상: 사용자가 캘린더에서 미래 날짜 선택 후 홈으로 이동 → "바로 예약" 버튼 누르면
  *              예약 모달에 오늘이 아닌 캘린더에서 보던 미래 날짜가 적용됨
@@ -1464,7 +1473,10 @@ function AppContent() {
             {modal.type==="edit"         && <BookingModal prefill={{}} editBooking={modal.data} date={tsDate(modal.data.start_at)} onClose={()=>setModal(null)} onSubmit={async ()=>false} onUpdate={(form,date)=>updateBooking(form,date,modal.data.id)} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} />}
             {/* ← [P2 v8] onCancel={cancelBooking} → onCancel={confirmAndCancelBooking}
                   예약 상세에서만 confirm dialog 경유 (소형카드는 즉시 실행 유지) */}
-            {modal.type==="detail"      && <DetailModal booking={modal.data} onClose={()=>setModal(null)} onCheckIn={checkIn} onCancel={confirmAndCancelBooking} onEdit={(b)=>setModal({type:"edit",data:b})} currentUser={currentUser} rooms={rooms} users={users} isAdmin={isAdmin} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={adminForceCancelBooking} />}
+            {/* ← [2026-04-24 P1] DetailModal에 currentUserId={authUser?.user_id} prop 추가
+                  · 예약자 판정을 이름 → UUID 기반으로 전환
+                  · 팀즈에서 이름 변경한 사용자의 '본인 예약 취소/편집/체크인 권한 상실' 버그 해결 */}
+            {modal.type==="detail"      && <DetailModal booking={modal.data} onClose={()=>setModal(null)} onCheckIn={checkIn} onCancel={confirmAndCancelBooking} onEdit={(b)=>setModal({type:"edit",data:b})} currentUser={currentUser} currentUserId={authUser?.user_id ?? ''} rooms={rooms} users={users} isAdmin={isAdmin} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={adminForceCancelBooking} />}
             {modal.type==="bookingDone" && <BookingDoneModal booking={modal.data} onClose={()=>setModal(null)} rooms={rooms} users={users} />}
             {modal.type==="recurDone"    && <RecurDoneModal data={modal.data} onClose={()=>setModal(null)} />}
             {/* ← [P2 v8 신규] 예약 취소 확인 다이얼로그 */}
