@@ -713,13 +713,14 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                 padding: 12,
                 display: 'flex', flexDirection: 'column',
                 justifyContent: 'flex-start',                       // ← [v14] center → flex-start
-                position: 'sticky', left: 0, background: '#fff', zIndex: 6,
-                // ← [2026-04-24 HOTFIX] z-index 5 → 6
-                //   근본 원인: 시간 셀 내부 예약 카드의 zIndex가 isAct일 때 5로 동률.
-                //   CSS에서 z-index가 같으면 DOM 순서가 나중인 요소가 위에 그려지는데
-                //   카드는 room-label보다 뒤에 배치되므로 카드가 회의실명 영역을 덮음.
-                //   room-label을 6으로 올려 카드(최대 5)보다 항상 위에 두되,
-                //   헤더(sticky top, zIndex 9)보다는 낮게 유지.
+                position: 'sticky', left: 0, background: '#fff', zIndex: 11,
+                // ← [2026-04-24 HOTFIX v2] z-index 6 → 11
+                //   근본 원인: 인디케이터 컨테이너(zIndex:10)가 sticky 회의실명(6)보다 위라
+                //   가로 스크롤 시 인디케이터가 회의실명 영역 위를 침범해 그려짐.
+                //   해결: room-label을 11로 올려 인디케이터(10), 헤더(9), 예약 카드(5) 모두 위에 배치.
+                //   히스토리:
+                //     · 5 → 6: 예약 카드(zIndex:5) 동률 충돌 해소 (2026-04-24 1차)
+                //     · 6 → 11: 인디케이터(10) 침범 해소 (2026-04-24 2차)
                 boxShadow: 'none' }}>
                 <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 /* ← [v13] Figma 243:614 gap-[6px] */ }}>
                   <div style={{
