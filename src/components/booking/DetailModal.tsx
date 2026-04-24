@@ -16,6 +16,19 @@ import { isMyBooking } from '../../utils/bookingOwnership'  // ← [2026-04-24 P
  * BookingDetailModal (export name: DetailModal)
  *
  * ✅ 변경 이력
+ *  - [2026-04-24 P4-A-1] 예약자·참석자 이름을 snapshot → live 데이터로 전환
+ *    · 배경: 팀즈/Azure AD에서 이름 변경 후 Admin 동기화 실행 시 profiles.name은
+ *            최신으로 갱신되지만 bookings.user_name / booking_attendees.name은
+ *            예약 생성 시점 snapshot이라 옛 이름 그대로 표시됨
+ *    · 원인: UserChip/AttendeeChip에 b.user / a.name (snapshot)을 직접 전달
+ *    · 해결: users 배열(loadUsers로 로드된 live profiles 데이터)에서 이름 재조회
+ *            · 예약자: users.find(user_id === b.user_id)?.name ?? b.user
+ *            · 참석자: users.find(email === a.email)?.name ?? a.name ?? a.email
+ *    · 원리: 헤더 프로필 칩과 동일한 live 데이터 방식 — DB 변경 시 새로고침으로 자동 반영
+ *    · Fallback 유지: users 배열에 없는 퇴사자/외부인은 snapshot 표시 (정보 보존)
+ *    · 영향: 표시 로직만 변경, 권한 판정(isMyBooking) 무관. UI/스타일 무수정.
+ *    · 주의: 아바타·부서는 이미 live였음(owner?.avatar_url, owner?.dept) — 이름도 동일 원칙 적용
+ *
  *  - [2026-04-24 P1-hotfix] 예약자 판정을 MyPage 방식(UUID + email)으로 재정렬
  *    · 배경: P1 최초 배포(이름 fallback 포함 isBookingOwner) 후에도 편집 버튼 미노출
  *            → 이름 fallback이 profiles.name 변경 시 snapshot과 꼬여 false 반환하는 엣지 케이스
@@ -172,7 +185,13 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
           {b.memo && (
             <InfoRow label="메모" value={b.memo} alignTop />
           )}
-          {/* 예약자 — 아바타+이름+부서 (UserChip dept prop) */}
+          {/* 예약자 — 아바타+이름+부서 (UserChip dept prop)
+              ← [2026-04-24 P4-A-1] 이름 표시를 live 데이터 우선으로 전환
+                · 기존: name={b.user} (bookings.user_name snapshot)
+                · 변경: name={owner?.name ?? b.user}
+                  - owner: users 배열(loadUsers로 로드된 live profiles 데이터)에서 user_id 매칭
+                  - live 우선 → DB profiles.name 변경 시 새로고침으로 자동 반영
+                  - fallback: owner가 없으면(퇴사자 등) snapshot 표시 (정보 보존) */}
           {(()=>{
             const owner = (up as any[]).find((u:any) => u.user_id === b.user_id)
             return (
@@ -180,7 +199,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
                 label="예약자"
                 value={
                   <UserChip
-                    name={b.user}
+                    name={owner?.name ?? b.user}
                     avatarUrl={owner?.avatar_url ?? null}
                     variant="md"
                     userInfo={owner}
@@ -215,12 +234,18 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
                     return (
                       <AttendeeChip
                         key={a.email || idx}
-                        name={a.name || a.email}
+                        name={u?.name ?? a.name ?? a.email}
                         avatarUrl={u?.avatar_url ?? null}
                         dept={u?.dept}
                         userInfo={u}
                       />
                     )
+                    // ← [2026-04-24 P4-A-1] 이름 표시 live 우선
+                    //   기존: name={a.name || a.email} (booking_attendees.name snapshot)
+                    //   변경: name={u?.name ?? a.name ?? a.email}
+                    //     1순위 u.name (profiles.name live — DB 변경 자동 반영)
+                    //     2순위 a.name (snapshot — 외부인/퇴사자 대응)
+                    //     3순위 a.email (이름도 없는 예외 케이스)
                   })}
                 </div>
               }
