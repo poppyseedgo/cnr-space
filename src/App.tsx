@@ -808,9 +808,11 @@ function AppContent() {
   }, [bookings, showToast, sendNotification]);
 
   // ── [2026-04-19 P2 v8] 예약 취소 확인 다이얼로그 경유 헬퍼 ─────────────────
-  //   용도: DetailModal의 "예약 취소" 버튼에서 호출
-  //   정책: HomeView/MyPage 소형카드의 '취소' 버튼은 즉시 실행 유지 (cancelBooking 직접 호출)
-  //         → 예약 상세에서만 confirm dialog 거치도록 분리
+  //   용도: DetailModal, HomeView, MyPage의 "예약 취소" 버튼에서 호출
+  //   정책 변경 이력:
+  //     · [P2 v8] DetailModal에서만 confirm dialog 거치도록 분리
+  //     · [P8-A 2026-04-24] HomeView/MyPage 소형카드 취소 버튼도 본 헬퍼 사용 —
+  //       취소 UX 전면 통일 (cancelBooking 직접 호출은 에러 복구 경로에서만 사용)
   //   구현: setModal로 ConfirmCancelModal 띄우고, 확정 시 cancelBooking 실행
   const confirmAndCancelBooking = useCallback((id: string) => {
     const targetBooking = bookings.find(b => b.id === id)
@@ -1457,7 +1459,7 @@ function AppContent() {
               const s = `${fmt2(Math.floor(clampedStart/60))}:${fmt2(clampedStart%60)}`;
               const e = `${fmt2(Math.floor(clampedEnd/60))}:${fmt2(clampedEnd%60)}`;
               setModal({type:"new", prefill:{room_id:r.room_id, start:s, end:e}});
-            }} onDetail={(r)=>setModal({type:"roomDetail",data:r})} onBookingDetail={(b)=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={cancelBooking} currentUser={currentUser} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} dark={dark} />}{/* ← [2026-04-24 P2] currentUserId 추가 — HomeView "오늘 내 예약" 이름 snapshot 버그 수정 */}
+            }} onDetail={(r)=>setModal({type:"roomDetail",data:r})} onBookingDetail={(b)=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={confirmAndCancelBooking} currentUser={currentUser} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} dark={dark} />}{/* ← [2026-04-24 P8-A] onCancel: cancelBooking → confirmAndCancelBooking — 홈 "오늘 내 예약" 취소 버튼도 ConfirmCancelModal 다이얼로그 경유 (DetailModal과 동일 정책, 전체 취소 UX 통일) */}
           {/* ← [2026-04-24 P5] CalendarShell에 currentUserId/currentUserEmail/users 추가
                 · Daily 슬롯의 이름 live 표시 + filterMine/isOwner UUID/email 판정
                 · 원칙: 이름이 바뀌어도 부서가 바뀌어도 본인 예약으로 인식 */}
@@ -1466,7 +1468,7 @@ function AppContent() {
       )}
 
       {/* ← [2026-04-18 P0 fix] LazyErrorBoundary로 감싸 청크 로드 실패 시 흰 화면 방지 */}
-      {view==="mypage" && <LazyErrorBoundary><Suspense fallback={<MyPageSkeleton />}><MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={cancelBooking} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} avatarUrl={authUser?.avatar_url ?? null} /></Suspense></LazyErrorBoundary>}
+      {view==="mypage" && <LazyErrorBoundary><Suspense fallback={<MyPageSkeleton />}><MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={confirmAndCancelBooking} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} avatarUrl={authUser?.avatar_url ?? null} /></Suspense></LazyErrorBoundary>}{/* ← [2026-04-24 P8-A] onCancel: cancelBooking → confirmAndCancelBooking — MyPage 취소 버튼도 ConfirmCancelModal 경유 */}
       {view==="admin" && <LazyErrorBoundary><Suspense fallback={<AdminSkeleton />}><AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={adminForceCancelBooking} onDetail={b=>setModal({type:'detail',data:b})} /></Suspense></LazyErrorBoundary>}
 
       {/* ── Modals ── */}
