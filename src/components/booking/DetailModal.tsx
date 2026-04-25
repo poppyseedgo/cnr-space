@@ -315,7 +315,12 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         const BtnCheckinWait = () => <Button variant="secondary"   flex disabled icon={<Clock size={14} strokeWidth={1.8}/>}>체크인 대기</Button>
         const BtnApprove  = () => <Button variant="success"        flex onClick={()=>{onApprove(b.id);onClose();}} icon={<ShieldCheck size={14} strokeWidth={1.8}/>}>승인</Button>
         const BtnReject   = () => <Button variant="danger-outline" flex onClick={()=>setShowRejectInput(true)} icon={<ShieldX size={13} strokeWidth={1.8}/>}>거절</Button>
-        const BtnForce    = () => <Button variant="danger-outline" flex onClick={()=>{onForceCancel(b.id,'관리자 강제취소');onClose();}}>강제취소</Button>
+        // ← [2026-04-24 P8-B] 강제취소 버튼 동작 변경
+        //   기존: onForceCancel(id, '관리자 강제취소') — 하드코딩 사유로 즉시 실행 (사유 입력 다이얼로그 없음)
+        //   변경: onForceCancel(id) — App.tsx confirmAndAdminForceCancel이 ConfirmForceCancelModal 자동 오픈
+        //         사유 입력 받은 후 adminForceCancelBooking(id, reason) 실행
+        //   onClose() 유지: DetailModal 닫고 → 강제취소 다이얼로그가 그 자리에 뜸 (자연스러운 모달 교체)
+        const BtnForce    = () => <Button variant="danger-outline" flex onClick={()=>{onForceCancel(b.id);onClose();}}>강제취소</Button>
 
         // ── [P2 v8] 체크인 대기 표시 조건 ──────────────────────────
         //   isFuture(시작 전) + tl <= 10 (10분 이내) + confirmed(승인된) + 취소/거절/체크인 안 됨

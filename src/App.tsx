@@ -154,6 +154,7 @@ import { CalendarShell } from './components/layout/CalendarShell'
 import { BookingDoneModal } from './components/booking/BookingDoneModal'
 import { RecurDoneModal } from './components/booking/RecurDoneModal'
 import { ConfirmCancelModal } from './components/booking/ConfirmCancelModal'
+import { ConfirmForceCancelModal } from './components/booking/ConfirmForceCancelModal' // ← [2026-04-24 P8-B] 관리자 강제취소 공통 다이얼로그
 import { BookingModal } from './components/booking/BookingModal'
 import { DetailModal } from './components/booking/DetailModal'
 import { UserAvatar } from './components/common/UserAvatar'
@@ -924,6 +925,25 @@ function AppContent() {
       showToast(err.message ?? '취소 중 오류가 발생했습니다.', 'error')
     }
   }, [bookings, rooms, users, currentUser, showToast, sendNotification])
+
+  // ── [2026-04-24 P8-B] 강제취소 확인 다이얼로그 경유 헬퍼 ─────────────────
+  //   용도: AdminPage 예약 관리 탭 + DetailModal 관리자 권한 강제취소 버튼
+  //   동기: DetailModal이 하드코딩 사유('관리자 강제취소')로 즉시 호출하던 버그 해결
+  //   구현: setModal로 ConfirmForceCancelModal 띄우고, 확정 시 adminForceCancelBooking 실행
+  //         (cancelBooking → confirmAndCancelBooking 패턴과 동일)
+  //   onConfirm은 사유 문자열을 받아 adminForceCancelBooking(id, reason)에 전달
+  const confirmAndAdminForceCancel = useCallback((id: string) => {
+    const targetBooking = bookings.find(b => b.id === id)
+    if (!targetBooking) return
+    setModal({
+      type: 'confirmForceCancel',
+      data: {
+        booking: targetBooking,
+        onConfirm: (reason: string) => adminForceCancelBooking(id, reason),
+      },
+    })
+  }, [bookings, adminForceCancelBooking])
+
   const updateBooking = useCallback(async (form, date, originalId) => {
     if (!form.room_id || !form.title.trim() || timeToMin(form.start) >= timeToMin(form.end)) {
       showToast("예약 정보를 확인해주세요.", "error"); return false;
@@ -1469,7 +1489,8 @@ function AppContent() {
 
       {/* ← [2026-04-18 P0 fix] LazyErrorBoundary로 감싸 청크 로드 실패 시 흰 화면 방지 */}
       {view==="mypage" && <LazyErrorBoundary><Suspense fallback={<MyPageSkeleton />}><MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={confirmAndCancelBooking} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} avatarUrl={authUser?.avatar_url ?? null} /></Suspense></LazyErrorBoundary>}{/* ← [2026-04-24 P8-A] onCancel: cancelBooking → confirmAndCancelBooking — MyPage 취소 버튼도 ConfirmCancelModal 경유 */}
-      {view==="admin" && <LazyErrorBoundary><Suspense fallback={<AdminSkeleton />}><AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={adminForceCancelBooking} onDetail={b=>setModal({type:'detail',data:b})} /></Suspense></LazyErrorBoundary>}
+      {/* ← [2026-04-24 P8-B] AdminView onForceCancel도 공통 다이얼로그 경유로 통일 */}
+      {view==="admin" && <LazyErrorBoundary><Suspense fallback={<AdminSkeleton />}><AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={confirmAndAdminForceCancel} onDetail={b=>setModal({type:'detail',data:b})} /></Suspense></LazyErrorBoundary>}
 
       {/* ── Modals ── */}
       {modal && (
@@ -1496,13 +1517,22 @@ function AppContent() {
                   · P1 최초 배포(이름 fallback 포함) 후에도 편집 버튼 미노출 → 헬퍼 단순화(isMyBooking)
                   · MyPage allMyBookings와 동일 기준(UUID + attendee email)으로 판정
                   · 참석자도 본인 예약으로 인정 (2026-04-08 정책과 일관) */}
-            {modal.type==="detail"      && <DetailModal booking={modal.data} onClose={()=>setModal(null)} onCheckIn={checkIn} onCancel={confirmAndCancelBooking} onEdit={(b)=>setModal({type:"edit",data:b})} currentUser={currentUser} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} isAdmin={isAdmin} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={adminForceCancelBooking} />}
+            {/* ← [2026-04-24 P8-B] DetailModal onForceCancel: adminForceCancelBooking → confirmAndAdminForceCancel
+                   하드코딩 사유 '관리자 강제취소' 전달 방식 폐기, ConfirmForceCancelModal로 사유 입력받음 */}
+            {modal.type==="detail"      && <DetailModal booking={modal.data} onClose={()=>setModal(null)} onCheckIn={checkIn} onCancel={confirmAndCancelBooking} onEdit={(b)=>setModal({type:"edit",data:b})} currentUser={currentUser} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} isAdmin={isAdmin} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={confirmAndAdminForceCancel} />}
             {modal.type==="bookingDone" && <BookingDoneModal booking={modal.data} onClose={()=>setModal(null)} rooms={rooms} users={users} />}
             {modal.type==="recurDone"    && <RecurDoneModal data={modal.data} onClose={()=>setModal(null)} />}
             {/* ← [P2 v8 신규] 예약 취소 확인 다이얼로그 */}
             {modal.type==="confirmCancel" && <ConfirmCancelModal
               booking={modal.data.booking}
               room={rooms.find((r: any) => r.room_id === modal.data.booking.room_id)}
+              onConfirm={modal.data.onConfirm}
+              onClose={()=>setModal(null)}
+            />}
+            {/* ← [2026-04-24 P8-B] 관리자 강제취소 공통 다이얼로그 분기 추가
+                   confirmAndAdminForceCancel 헬퍼로 띄움. onConfirm은 사유 문자열 받아 처리. */}
+            {modal.type==="confirmForceCancel" && <ConfirmForceCancelModal
+              booking={modal.data.booking}
               onConfirm={modal.data.onConfirm}
               onClose={()=>setModal(null)}
             />}
@@ -1554,7 +1584,8 @@ function AppContent() {
             isAdmin={isAdmin}
             onApprove={approvePendingBooking}
             onReject={rejectPendingBooking}
-            onForceCancel={adminForceCancelBooking}
+            onForceCancel={confirmAndAdminForceCancel}
+            /* ← [2026-04-24 P8-B] SubModal도 공통 다이얼로그 경유 */
           />}
         </div>
       )}

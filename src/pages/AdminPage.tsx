@@ -1014,9 +1014,10 @@ export function AdminBookings({ bookings, setBookings, rooms, users = [], onForc
   const [filterUser,   setFilterUser]  =useState('')
   const [filterStatus, setFilterStatus]=useState('ALL')
   const [page, setPage]=useState(1)
-  const [cancelModal,  setCancelModal] =useState<Booking|null>(null)
-  const [cancelReason, setCancelReason]=useState('')
-  const [cancelling,   setCancelling]  =useState(false)
+  // ← [2026-04-24 P8-B] 자체 cancelModal / cancelReason / cancelling state 제거
+  //   · 공통 컴포넌트 ConfirmForceCancelModal (App.tsx modal)로 이관
+  //   · onForceCancel prop은 이제 App의 confirmAndAdminForceCancel — (id) 단일 인자, 다이얼로그 자동 오픈
+  //   · doCancel / cancelReason 입력 / 로딩 상태는 모두 공통 컴포넌트가 담당
   // 관리자 강제취소는 cancelledBy==='admin', 노쇼는 그 외 autoCancelled
   const isNoshow=(b:Booking)=>b.autoCancelled&&!b.checkedIn&&!b.earlyEnded&&b.cancelledBy!=='admin'
   const filtered=useMemo(()=>bookings.filter(b=>{
@@ -1041,13 +1042,8 @@ export function AdminBookings({ bookings, setBookings, rooms, users = [], onForc
     noshow:filtered.filter(isNoshow).length,
     adminCancel:filtered.filter(b=>b.cancelledBy==='admin').length,
   }
-  // ★ App.tsx의 adminForceCancelBooking 콜백 위임 (알림·이메일·audit 모두 App에서 처리)
-  const doCancel=async(id:string)=>{
-    if(cancelling)return; setCancelling(true)
-    try { await onForceCancel(id, cancelReason||'관리자 강제 취소') }
-    catch(err:any){ showToast(err.message??'취소 중 오류','error') }
-    finally{ setCancelling(false); setCancelModal(null); setCancelReason('') }
-  }
+  // ← [2026-04-24 P8-B] doCancel 함수 제거 — App.tsx의 confirmAndAdminForceCancel이 담당
+  //   (다이얼로그에서 사유 입력 → 확정 시 adminForceCancelBooking 호출까지 전부 공통 경로)
   const getBadge=(b:Booking)=>{
     const d=tsDate(b.start_at)
     if(b.status==='pending'&&!b.autoCancelled)return<span style={{background:'#FEF3C7',color:'#92400E',fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999}}>승인대기</span>
@@ -1124,7 +1120,7 @@ export function AdminBookings({ bookings, setBookings, rooms, users = [], onForc
                   <td style={{padding:'10px 14px',color:'#64748B',whiteSpace:'nowrap'}}>{fmtTSRangeFull(b.start_at,b.end_at)}</td>
                   <td style={{padding:'10px 14px',whiteSpace:'nowrap'}}><div style={{display:'flex',alignItems:'center',gap:7}}><div style={{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:500,flexShrink:0,background:'#F1EFE8',color:'#444441'}}>{(displayName ?? '?')[0]}</div><span style={{fontSize:13,fontWeight:500}}>{displayName}</span></div></td>
                   <td style={{padding:'10px 14px',whiteSpace:'nowrap'}}>{getBadge(b)}</td>
-                  <td style={{padding:'10px 14px'}} onClick={e=>e.stopPropagation()}>{canCancel&&<Button variant='danger-outline' size='sm' onClick={()=>setCancelModal(b)}>강제 취소</Button>}</td>
+                  <td style={{padding:'10px 14px'}} onClick={e=>e.stopPropagation()}>{canCancel&&<Button variant='danger-outline' size='sm' onClick={()=>onForceCancel(b.id)}>강제 취소</Button>}{/* ← [2026-04-24 P8-B] setCancelModal(b) → onForceCancel(b.id) — App.tsx confirmAndAdminForceCancel이 ConfirmForceCancelModal 자동 오픈 */}</td>
                 </tr>
               )})}</tbody>
             </table>
@@ -1136,18 +1132,8 @@ export function AdminBookings({ bookings, setBookings, rooms, users = [], onForc
           <button className="btn" disabled={page===totalPages} onClick={()=>setPage(p=>p+1)} style={{padding:'6px 12px',fontSize:12,borderRadius:8,background:'#F1F5F9',color:page===totalPages?'#CBD5E1':'#64748B'}}>›</button>
         </div>)}
       </div>
-      {cancelModal&&(<ModalPortal><div onClick={e=>e.target===e.currentTarget&&setCancelModal(null)} style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.55)',backdropFilter:'blur(6px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
-        <div className="anm" style={{background:'#fff',borderRadius:16,width:'100%',maxWidth:400,padding:'24px',boxShadow:'0 20px 60px rgba(0,0,0,0.15)'}}>
-          <div style={{fontSize:16,fontWeight:600,color:'#111',marginBottom:4,display:'flex',alignItems:'center',gap:6}}><AlertTriangle size={15} strokeWidth={1.8}/>예약 강제 취소</div>
-          <div style={{fontSize:13,color:'#64748B',marginBottom:16}}>"{cancelModal.title}" — {cancelModal.user}</div>
-          <label style={{fontSize:11,fontWeight:600,color:'#94A3B8',display:'block',marginBottom:6}}>취소 사유</label>
-          <textarea value={cancelReason} onChange={e=>setCancelReason(e.target.value)} rows={3} placeholder="취소 사유를 입력하세요 (선택)" style={{width:'100%',background:'#F8FAFC',border:'1px solid #E2E8F0',borderRadius:10,padding:'10px 14px',fontSize:13,outline:'none',resize:'none'}}/>
-          <div style={{display:'flex',gap:8,marginTop:16}}>
-            <Button variant='ghost' flex onClick={()=>{setCancelModal(null);setCancelReason('')}}>돌아가기</Button>
-            <Button variant='danger' flex loading={cancelling} onClick={()=>doCancel(cancelModal.id)}>강제 취소</Button>
-          </div>
-        </div>
-      </div></ModalPortal>)}
+      {/* ← [2026-04-24 P8-B] 인라인 강제취소 모달 제거 — ConfirmForceCancelModal 공통 컴포넌트로 이관
+            (App.tsx confirmAndAdminForceCancel 헬퍼가 modal.type='confirmForceCancel' 띄움) */}
     </div>
   )
 }
