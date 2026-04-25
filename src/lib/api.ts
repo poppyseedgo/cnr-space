@@ -17,6 +17,16 @@
  *       · saveBookings / insertBooking: 두 호출부에서 user.email 전달
  *     - 호환: 헬퍼(isMyBooking) 변경 없음 — 기능 동작 완전 동일, P3-3에서 OR 판정 전환
  *     - 선행: P3-1 DB 마이그레이션 완료 (user_email 컬럼 + 백필 + 인덱스)
+ *  4. [2026-04-25] loadBookings 조회 범위 정책 변경
+ *     - 배경: 미래 +60일 컷오프로 인해 Admin이 그 이후로 만든 예약 / recurring 예약이
+ *            캘린더 뷰에서 가려지는 정합성 버그 (DB에는 정상 저장됨)
+ *     - 변경:
+ *       · 과거: -7일 → -3개월 (지난 분기 데이터 조회 가능)
+ *       · 미래: +60일 → 무제한 (.lte 조건 제거)
+ *     - 영향: 시그니처/호출부 변경 없음 — App.tsx 5곳 호출 모두 그대로 동작
+ *     - 부하: 9개 회의실 × 평균 3~5건/일 × 15개월 ≈ 1만~1.6만건, payload 수 MB —
+ *            첫 로드 1회만이고 이후는 subscribeBookings Realtime incremental, 안전
+ *     - 호환: rowToBooking + utcToKST 그대로 적용, CalendarShell/MyPage prop 영향 0
  */
 
 import { supabase, isSupabaseEnabled } from './supabase'
@@ -127,14 +137,15 @@ function bookingToRow(b: Booking, userId: string, userEmail: string = '') {
 }
 
 // ── 전체 조회 (날짜 범위 필터링) ─────────────────────────────────────────────
-// 오늘 기준 과거 7일 ~ 미래 60일 범위만 로딩
+// [2026-04-25] 정책: 과거 3개월 ~ 미래 무제한
+//   · 과거: -3개월 (지난 분기 통계/조회 지원, 7일은 너무 짧음)
+//   · 미래: 무제한 (Admin/recurring이 만든 모든 미래 예약을 캘린더에서 노출)
 export async function loadBookings(): Promise<Booking[]> {
   if (!isSupabaseEnabled) return localGetBookings()
   try {
     const from = new Date()
-    from.setDate(from.getDate() - 7)
-    const to = new Date()
-    to.setDate(to.getDate() + 60)
+    from.setMonth(from.getMonth() - 3)   // ← [2026-04-25] -7일 → -3개월
+    // ← [2026-04-25] 미래 컷오프 제거: 기존 const to = +60일 + .lte('start_at', to) 삭제
 
     // bookings + booking_attendees join 조회
     // bookings.attendees JSONB는 신규 예약에 저장 안 됨 → booking_attendees 테이블이 정본
@@ -143,8 +154,7 @@ export async function loadBookings(): Promise<Booking[]> {
       const { data, error } = await supabase
         .from('bookings')
         .select('*, booking_attendees(email, name)')
-        .gte('start_at', from.toISOString())
-        .lte('start_at', to.toISOString())
+        .gte('start_at', from.toISOString())   // ← [2026-04-25] 미래 .lte 조건 제거됨 (무제한)
         .order('start_at', { ascending: true })
       if (error) throw error
       return data
