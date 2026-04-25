@@ -11,6 +11,19 @@ import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22
  * RoomDetailModal
  *
  * ✅ 변경 이력
+ *  - [2026-04-25] 좌우 컬럼 1:1 width 강제 (min-width: 0 패턴 적용)
+ *    · 문제: 오른쪽 영역 예약카드의 회의제목이 길어지면 RIGHT 컬럼이 push되어
+ *            grid `1fr 1fr` 비율이 깨지고 LEFT 컬럼이 줄어드는 현상
+ *    · 원인: CSS Grid item의 기본 `min-width: auto` 동작
+ *            └ `1fr` === `minmax(auto, 1fr)`이라 자식 contents가 길면 컬럼이 늘어남
+ *            └ 자식 span에 truncate(ellipsis)가 있어도 부모 width가 안 잡히면 무력
+ *    · 해결: 3중 안전장치
+ *            ① gridTemplateColumns: `1fr 1fr` → `minmax(0,1fr) minmax(0,1fr)` (L116)
+ *            ② LEFT 컬럼 div에 minWidth:0 (L122)
+ *            ③ RIGHT 컬럼 div에 minWidth:0 (L189)
+ *    · 영향: 좌우 항상 1:1 / 예약카드 width 고정 / 회의제목은 자동으로 ellipsis 표시
+ *    · 무수정: 모든 로직(필터·상태분기·owner 조회)·디자인 토큰·예약카드 내부 구조
+ *
  *  - [2026-04-24 P6-A] 예약 리스트 예약자 이름을 live 데이터로 전환
  *    · 배경: 룸 상세 모달의 '오늘 예약 리스트'에 예약자 이름이 snapshot으로 표시됨
  *            (팀즈/Azure AD 이름 변경 후 profiles.name 최신값 미반영)
@@ -113,7 +126,8 @@ export function RoomDetailModal({room:r, bookings, users = [], onClose, onBook, 
       <div style={{flex:1, overflowY:"auto"}}>
         <div style={{
           display: isMobile ? "flex" : "grid",
-          gridTemplateColumns: isMobile ? undefined : "1fr 1fr",
+          // ← [2026-04-25] `1fr 1fr` → `minmax(0,1fr) minmax(0,1fr)` : 자식 contents 길이로 컬럼이 늘어나는 것 방지
+          gridTemplateColumns: isMobile ? undefined : "minmax(0, 1fr) minmax(0, 1fr)",
           flexDirection: isMobile ? "column" : undefined,
           gap: 0,
         }}>
@@ -123,6 +137,7 @@ export function RoomDetailModal({room:r, bookings, users = [], onClose, onBook, 
             padding: isMobile ? "16px 20px" : 16,
             borderRight: isMobile ? "none" : "1px solid #F1F5F9",
             display:"flex", flexDirection:"column", gap:16,
+            minWidth: 0, // ← [2026-04-25] grid item 기본 min-width:auto 무력화 (1:1 비율 강제)
           }}>
             {/* 썸네일 ← [피그마] rounded 16 */}
             <div style={{width:"100%", height: isMobile ? 180 : 200, borderRadius:16, overflow:"hidden",
@@ -189,6 +204,7 @@ export function RoomDetailModal({room:r, bookings, users = [], onClose, onBook, 
           <div style={{
             padding: isMobile ? "0 20px 16px" : 16,
             display:"flex", flexDirection:"column", gap:24,
+            minWidth: 0, // ← [2026-04-25] 회의제목이 길어도 컬럼 width 고정 (자식 truncate 정상 동작 조건)
           }}>
             {/* ← [피그마 196:1077 신규] 에메랄드(관리자 전용) 룸 알림박스: bg #E6FFB0, rounded 12, padding 8·12, min-height 62, 12px Medium #000 */}
             {r.is_admin_only && (
