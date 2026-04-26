@@ -2,6 +2,35 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-26 Phase F] 우측 패널 — 시간 헤더 + 회의실 그리드 카드 Figma 매칭
+ *      · Figma 노드: 302:5508-5615 (우측 패널 전체)
+ *      · 변경 범위: 데스크톱 우측 패널만 (모바일 RoomGrid2 그대로 유지)
+ *      · 변경 내용:
+ *        1) 우측 패널 컨테이너: padding 24/28 → 16, gap 16 → 24 (Figma)
+ *        2) 우측 헤더 시간: 17px/600 → 18px SemiBold / line-height 1.5
+ *           · "오전 12:15 ⎯ 오후 1:00 이용 가능 회의실" → "오전 12:15 ⎯ 오후 1:00" (간결)
+ *           · 구분자 "-" → "⎯" (Figma)
+ *        3) 우측 헤더 서브: 13px/#94A3B8 → 12px / "6 + 개 예약 가능 + 클릭해서 선택"
+ *           · "6": SemiBold #111 / "개 예약 가능": Regular #96a0b3 / "클릭해서 선택": Regular rgba(150,160,179,0.5)
+ *        4) 새 함수 RoomGridDesktop 작성 — 데스크톱 우측 전용 (모바일 RoomGrid2 무영향)
+ *           · 그리드: padding 24px 0 추가, gap 10, bg white
+ *           · 카드 공통: h:100, p:10, radius:16, flex-col justify-between (회의실명 위 / 배지 아래)
+ *           · 가용 카드: bg #fff, border 1px #dee5f1
+ *           · 선택 카드: bg #000, border 1px #000, 흰 글씨
+ *           · 예약됨/곧사용 카드: bg #fef2f2, border transparent, text #ff8b8b
+ *           · 회의실명: 14px Medium, line-height: 1
+ *           · 부가정보: 10px Medium #6a7282 / #ff8b8b, gap 2 with "•" bullet
+ *           · 배지: padding 4/8, radius 24, gap 2
+ *             · 선택됨: bg #b9f8cf + Check 16 + 텍스트
+ *             · 예약가능: bg #cbecff
+ *             · HR 승인 필요: bg #e6ffb0 (라임)
+ *             · 예약됨/곧 사용: bg #ffdbdb, text #dc1a1a (곧 사용은 SemiBold)
+ *           · "곧 시작" → "곧 사용" 표시 변환 (getRoomUnavailStatus의 label은 그대로 두고 표시 시점 변환)
+ *           · "승인 필요" / "승인 후 확정" → "HR 승인 필요" 통일 (Figma 매칭)
+ *           · 배치: 회의실명 위쪽, 배지 아래쪽 (현재 코드 반전됨 → 정정)
+ *      · 검증/판단 로직 변경 없음 (availableRooms, unavailableRooms, getRoomUnavailStatus, set("room_id") 그대로)
+ *      · 모바일 step2 회의실 그리드: 기존 RoomGrid2 그대로 — Figma 모바일 디자인 받은 후 별도 처리
+ *
  *  - [2026-04-26 Phase E 보충] 메모 maxLength=100 적용 (사용자 명시 승인)
  *      · 사용자 요청: "100자까지 입력 가능, 엔터(줄바꿈) 사용 가능"
  *      · 변경: textarea에 maxLength={100} 추가
@@ -833,6 +862,188 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       })}
     </div>
   );
+
+  // ── [Phase F 2026-04-26] 데스크톱 우측 패널 전용 회의실 그리드 ────────────────
+  //   Figma 노드: 302:5519-5615 / 299:3828-4724
+  //   기존 RoomGrid2와 분리 — 모바일 step2는 기존 RoomGrid2 그대로 사용
+  //   카드 레이아웃: h:100, p:10, radius:16, flex-col justify-between (회의실명 위 / 배지 아래)
+  //   배지 위치 반전 (현재 위쪽 → 아래쪽)
+  const RoomGridDesktop = () => (
+    <div style={{
+      display:"grid",
+      gridTemplateColumns:"repeat(2, minmax(0, 1fr))",
+      gap:10,
+      padding:"24px 0",
+      background:"#fff",
+      width:"100%",
+    }}>
+      {/* 가용 회의실 */}
+      {availableRooms.map(r => {
+        const fl = getFloor(r.floor_id);
+        const isSel = form.room_id === r.room_id;
+        const isAdminRoom = allRooms.find(rm => rm.room_id === r.room_id)?.is_admin_only ?? false;
+        return (
+          <div key={r.room_id}
+            onClick={()=>set("room_id", isSel ? null : r.room_id)}
+            style={{
+              background: isSel ? "#000" : "#fff",
+              border: `1px solid ${isSel ? "#000" : "#dee5f1"}`,
+              borderRadius:16,
+              padding:10,
+              height:100,
+              cursor:"pointer",
+              display:"flex",
+              flexDirection:"column",
+              justifyContent:"space-between",
+              boxSizing:"border-box",
+              transition:"border-color 0.15s",
+            }}
+            onMouseEnter={e => { if (!isSel) e.currentTarget.style.borderColor = "#94A3B8"; }}
+            onMouseLeave={e => { if (!isSel) e.currentTarget.style.borderColor = "#dee5f1"; }}
+          >
+            {/* 위쪽: 회의실명 + 부가정보 */}
+            <div style={{display:"flex", flexDirection:"column", gap:4}}>
+              <span style={{
+                fontFamily:"Pretendard, sans-serif",
+                fontWeight:500, fontSize:14, lineHeight:1,
+                color: isSel ? "#fff" : "#000",
+                whiteSpace:"nowrap",
+              }}>{r.room_name}</span>
+              <div style={{display:"flex", gap:2, alignItems:"center"}}>
+                <span style={{
+                  fontFamily:"Pretendard, sans-serif",
+                  fontWeight:500, fontSize:10, lineHeight:1.5,
+                  color:"#6a7282",
+                }}>{fl.floor_name}</span>
+                <span style={{
+                  fontFamily:"Pretendard, sans-serif",
+                  fontWeight:500, fontSize:10, lineHeight:1.5,
+                  color:"#6a7282",
+                }}>•</span>
+                <span style={{
+                  fontFamily:"Pretendard, sans-serif",
+                  fontWeight:500, fontSize:10, lineHeight:1.5,
+                  color:"#6a7282",
+                }}>{r.capacity}인</span>
+              </div>
+            </div>
+            {/* 아래쪽: 배지 (선택됨 또는 예약가능, + HR 승인 필요 emerald) */}
+            <div style={{display:"flex", gap:4, alignItems:"center", flexWrap:"wrap"}}>
+              {isSel ? (
+                /* 선택됨 배지 */
+                <div style={{
+                  background:"#b9f8cf",
+                  padding:"4px 8px",
+                  borderRadius:24,
+                  display:"flex", gap:2, alignItems:"center", justifyContent:"center",
+                }}>
+                  <Check size={16} strokeWidth={1.8} color="#000"/>
+                  <span style={{
+                    fontFamily:"Pretendard, sans-serif",
+                    fontWeight:500, fontSize:10, lineHeight:1.5, color:"#000",
+                    whiteSpace:"nowrap",
+                  }}>선택됨</span>
+                </div>
+              ) : (
+                /* 예약가능 배지 */
+                <div style={{
+                  background:"#cbecff",
+                  padding:"4px 8px",
+                  borderRadius:24,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                }}>
+                  <span style={{
+                    fontFamily:"Pretendard, sans-serif",
+                    fontWeight:500, fontSize:10, lineHeight:1.5, color:"#000",
+                    whiteSpace:"nowrap",
+                  }}>예약가능</span>
+                </div>
+              )}
+              {/* HR 승인 필요 (emerald) — 선택 여부와 무관하게 추가 표시 */}
+              {isAdminRoom && (
+                <div style={{
+                  background:"#e6ffb0",
+                  padding:"4px 8px",
+                  borderRadius:24,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                }}>
+                  <span style={{
+                    fontFamily:"Pretendard, sans-serif",
+                    fontWeight:500, fontSize:10, lineHeight:1.5, color:"#000",
+                    whiteSpace:"nowrap",
+                  }}>HR 승인 필요</span>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* 불가용 회의실 (예약됨 / 곧 사용) */}
+      {unavailableRooms.map(r => {
+        const fl = getFloor(r.floor_id);
+        const st = getRoomUnavailStatus(r.room_id);
+        // [Phase F] "곧 시작" → "곧 사용" 표시 변환 (label 자체는 그대로 유지)
+        const displayLabel = st.label === "곧 시작" ? "곧 사용" : st.label;
+        const isImminent   = st.label === "곧 시작";
+        return (
+          <div key={r.room_id}
+            style={{
+              background:"#fef2f2",
+              borderRadius:16,
+              padding:10,
+              height:100,
+              display:"flex",
+              flexDirection:"column",
+              justifyContent:"space-between",
+              boxSizing:"border-box",
+              border:"1px solid transparent",
+            }}
+          >
+            {/* 위쪽: 회의실명 + 부가정보 */}
+            <div style={{display:"flex", flexDirection:"column", gap:4}}>
+              <span style={{
+                fontFamily:"Pretendard, sans-serif",
+                fontWeight:500, fontSize:14, lineHeight:1,
+                color:"#ff8b8b",
+                whiteSpace:"nowrap",
+              }}>{r.room_name}</span>
+              <div style={{display:"flex", gap:2, alignItems:"center"}}>
+                <span style={{
+                  fontFamily:"Pretendard, sans-serif",
+                  fontWeight:500, fontSize:10, lineHeight:1.5, color:"#ff8b8b",
+                }}>{fl.floor_name}</span>
+                <span style={{
+                  fontFamily:"Pretendard, sans-serif",
+                  fontWeight:500, fontSize:10, lineHeight:1.5, color:"#ff8b8b",
+                }}>•</span>
+                <span style={{
+                  fontFamily:"Pretendard, sans-serif",
+                  fontWeight:500, fontSize:10, lineHeight:1.5, color:"#ff8b8b",
+                }}>{r.capacity}인</span>
+              </div>
+            </div>
+            {/* 아래쪽: 배지 */}
+            <div style={{
+              background:"#ffdbdb",
+              padding:"4px 8px",
+              borderRadius:24,
+              alignSelf:"flex-start",
+              display:"flex", alignItems:"center", justifyContent:"center",
+            }}>
+              <span style={{
+                fontFamily:"Pretendard, sans-serif",
+                fontWeight: isImminent ? 600 : 500,
+                fontSize:10, lineHeight:1.5, color:"#dc1a1a",
+                whiteSpace:"nowrap",
+              }}>{displayLabel}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+  // ──────────────────────────────────────────────────────────────────────────────
 
   // ── 렌더 ────────────────────────────────────────────────────────────────────
   // 모바일: visualViewport 실제 가시 높이 기준으로 모달 높이 결정
@@ -1725,20 +1936,62 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             </div>}
           </div>
 
-          {/* RIGHT: 회의실 패널 (50%) */}
-          <div style={{flex:1,padding:"24px 28px",overflowY:"auto",display:"flex",flexDirection:"column",gap:16}}>
-            <div>
-              <div style={{fontSize:17,fontWeight:600,color:"#111"}}>
-                {validTime?`${fmtTime(form.start)} - ${fmtTime(form.end)} 이용 가능 회의실`:"시간을 먼저 선택해주세요"}
-              </div>
-              {validTime&&<div style={{fontSize:13,color:"#94A3B8",marginTop:4}}>{availableRooms.length}개 가능 · 클릭해서 선택</div>}
+          {/* RIGHT: 회의실 패널 (50%) — [Phase F] padding 24/28 → 16, gap 16 → 24 */}
+          <div style={{flex:1,padding:16,overflowY:"auto",display:"flex",flexDirection:"column",gap:24}}>
+            {/* ← [Phase F] 우측 헤더 — Figma 매칭 */}
+            {/*   시간: 18px SemiBold + ⎯ + 18px SemiBold (gap 8) */}
+            {/*   서브: "{N}" SemiBold #111 + "개 예약 가능" Regular #96a0b3 + "클릭해서 선택" Regular rgba(150,160,179,0.5) */}
+            <div style={{display:"flex", flexDirection:"column", gap:4}}>
+              {validTime ? (
+                <>
+                  {/* 시간 행 */}
+                  <div style={{display:"flex", alignItems:"center", gap:8}}>
+                    <span style={{
+                      fontFamily:"Pretendard, sans-serif",
+                      fontWeight:600, fontSize:18, lineHeight:1.5, color:"#000",
+                    }}>{fmtTime(form.start)}</span>
+                    <span style={{
+                      fontFamily:"Pretendard, sans-serif",
+                      fontWeight:500, fontSize:18, lineHeight:1, color:"#111",
+                    }}>⎯</span>
+                    <span style={{
+                      fontFamily:"Pretendard, sans-serif",
+                      fontWeight:600, fontSize:18, lineHeight:1.5, color:"#000",
+                    }}>{fmtTime(form.end)}</span>
+                  </div>
+                  {/* 서브타이틀 행 */}
+                  <div style={{display:"flex", alignItems:"flex-start", gap:4}}>
+                    <div style={{display:"flex", alignItems:"center"}}>
+                      <span style={{
+                        fontFamily:"Pretendard, sans-serif",
+                        fontWeight:600, fontSize:12, lineHeight:1.5, color:"#111",
+                      }}>{availableRooms.length}</span>
+                      <span style={{
+                        fontFamily:"Pretendard, sans-serif",
+                        fontWeight:400, fontSize:12, lineHeight:1.5, color:"#96a0b3",
+                      }}>개 예약 가능</span>
+                    </div>
+                    <span style={{
+                      fontFamily:"Pretendard, sans-serif",
+                      fontWeight:400, fontSize:12, lineHeight:1.5,
+                      color:"rgba(150, 160, 179, 0.5)",
+                    }}>클릭해서 선택</span>
+                  </div>
+                </>
+              ) : (
+                /* 시간 미설정 — 기존 안내 유지 (Figma에 없는 케이스) */
+                <div style={{
+                  fontFamily:"Pretendard, sans-serif",
+                  fontWeight:600, fontSize:18, lineHeight:1.5, color:"#000",
+                }}>시간을 먼저 선택해주세요</div>
+              )}
             </div>
             {!validTime ? (
               <div style={{textAlign:"center",padding:"60px 20px",color:"#CBD5E1"}}>
                 <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><Clock size={40} strokeWidth={1.8} color="#CBD5E1"/></div>
                 <div style={{fontSize:13}}>시작/종료 시간을 설정하면<br/>예약 가능한 회의실이 자동으로 표시됩니다</div>
               </div>
-            ) : RoomGrid2(2)}
+            ) : RoomGridDesktop()}
           </div>
         </div>
 
