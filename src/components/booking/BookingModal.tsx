@@ -2,6 +2,25 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-26 Phase D] 좌측 4 — 회의실 박스 (빈 상태 / 선택 상태) Figma 매칭
+ *      · Figma 노드: 빈 상태 302:5639-5647 / 선택 상태 299:3948-3955
+ *      · 변경 범위: 데스크톱 좌측 패널 회의실 필드만 (모바일/우측/다른 필드 불변)
+ *      · 변경 내용:
+ *        1) Field 적용 (라벨 "선택된 회의실" → "회의실" + 빨간 점)
+ *        2) 빈 상태: 점선 박스
+ *           · border 1.5px dashed #E2E8F0 → 1px dashed rgba(189,197,212,0.5)
+ *           · padding 18 → 14px 16px, height 자동 → 69px
+ *           · text-align center → flex-col items-start (좌측 정렬)
+ *           · 텍스트 "오른쪽에서 회의실을 선택해주세요" → 마침표 추가, Pretendard Regular 12px / #bdc5d4
+ *        3) 선택 상태: 연두 박스
+ *           · background #b9f8cf42 → rgba(185,248,207,0.2)
+ *           · border 1.5px solid #86EFAC → 1px solid #b9f8cf
+ *           · padding 14/16 → 10, alignItems center → flex-start, height 69px
+ *           · 회의실명: 15px/600 → 14px/Medium, line-height none
+ *           · 부가정보: 12px/#64748B → 12px Regular #979fb1, "•" bullet 명시
+ *           · 변경 버튼(pill) → X 아이콘 20px (lucide-react X import 추가, set("room_id",null) 그대로)
+ *      · 검증/판단 로직 변경 없음 (selectedRoom, selectedFloor, set("room_id") 그대로)
+ *
  *  - [2026-04-26 Phase C] 좌측 1/2/3 — 회의 제목 / 날짜 / 시간 (boxless 변환)
  *      · Figma 노드: 302:5364 / 299:3607
  *      · 변경 범위: 데스크톱 좌측 패널 첫 3개 필드만 (모바일/우측/회의실/참석자/메모 불변)
@@ -84,7 +103,7 @@
  *              · 달력 초기 월/연도도 보정된 날짜 기준으로 계산
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { AlertCircle, AlertTriangle, Ban, Calendar, Check, CheckCircle2, ChevronDown, ChevronUp, Clock } from 'lucide-react'
+import { AlertCircle, AlertTriangle, Ban, Calendar, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, X } from 'lucide-react'
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
@@ -1335,28 +1354,85 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 </div>
               )}
             </Field>
-            {/* 선택된 회의실 */}
-            <div>
-              <label style={{fontSize:13,fontWeight:600,color:"#111",display:"block",marginBottom:8}}>선택된 회의실</label>
+            {/* 회의실 — [Phase D] Field 적용, 빈/선택 상태 Figma 매칭 */}
+            {/*   빈 상태 (Figma 302:5639-5647): 점선 박스 + "오른쪽에서 회의실을 선택해주세요." */}
+            {/*   선택 상태 (Figma 299:3948-3955): 연두 박스 + 회의실명/층·정원 + X 아이콘 (해제) */}
+            <Field label="회의실" required>
               {selectedRoom ? (
-                <div style={{background:"#b9f8cf42",border:"1.5px solid #86EFAC",borderRadius:10,padding:"14px 16px",
-                  display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div>
-                    <div style={{fontSize:15,fontWeight:600,color:"#111"}}>{selectedRoom.room_name}</div>
-                    <div style={{fontSize:12,color:"#64748B",marginTop:4}}>
-                      {selectedFloor?.floor_name} · {selectedRoom.capacity}인
+                /* 선택 상태 */
+                <div style={{
+                  width:"100%",
+                  height:69,
+                  padding:10,
+                  borderRadius:10,
+                  border:"1px solid #b9f8cf",
+                  background:"rgba(185, 248, 207, 0.2)",
+                  display:"flex",
+                  justifyContent:"space-between",
+                  alignItems:"flex-start",
+                  boxSizing:"border-box",
+                }}>
+                  {/* 좌측: 회의실명 + 부가정보 */}
+                  <div style={{display:"flex", flexDirection:"column", gap:4}}>
+                    <span style={{
+                      fontFamily:"Pretendard, sans-serif",
+                      fontWeight:500, fontSize:14, lineHeight:1, color:"#111",
+                    }}>
+                      {selectedRoom.room_name}
+                    </span>
+                    <div style={{display:"flex", gap:2, alignItems:"center"}}>
+                      <span style={{
+                        fontFamily:"Pretendard, sans-serif",
+                        fontWeight:400, fontSize:12, lineHeight:1.5, color:"#979fb1",
+                      }}>{selectedFloor?.floor_name}</span>
+                      <span style={{
+                        fontFamily:"Pretendard, sans-serif",
+                        fontWeight:400, fontSize:12, lineHeight:1.5, color:"#979fb1",
+                      }}>•</span>
+                      <span style={{
+                        fontFamily:"Pretendard, sans-serif",
+                        fontWeight:400, fontSize:12, lineHeight:1.5, color:"#979fb1",
+                      }}>{selectedRoom.capacity}인</span>
                     </div>
                   </div>
-                  <button className="btn" onClick={()=>set("room_id",null)}
-                    style={{background:"#fff",color:"#EF4444",padding:"6px 14px",fontSize:12,fontWeight:600,border:"1px solid #FCA5A5",borderRadius:999}}>변경</button>
+                  {/* 우측: X 아이콘 20px (해제) — set("room_id", null) 그대로 */}
+                  <button
+                    type="button"
+                    onClick={()=>set("room_id", null)}
+                    aria-label="회의실 선택 해제"
+                    style={{
+                      width:20, height:20,
+                      padding:0, background:"transparent", border:"none",
+                      cursor:"pointer",
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      flexShrink:0,
+                    }}
+                  >
+                    <X size={20} strokeWidth={1.8} color="#111"/>
+                  </button>
                 </div>
               ) : (
-                <div style={{background:"#F8FAFC",border:"1.5px dashed #E2E8F0",borderRadius:10,padding:"18px",
-                  textAlign:"center",fontSize:13,color:"#94A3B8"}}>
-                  오른쪽에서 회의실을 선택해주세요
+                /* 빈 상태 */
+                <div style={{
+                  width:"100%",
+                  height:69,
+                  padding:"14px 16px",
+                  borderRadius:10,
+                  border:"1px dashed rgba(189, 197, 212, 0.5)",
+                  display:"flex",
+                  flexDirection:"column",
+                  alignItems:"flex-start",
+                  boxSizing:"border-box",
+                }}>
+                  <span style={{
+                    fontFamily:"Pretendard, sans-serif",
+                    fontWeight:400, fontSize:12, lineHeight:1.5, color:"#bdc5d4",
+                  }}>
+                    오른쪽에서 회의실을 선택해주세요.
+                  </span>
                 </div>
               )}
-            </div>
+            </Field>
             {/* 참석자 */}
             <div>
               <label style={{fontSize:13,fontWeight:600,color:"#111",display:"block",marginBottom:8}}>참석자</label>
