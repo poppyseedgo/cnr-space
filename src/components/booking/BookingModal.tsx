@@ -2,6 +2,12 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-27 Phase G 보충 9] 모달 헤더 fontSize 24 → 20
+ *      · 사용자 명시 요청
+ *      · 변경: 데스크톱 모달 헤더 "새 회의실 예약" / "예약 변경" — fontSize 24 → 20
+ *      · 위치: L1355 (Phase A에서 absolute로 추가한 데스크톱 헤더)
+ *      · 모바일 헤더(L1330, fontSize 15) 무영향
+ *
  *  - [2026-04-27 Phase G 보충 8] 회의실 필드 padding-bottom 16 → 32 (Figma 308:555)
  *      · Figma 노드 308:555: pb-[32px] pt-[16px] (이전 302:5639는 py-[16px])
  *      · 변경: 회의실 Field 외곽 padding-bottom 16 → 32
@@ -1352,7 +1358,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
           </div>
         ) : (
           // ← [Phase A] 데스크톱 타이틀: 18→24, fontWeight 600→500 (Pretendard Medium)
-          <div style={{fontSize:24,fontWeight:500,color:"#111",lineHeight:1.5}}>{editBooking ? "예약 변경" : "새 회의실 예약"}</div>
+          <div style={{fontSize:20,fontWeight:500,color:"#111",lineHeight:1.5}}>{editBooking ? "예약 변경" : "새 회의실 예약"}</div>
         )}
         {/* ← [피그마 2026-04-22] 헤더 X → ModalCloseButton 공통 컴포넌트 */}
         <ModalCloseButton onClick={onClose} style={{marginLeft:12}} />
