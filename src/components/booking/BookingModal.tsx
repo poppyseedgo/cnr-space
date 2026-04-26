@@ -2,6 +2,18 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-26 Phase B] 좌측 패널 골조 + 인라인 라벨 공통 wrapper (Field) 정의
+ *      · Figma 노드: 302:5364 (빈 상태) / 299:3607 (채워진 상태)
+ *      · 변경 범위: 데스크톱 좌측 패널만 (모바일/우측 패널 변경 없음)
+ *      · 변경 내용:
+ *        1) 좌측 패널 외곽 padding: "24px 28px" → "16px 16px 100px 16px" (Figma)
+ *        2) 좌측 패널 borderRight 색 #F1F5F9 → #f1f5f9 (Figma 매칭, 동일 값)
+ *        3) 모듈 scope에 Field 컴포넌트 정의 — 라벨 72px(우측정렬) + 빨간점(필수) + 컨텐츠
+ *           · 정의만 하고 실제 사용은 Phase C부터 (필드 변환 시작)
+ *           · React unmount/remount 깜빡임 방지 위해 module scope에 정의
+ *      · 검증/판단 로직 변경 없음
+ *      · 시각적 변화: 좌측 패널 padding 변경에 따른 위치 미세 조정만 발생
+ *
  *  - [2026-04-26 Phase A] 데스크톱 모달 골격 — Figma 매칭 (UI 리디자인 1단계)
  *      · Figma 노드: 302:5364 (빈 상태) / 299:3607 (채워진 상태)
  *      · 변경 범위: 데스크톱만 (모바일 분기 일체 변경 없음)
@@ -70,6 +82,70 @@ import { UserAvatar } from '../common/UserAvatar'
 import { AttendeeChip } from '../common/AttendeeChip'
 import { Button } from '../common/Button' 
 import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22] 모달 X 버튼 공통화
+
+// ─── [Phase B 2026-04-26] 좌측 패널 인라인 라벨 공통 wrapper ──────────────────────
+//   Figma 노드: 302:5364 / 299:3607
+//   구조: 라벨 영역(72px, 우측정렬) + 빨간 점(required) + 컨텐츠 영역(flex:1) + border-bottom
+//   - module scope에 정의 (React unmount/remount 깜빡임 방지)
+//   - 라벨: Pretendard Medium 16px / line-height 1.2 / color #96a0b3
+//   - 빨간 점: 4×4px round, #ef4444 (필수 필드만 — 회의/날짜/시간/회의실)
+//   - border-bottom: 1px solid #f6faff (필드 구분선)
+//   - padding: 16px 0
+//   - alignItems: flex-start (시간/회의실/참석자/메모는 multi-line이라 라벨 위쪽 정렬)
+//   ⚠️ Phase B는 정의만, 실제 사용은 Phase C부터 (각 필드 변환 시 적용)
+function Field({
+  label,
+  required = false,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{
+      borderBottom: "1px solid #f6faff",
+      padding: "16px 0",
+      display: "flex",
+      alignItems: "flex-start",
+      width: "100%",
+    }}>
+      {/* 라벨 영역 (72px, 우측 정렬, gap 2px) */}
+      <div style={{
+        width: 72,
+        flexShrink: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        gap: 2,
+      }}>
+        <span style={{
+          fontFamily: "Pretendard, sans-serif",
+          fontWeight: 500,
+          fontSize: 16,
+          lineHeight: 1.2,
+          color: "#96a0b3",
+          whiteSpace: "nowrap",
+        }}>{label}</span>
+        {required && (
+          <span style={{
+            width: 4,
+            height: 4,
+            borderRadius: "50%",
+            background: "#ef4444",
+            flexShrink: 0,
+            display: "inline-block",
+          }} aria-hidden="true"/>
+        )}
+      </div>
+      {/* 컨텐츠 영역 */}
+      <div style={{flex: 1, minWidth: 0}}>
+        {children}
+      </div>
+    </div>
+  );
+}
+// ──────────────────────────────────────────────────────────────────────────────
 
 export function BookingModal({prefill, date:initDate, editBooking=null, onClose, onSubmit, onUpdate, bookings, isAdmin=false, currentUser="홍길동", currentUserEmail="", rooms:roomsProp=[], users:usersProp=[]}) {
   // ── 모든 hooks를 최상단에 선언 ──────────────────────────────────────────────
@@ -1027,7 +1103,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       <div style={{display:"flex",flexDirection:"column",flex:1,overflow:"hidden",padding:"60px 0"}}>
         <div style={{display:"flex",flex:1,overflow:"hidden"}}>
           {/* LEFT: 폼 (50%) */}
-          <div style={{flex:1,padding:"24px 28px",borderRight:"1px solid #F1F5F9",
+          {/* ← [Phase B] padding 24/28 → 16/16/100/16 (Figma) — 필드 간 gap은 유지 (Phase C에서 Field wrapper로 전환 시 제거) */}
+          <div style={{flex:1,padding:"16px 16px 100px 16px",borderRight:"1px solid #f1f5f9",
             display:"flex",flexDirection:"column",gap:18,overflowY:"auto"}}>
             {/* 회의 제목 */}
             <div>
