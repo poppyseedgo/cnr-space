@@ -2,6 +2,18 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-27 Phase G 보충] placeholder color 통일 (#BDC5D4, opacity 60%)
+ *      · 사용자 명시 요청: "placeholder color : #BDC5D4 , opacity:60% 통일"
+ *      · 표준값: rgba(189, 197, 212, 0.6) = #BDC5D4 + alpha 0.6
+ *      · 변경 내용:
+ *        1) 모듈 상수 PLACEHOLDER_COLOR 정의 (근본 해결 — 단일 진실 출처)
+ *        2) 시간 필드 "부터"/"까지" 색 #d2d2d2 → PLACEHOLDER_COLOR (2곳)
+ *        3) 회의실 빈 상태 텍스트 인라인 색 → PLACEHOLDER_COLOR (1곳, 기존 표준값과 동일)
+ *        4) src/index.css .bm-boxless::placeholder는 이미 표준값 — 변경 없음
+ *      · 적용 안 함:
+ *        · 카운터 ("0/40", "0/100") 색 #d1d9e7 — placeholder 아님 (그대로)
+ *        · 인풋의 실제 입력 텍스트 색 — 검정 #111 그대로
+ *
  *  - [2026-04-26 Phase G] 피그마 새 버전 매칭 — 정렬/간격/텍스트 정확 매칭
  *      · Figma 노드: 302:5364 (업데이트된 상세 버전)
  *      · 변경 범위: 데스크톱만 (모바일 무영향)
@@ -226,6 +238,12 @@ import { UserAvatar } from '../common/UserAvatar'
 import { AttendeeChip } from '../common/AttendeeChip'
 import { Button } from '../common/Button' 
 import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22] 모달 X 버튼 공통화
+
+// ─── [Phase G 보충 2026-04-27] placeholder 색 단일 상수 ───────────────────────
+//   사용자 요청: placeholder color #BDC5D4, opacity 60% 통일
+//   사용처: 시간 "부터/까지", 회의실 빈 상태 등 placeholder 톤 텍스트 전반
+//   ⚠️ src/index.css의 .bm-boxless::placeholder는 별도 정의 (이미 표준값)
+const PLACEHOLDER_COLOR = "rgba(189, 197, 212, 0.6)";
 
 // ─── [Phase B 2026-04-26] 좌측 패널 인라인 라벨 공통 wrapper ──────────────────────
 //   Figma 노드: 302:5364 / 299:3607 / [Phase G 업데이트] 302:5366~
@@ -1581,7 +1599,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                         </span>
                         <span style={{
                           fontFamily:"Pretendard, sans-serif",
-                          fontWeight:500, fontSize:16, lineHeight:1, color:"#d2d2d2",
+                          fontWeight:500, fontSize:16, lineHeight:1, color:PLACEHOLDER_COLOR,
                           whiteSpace:"nowrap",
                         }}>부터</span>
                       </div>
@@ -1614,7 +1632,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                         </span>
                         <span style={{
                           fontFamily:"Pretendard, sans-serif",
-                          fontWeight:500, fontSize:16, lineHeight:1, color:"#d2d2d2",
+                          fontWeight:500, fontSize:16, lineHeight:1, color:PLACEHOLDER_COLOR,
                           whiteSpace:"nowrap",
                         }}>까지</span>
                       </div>
@@ -1726,7 +1744,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 <span style={{
                   fontFamily:"Pretendard, sans-serif",
                   fontWeight:500, fontSize:16, lineHeight:1.5,
-                  color:"rgba(189, 197, 212, 0.6)",
+                  color:PLACEHOLDER_COLOR,
                   whiteSpace:"nowrap",
                 }}>
                   오른쪽에서 회의실을 선택하세요
