@@ -2,6 +2,13 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-27 Phase G 보충 4] 참석자 검색 인풋 border-radius 0 강제
+ *      · 사용자 시각 확인: border-bottom이 양 끝에서 곡선으로 휘어 올라감
+ *      · 원인: input element에 글로벌/브라우저 기본 border-radius 적용 → border-bottom 휘어 보임
+ *      · 코드 점검: inline style에 borderRadius 명시 안 됨 (불특정 외부 CSS가 영향)
+ *      · 해결: inline style에 borderRadius: 0 명시 (브라우저/글로벌 어떤 값이든 강제 덮어씀)
+ *      · 적용 범위: 참석자 검색 input 1곳만 (다른 input/textarea는 boxless가 아니거나 영향 없음)
+ *
  *  - [2026-04-27 Phase G 보충 3] placeholder 5개 문구 색 통일 강화 (CSS specificity 보강)
  *      · 사용자 명시 요청: rgba(189, 197, 212, 0.6) = #BDC5D4 + alpha 0.6 통일
  *      · 대상 5개 문구:
@@ -1850,6 +1857,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                       borderBottom: (attendeeFocus || attendeeQ.length > 0)
                         ? "1px solid #000"
                         : "1px solid transparent", // ← 빈 상태에서 밑줄 숨김 (height 유지)
+                      borderRadius: 0, // ← [Phase G 보충 4 2026-04-27] 글로벌/브라우저 기본 border-radius 강제 0 (border-bottom 직선)
                       outline:"none",
                       fontFamily:"Pretendard, sans-serif",
                       fontWeight:500,
