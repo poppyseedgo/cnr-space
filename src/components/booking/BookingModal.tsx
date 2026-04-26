@@ -2,6 +2,44 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-27 Phase G 보충 6] placeholder 색 강제 주입 + 반복예약 UI 숨김
+ *      · 사용자 보고 (스크린샷):
+ *        1) "회의 제목/참석자/메모 placeholder가 너무 진하다" — CSS .bm-boxless::placeholder 미적용
+ *        2) "회의실 빈상태만 혼자 옅다 — placeholder와 통일" — 회의실 빈상태는 inline color로 적용됨
+ *        3) "반복예약 섹션 화면에서 제거 (기능 보류)"
+ *      · 진단:
+ *        · inline color로 적용된 곳 (회의실 빈상태/부터/까지): PLACEHOLDER_COLOR 정확 표시 ✅
+ *        · CSS .bm-boxless::placeholder로 적용 의존 (회의/참석자/메모): 적용 안 됨 ❌
+ *        · 원인: index.css 변경분 미배포 + Tailwind/글로벌 CSS reset이 덮어씀
+ *      · 해결:
+ *        1) 모듈 scope에서 document.head에 style 태그 강제 주입 (BookingModal.tsx import 시점에 1회)
+ *           · CSS 파일 배포 의존성 제거 — BookingModal.tsx 단독 변경으로 효과 보장
+ *           · id 기반 중복 방지 (idempotent)
+ *           · SSR 호환 (typeof document check)
+ *           · 모든 글로벌 CSS보다 늦게 주입 + !important로 우선순위 강제
+ *        2) 데스크톱 반복예약 영역에 false 조건 추가 (UI에서만 제거, 코드/기능 보존)
+ *           · 복구 시 false → true 한 단어만 변경하면 즉시 활성화
+ *      · 변경 위치:
+ *        · 파일 상단 (import 다음): forceBmBoxlessPlaceholderStyle() 모듈 scope 호출
+ *        · L2011 데스크톱 반복예약: SHOW_RECUR_UI 조건 추가 (false)
+ *      · 검증/판단 로직 변경 없음 (recur, setRecur, recurPreview 등 그대로)
+ *      · 모바일 영역 무영향 (모바일 step1의 반복예약은 별도 — 변경 없음)
+ *
+ *  - [2026-04-27 Phase G 보충 5] FONT COLOR 정밀 대조 — 1곳 수정
+ *      · 사용자 명시 요청: Figma 노드 302:5364 기준 모든 FONT COLOR 정확 매칭
+ *      · 정밀 대조 결과:
+ *        ✅ 매칭됨 (변경 불필요): 라벨/placeholder/카운터/날짜/시간(좌측)/회의실 박스/우측 헤더/카드 그리드/푸터/헤더/칩
+ *        ❌ 차이 발견 — 1곳: 참석자 검색 input 입력값
+ *           · Figma 299:3765: text-black (= #000)
+ *           · 현재 코드: #111
+ *           · 변경: input style color "#111" → "#000"
+ *      · 변경 안 함 (사용자 결정):
+ *        · 시간 "부터"/"까지" — PLACEHOLDER_COLOR 통일 (Phase G 보충 사용자 명시)
+ *      · 변경 안 함 (피그마 명시 없음 — 보수적 결정):
+ *        · 회의 input value, 메모 textarea value 입력값 색 (피그마 placeholder만 명시)
+ *      · 영향: 참석자 검색 시 입력 텍스트 색이 약간 더 진한 검정으로 표시
+ *      · 검증/판단 로직 변경 없음 (attendeeQ value/onChange 그대로)
+ *
  *  - [2026-04-27 Phase G 보충 4] 참석자 검색 인풋 border-radius 0 강제
  *      · 사용자 시각 확인: border-bottom이 양 끝에서 곡선으로 휘어 올라감
  *      · 원인: input element에 글로벌/브라우저 기본 border-radius 적용 → border-bottom 휘어 보임
@@ -285,8 +323,41 @@ import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22
 // ─── [Phase G 보충 2026-04-27] placeholder 색 단일 상수 ───────────────────────
 //   사용자 요청: placeholder color #BDC5D4, opacity 60% 통일
 //   사용처: 시간 "부터/까지", 회의실 빈 상태 등 placeholder 톤 텍스트 전반
-//   ⚠️ src/index.css의 .bm-boxless::placeholder는 별도 정의 (이미 표준값)
 const PLACEHOLDER_COLOR = "rgba(189, 197, 212, 0.6)";
+
+// ─── [Phase G 보충 6 2026-04-27] .bm-boxless::placeholder 강제 주입 ──────────
+//   문제: index.css의 .bm-boxless::placeholder가 일부 환경에서 적용 안 됨
+//         (CSS 미배포 / Tailwind reset 덮어씀 / 글로벌 input CSS 충돌 등)
+//   해결: 모듈 import 시점에 document.head에 <style> 태그 강제 주입 (1회)
+//         · CSS 파일 배포 의존성 제거 — BookingModal.tsx 단독으로 효과 보장
+//         · id 기반 중복 방지 (idempotent — 모듈 다중 import 안전)
+//         · SSR 호환 (typeof document check)
+//         · 모든 글로벌 CSS보다 늦게 주입 + !important 강제 우선순위
+(function injectBmBoxlessPlaceholderStyle() {
+  if (typeof document === "undefined") return; // SSR 가드
+  const STYLE_ID = "bm-boxless-placeholder-force-style";
+  if (document.getElementById(STYLE_ID)) return; // 중복 방지
+  const style = document.createElement("style");
+  style.id = STYLE_ID;
+  style.textContent = `
+    .bm-boxless::placeholder,
+    .bm-boxless::-webkit-input-placeholder,
+    .bm-boxless::-moz-placeholder,
+    input.bm-boxless::placeholder,
+    input.bm-boxless::-webkit-input-placeholder,
+    input.bm-boxless::-moz-placeholder,
+    textarea.bm-boxless::placeholder,
+    textarea.bm-boxless::-webkit-input-placeholder,
+    textarea.bm-boxless::-moz-placeholder {
+      color: rgba(189, 197, 212, 0.6) !important;
+      font-family: "Pretendard", sans-serif !important;
+      font-weight: 500 !important;
+      font-size: 16px !important;
+      opacity: 1 !important;
+    }
+  `;
+  document.head.appendChild(style);
+})();
 
 // ─── [Phase B 2026-04-26] 좌측 패널 인라인 라벨 공통 wrapper ──────────────────────
 //   Figma 노드: 302:5364 / 299:3607 / [Phase G 업데이트] 302:5366~
@@ -1863,7 +1934,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                       fontWeight:500,
                       fontSize:16,
                       lineHeight:1.5,
-                      color:"#111",
+                      color:"#000", // ← [Phase G 보충 5 2026-04-27] Figma 299:3765 text-black 매칭 (#111 → #000)
                       boxSizing:"border-box",
                       transition:"border-bottom-color 0.15s ease",
                     }}
@@ -1991,9 +2062,10 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 </span>
               </div>
             </Field>
-            {/* 반복 예약 */}
+            {/* 반복 예약 — [Phase G 보충 6 2026-04-27] UI 숨김 (기능 보류 상태) */}
             {/* ← [2026-04-22 HOTFIX] 반복예약 기능 임시 비활성화 (모바일과 동일) */}
-            {!editBooking && <div>
+            {/* ⚠️ UI 복구 시: 아래 `false &&` 한 단어만 제거하면 즉시 표시됨 */}
+            {false && !editBooking && <div>
               <label style={{fontSize:13,fontWeight:600,color:"#111",display:"block",marginBottom:8}}>반복 예약</label>
               {/* ← [2026-04-22 HOTFIX] 점검 중 안내 배너 */}
               <div style={{padding:"8px 12px",background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:8,fontSize:12,color:"#92400E",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
