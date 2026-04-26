@@ -2,6 +2,27 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-27 Phase G 보충 7] placeholder native → div 오버레이 (100% 적용 보장)
+ *      · 사용자 보고 (스크린샷): IIFE CSS 강제 주입에도 placeholder 색이 여전히 진하게 표시됨
+ *      · 발견된 단서: 메모 영역에 Grammarly 확장 아이콘(G) 표시
+ *      · 진단:
+ *        · Grammarly 같은 브라우저 확장이 input/textarea의 ::placeholder 영역을 가로챔
+ *        · 또는 사용자 환경의 글로벌 CSS reset이 더 강한 specificity로 덮어씀
+ *        · CSS pseudo-element는 inline style 적용 불가 → 글로벌 CSS 의존 한계
+ *      · 근본 해결:
+ *        · native placeholder 속성을 빈 문자열로 변경 (placeholder="")
+ *        · 별도 div 오버레이로 placeholder 텍스트 표시 (position:absolute)
+ *        · div의 inline color로 직접 적용 → 어떤 외부 CSS/확장도 영향 못 줌
+ *        · 접근성 유지: aria-label 추가 (스크린리더 지원)
+ *        · value 비어있을 때만 표시 (자연스럽게 입력 시 사라짐)
+ *      · 변경 위치 (3곳):
+ *        1) 회의 제목 input — placeholder="" + aria-label + div 오버레이
+ *        2) 참석자 검색 input — placeholder="" + aria-label + div 오버레이
+ *        3) 메모 textarea — placeholder="" + aria-label + div 오버레이
+ *      · IIFE는 그대로 유지 (안전망 역할 — .bm-boxless 다른 컴포넌트 사용 가능성)
+ *      · 검증/판단 로직 변경 없음 (form.title, attendeeQ, form.memo onChange 그대로)
+ *      · 모바일 영역 무영향
+ *
  *  - [2026-04-27 Phase G 보충 6] placeholder 색 강제 주입 + 반복예약 UI 숨김
  *      · 사용자 보고 (스크린샷):
  *        1) "회의 제목/참석자/메모 placeholder가 너무 진하다" — CSS .bm-boxless::placeholder 미적용
@@ -1572,6 +1593,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
           <div style={{flex:1,padding:"16px 16px 100px 16px",borderRight:"1px solid #f1f5f9",
             display:"flex",flexDirection:"column",gap:0,overflowY:"auto"}}>
             {/* 회의 제목 — [Phase C] Field 적용, boxless input + 우측 카운터 0/40 (Figma 302:5368-5376) */}
+            {/*   ← [Phase G 보충 7] native placeholder 제거 → div 오버레이 (브라우저 확장/글로벌 CSS 무관) */}
             <Field label="회의" required>
               <div style={{
                 display:"flex",
@@ -1579,12 +1601,14 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 justifyContent:"space-between",
                 width:"100%",
                 gap:8,
+                position:"relative", // ← [Phase G 보충 7] div 오버레이 기준
               }}>
                 <input
                   className="bm-boxless"
                   value={form.title}
                   onChange={e=>set("title",e.target.value)}
-                  placeholder="회의 제목을 입력하세요"
+                  placeholder="" // ← [Phase G 보충 7] native placeholder 제거 — div 오버레이로 대체
+                  aria-label="회의 제목을 입력하세요"
                   maxLength={40}
                   autoComplete="off"
                   style={{
@@ -1600,6 +1624,22 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                     color:"#111",
                   }}
                 />
+                {/* ← [Phase G 보충 7] placeholder 오버레이 (value 없을 때만 표시) */}
+                {!form.title && (
+                  <div style={{
+                    position:"absolute",
+                    top:0, left:0,
+                    pointerEvents:"none",
+                    fontFamily:"Pretendard, sans-serif",
+                    fontWeight:500,
+                    fontSize:16,
+                    lineHeight:1.5,
+                    color:PLACEHOLDER_COLOR,
+                    whiteSpace:"nowrap",
+                  }}>
+                    회의 제목을 입력하세요
+                  </div>
+                )}
                 <span style={{
                   flexShrink:0,
                   fontFamily:"Pretendard, sans-serif",
@@ -1912,11 +1952,13 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   {/* boxless 검색 인풋 — [Phase G 보충 2 2026-04-27] 밑줄 토글 */}
                   {/*   기본(빈+blur): 투명 밑줄 (시각적으로 숨김, 레이아웃 height 유지) */}
                   {/*   focus 또는 입력값 있음: 검정 1px 밑줄 표시 */}
+                  {/*   ← [Phase G 보충 7 2026-04-27] native placeholder 제거 → div 오버레이 */}
                   <input
                     value={attendeeQ}
                     onChange={e=>{setAttendeeQ(e.target.value);setAttendeeFocus(true);}}
                     onFocus={()=>setAttendeeFocus(true)}
-                    placeholder="팀즈에 등록된 이름으로 검색하세요"
+                    placeholder="" // ← [Phase G 보충 7] native placeholder 제거 — div 오버레이로 대체
+                    aria-label="팀즈에 등록된 이름으로 검색하세요"
                     className="bm-boxless"
                     style={{
                       width:"100%",
@@ -1939,6 +1981,22 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                       transition:"border-bottom-color 0.15s ease",
                     }}
                   />
+                  {/* ← [Phase G 보충 7] placeholder 오버레이 (value 없을 때만 표시) */}
+                  {!attendeeQ && (
+                    <div style={{
+                      position:"absolute",
+                      top:0, left:0,
+                      pointerEvents:"none",
+                      fontFamily:"Pretendard, sans-serif",
+                      fontWeight:500,
+                      fontSize:16,
+                      lineHeight:1.5,
+                      color:PLACEHOLDER_COLOR,
+                      whiteSpace:"nowrap",
+                    }}>
+                      팀즈에 등록된 이름으로 검색하세요
+                    </div>
+                  )}
                   {/* 드롭다운 — 검색 결과 (Figma 299:3766) */}
                   {attendeeFocus && attendeeSuggestions.length > 0 && (
                     <div style={{
@@ -2027,6 +2085,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 width:"100%",
                 gap:8,
                 minHeight:72,
+                position:"relative", // ← [Phase G 보충 7] div 오버레이 기준
               }}>
                 <textarea
                   className="bm-boxless"
@@ -2034,7 +2093,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   onChange={e=>set("memo", e.target.value)}
                   rows={3}
                   maxLength={100}
-                  placeholder="회의상세"
+                  placeholder="" // ← [Phase G 보충 7] native placeholder 제거 — div 오버레이로 대체
+                  aria-label="회의상세"
                   style={{
                     flex:1, minWidth:0,
                     background:"transparent",
@@ -2050,6 +2110,22 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                     minHeight:72,
                   }}
                 />
+                {/* ← [Phase G 보충 7] placeholder 오버레이 (value 없을 때만 표시) */}
+                {!form.memo && (
+                  <div style={{
+                    position:"absolute",
+                    top:0, left:0,
+                    pointerEvents:"none",
+                    fontFamily:"Pretendard, sans-serif",
+                    fontWeight:500,
+                    fontSize:16,
+                    lineHeight:1.5,
+                    color:PLACEHOLDER_COLOR,
+                    whiteSpace:"nowrap",
+                  }}>
+                    회의상세
+                  </div>
+                )}
                 <span style={{
                   flexShrink:0,
                   fontFamily:"Pretendard, sans-serif",
