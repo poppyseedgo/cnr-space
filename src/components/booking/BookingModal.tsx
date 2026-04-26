@@ -2,6 +2,23 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-26 Phase C] 좌측 1/2/3 — 회의 제목 / 날짜 / 시간 (boxless 변환)
+ *      · Figma 노드: 302:5364 / 299:3607
+ *      · 변경 범위: 데스크톱 좌측 패널 첫 3개 필드만 (모바일/우측/회의실/참석자/메모 불변)
+ *      · 변경 내용:
+ *        1) 회의 제목: Field 적용, input 박스 제거(boxless), 우측 카운터 0/40 인라인
+ *        2) 날짜: Field 적용, 버튼 → 텍스트("YYYY년 M월 D일 X요일") + 클릭 시 캘린더 popover
+ *           · fmtDateFull util import 추가
+ *           · Calendar/ChevronUp/ChevronDown trigger 아이콘 제거
+ *           · 캘린더 popover 자체는 그대로 (월 이동, 날짜 셀 로직 변경 없음)
+ *        3) 시간: Field 적용, select 두 개 → 텍스트 "오전 12:15 ▼ ⎯ 오후 1:00 ▼"
+ *           · native select를 absolute(opacity:0)로 텍스트 위에 띄움 (네이티브 dropdown UX 유지)
+ *           · 동적 "N분 사용" 배지 추가 (height 26, radius 6, bg #edf8ff)
+ *           · noTimeLeft / isAfter7pm 안내는 기존 디자인 유지 (피그마에 없음)
+ *      · CSS: src/index.css에 .bm-boxless::placeholder 클래스 추가
+ *      · 검증/판단 로직 변경 없음 (canSubmit, availableRooms, validTime, durMin 그대로)
+ *      · 좌측 패널 gap:18 그대로 유지 (Phase E에서 모든 필드 변환 후 0으로)
+ *
  *  - [2026-04-26 Phase B] 좌측 패널 골조 + 인라인 라벨 공통 wrapper (Field) 정의
  *      · Figma 노드: 302:5364 (빈 상태) / 299:3607 (채워진 상태)
  *      · 변경 범위: 데스크톱 좌측 패널만 (모바일/우측 패널 변경 없음)
@@ -72,6 +89,7 @@ import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
+  fmtDateFull, // ← [Phase C] 날짜 풀 표기 ("2026년 5월 1일")
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../../utils/time'
 import { getFloor } from '../../data/floors'
 // [2026-04-17 Step 3] searchGraphUsers import 제거 — 참석자 검색을 DB 호출에서 메모리 필터링(usersProp 기반)으로 전환
@@ -1106,120 +1124,217 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
           {/* ← [Phase B] padding 24/28 → 16/16/100/16 (Figma) — 필드 간 gap은 유지 (Phase C에서 Field wrapper로 전환 시 제거) */}
           <div style={{flex:1,padding:"16px 16px 100px 16px",borderRight:"1px solid #f1f5f9",
             display:"flex",flexDirection:"column",gap:18,overflowY:"auto"}}>
-            {/* 회의 제목 */}
-            <div>
-              <label style={{fontSize:13,fontWeight:600,color:"#111",display:"block",marginBottom:8}}>회의 제목 <span style={{color:"#EF4444"}}>*</span></label>
-              <input value={form.title} onChange={e=>set("title",e.target.value)} placeholder="회의 제목을 입력하세요 40자" maxLength={40}
-                autoComplete="off"
-                style={{width:"100%",background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
-                  color:"#111",padding:"12px 16px",fontSize:14,outline:"none"}}
-                onFocus={e=>e.target.style.borderColor="#111"}
-                onBlur={e=>e.target.style.borderColor="#E2E8F0"}/>
-            </div>
-            {/* 날짜 — Date Picker */}
-            <div ref={pickerRef2} style={{position:"relative",zIndex:200}}>
-              <label style={{fontSize:13,fontWeight:600,color:"#111",display:"block",marginBottom:8}}>날짜 <span style={{color:"#EF4444"}}>*</span></label>
-              <button className="btn" onClick={()=>setShowPicker(v=>!v)}
-                style={{width:"100%",background:"#fff",border:`1px solid ${showPicker?"#111111":"#E2E8F0"}`,
-                  borderRadius:10,color:"#111111",padding:"12px 16px",fontSize:14,
-                  display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
-                <span style={{display:"inline-flex",alignItems:"center",gap:5}}><Calendar size={13} strokeWidth={1.8}/>{bookingDate} ({DAY_NAMES[dateToObj(bookingDate).getDay()]})</span>
-                {showPicker ? <ChevronUp size={10} strokeWidth={1.8} color="#94A3B8"/> : <ChevronDown size={10} strokeWidth={1.8} color="#94A3B8"/>}
-              </button>
-              {showPicker && (
-                <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:300,
-                  background:"#fff",border:"1px solid #E2E8F0",borderRadius:12,
-                  boxShadow:"0 8px 32px rgba(0,0,0,0.16)",padding:"14px"}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                    <button className="btn" onClick={e=>{e.stopPropagation();prevMonth();}} disabled={!canGoPrev}
-                      style={{background:"none",color:canGoPrev?"#111111":"#E2E8F0",padding:"4px 10px",fontSize:16}}>‹</button>
-                    <span style={{fontSize:13,fontWeight:600,color:"#111111"}}>{calYear}년 {MONTH_NAMES[calMonth]}</span>
-                    <button className="btn" onClick={e=>{e.stopPropagation();nextMonth();}} disabled={!canGoNext}
-                      style={{background:"none",color:canGoNext?"#111111":"#E2E8F0",padding:"4px 10px",fontSize:16}}>›</button>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",marginBottom:4}}>
-                    {DAY_NAMES.map((n,i)=>(
-                      <div key={n} style={{textAlign:"center",fontSize:10,fontWeight:600,
-                        color:i===0?"#EF4444":i===6?"#3B82F6":"#94A3B8",padding:"2px 0"}}>{n}</div>
-                    ))}
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
-                    {calCells.map((day,idx)=>{
-                      if(!day) return <div key={`e${idx}`}/>;
-                      const ds=`${calYear}-${fmt2(calMonth+1)}-${fmt2(day)}`;
-                      const disabled=ds<today||ds>maxDate, isSel=ds===bookingDate, isToday2=ds===today;
-                      const dow=(calFirstDay+day-1)%7;
-                      return (
-                        <div key={day} onClick={()=>!disabled&&selectDate(ds)}
-                          style={{textAlign:"center",padding:"6px 2px",borderRadius:6,fontSize:13,
-                            fontWeight:isSel||isToday2?700:400,
-                            background:isSel?"#111111":isToday2?"#EFF6FF":"transparent",
-                            color:disabled?"#D1D5DB":isSel?"#fff":isToday2?"#3B82F6":dow===0?"#EF4444":dow===6?"#3B82F6":"#374151",
-                            cursor:disabled?"not-allowed":"pointer"}}>
-                          {day}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div style={{marginTop:10,paddingTop:8,borderTop:"1px solid #F1F5F9",fontSize:10,color:"#94A3B8",textAlign:"center"}}>
-                    오늘부터 1개월 이내만 선택 가능
-                  </div>
+            {/* 회의 제목 — [Phase C] Field 적용, boxless input + 우측 카운터 0/40 (Figma 302:5368-5376) */}
+            <Field label="회의" required>
+              <div style={{
+                display:"flex",
+                alignItems:"flex-end",
+                justifyContent:"space-between",
+                width:"100%",
+                gap:8,
+              }}>
+                <input
+                  className="bm-boxless"
+                  value={form.title}
+                  onChange={e=>set("title",e.target.value)}
+                  placeholder="회의 제목을 입력하세요"
+                  maxLength={40}
+                  autoComplete="off"
+                  style={{
+                    flex:1, minWidth:0,
+                    background:"transparent",
+                    border:"none",
+                    outline:"none",
+                    padding:0,
+                    fontFamily:"Pretendard, sans-serif",
+                    fontWeight:500,
+                    fontSize:16,
+                    lineHeight:1.5,
+                    color:"#111",
+                  }}
+                />
+                <span style={{
+                  flexShrink:0,
+                  fontFamily:"Pretendard, sans-serif",
+                  fontWeight:500,
+                  fontSize:10,
+                  lineHeight:1.5,
+                  color: form.title.length>=38 ? "#EF4444" : "#d1d9e7",
+                }}>
+                  {form.title.length}/40
+                </span>
+              </div>
+            </Field>
+            {/* 날짜 — [Phase C] Field 적용, 버튼 → 텍스트 trigger ("YYYY년 M월 D일 X요일") */}
+            {/*   캘린더 popover 자체는 그대로 (월 이동, 셀 로직 변경 없음) */}
+            <Field label="날짜" required>
+              <div ref={pickerRef2} style={{position:"relative", width:"100%"}}>
+                <div
+                  onClick={()=>setShowPicker(v=>!v)}
+                  style={{
+                    display:"inline-flex",
+                    alignItems:"center",
+                    gap:4,
+                    cursor:"pointer",
+                    fontFamily:"Pretendard, sans-serif",
+                    fontWeight:500,
+                    fontSize:16,
+                    lineHeight:1.5,
+                    color:"#111",
+                    userSelect:"none",
+                  }}
+                >
+                  <span>{fmtDateFull(bookingDate)}</span>
+                  <span>{DAY_NAMES[dateToObj(bookingDate).getDay()]}요일</span>
                 </div>
-              )}
-            </div>
-            {/* 시간 — 두 개 select + → */}
-            <div>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-                <label style={{fontSize:13,fontWeight:600,color:"#111"}}>시간 <span style={{color:"#EF4444"}}>*</span></label>
-                {isAfter7pm && (
-                  <span style={{fontSize:11,fontWeight:600,color:"#C2410C",display:"flex",alignItems:"center",gap:4}}>
-                    <AlertCircle size={11} strokeWidth={1.8} color="#F97316"/>
-                    오후 7시 이후에는 예약할 수 없습니다.
-                  </span>
+                {showPicker && (
+                  <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:300,
+                    background:"#fff",border:"1px solid #E2E8F0",borderRadius:12,
+                    boxShadow:"0 8px 32px rgba(0,0,0,0.16)",padding:"14px"}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                      <button className="btn" onClick={e=>{e.stopPropagation();prevMonth();}} disabled={!canGoPrev}
+                        style={{background:"none",color:canGoPrev?"#111111":"#E2E8F0",padding:"4px 10px",fontSize:16}}>‹</button>
+                      <span style={{fontSize:13,fontWeight:600,color:"#111111"}}>{calYear}년 {MONTH_NAMES[calMonth]}</span>
+                      <button className="btn" onClick={e=>{e.stopPropagation();nextMonth();}} disabled={!canGoNext}
+                        style={{background:"none",color:canGoNext?"#111111":"#E2E8F0",padding:"4px 10px",fontSize:16}}>›</button>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",marginBottom:4}}>
+                      {DAY_NAMES.map((n,i)=>(
+                        <div key={n} style={{textAlign:"center",fontSize:10,fontWeight:600,
+                          color:i===0?"#EF4444":i===6?"#3B82F6":"#94A3B8",padding:"2px 0"}}>{n}</div>
+                      ))}
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+                      {calCells.map((day,idx)=>{
+                        if(!day) return <div key={`e${idx}`}/>;
+                        const ds=`${calYear}-${fmt2(calMonth+1)}-${fmt2(day)}`;
+                        const disabled=ds<today||ds>maxDate, isSel=ds===bookingDate, isToday2=ds===today;
+                        const dow=(calFirstDay+day-1)%7;
+                        return (
+                          <div key={day} onClick={()=>!disabled&&selectDate(ds)}
+                            style={{textAlign:"center",padding:"6px 2px",borderRadius:6,fontSize:13,
+                              fontWeight:isSel||isToday2?700:400,
+                              background:isSel?"#111111":isToday2?"#EFF6FF":"transparent",
+                              color:disabled?"#D1D5DB":isSel?"#fff":isToday2?"#3B82F6":dow===0?"#EF4444":dow===6?"#3B82F6":"#374151",
+                              cursor:disabled?"not-allowed":"pointer"}}>
+                            {day}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{marginTop:10,paddingTop:8,borderTop:"1px solid #F1F5F9",fontSize:10,color:"#94A3B8",textAlign:"center"}}>
+                      오늘부터 1개월 이내만 선택 가능
+                    </div>
+                  </div>
                 )}
               </div>
+            </Field>
+            {/* 시간 — [Phase C] Field 적용, select 두 개 → 텍스트 + ChevronDown + 동적 N분 사용 배지 */}
+            {/*   native select를 absolute(opacity:0)로 위에 띄움 → 클릭 시 OS native dropdown 열림 */}
+            {/*   기존 onChange 로직 (form.start 변경 시 end +15분 자동) 그대로 유지 */}
+            <Field label="시간" required>
               {noTimeLeft ? (
-                <div style={{display:"flex",alignItems:"center",justifyContent:"center",
+                /* 18:45 이후 — 기존 디자인 유지 (피그마에 없는 예외 케이스) */
+                <div style={{display:"flex",alignItems:"center",
                   background:"#F8FAFC",border:"1.5px dashed #CBD5E1",borderRadius:10,
                   padding:"14px 16px",color:"#94A3B8",fontSize:13,fontWeight:600,gap:8}}>
                   <Ban size={16} strokeWidth={1.8}/>
                   오늘은 더 예약할 수 없습니다
                 </div>
               ) : (
-                <>
-                  <div style={{display:"flex",alignItems:"center",gap:10}}>
-                    <div style={{flex:1}}>
+                <div style={{display:"flex", flexDirection:"column", gap:10}}>
+                  {isAfter7pm && (
+                    /* 19:00 이후 — 기존 경고 유지 */
+                    <span style={{fontSize:11,fontWeight:600,color:"#C2410C",display:"flex",alignItems:"center",gap:4}}>
+                      <AlertCircle size={11} strokeWidth={1.8} color="#F97316"/>
+                      오후 7시 이후에는 예약할 수 없습니다.
+                    </span>
+                  )}
+                  {/* 시간 선택 행: 시작 [▼] ⎯ 종료 [▼] (gap 14, items-center) */}
+                  <div style={{display:"flex", alignItems:"center", gap:14}}>
+                    {/* 시작 시간 */}
+                    <div style={{position:"relative", display:"inline-flex", alignItems:"center", gap:8, cursor:"pointer"}}>
+                      <span style={{
+                        fontFamily:"Pretendard, sans-serif",
+                        fontWeight:500, fontSize:16, lineHeight:1, color:"#111",
+                        whiteSpace:"nowrap",
+                      }}>
+                        {fmtTime(form.start)}
+                      </span>
+                      <ChevronDown size={16} strokeWidth={1.8} color="#111"/>
                       <select value={form.start} onChange={e=>{
-                        set("start",e.target.value);
-                        const newEnd=timeToMin(e.target.value)+15; // ← [2026-04-26] 60→15: 데스크톱 select 시작 변경 시 기본 15분
-                        const clamped=Math.min(newEnd,19*60);
-                        set("end",`${fmt2(Math.floor(clamped/60))}:${fmt2(clamped%60)}`);
-                      }}
-                        style={{width:"100%",background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
-                          color:"#111",padding:"12px 16px",fontSize:14,fontWeight:600,outline:"none",appearance:"none",cursor:"pointer"}}>
+                          set("start",e.target.value);
+                          const newEnd=timeToMin(e.target.value)+15; // ← [2026-04-26] 60→15: 데스크톱 select 시작 변경 시 기본 15분
+                          const clamped=Math.min(newEnd,19*60);
+                          set("end",`${fmt2(Math.floor(clamped/60))}:${fmt2(clamped%60)}`);
+                        }}
+                        style={{
+                          position:"absolute", inset:0,
+                          opacity:0, cursor:"pointer",
+                          width:"100%", height:"100%",
+                          border:"none", outline:"none", padding:0,
+                          fontFamily:"inherit",
+                        }}>
                         {tOpts.map(t=><option key={t} value={t}>{fmtTime(t)}</option>)}
                       </select>
                     </div>
-                    <span style={{color:"#94A3B8",fontSize:16,flexShrink:0}}>→</span>
-                    <div style={{flex:1}}>
+                    {/* 구분자 */}
+                    <span style={{
+                      fontFamily:"Pretendard, sans-serif",
+                      fontWeight:500, fontSize:16, lineHeight:1, color:"#111",
+                    }}>⎯</span>
+                    {/* 종료 시간 */}
+                    <div style={{position:"relative", display:"inline-flex", alignItems:"center", gap:8, cursor:"pointer"}}>
+                      <span style={{
+                        fontFamily:"Pretendard, sans-serif",
+                        fontWeight:500, fontSize:16, lineHeight:1, color:"#111",
+                        whiteSpace:"nowrap",
+                      }}>
+                        {fmtTime(form.end)}
+                      </span>
+                      <ChevronDown size={16} strokeWidth={1.8} color="#111"/>
                       <select value={form.end} onChange={e=>set("end",e.target.value)}
-                        style={{width:"100%",background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
-                          color:"#111",padding:"12px 16px",fontSize:14,fontWeight:600,outline:"none",appearance:"none",cursor:"pointer"}}>
+                        style={{
+                          position:"absolute", inset:0,
+                          opacity:0, cursor:"pointer",
+                          width:"100%", height:"100%",
+                          border:"none", outline:"none", padding:0,
+                          fontFamily:"inherit",
+                        }}>
                         {endOpts.map(t=><option key={t} value={t}>{fmtTime(t)}</option>)}
                       </select>
                     </div>
                   </div>
+                  {/* 동적 "N분 사용" 배지 (validTime일 때만) */}
                   {validTime && (
-                    <div style={{textAlign:"right",marginTop:6,fontSize:12,color:"#94A3B8"}}>
-                      소요시간 <span style={{color:"#111",fontWeight:600}}>
-                        {Math.floor(durMin/60)>0?`${Math.floor(durMin/60)}시간`:""}
-                        {durMin%60>0?` ${durMin%60}분`:""}
+                    <div style={{
+                      width:"100%",
+                      height:26,
+                      padding:4,
+                      borderRadius:6,
+                      background:"#edf8ff",
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      boxSizing:"border-box",
+                    }}>
+                      <span style={{
+                        fontFamily:"Pretendard, sans-serif",
+                        fontWeight:400, fontSize:12, lineHeight:1.5, color:"#111",
+                      }}>
+                        {(() => {
+                          // ← [Phase C] 동적 N분 사용 표기 (예: "15분 사용", "1시간 사용", "1시간 30분 사용")
+                          const h = Math.floor(durMin / 60);
+                          const m = durMin % 60;
+                          const parts: string[] = [];
+                          if (h > 0) parts.push(`${h}시간`);
+                          if (m > 0) parts.push(`${m}분`);
+                          return `${parts.join(" ")} 사용`;
+                        })()}
                       </span>
                     </div>
                   )}
-                </>
+                </div>
               )}
-            </div>
+            </Field>
             {/* 선택된 회의실 */}
             <div>
               <label style={{fontSize:13,fontWeight:600,color:"#111",display:"block",marginBottom:8}}>선택된 회의실</label>

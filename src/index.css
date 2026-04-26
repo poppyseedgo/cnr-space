@@ -464,3 +464,17 @@
   40%            { transform: scale(1);   opacity: 1;   }
 }
 
+
+/* ── [Phase C 2026-04-26] BookingModal boxless input placeholder ─────────────
+   Figma 노드 302:5364 / 299:3607 — 인라인 라벨 + boxless input 구조
+   placeholder 색: rgba(189,197,212,0.6), Pretendard Medium 16px (입력값과 동일 패밀리/사이즈)
+   ::placeholder는 inline style 불가 → 글로벌 클래스 필요
+*/
+.bm-boxless::placeholder,
+.bm-boxless::-webkit-input-placeholder,
+.bm-boxless::-moz-placeholder {
+  color: rgba(189, 197, 212, 0.6);
+  font-family: "Pretendard", sans-serif;
+  font-weight: 500;
+  opacity: 1;  /* Firefox 기본 opacity 0.54 보정 */
+}
