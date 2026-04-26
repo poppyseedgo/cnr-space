@@ -1,3 +1,18 @@
+/**
+ * CalendarShell.tsx — 캘린더 뷰 (Daily / Weekly / Monthly)
+ *
+ * ✅ 변경 이력
+ *  - [2026-04-27] 캘린더 슬롯 클릭 기본 시간 1시간 → 15분 (BookingModal과 동기화)
+ *      · 사용자 보고: "캘린더 뷰의 슬롯 클릭해서 예약모달 진입할 때 1시간으로 설정됨, 15분이어야"
+ *      · 원인: CalendarShell.tsx 2곳에서 +60 잔존 (BookingModal은 5곳 모두 +15 동기화 완료된 상태)
+ *      · 변경 위치 (2곳):
+ *        1) L444 WeeklyView 호출 — onEmptyClick: h*60, (h+1)*60 → h*60, h*60 + 15
+ *           · Weekly 슬롯은 시간 단위 박스지만 클릭 시 모달 진입 후 기본 시간 15분
+ *        2) L818 DailyView 슬롯 클릭 핸들러 — clickedMin + 60 → clickedMin + 15
+ *           · 사용자 보고 케이스 정확 매칭 (15분 단위 클릭)
+ *      · 영향: BookingModal의 onSubmit/onUpdate 등 검증 로직 무영향 (prefill 값만 변경)
+ *      · 동기화 완료 후: BookingModal 5곳 + CalendarShell 2곳 = 총 7곳 모두 +15 통일
+ */
 import { useState, useEffect, useRef } from 'react'
 import { CalendarSlotCard } from '../calendar/CalendarSlotCard'  // ← [2026-04-23] Daily 뷰 슬롯 전용 카드 (구 SlotContent 대체)
 import { CalendarCompactCard } from '../calendar/CalendarCompactCard'  // ← [2026-04-24] Weekly/Monthly 공용 컴팩트 카드
@@ -440,8 +455,9 @@ export function CalendarShell({
       {calView === 'monthly' && <MonthlyView bookings={filteredBks} selectedDate={selectedDate} onDayClick={d => { setSelectedDate(d); setCalView('daily') }} onBookingClick={onBookingClick} rooms={allRooms} currentUser={currentUser} isAdmin={isAdmin} />}
       {/* ← [2026-04-24] onEmptyClick 시그니처 변경: (rid, h) → (rid, startMin, endMin) — 15분 단위 클릭 지원 */}
       {calView === 'daily'   && <DailyView   bookings={dailyBks}  selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(rid, startMin, endMin) => onNewBooking(selectedDate, rid, startMin, endMin)} onCheckIn={onCheckIn} rooms={allRooms} currentUser={currentUser} currentUserId={currentUserId} currentUserEmail={currentUserEmail} users={users} isAdmin={isAdmin} />}{/* ← [2026-04-24 P5 FIX] DailyView 호출에 currentUserId/Email/users 전달 */}
-      {/* ← [2026-04-24] Weekly는 기존 1시간 프리필 유지 — 시(hour)를 분 단위로 변환만 */}
-      {calView === 'weekly'  && <WeeklyView  bookings={weekBks}   selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(d, h) => onNewBooking(d, undefined, h*60, (h+1)*60)} rooms={allRooms} currentUser={currentUser} isAdmin={isAdmin} />}
+      {/* ← [2026-04-27] 60→15: Weekly 슬롯도 기본 15분 프리필 (BookingModal/DailyView와 동기화) */}
+      {/*   Weekly 슬롯은 시간 단위(1시간 박스)지만, 클릭 시 모달 진입 후 기본 시간은 15분 */}
+      {calView === 'weekly'  && <WeeklyView  bookings={weekBks}   selectedDate={selectedDate} onBlockClick={onBookingClick} onEmptyClick={(d, h) => onNewBooking(d, undefined, h*60, h*60 + 15)} rooms={allRooms} currentUser={currentUser} isAdmin={isAdmin} />}
       {dpTooltipNode /* ← [2026-04-23] 데이트피커 차단 셀용 커스텀 툴팁 Portal 렌더 */}
     </div>
   )
@@ -814,8 +830,8 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
                           <div key={q}
                             onClick={() => {
                               if (!quarterBookable) return
-                              // 기본 1시간 프리필, 업무시간 19:00 넘지 않게 clamp
-                              const endMin = Math.min(clickedMin + 60, 19 * 60)
+                              // ← [2026-04-27] 60→15: 캘린더 슬롯 클릭 기본 시간 1시간 → 15분 (BookingModal 모달 오픈/날짜변경/tick보정/데스크톱 select와 동기화)
+                              const endMin = Math.min(clickedMin + 15, 19 * 60)
                               onEmptyClick(room.room_id, clickedMin, endMin)   // ← [2026-04-24] 시그니처: (rid, startMin, endMin)
                             }}
                             style={{
