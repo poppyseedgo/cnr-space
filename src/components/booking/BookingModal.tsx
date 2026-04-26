@@ -2,6 +2,15 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-26 Phase E 보충] 메모 maxLength=100 적용 (사용자 명시 승인)
+ *      · 사용자 요청: "100자까지 입력 가능, 엔터(줄바꿈) 사용 가능"
+ *      · 변경: textarea에 maxLength={100} 추가
+ *      · 엔터(줄바꿈)은 textarea native 동작이라 별도 처리 불필요 — 그대로 작동
+ *      · 기존 100자 초과 데이터 보호: textarea value는 기존 값 그대로 로드,
+ *        새 입력만 100자까지 제한 (브라우저 native 동작), 저장 시 그대로 저장
+ *      · 카운터 빨간색 로직 (length > 100 ? red : default) 그대로 유지
+ *        → 기존 100자 초과 데이터 시각 경고용 (예: "120/100" 빨강)
+ *
  *  - [2026-04-26 Phase E] 좌측 5/6 — 참석자 + 메모 변환 + 좌측 패널 gap 정리
  *      · Figma 노드: 빈 상태 302:5629-5482 / 채워진 상태 299:3719-3816
  *      · 변경 범위: 데스크톱 좌측 참석자/메모 + 좌측 패널 gap (모바일 변경 없음)
@@ -21,7 +30,7 @@
  *           · textarea 박스 제거, boxless
  *           · placeholder "안건, 준비물 등" → "회의상세" (Figma 매칭)
  *           · 우측 카운터 0/100 추가 (10px Medium #d1d9e7, 100자 초과 시 #EF4444)
- *           · ⚠️ maxLength=100은 적용하지 않음 (logic 변경 — 별도 사용자 승인 필요)
+ *           · ⚠️ maxLength=100은 본 Phase에서 미적용 → [Phase E 보충]에서 사용자 승인 후 적용됨
  *           · min-height 72px
  *        3) 좌측 패널 gap: 18 → 0
  *           · Field 자체 padding 16 0 + border-bottom이 간격/구분선 담당
@@ -1607,7 +1616,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             </Field>
             {/* 메모 — [Phase E] Field 적용 (선택 입력 — 빨간 점 없음), boxless textarea + 카운터 0/100 */}
             {/*   placeholder "안건, 준비물 등" → "회의상세" (Figma 매칭) */}
-            {/*   ⚠️ maxLength=100은 적용 안 함 (logic 변경 — 별도 사용자 승인 후 추가 가능) */}
+            {/*   maxLength=100 적용 [Phase E 보충 2026-04-26] — 사용자 명시 승인, 엔터(줄바꿈) 사용 가능 */}
             <Field label="메모">
               <div style={{
                 display:"flex",
@@ -1622,6 +1631,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   value={form.memo}
                   onChange={e=>set("memo", e.target.value)}
                   rows={3}
+                  maxLength={100}
                   placeholder="회의상세"
                   style={{
                     flex:1, minWidth:0,
