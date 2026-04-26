@@ -2,6 +2,16 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-27 Phase G 보충 10] Field 라벨 color #96a0b3 → #414a5f
+ *      · 사용자 명시 요청
+ *      · 변경: Field 컴포넌트 라벨 color rgb(150,160,179)/#96a0b3 → #414a5f
+ *      · 효과: 6개 라벨 (회의/날짜/시간/회의실/참석자/메모) 모두 더 진한 회색으로 통일
+ *      · 적용 위치: L451 Field 컴포넌트 라벨 span color (단 1곳 수정으로 6개 라벨 일괄 적용)
+ *      · 변경 안 함 (placeholder/서브타이틀 톤은 사용자 별도 결정사항):
+ *        · 우측 헤더 서브 "개 예약 가능" #111 (Phase G에서 #96a0b3 → #111로 통일됨)
+ *        · "클릭해서 선택" rgba(150,160,179,0.5) — 의도적 흐림
+ *        · placeholder rgba(189,197,212,0.6) — 별도 톤
+ *
  *  - [2026-04-27 Phase G 보충 9] 모달 헤더 fontSize 24 → 20
  *      · 사용자 명시 요청
  *      · 변경: 데스크톱 모달 헤더 "새 회의실 예약" / "예약 변경" — fontSize 24 → 20
@@ -448,7 +458,7 @@ function Field({
           fontWeight: 500,
           fontSize: 16,
           lineHeight: required ? 1.2 : 1.5, // ← [Phase G 보충 2] required는 1.2, optional은 1.5 (Figma 308:326, 302:5477)
-          color: "#96a0b3",
+          color: "#414a5f", // ← [Phase G 보충 10 2026-04-27] #96a0b3 → #414a5f (사용자 명시 요청)
           whiteSpace: "nowrap",
         }}>{label}</span>
         {required && (
