@@ -2,6 +2,33 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-26 Phase E] 좌측 5/6 — 참석자 + 메모 변환 + 좌측 패널 gap 정리
+ *      · Figma 노드: 빈 상태 302:5629-5482 / 채워진 상태 299:3719-3816
+ *      · 변경 범위: 데스크톱 좌측 참석자/메모 + 좌측 패널 gap (모바일 변경 없음)
+ *      · 변경 내용:
+ *        1) 참석자 필드 → Field 적용 (required X — 빨간 점 없음, 선택 입력)
+ *           · 참석자 chip: AttendeeChip 컴포넌트 사용 안 함 (DetailModal/BookingDoneModal와 공유 → 부작용 방지)
+ *             · BookingModal 내 inline chip — bg #edf7ff, padding 2/4/2/2, gap 7, radius 1000
+ *             · 아바타 24 (UserAvatar 그대로) + 이름 14 Medium + X 16 (lucide-react X)
+ *             · removeAttendee 로직 그대로
+ *           · 검색 인풋: 박스형 → border-bottom 1px #000, height 36, padding-bottom 12, boxless
+ *           · 드롭다운: bg white, border 0.5px #dee5f1, radius 14, padding 10, gap 10
+ *             · 각 항목: padding 4/10/4/2, radius 8, justify-between
+ *             · 좌: 아바타 32 + 이름 14/Medium + 이메일 10/Regular #99a1af
+ *             · 우: "+ 추가" 10/Regular #7088ac
+ *           · "검색 중..." / "검색 결과가 없습니다" 메시지: 드롭다운과 동일 스타일
+ *        2) 메모 필드 → Field 적용 (required X — 선택 입력)
+ *           · textarea 박스 제거, boxless
+ *           · placeholder "안건, 준비물 등" → "회의상세" (Figma 매칭)
+ *           · 우측 카운터 0/100 추가 (10px Medium #d1d9e7, 100자 초과 시 #EF4444)
+ *           · ⚠️ maxLength=100은 적용하지 않음 (logic 변경 — 별도 사용자 승인 필요)
+ *           · min-height 72px
+ *        3) 좌측 패널 gap: 18 → 0
+ *           · Field 자체 padding 16 0 + border-bottom이 간격/구분선 담당
+ *           · 인접 Field 사이 간격: padding-bottom 16 + padding-top 16 = 32px (Figma 매칭)
+ *           · 반복 예약(Field 아님)은 메모 Field padding-bottom 16 다음 자연 시작
+ *      · 검증/판단 로직 변경 없음 (form.attendees, attendeeQ, addAttendee, removeAttendee, attendeeSuggestions 그대로)
+ *
  *  - [2026-04-26 Phase D] 좌측 4 — 회의실 박스 (빈 상태 / 선택 상태) Figma 매칭
  *      · Figma 노드: 빈 상태 302:5639-5647 / 선택 상태 299:3948-3955
  *      · 변경 범위: 데스크톱 좌측 패널 회의실 필드만 (모바일/우측/다른 필드 불변)
@@ -1140,9 +1167,10 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       <div style={{display:"flex",flexDirection:"column",flex:1,overflow:"hidden",padding:"60px 0"}}>
         <div style={{display:"flex",flex:1,overflow:"hidden"}}>
           {/* LEFT: 폼 (50%) */}
-          {/* ← [Phase B] padding 24/28 → 16/16/100/16 (Figma) — 필드 간 gap은 유지 (Phase C에서 Field wrapper로 전환 시 제거) */}
+          {/* ← [Phase B] padding 24/28 → 16/16/100/16 (Figma) */}
+          {/* ← [Phase E] gap: 18 → 0 (Field 자체 padding 16 0 + border-bottom이 간격/구분선 담당) */}
           <div style={{flex:1,padding:"16px 16px 100px 16px",borderRight:"1px solid #f1f5f9",
-            display:"flex",flexDirection:"column",gap:18,overflowY:"auto"}}>
+            display:"flex",flexDirection:"column",gap:0,overflowY:"auto"}}>
             {/* 회의 제목 — [Phase C] Field 적용, boxless input + 우측 카운터 0/40 (Figma 302:5368-5376) */}
             <Field label="회의" required>
               <div style={{
@@ -1433,70 +1461,195 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 </div>
               )}
             </Field>
-            {/* 참석자 */}
-            <div>
-              <label style={{fontSize:13,fontWeight:600,color:"#111",display:"block",marginBottom:8}}>참석자</label>
-              {form.attendees.length > 0 && (
-                <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:8}}>
-                  {form.attendees.map(a => (
-                    <AttendeeChip
-                      key={a.user_id}
-                      name={a.name}
-                      avatarUrl={a.avatar_url}
-                      dept={a.dept}
-                      onRemove={() => removeAttendee(a.user_id)}
-                    />
-                  ))}
-                </div>
-              )}
-              <div ref={attendeeRef} style={{position:"relative"}}>
-                <input value={attendeeQ} onChange={e=>{setAttendeeQ(e.target.value);setAttendeeFocus(true);}}
-                  onFocus={()=>setAttendeeFocus(true)}
-                  placeholder="팀즈에 등록된 이름으로 검색"
-                  style={{width:"100%",background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
-                    color:"#111",padding:"12px 16px",fontSize:13,outline:"none"}}/>
-                {attendeeFocus && attendeeSuggestions.length > 0 && (
-                  <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:400,
-                    background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.10)",overflow:"hidden"}}>
-                    {attendeeSuggestions.map(u => (
-                      <div key={u.user_id} onClick={()=>addAttendee(u)}
-                        style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",cursor:"pointer",borderBottom:"1px solid #F8FAFC"}}
-                        onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
-                        onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
-                        <UserAvatar name={u.name} avatarUrl={u.avatar_url ?? null} size={28} />
-                        <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:"#111"}}>{u.name}</div><div style={{fontSize:11,color:"#94A3B8"}}>{u.dept} · {u.email}</div></div>
-                        <span style={{fontSize:11,color:"#CBD5E1"}}>+ 추가</span>
+            {/* 참석자 — [Phase E] Field 적용 (선택 입력 — 빨간 점 없음) */}
+            {/*   chip: AttendeeChip 컴포넌트 사용 안 함 (DetailModal/BookingDoneModal와 공유라 부작용 방지) → inline */}
+            {/*   검색 인풋: boxless border-bottom + 드롭다운 카드형 */}
+            <Field label="참석자">
+              <div style={{display:"flex", flexDirection:"column", gap:16}}>
+                {/* 참석자 chip 영역 (Figma 299:3726) — flex-wrap gap:8 */}
+                {form.attendees.length > 0 && (
+                  <div style={{display:"flex", flexWrap:"wrap", gap:8}}>
+                    {form.attendees.map(a => (
+                      <div key={a.user_id} style={{
+                        display:"inline-flex",
+                        alignItems:"center",
+                        gap:7,
+                        background:"#edf7ff",
+                        padding:"2px 4px 2px 2px",
+                        borderRadius:1000,
+                      }}>
+                        <UserAvatar name={a.name} avatarUrl={a.avatar_url ?? null} size={24} />
+                        <span style={{
+                          fontFamily:"Pretendard, sans-serif",
+                          fontWeight:500,
+                          fontSize:14,
+                          lineHeight:1.3,
+                          color:"#111",
+                        }}>{a.name}</span>
+                        <button
+                          type="button"
+                          onClick={()=>removeAttendee(a.user_id)}
+                          aria-label={`${a.name} 제거`}
+                          style={{
+                            width:16, height:16, padding:0,
+                            background:"transparent", border:"none", cursor:"pointer",
+                            display:"flex", alignItems:"center", justifyContent:"center",
+                            flexShrink:0,
+                          }}
+                        >
+                          <X size={16} strokeWidth={1.8} color="#111"/>
+                        </button>
                       </div>
                     ))}
                   </div>
                 )}
-                {attendeeFocus && attendeeQ.trim().length > 0 && isSearching && (
-                  <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:400,
-                    background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
-                    padding:"12px 14px",fontSize:12,color:"#94A3B8",
-                    boxShadow:"0 8px 24px rgba(0,0,0,0.08)"}}>
-                    검색 중...
-                  </div>
-                )}
-                {attendeeFocus && attendeeQ.trim().length > 0 && !isSearching && searchedQuery === attendeeQ.trim() && attendeeSuggestions.length === 0 && (
-                  <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:400,
-                    background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
-                    padding:"12px 14px",fontSize:12,color:"#94A3B8",
-                    boxShadow:"0 8px 24px rgba(0,0,0,0.08)"}}>
-                    검색 결과가 없습니다
-                  </div>
-                )}
+                {/* 검색 인풋 + 드롭다운 (Figma 299:3763-3790) */}
+                <div ref={attendeeRef} style={{position:"relative", width:"100%"}}>
+                  {/* boxless 검색 인풋: border-bottom 1px solid #000, height 36, padding-bottom 12 */}
+                  <input
+                    value={attendeeQ}
+                    onChange={e=>{setAttendeeQ(e.target.value);setAttendeeFocus(true);}}
+                    onFocus={()=>setAttendeeFocus(true)}
+                    placeholder="팀즈에 등록된 이름으로 검색"
+                    className="bm-boxless"
+                    style={{
+                      width:"100%",
+                      height:36,
+                      paddingBottom:12,
+                      paddingTop:0, paddingLeft:0, paddingRight:0,
+                      background:"transparent",
+                      border:"none",
+                      borderBottom:"1px solid #000",
+                      outline:"none",
+                      fontFamily:"Pretendard, sans-serif",
+                      fontWeight:500,
+                      fontSize:16,
+                      lineHeight:1.5,
+                      color:"#111",
+                      boxSizing:"border-box",
+                    }}
+                  />
+                  {/* 드롭다운 — 검색 결과 (Figma 299:3766) */}
+                  {attendeeFocus && attendeeSuggestions.length > 0 && (
+                    <div style={{
+                      position:"absolute",
+                      top:"calc(100% + 4px)",
+                      left:0, right:0, zIndex:400,
+                      background:"#fff",
+                      border:"0.5px solid #dee5f1",
+                      borderRadius:14,
+                      padding:10,
+                      display:"flex", flexDirection:"column", gap:10,
+                      boxShadow:"0 8px 24px rgba(0,0,0,0.06)",
+                    }}>
+                      {attendeeSuggestions.map(u => (
+                        <div key={u.user_id} onClick={()=>addAttendee(u)}
+                          style={{
+                            display:"flex",
+                            alignItems:"center",
+                            justifyContent:"space-between",
+                            padding:"4px 10px 4px 2px",
+                            borderRadius:8,
+                            cursor:"pointer",
+                          }}
+                          onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
+                          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                          {/* 좌측: 아바타 32 + 이름 + 이메일 */}
+                          <div style={{display:"flex", alignItems:"center", gap:7}}>
+                            <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={32} />
+                            <div style={{display:"flex", alignItems:"center", gap:4}}>
+                              <span style={{
+                                fontFamily:"Pretendard, sans-serif",
+                                fontWeight:500, fontSize:14, lineHeight:1.3, color:"#111",
+                              }}>{u.name}</span>
+                              <span style={{
+                                fontFamily:"Pretendard, sans-serif",
+                                fontWeight:400, fontSize:10, lineHeight:1.3, color:"#99a1af",
+                              }}>{u.email}</span>
+                            </div>
+                          </div>
+                          {/* 우측: + 추가 */}
+                          <span style={{
+                            fontFamily:"Pretendard, sans-serif",
+                            fontWeight:400, fontSize:10, lineHeight:1.3, color:"#7088ac",
+                            flexShrink:0,
+                          }}>+ 추가</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* 검색 중 */}
+                  {attendeeFocus && attendeeQ.trim().length > 0 && isSearching && (
+                    <div style={{
+                      position:"absolute", top:"calc(100% + 4px)", left:0, right:0, zIndex:400,
+                      background:"#fff", border:"0.5px solid #dee5f1", borderRadius:14,
+                      padding:"12px 14px",
+                      fontFamily:"Pretendard, sans-serif", fontSize:12, color:"#94A3B8",
+                      boxShadow:"0 8px 24px rgba(0,0,0,0.06)",
+                    }}>
+                      검색 중...
+                    </div>
+                  )}
+                  {/* 검색 결과 없음 */}
+                  {attendeeFocus && attendeeQ.trim().length > 0 && !isSearching && searchedQuery === attendeeQ.trim() && attendeeSuggestions.length === 0 && (
+                    <div style={{
+                      position:"absolute", top:"calc(100% + 4px)", left:0, right:0, zIndex:400,
+                      background:"#fff", border:"0.5px solid #dee5f1", borderRadius:14,
+                      padding:"12px 14px",
+                      fontFamily:"Pretendard, sans-serif", fontSize:12, color:"#94A3B8",
+                      boxShadow:"0 8px 24px rgba(0,0,0,0.06)",
+                    }}>
+                      검색 결과가 없습니다
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-            {/* 메모 */}
-            <div>
-              <label style={{fontSize:13,fontWeight:600,color:"#111",display:"block",marginBottom:8}}>메모 (선택)</label>
-              <textarea value={form.memo} onChange={e=>set("memo",e.target.value)} rows={3} placeholder="안건, 준비물 등"
-                style={{width:"100%",background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
-                  color:"#111",padding:"12px 16px",fontSize:13,outline:"none",resize:"none"}}
-                onFocus={e=>e.target.style.borderColor="#111"}
-                onBlur={e=>e.target.style.borderColor="#E2E8F0"}/>
-            </div>
+            </Field>
+            {/* 메모 — [Phase E] Field 적용 (선택 입력 — 빨간 점 없음), boxless textarea + 카운터 0/100 */}
+            {/*   placeholder "안건, 준비물 등" → "회의상세" (Figma 매칭) */}
+            {/*   ⚠️ maxLength=100은 적용 안 함 (logic 변경 — 별도 사용자 승인 후 추가 가능) */}
+            <Field label="메모">
+              <div style={{
+                display:"flex",
+                alignItems:"flex-start",
+                justifyContent:"space-between",
+                width:"100%",
+                gap:8,
+                minHeight:72,
+              }}>
+                <textarea
+                  className="bm-boxless"
+                  value={form.memo}
+                  onChange={e=>set("memo", e.target.value)}
+                  rows={3}
+                  placeholder="회의상세"
+                  style={{
+                    flex:1, minWidth:0,
+                    background:"transparent",
+                    border:"none",
+                    outline:"none",
+                    padding:0,
+                    resize:"none",
+                    fontFamily:"Pretendard, sans-serif",
+                    fontWeight:500,
+                    fontSize:16,
+                    lineHeight:1.5,
+                    color:"#111",
+                    minHeight:72,
+                  }}
+                />
+                <span style={{
+                  flexShrink:0,
+                  fontFamily:"Pretendard, sans-serif",
+                  fontWeight:500,
+                  fontSize:10,
+                  lineHeight:1.5,
+                  color: form.memo.length > 100 ? "#EF4444" : "#d1d9e7",
+                }}>
+                  {form.memo.length}/100
+                </span>
+              </div>
+            </Field>
             {/* 반복 예약 */}
             {/* ← [2026-04-22 HOTFIX] 반복예약 기능 임시 비활성화 (모바일과 동일) */}
             {!editBooking && <div>
