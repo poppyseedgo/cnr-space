@@ -465,16 +465,29 @@
 }
 
 
-/* ── [Phase C 2026-04-26] BookingModal boxless input placeholder ─────────────
-   Figma 노드 302:5364 / 299:3607 — 인라인 라벨 + boxless input 구조
-   placeholder 색: rgba(189,197,212,0.6), Pretendard Medium 16px (입력값과 동일 패밀리/사이즈)
+/* ── [Phase C 2026-04-26 / Phase G 보충 3 2026-04-27] BookingModal boxless input placeholder
+   Figma 노드 302:5364 / 299:3607 / 308:329 — 인라인 라벨 + boxless input 구조
+   표준 placeholder 색: rgba(189, 197, 212, 0.6) = #BDC5D4 + alpha 0.6
+   Pretendard Medium 16px (입력값과 동일 패밀리/사이즈)
    ::placeholder는 inline style 불가 → 글로벌 클래스 필요
+
+   [Phase G 보충 3] specificity 강화 + !important 추가 (방어적)
+   - input.bm-boxless / textarea.bm-boxless로 selector specificity 0,1,1 → 0,2,1
+   - 모든 속성에 !important — 글로벌 CSS가 덮어쓰는 것 방지
+   - 사용자 시각 확인 결과 색 통일 안 보이는 케이스 방어
 */
+input.bm-boxless::placeholder,
+input.bm-boxless::-webkit-input-placeholder,
+input.bm-boxless::-moz-placeholder,
+textarea.bm-boxless::placeholder,
+textarea.bm-boxless::-webkit-input-placeholder,
+textarea.bm-boxless::-moz-placeholder,
 .bm-boxless::placeholder,
 .bm-boxless::-webkit-input-placeholder,
 .bm-boxless::-moz-placeholder {
-  color: rgba(189, 197, 212, 0.6);
-  font-family: "Pretendard", sans-serif;
-  font-weight: 500;
-  opacity: 1;  /* Firefox 기본 opacity 0.54 보정 */
+  color: rgba(189, 197, 212, 0.6) !important;  /* #BDC5D4 + alpha 0.6 */
+  font-family: "Pretendard", sans-serif !important;
+  font-weight: 500 !important;
+  font-size: 16px !important;
+  opacity: 1 !important;  /* Firefox 기본 opacity 0.54 보정 */
 }

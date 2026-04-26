@@ -2,6 +2,27 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-27 Phase G 보충 3] placeholder 5개 문구 색 통일 강화 (CSS specificity 보강)
+ *      · 사용자 명시 요청: rgba(189, 197, 212, 0.6) = #BDC5D4 + alpha 0.6 통일
+ *      · 대상 5개 문구:
+ *        1. 회의 제목 placeholder "회의 제목을 입력하세요"
+ *        2. 시간 보조 텍스트 "부터", "까지"
+ *        3. 회의실 빈 상태 "오른쪽에서 회의실을 선택하세요"
+ *        4. 참석자 placeholder "팀즈에 등록된 이름으로 검색하세요"
+ *        5. 메모 placeholder "회의상세"
+ *      · 점검 결과: BookingModal.tsx 본 코드는 모두 표준값 적용됨 (변경 없음)
+ *        · 1, 4, 5: input/textarea의 className="bm-boxless" + CSS .bm-boxless::placeholder
+ *        · 2, 3: inline color: PLACEHOLDER_COLOR
+ *      · 변경 위치: src/index.css (Phase C에서 추가한 .bm-boxless::placeholder 강화)
+ *        · selector specificity 0,1,1 → 0,2,1 (input.bm-boxless / textarea.bm-boxless 추가)
+ *        · 모든 속성에 !important 추가 (글로벌 CSS 덮어쓰기 방지)
+ *        · font-size 명시 추가 (16px) — 글로벌 input 폰트가 덮어쓰는 케이스 방어
+ *      · ⚠️ 배포 시 src/index.css 반드시 함께 배포 필요 (BookingModal.tsx 단독 배포는 효과 없음)
+ *      · 사용자 환경에서 시각 차이 보이는 원인 추정:
+ *        1. Phase C 추가한 index.css가 미배포 상태 (가장 가능성 높음)
+ *        2. 브라우저 CSS 캐시 (Ctrl+Shift+R 강제 새로고침 필요)
+ *        3. 다른 글로벌 input/textarea placeholder CSS 충돌 → !important로 해결
+ *
  *  - [2026-04-27 Phase G 보충 2] 참석자 필드 스타일 정확 매칭
  *      · Figma 노드: 308:322 (기본) / 308:340 (입력 중) / 308:331 (칩)
  *      · 변경 내용:
