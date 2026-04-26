@@ -2,6 +2,22 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-26 Phase A] 데스크톱 모달 골격 — Figma 매칭 (UI 리디자인 1단계)
+ *      · Figma 노드: 302:5364 (빈 상태) / 299:3607 (채워진 상태)
+ *      · 변경 범위: 데스크톱만 (모바일 분기 일체 변경 없음)
+ *      · 변경 내용:
+ *        1) 모달 컨테이너: maxWidth 960→924, borderRadius 16→24
+ *        2) 로딩 오버레이 borderRadius 16→24 (모달과 동기화)
+ *        3) 헤더: 데스크톱에서 position absolute(top:0), padding 16/20,
+ *           borderRadius 24px 24px 0 0, drop-shadow 효과, border-bottom 제거
+ *        4) 데스크톱 헤더 타이틀: fontSize 18→24, fontWeight 600→500 (Pretendard Medium)
+ *        5) 데스크톱 본체 컨테이너: padding 60px 0 (헤더/푸터 absolute 영역 확보)
+ *        6) 데스크톱 푸터: position absolute(bottom:0), padding 8, gap 8,
+ *           borderRadius 0 0 24px 24px, 배경 #f5f5f5 over #fff,
+ *           Button height 56, borderRadius 16
+ *      · 검증/판단 로직 변경 없음 (canSubmit, availableRooms, validTime 등 그대로)
+ *      · CTA 텍스트 로직 그대로 (변경 저장 / 승인 요청 / 예약 확정)
+ *
  *  - [2026-04-26] 기본 회의 시간 60분 → 15분 변경 (UX 개선)
  *      · 사용자 요청: 모달 오픈 시 미리 입력되어있는 시간 예약값을 1시간 → 15분으로 변경
  *                    (예: 현재 14:08 → 시작 14:15 → 종료 14:30)
@@ -679,8 +695,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   return (
     <div className="anm" style={{
       background:"#fff",
-      borderRadius: isMobile ? "20px 20px 0 0" : 16,
-      width:"100%", maxWidth: isMobile ? "100%" : 960,
+      borderRadius: isMobile ? "20px 20px 0 0" : 24, // ← [Phase A] 16→24 (Figma)
+      width:"100%", maxWidth: isMobile ? "100%" : 924, // ← [Phase A] 960→924 (Figma)
       maxHeight: isMobile ? `${Math.floor(vvHeight * 0.95)}px` : modalMaxH,
       height: isMobile ? `${Math.floor(vvHeight * 0.95)}px` : "auto",
       boxShadow:"0 20px 60px rgba(0,0,0,0.15)",
@@ -699,7 +715,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
           position:"absolute", inset:0, zIndex:500,
           background:"rgba(255,255,255,0.88)",
           backdropFilter:"blur(3px)",
-          borderRadius: isMobile ? "20px 20px 0 0" : 16,
+          borderRadius: isMobile ? "20px 20px 0 0" : 24, // ← [Phase A] 모달과 동기화
           display:"flex", flexDirection:"column",
           alignItems:"center", justifyContent:"center",
           gap:16,
@@ -713,10 +729,24 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
         </div>
       )}
 
-      {/* ════ 헤더 (고정) ════ */}
-      <div style={{padding: isMobile?"20px 20px 12px":"24px 28px 18px",
-        borderBottom:"1px solid #F1F5F9",display:"flex",
-        justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+      {/* ════ 헤더 (모바일: 일반 / 데스크톱: absolute) ════ */}
+      {/* ← [Phase A] 데스크톱은 absolute(top:0)로 본체 위에 떠 있음 + drop-shadow */}
+      <div style={{
+        padding: isMobile ? "20px 20px 12px" : "16px 20px",
+        borderBottom: isMobile ? "1px solid #F1F5F9" : "none", // ← [Phase A] 데스크톱은 boder 제거
+        borderRadius: isMobile ? 0 : "24px 24px 0 0", // ← [Phase A] 모달 상단 라운드 매칭
+        position: isMobile ? "static" : "absolute", // ← [Phase A] 데스크톱 absolute
+        top: isMobile ? "auto" : 0,
+        left: isMobile ? "auto" : 0,
+        right: isMobile ? "auto" : 0,
+        background: "#fff",
+        filter: isMobile ? "none" : "drop-shadow(0px 4px 4px #fff)", // ← [Phase A] Figma drop-shadow
+        zIndex: 10,
+        display:"flex",
+        justifyContent:"space-between",
+        alignItems: isMobile ? "flex-start" : "center",
+        flexShrink:0
+      }}>
 
         {isMobile ? (
           /* 모바일 헤더: 스텝 인디케이터 포함 */
@@ -745,7 +775,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             </div>
           </div>
         ) : (
-          <div style={{fontSize:18,fontWeight:600,color:"#111"}}>{editBooking ? "예약 변경" : "새 회의실 예약"}</div>
+          // ← [Phase A] 데스크톱 타이틀: 18→24, fontWeight 600→500 (Pretendard Medium)
+          <div style={{fontSize:24,fontWeight:500,color:"#111",lineHeight:1.5}}>{editBooking ? "예약 변경" : "새 회의실 예약"}</div>
         )}
         {/* ← [피그마 2026-04-22] 헤더 X → ModalCloseButton 공통 컴포넌트 */}
         <ModalCloseButton onClick={onClose} style={{marginLeft:12}} />
@@ -992,7 +1023,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       </>) : (
 
       /* ════ 데스크톱: 이미지 기반 리디자인 ════ */
-      <div style={{display:"flex",flexDirection:"column",flex:1,overflow:"hidden"}}>
+      // ← [Phase A] padding 60px 0: 헤더/푸터 absolute 영역 확보 (Figma py-[60px])
+      <div style={{display:"flex",flexDirection:"column",flex:1,overflow:"hidden",padding:"60px 0"}}>
         <div style={{display:"flex",flex:1,overflow:"hidden"}}>
           {/* LEFT: 폼 (50%) */}
           <div style={{flex:1,padding:"24px 28px",borderRight:"1px solid #F1F5F9",
@@ -1279,10 +1311,26 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
           </div>
         </div>
 
-        {/* ── 하단 버튼 (모달 전체 너비) ── */}
-        <div style={{display:"flex",gap:10,padding:"16px 28px 20px",borderTop:"1px solid #F1F5F9",flexShrink:0,background:"#fff"}}>
-          <Button variant="ghost"   flex onClick={onClose}>취소</Button>
+        {/* ── 하단 버튼 (데스크톱: absolute / 모달 전체 너비) ── */}
+        {/* ← [Phase A] absolute(bottom:0), padding 8, gap 8, radius 0/24, 배경 #f5f5f5 over #fff */}
+        <div style={{
+          display:"flex",
+          gap:8,
+          padding:"8px",
+          position:"absolute",
+          bottom:0,
+          left:0,
+          right:0,
+          borderRadius:"0 0 24px 24px",
+          background:"linear-gradient(0deg, #fff, #fff), linear-gradient(0deg, #f5f5f5, #f5f5f5)",
+          backgroundBlendMode:"normal",
+          flexShrink:0,
+          zIndex:10
+        }}>
+          {/* ← [Phase A] Button height 56, radius 16 (Figma) — minHeight로 강제 override */}
+          <Button variant="ghost"   flex onClick={onClose} style={{minHeight:56, borderRadius:16}}>취소</Button>
           <Button variant="primary" flex disabled={!canSubmit} loading={isSubmitting}
+            style={{minHeight:56, borderRadius:16}}
             onClick={async ()=>{
                 if(!canSubmit)return;
                 submitTimerRef.current = setTimeout(()=>setIsSubmitting(true), 250);
