@@ -2,6 +2,18 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-27 Phase G 보충 8] 회의실 필드 padding-bottom 16 → 32 (Figma 308:555)
+ *      · Figma 노드 308:555: pb-[32px] pt-[16px] (이전 302:5639는 py-[16px])
+ *      · 변경: 회의실 Field 외곽 padding-bottom 16 → 32
+ *      · 효과: 회의실 필드와 다음 필드(참석자) 사이 여백 +16px 추가
+ *      · 적용 범위: 회의실 Field만 (다른 Field는 16 유지)
+ *      · 구현:
+ *        · Field 컴포넌트에 paddingBottom?: number prop 추가 (기본 16)
+ *        · 회의실 Field에만 paddingBottom={32} 적용
+ *        · 빈/선택 상태 모두 동일 적용 (Field 외곽 padding이라 자동)
+ *      · placeholder color는 사용자 통일 결정에 따라 PLACEHOLDER_COLOR 유지
+ *        (Figma는 #d1d7e1로 미세 변경됐으나 사용자 명시 통일 요청 우선)
+ *
  *  - [2026-04-27 Phase G 보충 7] placeholder native → div 오버레이 (100% 적용 보장)
  *      · 사용자 보고 (스크린샷): IIFE CSS 강제 주입에도 placeholder 색이 여전히 진하게 표시됨
  *      · 발견된 단서: 메모 영역에 Grammarly 확장 아이콘(G) 표시
@@ -392,21 +404,24 @@ const PLACEHOLDER_COLOR = "rgba(189, 197, 212, 0.6)";
 //   - [Phase G] 라벨 영역 좌측 정렬 (피그마 새 버전): justify-end 제거, items-start
 //             외곽 wrapper gap 제거 (Phase F 보충 되돌림 — 라벨 좌측 정렬로 자연 spacing 확보)
 //   - [Phase G] height prop 추가 (메모 Field 120px 고정용)
+//   - [Phase G 보충 8 2026-04-27] paddingBottom prop 추가 (회의실 Field 32px 용)
 function Field({
   label,
   required = false,
   children,
   height,
+  paddingBottom = 16, // ← [Phase G 보충 8] 기본 16px, 회의실 Field만 32 (Figma 308:555)
 }: {
   label: string;
   required?: boolean;
   children: React.ReactNode;
   height?: number;
+  paddingBottom?: number;
 }) {
   return (
     <div style={{
       borderBottom: "1px solid #f6faff",
-      padding: "16px 0",
+      padding: `16px 0 ${paddingBottom}px 0`, // ← [Phase G 보충 8] padding-bottom 동적
       display: "flex",
       alignItems: "flex-start",
       width: "100%",
@@ -1836,7 +1851,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             {/* 회의실 — [Phase D] Field 적용, 빈/선택 상태 Figma 매칭 */}
             {/*   빈 상태 (Figma 302:5639-5647): 점선 박스 + "오른쪽에서 회의실을 선택해주세요." */}
             {/*   선택 상태 (Figma 299:3948-3955): 연두 박스 + 회의실명/층·정원 + X 아이콘 (해제) */}
-            <Field label="회의실" required>
+            {/*   ← [Phase G 보충 8 2026-04-27] padding-bottom 16 → 32 (Figma 308:555) — 다음 필드(참석자)와 여백 +16 */}
+            <Field label="회의실" required paddingBottom={32}>
               {selectedRoom ? (
                 /* 선택 상태 */
                 <div style={{
