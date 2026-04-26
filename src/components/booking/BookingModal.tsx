@@ -2,6 +2,21 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-27 Phase G 보충 2] 참석자 필드 스타일 정확 매칭
+ *      · Figma 노드: 308:322 (기본) / 308:340 (입력 중) / 308:331 (칩)
+ *      · 변경 내용:
+ *        1) 검색 인풋 밑줄 토글 — 핵심 변경
+ *           · 이전: 항상 borderBottom 1px solid #000 (빈 상태에서도 표시)
+ *           · 새 디자인: 기본(308:329)은 밑줄 없음 / 입력 중(308:346)은 검정 밑줄
+ *           · 적용: focused 또는 attendeeQ 길이 > 0일 때만 밑줄 표시 (transparent로 토글)
+ *           · 사유: focus 즉시 시각 피드백 + blur 후에도 입력값 있으면 유지 (자연 UX)
+ *        2) Field 라벨 line-height — required 여부에 따라 분기
+ *           · required true (회의/날짜/시간/회의실): 1.2 (현재 그대로)
+ *           · required false (참석자/메모): 1.5 (Figma 308:326, 302:5477)
+ *           · 디자이너 의도: optional 라벨은 더 자연스러운 leading
+ *      · 검증/판단 로직 변경 없음 (attendeeFocus, attendeeQ, addAttendee, removeAttendee 그대로)
+ *      · 칩 구조: 시각 동일 (Phase E inline chip 그대로 유지)
+ *
  *  - [2026-04-27 Phase G 보충] placeholder color 통일 (#BDC5D4, opacity 60%)
  *      · 사용자 명시 요청: "placeholder color : #BDC5D4 , opacity:60% 통일"
  *      · 표준값: rgba(189, 197, 212, 0.6) = #BDC5D4 + alpha 0.6
@@ -291,7 +306,7 @@ function Field({
           fontFamily: "Pretendard, sans-serif",
           fontWeight: 500,
           fontSize: 16,
-          lineHeight: 1.2,
+          lineHeight: required ? 1.2 : 1.5, // ← [Phase G 보충 2] required는 1.2, optional은 1.5 (Figma 308:326, 302:5477)
           color: "#96a0b3",
           whiteSpace: "nowrap",
         }}>{label}</span>
@@ -1793,9 +1808,11 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                     ))}
                   </div>
                 )}
-                {/* 검색 인풋 + 드롭다운 (Figma 299:3763-3790) */}
+                {/* 검색 인풋 + 드롭다운 (Figma 308:340 입력 / 308:329 기본) */}
                 <div ref={attendeeRef} style={{position:"relative", width:"100%"}}>
-                  {/* boxless 검색 인풋: border-bottom 1px solid #000, height 36, padding-bottom 12 */}
+                  {/* boxless 검색 인풋 — [Phase G 보충 2 2026-04-27] 밑줄 토글 */}
+                  {/*   기본(빈+blur): 투명 밑줄 (시각적으로 숨김, 레이아웃 height 유지) */}
+                  {/*   focus 또는 입력값 있음: 검정 1px 밑줄 표시 */}
                   <input
                     value={attendeeQ}
                     onChange={e=>{setAttendeeQ(e.target.value);setAttendeeFocus(true);}}
@@ -1809,7 +1826,9 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                       paddingTop:0, paddingLeft:0, paddingRight:0,
                       background:"transparent",
                       border:"none",
-                      borderBottom:"1px solid #000",
+                      borderBottom: (attendeeFocus || attendeeQ.length > 0)
+                        ? "1px solid #000"
+                        : "1px solid transparent", // ← 빈 상태에서 밑줄 숨김 (height 유지)
                       outline:"none",
                       fontFamily:"Pretendard, sans-serif",
                       fontWeight:500,
@@ -1817,6 +1836,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                       lineHeight:1.5,
                       color:"#111",
                       boxSizing:"border-box",
+                      transition:"border-bottom-color 0.15s ease",
                     }}
                   />
                   {/* 드롭다운 — 검색 결과 (Figma 299:3766) */}
