@@ -2,6 +2,20 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-26] 기본 회의 시간 60분 → 15분 변경 (UX 개선)
+ *      · 사용자 요청: 모달 오픈 시 미리 입력되어있는 시간 예약값을 1시간 → 15분으로 변경
+ *                    (예: 현재 14:08 → 시작 14:15 → 종료 14:30)
+ *      · 적용 범위 (B안: UX 일관성 확보 — 5곳 모두 동기화):
+ *        1) L87  — 모달 오픈 시 초기 form 생성 (신규 예약 진입점)
+ *        2) L247 — tick 자동 시간 보정 (탭 오래 켜둔 후 form.start가 과거로 밀려날 때)
+ *        3) L312 — selectDate (캘린더에서 "오늘"로 다시 선택 시 재계산)
+ *        4) L422 — handleTimeBtn (모바일 시간 그리드에서 시작 클릭 시 자동 종료)
+ *        5) L1071 — 데스크톱 select 시작 변경 시 자동 종료
+ *      · 변경 사유: 어떤 경로로 진입하든 동일한 기본값(15분) 보장.
+ *                  ①만 변경하면 날짜·시간 재선택 시 60분으로 되돌아가는 UX 비일관 발생.
+ *      · 19:00 한계는 그대로 유지 (Math.min(..., 19*60))
+ *      · 검증/판단 로직(canSubmit, availableRooms, validTime 등)은 일체 변경 없음
+ *
  *  - [2026-04-22 HOTFIX] 반복예약 기능 임시 비활성화 (Phase 1 긴급 차단)
  *      · 증상: 반복예약이 "시작일~1달" 안내와 달리 DB에 12월 말까지 생성됨
  *              → 일반 사용자 정책 위반(30일 제한)
@@ -84,7 +98,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
     const nowMin = nowMinutes();
     const snapStart = Math.ceil((nowMin+1)/15)*15;
     const clampedStart = Math.min(Math.max(snapStart, 7*60), 18*60+45);
-    const clampedEnd   = Math.min(clampedStart+60, 19*60);
+    const clampedEnd   = Math.min(clampedStart+15, 19*60); // ← [2026-04-26] 60→15: 모달 오픈 시 기본 15분
     const defStart = prefill?.start || `${fmt2(Math.floor(clampedStart/60))}:${fmt2(clampedStart%60)}`;
     const defEnd   = prefill?.end   || `${fmt2(Math.floor(clampedEnd/60))}:${fmt2(clampedEnd%60)}`;
     return {
@@ -244,7 +258,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
     if (startMin <= now) {
       const nextStart = tOpts[0];
       if (nextStart === form.start) return; // 이미 같으면 스킵
-      const nextEndMin = Math.min(timeToMin(nextStart) + 60, 19*60);
+      const nextEndMin = Math.min(timeToMin(nextStart) + 15, 19*60); // ← [2026-04-26] 60→15: tick 자동보정 시 기본 15분
       skipRoomClear.current = true; // 자동보정 발생 → auto-clear 1회 건너뜀
       setForm(f => ({
         ...f,
@@ -309,7 +323,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       const now = nowMinutes();
       const snapStart = Math.ceil((now+1)/15)*15;
       const clampedStart = Math.min(Math.max(snapStart, 7*60), 18*60+45);
-      const clampedEnd   = Math.min(clampedStart+60, 19*60);
+      const clampedEnd   = Math.min(clampedStart+15, 19*60); // ← [2026-04-26] 60→15: 날짜 변경 시 기본 15분
       const newStart = `${fmt2(Math.floor(clampedStart/60))}:${fmt2(clampedStart%60)}`;
       const newEnd   = `${fmt2(Math.floor(clampedEnd/60))}:${fmt2(clampedEnd%60)}`;
       setForm(f => ({...f, start:newStart, end:newEnd, room_id:null}));
@@ -419,7 +433,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   const handleTimeBtn = (t) => {
     if (timePickerStep === "start") {
       set("start", t);
-      const newEnd = timeToMin(t) + 60;
+      const newEnd = timeToMin(t) + 15; // ← [2026-04-26] 60→15: 모바일 그리드 시작 클릭 시 기본 15분
       const clampedEnd = Math.min(newEnd, 19*60);
       set("end", `${fmt2(Math.floor(clampedEnd/60))}:${fmt2(clampedEnd%60)}`);
       setTimePickerStep("end");
@@ -1068,7 +1082,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                     <div style={{flex:1}}>
                       <select value={form.start} onChange={e=>{
                         set("start",e.target.value);
-                        const newEnd=timeToMin(e.target.value)+60;
+                        const newEnd=timeToMin(e.target.value)+15; // ← [2026-04-26] 60→15: 데스크톱 select 시작 변경 시 기본 15분
                         const clamped=Math.min(newEnd,19*60);
                         set("end",`${fmt2(Math.floor(clamped/60))}:${fmt2(clamped%60)}`);
                       }}
