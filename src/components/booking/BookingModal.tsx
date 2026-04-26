@@ -2,6 +2,48 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-26 Phase G] 피그마 새 버전 매칭 — 정렬/간격/텍스트 정확 매칭
+ *      · Figma 노드: 302:5364 (업데이트된 상세 버전)
+ *      · 변경 범위: 데스크톱만 (모바일 무영향)
+ *      · 변경 내용:
+ *        1) Field 컴포넌트 — 라벨 영역 정렬 변경
+ *           · 라벨 영역 alignItems: center → flex-start (위쪽 정렬)
+ *           · 라벨 영역 justifyContent: flex-end → 제거 (좌측 정렬, 자연 spacing 확보)
+ *           · 외곽 wrapper gap: 12 → 0 (Phase F 보충 되돌림 — 라벨 좌측 정렬로 자연 spacing)
+ *           · height prop 추가 (메모 Field 120px 고정용)
+ *        2) 시간 필드 — "부터" / "까지" 텍스트 추가, 구분자 ⎯ 제거
+ *           · 시작 그룹: "오전 12:15 (gap 4) 부터 (gap 24) ▼"
+ *           · 종료 그룹: "오후 1:00 (gap 4) 까지 (gap 24) ▼"
+ *           · 시작↔종료 사이 gap: 24
+ *           · 시간 행↔"N분 사용" 배지 사이 gap: 10 → 16
+ *           · "부터"/"까지": Pretendard Medium 16px, color #d2d2d2 (옅은 회색)
+ *        3) 회의실 빈 상태 — 점선 박스 제거 (boxless로 단순화)
+ *           · 점선 border, padding 14/16, height 69 모두 제거
+ *           · 단순 텍스트 "오른쪽에서 회의실을 선택하세요" (마침표/주 제거)
+ *           · Pretendard Medium 16px, color rgba(189,197,212,0.6) — 다른 placeholder와 통일
+ *        4) 메모 Field — 외곽 height 120px 고정 (Field height prop 활용)
+ *        5) 우측 헤더 서브 — 12px → 14px, 색상 통일
+ *           · "6" + "개 예약 가능" 둘 다 #111 검정 (이전: "개 예약 가능"만 #96a0b3)
+ *           · "클릭해서 선택"은 그대로 rgba(150,160,179,0.5)
+ *        6) 참석자 placeholder 텍스트 정정
+ *           · "팀즈에 등록된 이름으로 검색" → "팀즈에 등록된 이름으로 검색하세요" (Figma 매칭)
+ *      · 검증/판단 로직 변경 없음 (form.start/end onChange, set, validTime, durMin 그대로)
+ *      · 모바일 시간 필드(TimeRangePicker)는 그대로 유지
+ *
+ *  - [2026-04-26 Phase F 보충] Field 라벨↔컨텐츠 spacing 추가 (한국어 가독성)
+ *      · 자체 판단 수정 (사용자 시각 검증 후 발견된 명백한 문제)
+ *      · 증상: 모든 6개 Field에서 라벨과 컨텐츠가 한 단어처럼 보임
+ *              · "회의•회의 제목을 입력하세요"
+ *              · "날짜•2026년 4월 26일 일요일"
+ *              · "참석자팀즈에 등록된 이름으로 검색"
+ *              · "메모회의상세"
+ *      · 원인: Figma 코드 라벨 영역(72px) + 컨텐츠 0px 간격
+ *              영문은 빨간 점(•)이 자연 spacing 역할을 하지만,
+ *              한국어 자모는 폰트 metric상 더 조밀해 한 단어처럼 보임
+ *      · 해결: Field wrapper에 gap: 12px 추가 (단 1줄, 모든 Field 일괄 개선)
+ *      · 영향: 6개 Field (회의/날짜/시간/회의실/참석자/메모) 모두 시각 개선
+ *      · 트레이드오프: Figma 0px와 미세 차이 vs 한국어 실 사용 가독성 — 후자 우선
+ *
  *  - [2026-04-26 Phase F] 우측 패널 — 시간 헤더 + 회의실 그리드 카드 Figma 매칭
  *      · Figma 노드: 302:5508-5615 (우측 패널 전체)
  *      · 변경 범위: 데스크톱 우측 패널만 (모바일 RoomGrid2 그대로 유지)
@@ -186,23 +228,27 @@ import { Button } from '../common/Button'
 import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22] 모달 X 버튼 공통화
 
 // ─── [Phase B 2026-04-26] 좌측 패널 인라인 라벨 공통 wrapper ──────────────────────
-//   Figma 노드: 302:5364 / 299:3607
-//   구조: 라벨 영역(72px, 우측정렬) + 빨간 점(required) + 컨텐츠 영역(flex:1) + border-bottom
+//   Figma 노드: 302:5364 / 299:3607 / [Phase G 업데이트] 302:5366~
+//   구조: 라벨 영역(72px, 좌측정렬) + 빨간 점(required) + 컨텐츠 영역(flex:1) + border-bottom
 //   - module scope에 정의 (React unmount/remount 깜빡임 방지)
 //   - 라벨: Pretendard Medium 16px / line-height 1.2 / color #96a0b3
 //   - 빨간 점: 4×4px round, #ef4444 (필수 필드만 — 회의/날짜/시간/회의실)
 //   - border-bottom: 1px solid #f6faff (필드 구분선)
 //   - padding: 16px 0
-//   - alignItems: flex-start (시간/회의실/참석자/메모는 multi-line이라 라벨 위쪽 정렬)
-//   ⚠️ Phase B는 정의만, 실제 사용은 Phase C부터 (각 필드 변환 시 적용)
+//   - alignItems: flex-start (라벨/컨텐츠 위쪽 정렬)
+//   - [Phase G] 라벨 영역 좌측 정렬 (피그마 새 버전): justify-end 제거, items-start
+//             외곽 wrapper gap 제거 (Phase F 보충 되돌림 — 라벨 좌측 정렬로 자연 spacing 확보)
+//   - [Phase G] height prop 추가 (메모 Field 120px 고정용)
 function Field({
   label,
   required = false,
   children,
+  height,
 }: {
   label: string;
   required?: boolean;
   children: React.ReactNode;
+  height?: number;
 }) {
   return (
     <div style={{
@@ -211,14 +257,16 @@ function Field({
       display: "flex",
       alignItems: "flex-start",
       width: "100%",
+      // ← [Phase G 2026-04-26] gap:12 제거 (Phase F 보충 되돌림) — 라벨 영역 좌측 정렬로 자연 spacing
+      ...(height ? { height, boxSizing: "border-box" as const } : {}),
     }}>
-      {/* 라벨 영역 (72px, 우측 정렬, gap 2px) */}
+      {/* 라벨 영역 (72px, 좌측 정렬 + 위쪽 정렬, gap 2px) */}
+      {/* ← [Phase G] alignItems: center → flex-start, justifyContent: flex-end 제거 */}
       <div style={{
         width: 72,
         flexShrink: 0,
         display: "flex",
-        alignItems: "center",
-        justifyContent: "flex-end",
+        alignItems: "flex-start",
         gap: 2,
       }}>
         <span style={{
@@ -1499,6 +1547,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             {/* 시간 — [Phase C] Field 적용, select 두 개 → 텍스트 + ChevronDown + 동적 N분 사용 배지 */}
             {/*   native select를 absolute(opacity:0)로 위에 띄움 → 클릭 시 OS native dropdown 열림 */}
             {/*   기존 onChange 로직 (form.start 변경 시 end +15분 자동) 그대로 유지 */}
+            {/*   [Phase G 2026-04-26] "부터" / "까지" 텍스트 추가, 구분자 ⎯ 제거, gap 24 (Figma 매칭) */}
             <Field label="시간" required>
               {noTimeLeft ? (
                 /* 18:45 이후 — 기존 디자인 유지 (피그마에 없는 예외 케이스) */
@@ -1509,7 +1558,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   오늘은 더 예약할 수 없습니다
                 </div>
               ) : (
-                <div style={{display:"flex", flexDirection:"column", gap:10}}>
+                /* ← [Phase G] 시간 행↔배지 사이 gap 10 → 16 */
+                <div style={{display:"flex", flexDirection:"column", gap:16}}>
                   {isAfter7pm && (
                     /* 19:00 이후 — 기존 경고 유지 */
                     <span style={{fontSize:11,fontWeight:600,color:"#C2410C",display:"flex",alignItems:"center",gap:4}}>
@@ -1517,17 +1567,24 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                       오후 7시 이후에는 예약할 수 없습니다.
                     </span>
                   )}
-                  {/* 시간 선택 행: 시작 [▼] ⎯ 종료 [▼] (gap 14, items-center) */}
-                  <div style={{display:"flex", alignItems:"center", gap:14}}>
-                    {/* 시작 시간 */}
-                    <div style={{position:"relative", display:"inline-flex", alignItems:"center", gap:8, cursor:"pointer"}}>
-                      <span style={{
-                        fontFamily:"Pretendard, sans-serif",
-                        fontWeight:500, fontSize:16, lineHeight:1, color:"#111",
-                        whiteSpace:"nowrap",
-                      }}>
-                        {fmtTime(form.start)}
-                      </span>
+                  {/* 시간 선택 행: 시작 그룹 + 종료 그룹 (gap 24, ⎯ 구분자 제거) */}
+                  <div style={{display:"flex", alignItems:"center", gap:24}}>
+                    {/* 시작 그룹: [시간 + "부터"] (gap 4) [▼] (gap 24) */}
+                    <div style={{position:"relative", display:"inline-flex", alignItems:"center", gap:24, cursor:"pointer"}}>
+                      <div style={{display:"inline-flex", alignItems:"center", gap:4}}>
+                        <span style={{
+                          fontFamily:"Pretendard, sans-serif",
+                          fontWeight:500, fontSize:16, lineHeight:1, color:"#111",
+                          whiteSpace:"nowrap",
+                        }}>
+                          {fmtTime(form.start)}
+                        </span>
+                        <span style={{
+                          fontFamily:"Pretendard, sans-serif",
+                          fontWeight:500, fontSize:16, lineHeight:1, color:"#d2d2d2",
+                          whiteSpace:"nowrap",
+                        }}>부터</span>
+                      </div>
                       <ChevronDown size={16} strokeWidth={1.8} color="#111"/>
                       <select value={form.start} onChange={e=>{
                           set("start",e.target.value);
@@ -1545,20 +1602,22 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                         {tOpts.map(t=><option key={t} value={t}>{fmtTime(t)}</option>)}
                       </select>
                     </div>
-                    {/* 구분자 */}
-                    <span style={{
-                      fontFamily:"Pretendard, sans-serif",
-                      fontWeight:500, fontSize:16, lineHeight:1, color:"#111",
-                    }}>⎯</span>
-                    {/* 종료 시간 */}
-                    <div style={{position:"relative", display:"inline-flex", alignItems:"center", gap:8, cursor:"pointer"}}>
-                      <span style={{
-                        fontFamily:"Pretendard, sans-serif",
-                        fontWeight:500, fontSize:16, lineHeight:1, color:"#111",
-                        whiteSpace:"nowrap",
-                      }}>
-                        {fmtTime(form.end)}
-                      </span>
+                    {/* 종료 그룹: [시간 + "까지"] (gap 4) [▼] (gap 24) */}
+                    <div style={{position:"relative", display:"inline-flex", alignItems:"center", gap:24, cursor:"pointer"}}>
+                      <div style={{display:"inline-flex", alignItems:"center", gap:4}}>
+                        <span style={{
+                          fontFamily:"Pretendard, sans-serif",
+                          fontWeight:500, fontSize:16, lineHeight:1, color:"#111",
+                          whiteSpace:"nowrap",
+                        }}>
+                          {fmtTime(form.end)}
+                        </span>
+                        <span style={{
+                          fontFamily:"Pretendard, sans-serif",
+                          fontWeight:500, fontSize:16, lineHeight:1, color:"#d2d2d2",
+                          whiteSpace:"nowrap",
+                        }}>까지</span>
+                      </div>
                       <ChevronDown size={16} strokeWidth={1.8} color="#111"/>
                       <select value={form.end} onChange={e=>set("end",e.target.value)}
                         style={{
@@ -1660,25 +1719,18 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   </button>
                 </div>
               ) : (
-                /* 빈 상태 */
-                <div style={{
-                  width:"100%",
-                  height:69,
-                  padding:"14px 16px",
-                  borderRadius:10,
-                  border:"1px dashed rgba(189, 197, 212, 0.5)",
-                  display:"flex",
-                  flexDirection:"column",
-                  alignItems:"flex-start",
-                  boxSizing:"border-box",
+                /* 빈 상태 — [Phase G 2026-04-26] 점선 박스 제거 → boxless 텍스트 (Figma 302:5646-5647) */
+                /*   height/padding/border 모두 제거, 단순 텍스트만 표시 */
+                /*   텍스트: "오른쪽에서 회의실을 선택해주세요." → "오른쪽에서 회의실을 선택하세요" (마침표/주 제거) */
+                /*   color rgba(189,197,212,0.6) — 다른 placeholder 필드와 통일 */
+                <span style={{
+                  fontFamily:"Pretendard, sans-serif",
+                  fontWeight:500, fontSize:16, lineHeight:1.5,
+                  color:"rgba(189, 197, 212, 0.6)",
+                  whiteSpace:"nowrap",
                 }}>
-                  <span style={{
-                    fontFamily:"Pretendard, sans-serif",
-                    fontWeight:400, fontSize:12, lineHeight:1.5, color:"#bdc5d4",
-                  }}>
-                    오른쪽에서 회의실을 선택해주세요.
-                  </span>
-                </div>
+                  오른쪽에서 회의실을 선택하세요
+                </span>
               )}
             </Field>
             {/* 참석자 — [Phase E] Field 적용 (선택 입력 — 빨간 점 없음) */}
@@ -1730,7 +1782,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                     value={attendeeQ}
                     onChange={e=>{setAttendeeQ(e.target.value);setAttendeeFocus(true);}}
                     onFocus={()=>setAttendeeFocus(true)}
-                    placeholder="팀즈에 등록된 이름으로 검색"
+                    placeholder="팀즈에 등록된 이름으로 검색하세요"
                     className="bm-boxless"
                     style={{
                       width:"100%",
@@ -1828,7 +1880,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             {/* 메모 — [Phase E] Field 적용 (선택 입력 — 빨간 점 없음), boxless textarea + 카운터 0/100 */}
             {/*   placeholder "안건, 준비물 등" → "회의상세" (Figma 매칭) */}
             {/*   maxLength=100 적용 [Phase E 보충 2026-04-26] — 사용자 명시 승인, 엔터(줄바꿈) 사용 가능 */}
-            <Field label="메모">
+            {/*   ← [Phase G 2026-04-26] Field height 120px 적용 (Figma 302:5473) */}
+            <Field label="메모" height={120}>
               <div style={{
                 display:"flex",
                 alignItems:"flex-start",
@@ -1959,21 +2012,21 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                       fontWeight:600, fontSize:18, lineHeight:1.5, color:"#000",
                     }}>{fmtTime(form.end)}</span>
                   </div>
-                  {/* 서브타이틀 행 */}
+                  {/* 서브타이틀 행 — [Phase G 2026-04-26] 12px → 14px, "개 예약 가능" 색 #96a0b3 → #111 */}
                   <div style={{display:"flex", alignItems:"flex-start", gap:4}}>
                     <div style={{display:"flex", alignItems:"center"}}>
                       <span style={{
                         fontFamily:"Pretendard, sans-serif",
-                        fontWeight:600, fontSize:12, lineHeight:1.5, color:"#111",
+                        fontWeight:600, fontSize:14, lineHeight:1.5, color:"#111",
                       }}>{availableRooms.length}</span>
                       <span style={{
                         fontFamily:"Pretendard, sans-serif",
-                        fontWeight:400, fontSize:12, lineHeight:1.5, color:"#96a0b3",
+                        fontWeight:400, fontSize:14, lineHeight:1.5, color:"#111",
                       }}>개 예약 가능</span>
                     </div>
                     <span style={{
                       fontFamily:"Pretendard, sans-serif",
-                      fontWeight:400, fontSize:12, lineHeight:1.5,
+                      fontWeight:400, fontSize:14, lineHeight:1.5,
                       color:"rgba(150, 160, 179, 0.5)",
                     }}>클릭해서 선택</span>
                   </div>
