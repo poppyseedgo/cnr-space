@@ -2,6 +2,25 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-27 Phase G 보충 17] 참석자 chip X 아이콘 — 사용자 제공 SVG 교체
+ *      · 사용자 명시 요청 (Figma 331:1232 참석자 chip / 331:1238 close 아이콘)
+ *      · 변경 위치 2곳:
+ *        1) BookingModal.tsx — 데스크톱 인라인 chip (AttendeeChip 컴포넌트 미사용 분기)
+ *        2) src/components/common/AttendeeChip.tsx — 공유 컴포넌트 편집 모드 (onRemove 분기)
+ *      · 영향 범위 검증:
+ *        · BookingModal.tsx 인라인 칩: 데스크톱 좌측 패널만
+ *        · AttendeeChip onRemove 분기 사용처: BookingModal 모바일 step1 (L928) 만
+ *        · DetailModal/BookingDoneModal 은 onRemove 미전달 → if (onRemove) 미진입 → 평문 모드 → 영향 없음
+ *      · 변경 내용:
+ *        · BookingModal 인라인: <X size={16} strokeWidth={1.8} color="#111"/> → 사용자 SVG 인라인 (fill #1C1B1F)
+ *        · AttendeeChip: <X size={10} strokeWidth={1.8} /> → 사용자 SVG 인라인 (size 10 → 16, fill #1C1B1F)
+ *        · button 의 color:#CBD5E1 prop 제거 (인라인 SVG 자체 fill 사용)
+ *      · 사이즈 16: Figma 331:1238 size-[16px] 정확 매칭 — 디자인 일관성 확보 위해 모바일도 동일 16 적용
+ *      · 미변경:
+ *        · 검증/판단 로직 / removeAttendee 핸들러
+ *        · chip 외형 (배경 #edf7ff / padding / radius / avatar / 이름 폰트)
+ *        · AttendeeChip 평문 모드 (DetailModal/BookingDoneModal 사용)
+ *
  *  - [2026-04-27 Phase G 보충 16] 회의실 필드 — Figma 329:981(선택) 색상 / 329:1043(미선택) 글씨 정정
  *      · 사용자 명시 요청: 회의실 필드 (기본) 색상변경 + 회의실 미선택 시 글씨변경
  *      · 변경 범위: 데스크톱 좌측 패널 회의실 필드 2곳만 (1줄씩 surgical 변경)
@@ -2172,7 +2191,10 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                             flexShrink:0,
                           }}
                         >
-                          <X size={16} strokeWidth={1.8} color="#111"/>
+                          {/* ← [Phase G 보충 17 2026-04-27] lucide X → 사용자 제공 attendeechipX.svg 인라인 (Figma 331:1238 / fill #1C1B1F) */}
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M4.26693 12.0669L3.93359 11.7336L7.66693 8.00026L3.93359 4.26693L4.26693 3.93359L8.00026 7.66693L11.7336 3.93359L12.0669 4.26693L8.33359 8.00026L12.0669 11.7336L11.7336 12.0669L8.00026 8.33359L4.26693 12.0669Z" fill="#1C1B1F"/>
+                          </svg>
                         </button>
                       </div>
                     ))}
