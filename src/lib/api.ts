@@ -387,9 +387,45 @@ export async function cancelBooking(id: string): Promise<void> {
  * 흐름:
  *   프론트(즉시) → markNoshow → DB에 system 기록 → 모든 클라이언트 즉시 노쇼 뱃지 표시
  *   cron(최대 5분) → noshow_notified=false인 건 조회 → 이메일 발송 → noshow_notified=true 마킹
+ *
+ * ← [2026-04-27 가드 5종] stale state로 인한 양방향 오염 근본 차단
+ *   배경:
+ *     · 클라이언트 useEffect가 매분 tick으로 markNoshow를 일괄 호출
+ *     · 어드민/운영팀 PC, 자리비운 사용자 화면이 매분 stale state로 노쇼 후보 산출
+ *     · trigger trg_block_noshow_on_checked_in이 평소 보호막 역할이지만
+ *       정상 보호막에 의존하는 구조 자체가 위험 (트리거 OFF시 누적 시도 일괄 통과)
+ *   가드 5종 (모두 필수, AND 조건):
+ *     ① status='confirmed'         — pending/rejected/cancelled 행 차단
+ *     ② checked_in=false           — 체크인된 진행 중 회의 차단 (양방향 오염 핵심)
+ *     ③ early_ended=false          — 조기반납 회의 차단
+ *     ④ auto_cancelled=false       — 멱등성 (동시 호출 1번만 성공)
+ *     ⑤ cancelled_by IS NULL       — 사용자/관리자 직접 취소 행 차단 (덮어쓰기 방지)
+ *   throw 정책:
+ *     · cancelBooking과 다름 — 0 rows는 정상(가드 통과 못한 stale 시도) → silent skip
+ *     · 호출 측 useEffect의 Promise.all(...).catch(console.error) 패턴과 호환
+ *   짝 배포: 없음 (lib/api.ts 단일 파일)
  */
 export async function markNoshow(id: string): Promise<void> {
-  await updateBooking(id, { autoCancelled: true, cancelledBy: 'system' })
+  // localStorage fallback (Supabase 미사용 환경) — 가드 불필요, 단일 사용자 환경
+  if (!isSupabaseEnabled) {
+    await updateBooking(id, { autoCancelled: true, cancelledBy: 'system' })
+    return
+  }
+
+  // 원자적 조건부 UPDATE — DB 단에서 stale state 시도를 거름
+  // 0 rows = 가드 통과 못 함 = 정상 (silent skip)
+  const { error } = await supabase
+    .from('bookings')
+    .update({ auto_cancelled: true, cancelled_by: 'system' })
+    .eq('id', id)
+    .eq('status',          'confirmed')   // ← 가드 ①
+    .eq('checked_in',      false)          // ← 가드 ②
+    .eq('early_ended',     false)          // ← 가드 ③
+    .eq('auto_cancelled',  false)         // ← 가드 ④
+    .is('cancelled_by',    null)           // ← 가드 ⑤
+
+  if (error) throw error
+  // 0 rows일 때 throw 없음 — 호출 측 useEffect는 다음 tick에 다시 시도
 }
 
 // ── Realtime 구독 ────────────────────────────────────────────────────────────
