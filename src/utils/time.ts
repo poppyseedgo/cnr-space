@@ -105,14 +105,32 @@ export function nowStr() { const d=nowKST(); return `${fmt2(d.getUTCHours())}:${
 
 // ─── 중복 예약 검증 (중앙화) ──────────────────────────────────────────────
 // 모든 충돌 검사를 이 함수 하나로 통일. UI 필터 + 제출 검증 모두 사용.
+//
+// ✅ 변경 이력
+//  - [2026-04-27 충돌 판정 기준 단일화]
+//    · 원인: 기존 `!autoCancelled` 필터가 status='cancelled'(autoCancelled=false)인
+//            사용자 직접취소·admin 강제취소 예약을 충돌로 잘못 판정 → BookingModal
+//            가용 회의실 목록이 실제 풀린 시간대에도 비가용으로 표시되며 깜빡임 유발
+//    · 증상: ① 사용자가 본인 예약을 취소했는데 그 시간 슬롯이 다른 사용자에게도
+//            여전히 비가용으로 보임. ② getRoomStatus와 충돌 기준이 어긋나 홈카드와
+//            예약모달의 가용 표시가 불일치 (모순 상태)
+//    · 해결: 충돌 판정 기준을 `cancelled_by` 단일 컬럼 기반으로 통일.
+//            cancelled_by ∈ {user, system, admin}이면 모두 가용으로 처리.
+//            (rejected는 항상 cancelled_by='admin'으로 저장되므로 자동 제외됨)
+//    · 영향: getRoomStatus도 동일 기준으로 동기화 (이 파일 하단 참조)
+//    · 호출처 검증: BookingModal(가용회의실/반복예약), App.tsx(예약생성 최종검증)
+//                   3곳 모두 동일하게 적용 — 풀린 시간대에 새 예약 생성 가능
 export function hasTimeConflict(existingBookings, roomId, date, startMin, endMin) {
   if (!roomId || !date || startMin >= endMin || endMin <= 0) return { conflict: true, reason: "INVALID_TIME" };
 
   const activeBookings = existingBookings.filter(b =>
     b.room_id === roomId &&
     tsDate(b.start_at) === date &&
-    !b.autoCancelled &&
-    !b.earlyEnded
+    b.cancelledBy !== 'user'   && // ← [2026-04-27] 사용자 직접취소 제외
+    b.cancelledBy !== 'system' && // ← [2026-04-27] 노쇼/pending_expired 자동취소 제외
+    b.cancelledBy !== 'admin'  && // ← [2026-04-27] admin 강제취소·pending 거부(rejected) 제외
+    !b.earlyEnded                  // 조기종료 제외 (기존 유지)
+    // ← [2026-04-27 삭제] !b.autoCancelled — cancelledBy 단일 기준으로 대체
   );
 
   for (const b of activeBookings) {
@@ -158,18 +176,36 @@ export function getAvailableRooms(allRooms, bookings, date, startTime, endTime, 
  *            넘길 때 TS2322 에러 (string → 'AVAILABLE' | 'BUSY' | 'SOON' 불일치)
  *    · 해결: 함수 시그니처에 `: RoomStatus` 명시 + 각 return 객체를 `as const` 처리
  *    · 기존 호출부(status.type === "BUSY" 같은 문자열 비교)는 모두 100% 호환
+ *
+ *  - [2026-04-27 hasTimeConflict와 필터 기준 단일화]
+ *    · 원인: 기존 필터(`!autoCancelled && status!=='rejected'`)가 사용자 직접취소
+ *            (status='cancelled', autoCancelled=false)·admin 강제취소를 점유로 잘못 판정.
+ *            hasTimeConflict와 기준이 어긋나 BookingModal "가용"인 회의실이 홈카드에선
+ *            BUSY/SOON으로 표시되는 모순 상태 발생
+ *    · 증상: ① 본인이 취소한 예약 시간대에 홈카드가 여전히 "곧 사용/사용중" 표시
+ *            ② BookingModal 가용 회의실 ↔ HomeView 룸카드 칩 불일치
+ *    · 해결: dayBks 필터를 hasTimeConflict와 동일한 cancelled_by 단일 기준으로 통일.
+ *            cancelled_by ∈ {user, system, admin} → 가용. earlyEnded → 가용.
+ *            rejected는 cancelled_by='admin'으로 저장되므로 status 체크 불필요.
+ *    · 호출처 검증: HomeView(룸카드 상태칩+카운트), RoomDetailModal(헤더칩) 두 곳
+ *                   모두 사용자 시각 정확도 향상 — 풀린 예약은 즉시 AVAILABLE 표시
+ *    · BUSY/SOON 판정 로직(currentCheckedIn / currentWaiting / next)은 dayBks를
+ *            그대로 사용하므로 별도 변경 불필요
  */
 export function getRoomStatus(roomId: number, bookings: Booking[], date: string): RoomStatus {
   const now = nowMinutes();
   const today = todayStr();
   const isToday = date === today;
-  // pending 예약은 사실상 점유(SOON) — rejected/cancelled 제외
+  // pending 예약은 사실상 점유(SOON) — 취소(user/system/admin)·조기종료 제외
+  // ← [2026-04-27] hasTimeConflict와 동일 기준으로 통일 (cancelled_by 단일 컬럼)
   const dayBks = bookings.filter(b =>
     b.room_id === roomId &&
     tsDate(b.start_at) === date &&
-    !b.autoCancelled &&
-    !b.earlyEnded &&
-    b.status !== 'rejected'  // 거절된 예약은 제외
+    b.cancelledBy !== 'user'   && // ← [2026-04-27] 사용자 직접취소 제외
+    b.cancelledBy !== 'system' && // ← [2026-04-27] 노쇼/pending_expired 자동취소 제외
+    b.cancelledBy !== 'admin'  && // ← [2026-04-27] admin 강제취소·pending 거부(rejected) 제외
+    !b.earlyEnded                  // 조기종료 제외 (기존 유지)
+    // ← [2026-04-27 삭제] !b.autoCancelled, status!=='rejected' — cancelledBy 단일 기준으로 대체
   );
 
   // ── BUSY 정책 ────────────────────────────────────────────────────────────
