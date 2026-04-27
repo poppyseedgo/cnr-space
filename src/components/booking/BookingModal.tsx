@@ -2,6 +2,19 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-27 Phase G 보충 11] placeholder color alpha 0.6 → 0.8
+ *      · 사용자 명시 요청: rgba(189, 197, 212, 0.6) → rgba(189, 197, 212, 0.8)
+ *      · 효과: placeholder 톤이 약간 더 진해짐 (가독성 강화)
+ *      · 변경 위치 (2곳, 단일 진실 출처 + 안전망 동기화):
+ *        1) L375 PLACEHOLDER_COLOR 상수 — 인라인 사용 5곳 일괄 적용
+ *           · 회의실 빈상태 / 시간 "부터"·"까지" / div 오버레이 3곳 (회의제목·참석자·메모)
+ *        2) L401 IIFE 내부 .bm-boxless::placeholder CSS — 모바일 native placeholder 백업
+ *      · 적용 범위: placeholder 톤 텍스트 전체 — 5+모바일 = 일괄 톤 통일
+ *      · 변경 안 함 (별도 톤):
+ *        · 카운터 #d1d9e7 (placeholder 아님)
+ *        · 라벨 #414a5f (Phase G 보충 10)
+ *        · "클릭해서 선택" rgba(150,160,179,0.5) (의도적 흐림)
+ *
  *  - [2026-04-27 Phase G 보충 10] Field 라벨 color #96a0b3 → #414a5f
  *      · 사용자 명시 요청
  *      · 변경: Field 컴포넌트 라벨 color rgb(150,160,179)/#96a0b3 → #414a5f
@@ -370,9 +383,10 @@ import { Button } from '../common/Button'
 import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22] 모달 X 버튼 공통화
 
 // ─── [Phase G 보충 2026-04-27] placeholder 색 단일 상수 ───────────────────────
-//   사용자 요청: placeholder color #BDC5D4, opacity 60% 통일
-//   사용처: 시간 "부터/까지", 회의실 빈 상태 등 placeholder 톤 텍스트 전반
-const PLACEHOLDER_COLOR = "rgba(189, 197, 212, 0.6)";
+//   사용자 요청: placeholder color #BDC5D4
+//   - [Phase G 보충 11 2026-04-27] alpha 0.6 → 0.8 (가독성 강화)
+//   사용처: 시간 "부터/까지", 회의실 빈 상태, div 오버레이 placeholder 3곳 (회의제목/참석자/메모)
+const PLACEHOLDER_COLOR = "rgba(189, 197, 212, 0.8)";
 
 // ─── [Phase G 보충 6 2026-04-27] .bm-boxless::placeholder 강제 주입 ──────────
 //   문제: index.css의 .bm-boxless::placeholder가 일부 환경에서 적용 안 됨
@@ -398,7 +412,7 @@ const PLACEHOLDER_COLOR = "rgba(189, 197, 212, 0.6)";
     textarea.bm-boxless::placeholder,
     textarea.bm-boxless::-webkit-input-placeholder,
     textarea.bm-boxless::-moz-placeholder {
-      color: rgba(189, 197, 212, 0.6) !important;
+      color: rgba(189, 197, 212, 0.8) !important;
       font-family: "Pretendard", sans-serif !important;
       font-weight: 500 !important;
       font-size: 16px !important;
