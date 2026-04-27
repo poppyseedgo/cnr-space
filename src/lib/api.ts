@@ -343,8 +343,38 @@ export async function adminForceCancel(id: string): Promise<void> {
 //   해결: status='cancelled' 명시 저장으로 isShownInCalendar의 status 기반 필터가 정확히 작동
 //   주의: auto_cancelled=true는 유지 (isUserCancel 판정 플래그 그대로 사용, 뱃지 정상 표시)
 //   연관: Phase 2 adminForceCancel과 동일 패턴
+//
+// ← [2026-04-27 Layer 1 가드] cancelled_by='system'/'admin' 오염 차단 (근본)
+//   증상: 노쇼 처리(cancelled_by='system')된 예약이 사용자 취소로 덮어써져
+//          'system' → 'user'로 오염 → 노쇼 박제와 캘린더 표시 모두 사라짐
+//   원인: stale modal.data로 DetailModal이 노쇼 처리된 예약에도 BtnCancel을 표시,
+//          사용자가 누르면 cancelBooking이 현재 상태 무시하고 무조건 덮어씀
+//   해결: updateBooking 단순 호출 → 원자적 조건부 UPDATE로 변경
+//          ① cancelled_by IS NULL — 아직 누구도 취소하지 않은 상태만 (system/admin/user 모두 차단)
+//          ② status IN ('confirmed','pending') — 정상 활성 예약만 (rejected/cancelled 차단)
+//          UPDATE 0 rows 반환 = 이미 처리된 예약 → throw로 호출 측에 알림
+//   짝 배포: App.tsx Layer 2 (DetailModal에 fresh booking 전달 — 사용자가 애초에 못 누르게 함)
 export async function cancelBooking(id: string): Promise<void> {
-  await updateBooking(id, { status: 'cancelled', autoCancelled: true, cancelledBy: 'user' })
+  // localStorage fallback (Supabase 미사용 환경) — 가드 불필요, 단일 사용자 환경
+  if (!isSupabaseEnabled) {
+    await updateBooking(id, { status: 'cancelled', autoCancelled: true, cancelledBy: 'user' })
+    return
+  }
+
+  // 원자적 조건부 UPDATE — DB 단에서 race/오염 차단 (진실의 원천)
+  const { data, error } = await supabase
+    .from('bookings')
+    .update({ status: 'cancelled', auto_cancelled: true, cancelled_by: 'user' })
+    .eq('id', id)
+    .is('cancelled_by', null)                       // ← 가드 ①
+    .in('status', ['confirmed', 'pending'])         // ← 가드 ②
+    .select('id')
+
+  if (error) throw error
+  if (!data || data.length === 0) {
+    // 0 rows = 이미 system 노쇼 / admin 강제취소 / user 본인 이전 취소 / 거절된 예약
+    throw new Error('이미 노쇼·취소 처리된 예약이라 취소할 수 없습니다.')
+  }
 }
 
 /**
