@@ -2,6 +2,38 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-27 Phase G 보충 16] 회의실 필드 — Figma 329:981(선택) 색상 / 329:1043(미선택) 글씨 정정
+ *      · 사용자 명시 요청: 회의실 필드 (기본) 색상변경 + 회의실 미선택 시 글씨변경
+ *      · 변경 범위: 데스크톱 좌측 패널 회의실 필드 2곳만 (1줄씩 surgical 변경)
+ *      · 회의실 선택 상태 (Figma 329:981 — 색상변경):
+ *        · border 색: #b9f8cf → #d3fae1 (Figma 329:988 신 border 색상)
+ *        · 그 외 (배경 / padding / radius / 회의실명 / 부가정보 / close 등) 보충 12/14 그대로
+ *      · 회의실 미선택 상태 (Figma 329:1043 — 글씨변경):
+ *        · placeholder 텍스트: "오른쪽에서 회의실을 선택해 주세요." → "오른쪽에서 회의실을 선택하세요" (Figma 329:1050 신 문구)
+ *        · 마침표 (.) 제거 / "해 " 제거 / "주" 제거 — 더 짧고 자연스러운 문구
+ *        · 그 외 (border 색 / 텍스트 색 / padding / radius / fontSize / lh 등) 보충 14 그대로
+ *      · 미변경:
+ *        · 시간 필드 가능 상태 (Figma 337:1245 / 보충 14 그대로)
+ *        · 시간 필드 미선택 (Figma 331:1223 / 보충 15 그대로)
+ *        · 모바일 시간 필드 select placeholder "선택하세요" (다른 컨텍스트, L1083/1128)
+ *        · 다른 #b9f8cf 사용처 (L1286 — 다른 곳 background)
+ *        · 검증/판단 로직 일체
+ *
+ *  - [2026-04-27 Phase G 보충 15] 시간필드 미선택 시 (noTimeLeft) — Figma 331:1223 정정 환원
+ *      · 사용자 보고: "시간필드 미선택시 어디갔어" — 보충 14 에서 noTimeLeft 상태를 원본(점선박스+Ban+1줄)으로 잘못 되돌림
+ *      · 정정: Figma 331:1223 (시간필드 미선택 시) 가 정확한 디자인. 보충 13 의 디자인을 다시 적용
+ *      · 변경 범위: 데스크톱 좌측 패널 시간 필드 noTimeLeft 분기만
+ *      · Figma 331:1223 (시간필드 미선택 시):
+ *        · Right area (331:1229): w 240 / h 60 / gap 10 / flex-col items-start
+ *        · 텍스트 (331:1230): Pretendard Medium 16 / lh 1.5 / rgba(189,197,212,0.8) = PLACEHOLDER_COLOR
+ *        · 2줄: "오늘은 더 예약할 수 없습니다" / "날짜를 변경하세요"
+ *        · 점선 박스 / Ban 아이콘 / bg / radius / padding 일체 없음 (boxless)
+ *      · 미변경:
+ *        · 시간 필드 가능 상태 (Figma 337:1245 / 보충 14 그대로)
+ *        · 회의실 미선택/선택 상태 (보충 12/14 그대로)
+ *        · noTimeLeft 판단 로직 (`bookingDate === todayStr() && tOpts.length === 0` 정의 그대로)
+ *        · 그 외 시간/예약 로직 일체
+ *
  *  - [2026-04-27 Phase G 보충 14] 시간 필드 / 회의실 미선택 — 사용자 정정 Figma 기준 재매칭
  *      · 사용자 보고: "피그마 잘못 줬다" — 보충 13에서 사용한 Figma 331:1201/1223 가 잘못된 노드였음
  *      · 정정 Figma:
@@ -1851,20 +1883,35 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 )}
               </div>
             </Field>
-            {/* 시간 — [Phase G 보충 14 2026-04-27] Figma 337:1245 정정 매칭 (보충 13 잘못된 Figma 331:1201 사용 → 정정) */}
+            {/* 시간 — [Phase G 보충 14/15 2026-04-27] 사용자 정정 Figma 기준 매칭 */}
             {/*   가능 상태 (Figma 337:1245): 외곽 gap 14 / 고정폭 제거 / 시간 row gap 24 / "부터·까지" 라벨 환원 / ⎯ 구분자 제거 / 그룹 외곽 gap 24 / 텍스트 wrap gap 4 */}
-            {/*   불가 상태 (noTimeLeft): 신 Figma 미정의 → 원본 (점선 박스 + Ban + 1줄) 복원 */}
+            {/*   미선택 상태 (Figma 331:1223 / 보충 15): w 240 / boxless 2줄 placeholder / Pretendard Medium 16 lh 1.5 PLACEHOLDER_COLOR */}
             {/*   down arrow: 사용자 제공 arrow_svg.svg 인라인 유지 (Figma 337:1272/1279) */}
             {/*   native select absolute(opacity:0) 트릭 / onChange 핸들러 / 시간 판단 로직 일체 불변 */}
             <Field label="시간" required>
               {noTimeLeft ? (
-                /* 불가 상태 — [Phase G 보충 14] 보충 13의 2줄 boxless 텍스트 → 원본 (점선 박스 + Ban + 1줄) 복원 */
-                /*   사유: 사용자가 보충 13의 Figma 331:1223 가 잘못된 것이라 명시. 신 Figma 미정의 → 원본 디자인 유지 */
-                <div style={{display:"flex",alignItems:"center",
-                  background:"#F8FAFC",border:"1.5px dashed #CBD5E1",borderRadius:10,
-                  padding:"14px 16px",color:"#94A3B8",fontSize:13,fontWeight:600,gap:8}}>
-                  <Ban size={16} strokeWidth={1.8}/>
-                  오늘은 더 예약할 수 없습니다
+                /* 불가 상태 (시간필드 미선택 시) — [Phase G 보충 15 2026-04-27] Figma 331:1223 정정 매칭 */
+                /*   사유: 보충 14 에서 신 Figma 미정의로 판단해 원본(Ban+박스)으로 되돌렸으나, */
+                /*         사용자가 331:1223 가 미선택 상태의 정확한 디자인임을 명시 → 보충 13 동일 디자인 환원 */
+                /*   Figma 331:1229: w 240 / h 60 / gap 10 / flex-col items-start */
+                /*   Figma 331:1230: Pretendard Medium 16 / lh 1.5 / rgba(189,197,212,0.8) (= PLACEHOLDER_COLOR) */
+                /*   2줄: "오늘은 더 예약할 수 없습니다" / "날짜를 변경하세요" */
+                <div style={{
+                  display:"flex", flexDirection:"column",
+                  width:240, // ← [Phase G 보충 15] Figma 331:1229 w-[240px]
+                }}>
+                  <span style={{
+                    fontFamily:"Pretendard, sans-serif",
+                    fontWeight:500, fontSize:16, lineHeight:1.5,
+                    color:PLACEHOLDER_COLOR, // ← [Phase G 보충 15] Figma 331:1230 rgba(189,197,212,0.8) = PLACEHOLDER_COLOR
+                    whiteSpace:"nowrap",
+                  }}>오늘은 더 예약할 수 없습니다</span>
+                  <span style={{
+                    fontFamily:"Pretendard, sans-serif",
+                    fontWeight:500, fontSize:16, lineHeight:1.5,
+                    color:PLACEHOLDER_COLOR,
+                    whiteSpace:"nowrap",
+                  }}>날짜를 변경하세요</span> {/* ← [Phase G 보충 15] 2번째 줄 (Figma 331:1230) */}
                 </div>
               ) : (
                 /* 가능 상태 — Figma 337:1245 / 337:1251 */
@@ -2011,7 +2058,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   height:82, // ← [Phase G 보충 12] 69 → 82 (Figma 329:988)
                   padding:10,
                   borderRadius:14, // ← [Phase G 보충 12] 10 → 14 (Figma 329:988)
-                  border:"1px solid #b9f8cf",
+                  border:"1px solid #d3fae1", // ← [Phase G 보충 16] #b9f8cf → #d3fae1 (Figma 329:988 신 border 색상)
                   background:"rgba(185, 248, 207, 0.2)",
                   display:"flex",
                   justifyContent:"space-between",
@@ -2061,9 +2108,9 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   </button>
                 </div>
               ) : (
-                /* 빈 상태 — Figma 329:1043 — [Phase G 보충 14 2026-04-27] 색상값 정정 (보충 12의 #dee5f1/#b4bcca → 신 Figma rgba 값) */
+                /* 빈 상태 — Figma 329:1043 — [Phase G 보충 14/16 2026-04-27] 색상 (보충 14) + 텍스트 (보충 16) 정정 */
                 /*   사이즈: w 100% / h 82 / radius 14 / border 1px dashed rgba(189,197,212,0.4) / bg #ffffff / padding 10px 14px */
-                /*   placeholder 텍스트: "오른쪽에서 회의실을 선택해 주세요." (Figma 329:1050) */
+                /*   placeholder 텍스트: "오른쪽에서 회의실을 선택하세요" (Figma 329:1050 신 문구 — 보충 16 정정) */
                 /*   placeholder 폰트: Pretendard Medium 14px / rgba(189,197,212,0.8) (= PLACEHOLDER_COLOR) / lh 1.5 */
                 <div style={{
                   width:"100%",
@@ -2084,7 +2131,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                     color:PLACEHOLDER_COLOR, // ← [Phase G 보충 14] #b4bcca → PLACEHOLDER_COLOR = rgba(189,197,212,0.8) (Figma 329:1050)
                     whiteSpace:"nowrap",
                   }}>
-                    오른쪽에서 회의실을 선택해 주세요.
+                    오른쪽에서 회의실을 선택하세요{/* ← [Phase G 보충 16] "선택해 주세요." → "선택하세요" (Figma 329:1050 신 문구, 마침표/주 제거) */}
                   </span>
                 </div>
               )}
