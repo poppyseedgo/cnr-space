@@ -5,7 +5,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../utils/time'
 
-import { cancelBooking as apiCancelBooking, upsertBookingAttendees } from '../lib/api'
+import { cancelBooking as apiCancelBooking, upsertBookingAttendees, utcToKST } from '../lib/api'
 import { WeeklyView } from '../components/layout/CalendarShell'
 import { BookingStatusBadge } from '../components/common/BookingStatusBadge'
 import { supabase } from '../lib/supabase'
@@ -61,8 +61,12 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
         email: a.email ?? '',
         name:  a.name  ?? '',
       })),
-      start_at:      row.start_at,
-      end_at:        row.end_at,
+      // ← [2026-04-27 KST FIX] Supabase가 timestamptz를 UTC ISO("...+00:00")로 반환 → utcToKST로 +09:00 형식 변환 필수
+      //   · 배경: 기존 row.start_at 그대로 저장 → BookingListTable에서 tsTime(ts.slice(11,16))이 UTC 시각 슬라이스 → 9시간 차이 표시
+      //   · 해결: api.ts의 rowToBooking과 동일 패턴 적용 (utcToKST 함수 재사용)
+      //   · 영향: 시간 판정 로직 변경 없음 — 표시 데이터의 변환 타이밍만 정상화
+      start_at:      utcToKST(row.start_at),
+      end_at:        utcToKST(row.end_at),
       user:          row.user_name,
       dept:          row.user_dept,
       checkedIn:     row.checked_in,

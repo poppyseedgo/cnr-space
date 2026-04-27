@@ -34,7 +34,10 @@ import type { Booking, Room, AppUser, Feature, AttendeeRef } from '../types'
 
 // ── UTC → KST 변환 ───────────────────────────────────────────────────────────
 // Supabase가 UTC ISO 문자열로 반환하므로 앱 기준인 KST로 보정
-function utcToKST(ts: string): string {
+// ← [2026-04-27] export 추가 — MyPage.tsx 자체 fetch에서도 동일 변환 필수
+//   · 배경: MyPage가 api.ts를 우회하고 직접 supabase.from('bookings') 호출 → UTC 시각 그대로 표시되는 버그
+//   · 동작 변경 0 — 단순 export 키워드만 추가
+export function utcToKST(ts: string): string {
   if (!ts) return ts
   if (ts.includes('+09:00')) return ts  // 이미 KST면 패스
   const d  = new Date(ts)
