@@ -47,6 +47,28 @@
  *   · 노쇼 로직은 정상 작동 중이므로 건드리지 않음 (동일 패턴 방어는 필요 시 추후)
 
  *
+ * [2026-04-27 P3 v2] 노쇼 알림 사일런트 누락 버그 해결 (lock-step 보장)
+ *   · 증상: 테스트 예약 b1777262571607_0 — auto_cancelled=true, cancelled_by=system,
+ *           noshow_notified=true(마킹 완료) 상태인데 이메일/인앱 모두 도착 안 함
+ *   · 근본 원인: callSendNotification 시그니처가 Promise<void>라
+ *           발송 결과(HTTP 4xx/5xx, 응답 본문의 success:false, 네트워크 예외)를
+ *           호출자에게 전달하지 못함. 호출자는 무조건 noshow_notified=true 마킹 →
+ *           다음 cron이 재시도 대상에서 배제 → 영구 누락 + DB 상태/실제 발송 lock-step 깨짐
+ *   · 해결:
+ *     (a) callSendNotification 시그니처: Promise<void> → Promise<boolean>
+ *         · HTTP non-2xx → false
+ *         · HTTP 200이지만 응답 json.success===false → false
+ *         · HTTP 200이지만 json.emailFailed > 0 → false (Resend 부분 실패)
+ *         · 네트워크 예외 → false
+ *         · 그 외 → true
+ *     (b) 노쇼 처리 루프: 발송 결과 boolean 받아서 true일 때만 마킹
+ *         · false 시 continue → noshow_notified=false 유지 → 다음 cron 자동 재시도
+ *   · 효과:
+ *     · 일시 실패: 다음 cron(15분 후) 자동 재시도, 사용자에게 결국 도달
+ *     · 영구 실패: DB가 정직하게 미발송 상태 유지, 운영자 로그로 인지 가능
+ *     · 멱등성 유지: 성공 마킹된 건은 다음 cron 쿼리에서 배제됨
+
+ *
  * ═══════════════════════════════════════════════════════════════════════════
  * 배포 규칙
  * ═══════════════════════════════════════════════════════════════════════════
@@ -78,9 +100,16 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
  * send-notification Edge Function 호출
  * · Edge Function 간 호출은 ANON_KEY Bearer 필수 (SERVICE_KEY 시 401)
  * · send-notification이 이메일 + 인앱 + Teams 모두 담당
- * · 실패해도 throw 안 함 (warn 로그만) — cron 전체 실행 중단 방지
+ * · throw 안 함 — boolean 반환으로 호출자에게 발송 결과 전달
+ *
+ * ← [2026-04-27 P3 v2] Promise<void> → Promise<boolean> 변경
+ *   호출자가 발송 성공 시에만 noshow_notified=true 마킹하도록 결과 전달.
+ *   마킹과 실제 발송 결과의 lock-step 보장이 목적.
+ *
+ * @returns true  = 발송 성공 (HTTP 200 + json.success !== false + emailFailed === 0)
+ *          false = 어떤 이유로든 실패 (다음 cron이 재시도해야 함)
  */
-async function callSendNotification(type: string, booking: any): Promise<void> {
+async function callSendNotification(type: string, booking: any): Promise<boolean> {
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/send-notification`, {
       method: 'POST',
@@ -91,11 +120,41 @@ async function callSendNotification(type: string, booking: any): Promise<void> {
       },
       body: JSON.stringify({ type, booking }),
     })
+
+    // ── 1차: HTTP 상태 코드 ──────────────────────────────────────────────
     if (!res.ok) {
-      console.warn(`[auto-cancel] send-notification(${type}) 실패 [${res.status}]:`, await res.text())
+      const body = await res.text()
+      console.warn(`[auto-cancel] send-notification(${type}) 실패 [${res.status}]:`, body)
+      return false
     }
+
+    // ── 2차: 응답 본문 검증 ──────────────────────────────────────────────
+    // ← [P3 v2] HTTP 200이라도 send-notification 내부에서 발송 실패 가능
+    //   send-notification 응답 형식: { success: bool, emailSent, emailFailed, ... }
+    //   · success === false (전체 실패)
+    //   · emailFailed > 0 (Resend Batch 일부 실패)
+    //   둘 중 하나라도 해당되면 false 반환 → 호출자가 재시도 보장
+    try {
+      const json = await res.json()
+      if (json && json.success === false) {
+        console.warn(`[auto-cancel] send-notification(${type}) 응답 success:false:`, JSON.stringify(json))
+        return false
+      }
+      if (json && typeof json.emailFailed === 'number' && json.emailFailed > 0) {
+        console.warn(`[auto-cancel] send-notification(${type}) 부분 발송 실패 (emailFailed=${json.emailFailed}):`, JSON.stringify(json))
+        return false
+      }
+    } catch (jsonErr) {
+      // 응답 본문이 JSON이 아닌 경우 — 비정상이지만 HTTP 200이므로
+      // 보수적으로 성공 취급 (응답 형식이 향후 변경되어도 호환 유지)
+      console.warn(`[auto-cancel] send-notification(${type}) 응답 JSON 파싱 실패 (HTTP 200, 본문 비정상) — 성공 취급`)
+    }
+
+    return true
   } catch (e: any) {
+    // 네트워크/타임아웃/DNS 등 fetch 자체 실패
     console.warn(`[auto-cancel] send-notification(${type}) 호출 오류:`, e?.message ?? String(e))
+    return false
   }
 }
 
@@ -220,11 +279,22 @@ Deno.serve(async () => {
     }
 
     for (const booking of (noshowToNotify ?? [])) {
-      // 이메일 발송
+      // ── 이메일 + 인앱 발송 (send-notification이 둘 다 처리) ──────────────
       const payload = await buildPayload(booking)
-      await callSendNotification('noshow', payload)
+      const sent = await callSendNotification('noshow', payload)
 
-      // 발송 완료 마킹 (원자성: notified=false 일 때만 true로)
+      // ← [2026-04-27 P3 v2] 발송 성공 시에만 마킹 — lock-step 보장
+      //   기존: 발송 결과 무관하게 noshow_notified=true 마킹 → 사일런트 누락
+      //   변경: false 반환 시 continue → noshow_notified=false 유지 →
+      //         다음 cron 회차에 (1-b) 쿼리가 재조회 → 자동 재시도
+      if (!sent) {
+        console.warn(
+          `[auto-cancel] noshow 발송 실패 — 마킹 스킵 (다음 cron 재시도 대기): ${booking.id} (${booking.title})`
+        )
+        continue
+      }
+
+      // ── 발송 완료 마킹 (원자성: notified=false 일 때만 true로) ──────────
       const { error: markErr } = await supabase
         .from('bookings')
         .update({ noshow_notified: true })
@@ -237,7 +307,7 @@ Deno.serve(async () => {
       }
 
       stats.noshow++
-      console.log(`[auto-cancel] noshow 알림 발송: ${booking.id} (${booking.title})`)
+      console.log(`[auto-cancel] noshow 알림 발송 성공 + 마킹 완료: ${booking.id} (${booking.title})`)
     }
 
     // ═══════════════════════════════════════════════════════════════════════
