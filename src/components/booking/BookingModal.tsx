@@ -2,6 +2,33 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-27 Phase G 보충 12] 회의실 필드 카드 Figma 329:1043(빈) / 329:981(선택) 1:1 매칭 + close 아이콘 SVG 교체
+ *      · 사용자 명시 요청 (Figma 절대 기준)
+ *      · 변경 범위: 데스크톱 좌측 패널 회의실 필드만 (기능/검증/판단 로직 절대 불변)
+ *      · Figma 329:1043 (빈 상태):
+ *        · 카드 환원: boxless span → 박스 컨테이너
+ *        · 사이즈: w 358 (Field 컨텐츠 영역 100%) / h 82 / radius 14
+ *        · 보더: 1px dashed #dee5f1
+ *        · 배경: #ffffff
+ *        · padding: 10px 14px
+ *        · placeholder 텍스트: "오른쪽에서 회의실을 선택하세요" → "오른쪽에서 회의실을 선택해 주세요." (마침표·주 환원, Figma 329:1050)
+ *        · placeholder 폰트: 16px → 14px / PLACEHOLDER_COLOR → #b4bcca / Pretendard Medium / lh 1.5
+ *      · Figma 329:981 (선택 상태):
+ *        · h 69 → 82 (Figma 329:988)
+ *        · radius 10 → 14 (Figma 329:988)
+ *        · 회의실명 fontSize 14 → 16 (Figma 329:990)
+ *        · 그 외 (border #b9f8cf / bg rgba 0.2 / padding 10 / 부가정보 12px Regular #979fb1 / 좌-우 flex space-between) Figma 매칭 유지
+ *      · close 아이콘 교체:
+ *        · lucide-react <X size={20} ... /> → 사용자 제공 close_svg.svg 인라인 적용 (Figma 329:995)
+ *        · path fill: #1C1B1F (사용자 제공 SVG 정확 매칭)
+ *      · Field paddingBottom={32} 제거 → 기본값 16 환원 (Figma 329:981 py-[16px])
+ *        · Phase G 보충 8 의 +16 추가 여백은 신 Figma에서 재정의됨
+ *      · 변경 안 함:
+ *        · 모바일 step2 RoomGrid2 (모바일 Figma 별도)
+ *        · Field 컴포넌트 (라벨 / borderBottom 색 등)
+ *        · L1990 참석자 chip 의 lucide X (회의실 close와 무관)
+ *        · 검증/판단 로직 일체 (사용자 명시 금지)
+ *
  *  - [2026-04-27 Phase G 보충 11] placeholder color alpha 0.6 → 0.8
  *      · 사용자 명시 요청: rgba(189, 197, 212, 0.6) → rgba(189, 197, 212, 0.8)
  *      · 효과: placeholder 톤이 약간 더 진해짐 (가독성 강화)
@@ -1878,18 +1905,18 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 </div>
               )}
             </Field>
-            {/* 회의실 — [Phase D] Field 적용, 빈/선택 상태 Figma 매칭 */}
-            {/*   빈 상태 (Figma 302:5639-5647): 점선 박스 + "오른쪽에서 회의실을 선택해주세요." */}
-            {/*   선택 상태 (Figma 299:3948-3955): 연두 박스 + 회의실명/층·정원 + X 아이콘 (해제) */}
-            {/*   ← [Phase G 보충 8 2026-04-27] padding-bottom 16 → 32 (Figma 308:555) — 다음 필드(참석자)와 여백 +16 */}
-            <Field label="회의실" required paddingBottom={32}>
+            {/* 회의실 — [Phase G 보충 12 2026-04-27] Figma 329:1043(빈) / 329:981(선택) 1:1 매칭 */}
+            {/*   빈 상태 (Figma 329:1043): 점선 박스 (#dee5f1) + "오른쪽에서 회의실을 선택해 주세요." (14px / #b4bcca) */}
+            {/*   선택 상태 (Figma 329:981): 연두 박스 (#b9f8cf) + 회의실명 16px / #111 + 부가정보 + close SVG */}
+            {/*   close 아이콘: 사용자 제공 close_svg.svg 인라인 적용 (path fill #1C1B1F) */}
+            <Field label="회의실" required> {/* ← [Phase G 보충 12] paddingBottom={32} 제거 (Figma 329:981 py-[16px]) */}
               {selectedRoom ? (
-                /* 선택 상태 */
+                /* 선택 상태 — Figma 329:981 */
                 <div style={{
                   width:"100%",
-                  height:69,
+                  height:82, // ← [Phase G 보충 12] 69 → 82 (Figma 329:988)
                   padding:10,
-                  borderRadius:10,
+                  borderRadius:14, // ← [Phase G 보충 12] 10 → 14 (Figma 329:988)
                   border:"1px solid #b9f8cf",
                   background:"rgba(185, 248, 207, 0.2)",
                   display:"flex",
@@ -1901,7 +1928,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   <div style={{display:"flex", flexDirection:"column", gap:4}}>
                     <span style={{
                       fontFamily:"Pretendard, sans-serif",
-                      fontWeight:500, fontSize:14, lineHeight:1, color:"#111",
+                      fontWeight:500, fontSize:16, lineHeight:1, color:"#111", // ← [Phase G 보충 12] fontSize 14 → 16 (Figma 329:990)
                     }}>
                       {selectedRoom.room_name}
                     </span>
@@ -1920,7 +1947,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                       }}>{selectedRoom.capacity}인</span>
                     </div>
                   </div>
-                  {/* 우측: X 아이콘 20px (해제) — set("room_id", null) 그대로 */}
+                  {/* 우측: close 아이콘 20px (해제) — [Phase G 보충 12] 사용자 제공 SVG 인라인 */}
                   <button
                     type="button"
                     onClick={()=>set("room_id", null)}
@@ -1933,22 +1960,39 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                       flexShrink:0,
                     }}
                   >
-                    <X size={20} strokeWidth={1.8} color="#111"/>
+                    {/* ← [Phase G 보충 12] lucide X → 사용자 제공 close_svg.svg 인라인 (path fill #1C1B1F) */}
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                      <path d="M5.33464 15.0846L4.91797 14.668L9.58464 10.0013L4.91797 5.33464L5.33464 4.91797L10.0013 9.58464L14.668 4.91797L15.0846 5.33464L10.418 10.0013L15.0846 14.668L14.668 15.0846L10.0013 10.418L5.33464 15.0846Z" fill="#1C1B1F"/>
+                    </svg>
                   </button>
                 </div>
               ) : (
-                /* 빈 상태 — [Phase G 2026-04-26] 점선 박스 제거 → boxless 텍스트 (Figma 302:5646-5647) */
-                /*   height/padding/border 모두 제거, 단순 텍스트만 표시 */
-                /*   텍스트: "오른쪽에서 회의실을 선택해주세요." → "오른쪽에서 회의실을 선택하세요" (마침표/주 제거) */
-                /*   color rgba(189,197,212,0.6) — 다른 placeholder 필드와 통일 */
-                <span style={{
-                  fontFamily:"Pretendard, sans-serif",
-                  fontWeight:500, fontSize:16, lineHeight:1.5,
-                  color:PLACEHOLDER_COLOR,
-                  whiteSpace:"nowrap",
+                /* 빈 상태 — Figma 329:1043 — [Phase G 보충 12] boxless → 박스 환원 */
+                /*   사이즈: w 100% / h 82 / radius 14 / border 1px dashed #dee5f1 / bg #ffffff / padding 10px 14px */
+                /*   placeholder 텍스트: "오른쪽에서 회의실을 선택해 주세요." (Figma 329:1050 정확 매칭) */
+                /*   placeholder 폰트: Pretendard Medium 14px / #b4bcca / lh 1.5 */
+                <div style={{
+                  width:"100%",
+                  height:82, // ← [Phase G 보충 12] boxless → 82 박스 환원
+                  padding:"10px 14px", // ← [Phase G 보충 12] 0 → 10 14
+                  border:"1px dashed #dee5f1", // ← [Phase G 보충 12] none → 1px dashed
+                  borderRadius:14, // ← [Phase G 보충 12] 0 → 14
+                  background:"#ffffff", // ← [Phase G 보충 12] transparent → white
+                  boxSizing:"border-box",
+                  display:"flex",
+                  alignItems:"flex-start",
                 }}>
-                  오른쪽에서 회의실을 선택하세요
-                </span>
+                  <span style={{
+                    fontFamily:"Pretendard, sans-serif",
+                    fontWeight:500,
+                    fontSize:14, // ← [Phase G 보충 12] 16 → 14 (Figma 329:1050)
+                    lineHeight:1.5,
+                    color:"#b4bcca", // ← [Phase G 보충 12] PLACEHOLDER_COLOR → #b4bcca (Figma 329:1050 정확값)
+                    whiteSpace:"nowrap",
+                  }}>
+                    오른쪽에서 회의실을 선택해 주세요. {/* ← [Phase G 보충 12] "선택하세요" → "선택해 주세요." (Figma 329:1050) */}
+                  </span>
+                </div>
               )}
             </Field>
             {/* 참석자 — [Phase E] Field 적용 (선택 입력 — 빨간 점 없음) */}
