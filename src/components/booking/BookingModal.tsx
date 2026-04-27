@@ -2,6 +2,32 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-27 Phase G 보충 13] 시간 필드 Figma 331:1201(가능) / 331:1223(불가) 1:1 매칭 + down arrow SVG 교체
+ *      · 사용자 명시 요청 (Figma 절대 기준)
+ *      · 변경 범위: 데스크톱 좌측 패널 시간 필드만 (기능/검증/판단 로직 절대 불변)
+ *      · Figma 331:1201 (시간 가능 상태):
+ *        · 외곽 column gap: 16 → 14 (Figma 331:1207)
+ *        · 외곽 width: flex:1 → 240px 고정 (Figma 331:1207)
+ *        · 시간 row layout: gap:24 → justify-between + w-full (Figma 331:1208)
+ *        · ⎯ 구분자 환원 (Phase G에서 제거되었던 것을 새 Figma 331:1214에서 다시 명시)
+ *        · "부터"/"까지" 라벨 제거 (Figma에 없음)
+ *        · 시작/종료 그룹: 외곽 gap 24 → gap 8 단순화 (Figma 331:1209/1215)
+ *      · Figma 331:1223 (시간 불가 상태 = noTimeLeft):
+ *        · 점선 박스 + Ban 아이콘 + 1줄 → boxless 2줄 placeholder 텍스트 (Figma 331:1229/1230)
+ *        · 텍스트 "오늘은 더 예약할 수 없습니다" + "날짜를 변경하세요" (Figma 331:1230 정확)
+ *        · 폰트 13px 600 #94A3B8 → Pretendard Medium 16px / lh 1.5 / PLACEHOLDER_COLOR
+ *        · Ban 아이콘 / 점선 박스 / bg / radius / padding 일체 제거
+ *      · down arrow 아이콘 교체:
+ *        · lucide-react <ChevronDown size={16} ... /> 2곳 → 사용자 제공 arrow_svg.svg 인라인 (Figma 331:1211/1217)
+ *        · path fill: #1C1B1F (사용자 제공 SVG 정확 매칭)
+ *      · 미변경:
+ *        · 모바일 시간 필드 (TimeRangePicker)
+ *        · 시간 판단 로직 (tOpts / endOpts / validTime / noTimeLeft / isAfter7pm 정의 그대로)
+ *        · select onChange 핸들러 (시작 변경 시 종료 +15분 자동 보정 등)
+ *        · isAfter7pm 경고 UI (Figma 미정의 케이스 — 안전망 유지)
+ *        · 다른 ChevronDown 사용처 (L1007/1052 모바일, L1448 다른 드롭다운)
+ *        · "N분 사용" 배지 폰트/배경/사이즈 (Figma 331:1221 일치)
+ *
  *  - [2026-04-27 Phase G 보충 12] 회의실 필드 카드 Figma 329:1043(빈) / 329:981(선택) 1:1 매칭 + close 아이콘 SVG 교체
  *      · 사용자 명시 요청 (Figma 절대 기준)
  *      · 변경 범위: 데스크톱 좌측 패널 회의실 필드만 (기능/검증/판단 로직 절대 불변)
@@ -1788,48 +1814,70 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 )}
               </div>
             </Field>
-            {/* 시간 — [Phase C] Field 적용, select 두 개 → 텍스트 + ChevronDown + 동적 N분 사용 배지 */}
-            {/*   native select를 absolute(opacity:0)로 위에 띄움 → 클릭 시 OS native dropdown 열림 */}
-            {/*   기존 onChange 로직 (form.start 변경 시 end +15분 자동) 그대로 유지 */}
-            {/*   [Phase G 2026-04-26] "부터" / "까지" 텍스트 추가, 구분자 ⎯ 제거, gap 24 (Figma 매칭) */}
+            {/* 시간 — [Phase G 보충 13 2026-04-27] Figma 331:1201(가능) / 331:1223(불가) 1:1 매칭 */}
+            {/*   가능 상태 (Figma 331:1201): 폭 240 / 외곽 gap 14 / 내부 시간 row justify-between + ⎯ 환원 + gap 8 / "부터·까지" 라벨 제거 */}
+            {/*   불가 상태 (Figma 331:1223): 점선 박스 + Ban → boxless 2줄 placeholder 텍스트 (Pretendard Medium 16 / lh 1.5 / PLACEHOLDER_COLOR) */}
+            {/*   down arrow: lucide ChevronDown → 사용자 제공 arrow_svg.svg 인라인 (path fill #1C1B1F) */}
+            {/*   native select absolute(opacity:0) 트릭 / onChange 핸들러 / 시간 판단 로직 일체 불변 */}
             <Field label="시간" required>
               {noTimeLeft ? (
-                /* 18:45 이후 — 기존 디자인 유지 (피그마에 없는 예외 케이스) */
-                <div style={{display:"flex",alignItems:"center",
-                  background:"#F8FAFC",border:"1.5px dashed #CBD5E1",borderRadius:10,
-                  padding:"14px 16px",color:"#94A3B8",fontSize:13,fontWeight:600,gap:8}}>
-                  <Ban size={16} strokeWidth={1.8}/>
-                  오늘은 더 예약할 수 없습니다
+                /* 불가 상태 — Figma 331:1223 — [Phase G 보충 13] 점선/Ban → boxless 2줄 placeholder 텍스트 */
+                /*   Figma 331:1230: Pretendard Medium 16px / lh 1.5 / rgba(189,197,212,0.8) (= PLACEHOLDER_COLOR) */
+                <div style={{
+                  display:"flex", flexDirection:"column",
+                  width:240, // ← [Phase G 보충 13] Figma 331:1229 폭 240
+                }}>
+                  <span style={{
+                    fontFamily:"Pretendard, sans-serif",
+                    fontWeight:500, fontSize:16, lineHeight:1.5,
+                    color:PLACEHOLDER_COLOR, // ← [Phase G 보충 13] #94A3B8 → PLACEHOLDER_COLOR (Figma 331:1230)
+                    whiteSpace:"nowrap",
+                  }}>오늘은 더 예약할 수 없습니다</span>
+                  <span style={{
+                    fontFamily:"Pretendard, sans-serif",
+                    fontWeight:500, fontSize:16, lineHeight:1.5,
+                    color:PLACEHOLDER_COLOR,
+                    whiteSpace:"nowrap",
+                  }}>날짜를 변경하세요</span> {/* ← [Phase G 보충 13] 2번째 줄 추가 (Figma 331:1230) */}
                 </div>
               ) : (
-                /* ← [Phase G] 시간 행↔배지 사이 gap 10 → 16 */
-                <div style={{display:"flex", flexDirection:"column", gap:16}}>
+                /* 가능 상태 — Figma 331:1201 / 331:1207 */
+                <div style={{
+                  display:"flex", flexDirection:"column",
+                  gap:14, // ← [Phase G 보충 13] 16 → 14 (Figma 331:1207 gap-[14px])
+                  width:240, // ← [Phase G 보충 13] flex:1 → 240 고정 (Figma 331:1207 w-[240px])
+                }}>
                   {isAfter7pm && (
-                    /* 19:00 이후 — 기존 경고 유지 */
+                    /* 19:00 이후 — 기존 경고 유지 (Figma 미정의 케이스 / 안전망) */
                     <span style={{fontSize:11,fontWeight:600,color:"#C2410C",display:"flex",alignItems:"center",gap:4}}>
                       <AlertCircle size={11} strokeWidth={1.8} color="#F97316"/>
                       오후 7시 이후에는 예약할 수 없습니다.
                     </span>
                   )}
-                  {/* 시간 선택 행: 시작 그룹 + 종료 그룹 (gap 24, ⎯ 구분자 제거) */}
-                  <div style={{display:"flex", alignItems:"center", gap:24}}>
-                    {/* 시작 그룹: [시간 + "부터"] (gap 4) [▼] (gap 24) */}
-                    <div style={{position:"relative", display:"inline-flex", alignItems:"center", gap:24, cursor:"pointer"}}>
-                      <div style={{display:"inline-flex", alignItems:"center", gap:4}}>
-                        <span style={{
-                          fontFamily:"Pretendard, sans-serif",
-                          fontWeight:500, fontSize:16, lineHeight:1, color:"#111",
-                          whiteSpace:"nowrap",
-                        }}>
-                          {fmtTime(form.start)}
-                        </span>
-                        <span style={{
-                          fontFamily:"Pretendard, sans-serif",
-                          fontWeight:500, fontSize:16, lineHeight:1, color:PLACEHOLDER_COLOR,
-                          whiteSpace:"nowrap",
-                        }}>부터</span>
-                      </div>
-                      <ChevronDown size={16} strokeWidth={1.8} color="#111"/>
+                  {/* 시간 선택 행 — [Phase G 보충 13] Figma 331:1208 1:1 매칭: justify-between + ⎯ 구분자 환원 */}
+                  <div style={{
+                    display:"flex", alignItems:"center",
+                    justifyContent:"space-between", // ← [Phase G 보충 13] gap:24 → space-between (Figma 331:1208)
+                    width:"100%", // ← [Phase G 보충 13] 240px 컨테이너 내부 100% (Figma 331:1208 w-full)
+                  }}>
+                    {/* 시작 그룹 — Figma 331:1209: gap 8 / items-center / 시간 + arrow 만 ("부터" 제거) */}
+                    <div style={{
+                      position:"relative", display:"inline-flex", alignItems:"center",
+                      gap:8, // ← [Phase G 보충 13] gap:24 외곽 → gap:8 단일 (Figma 331:1209)
+                      cursor:"pointer",
+                    }}>
+                      <span style={{
+                        fontFamily:"Pretendard, sans-serif",
+                        fontWeight:500, fontSize:16, lineHeight:1, color:"#111",
+                        whiteSpace:"nowrap",
+                      }}>
+                        {fmtTime(form.start)}
+                      </span>
+                      {/* ← [Phase G 보충 13] "부터" span 제거 (Figma 331:1209 미정의) */}
+                      {/* ← [Phase G 보충 13] lucide ChevronDown → 사용자 제공 arrow_svg.svg 인라인 (Figma 331:1211) */}
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M7.99961 9.66693L4.59961 6.26693L4.93294 5.93359L7.99961 9.00026L11.0663 5.93359L11.3996 6.26693L7.99961 9.66693Z" fill="#1C1B1F"/>
+                      </svg>
                       <select value={form.start} onChange={e=>{
                           set("start",e.target.value);
                           const newEnd=timeToMin(e.target.value)+15; // ← [2026-04-26] 60→15: 데스크톱 select 시작 변경 시 기본 15분
@@ -1846,23 +1894,30 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                         {tOpts.map(t=><option key={t} value={t}>{fmtTime(t)}</option>)}
                       </select>
                     </div>
-                    {/* 종료 그룹: [시간 + "까지"] (gap 4) [▼] (gap 24) */}
-                    <div style={{position:"relative", display:"inline-flex", alignItems:"center", gap:24, cursor:"pointer"}}>
-                      <div style={{display:"inline-flex", alignItems:"center", gap:4}}>
-                        <span style={{
-                          fontFamily:"Pretendard, sans-serif",
-                          fontWeight:500, fontSize:16, lineHeight:1, color:"#111",
-                          whiteSpace:"nowrap",
-                        }}>
-                          {fmtTime(form.end)}
-                        </span>
-                        <span style={{
-                          fontFamily:"Pretendard, sans-serif",
-                          fontWeight:500, fontSize:16, lineHeight:1, color:PLACEHOLDER_COLOR,
-                          whiteSpace:"nowrap",
-                        }}>까지</span>
-                      </div>
-                      <ChevronDown size={16} strokeWidth={1.8} color="#111"/>
+                    {/* ⎯ 구분자 — [Phase G 보충 13] Figma 331:1214 환원 (Pretendard Medium 16 / lh 1 / #111) */}
+                    <span style={{
+                      fontFamily:"Pretendard, sans-serif",
+                      fontWeight:500, fontSize:16, lineHeight:1, color:"#111",
+                      whiteSpace:"nowrap",
+                    }}>⎯</span>
+                    {/* 종료 그룹 — Figma 331:1215: gap 8 / items-center / 시간 + arrow 만 ("까지" 제거) */}
+                    <div style={{
+                      position:"relative", display:"inline-flex", alignItems:"center",
+                      gap:8, // ← [Phase G 보충 13] gap:24 외곽 → gap:8 단일 (Figma 331:1215)
+                      cursor:"pointer",
+                    }}>
+                      <span style={{
+                        fontFamily:"Pretendard, sans-serif",
+                        fontWeight:500, fontSize:16, lineHeight:1, color:"#111",
+                        whiteSpace:"nowrap",
+                      }}>
+                        {fmtTime(form.end)}
+                      </span>
+                      {/* ← [Phase G 보충 13] "까지" span 제거 (Figma 331:1215 미정의) */}
+                      {/* ← [Phase G 보충 13] lucide ChevronDown → 사용자 제공 arrow_svg.svg 인라인 (Figma 331:1217) */}
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M7.99961 9.66693L4.59961 6.26693L4.93294 5.93359L7.99961 9.00026L11.0663 5.93359L11.3996 6.26693L7.99961 9.66693Z" fill="#1C1B1F"/>
+                      </svg>
                       <select value={form.end} onChange={e=>set("end",e.target.value)}
                         style={{
                           position:"absolute", inset:0,
@@ -1875,7 +1930,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                       </select>
                     </div>
                   </div>
-                  {/* 동적 "N분 사용" 배지 (validTime일 때만) */}
+                  {/* 동적 "N분 사용" 배지 — Figma 331:1221 (h26 / p4 / r6 / bg #edf8ff / 12px Regular #111) — 변경 없음 */}
                   {validTime && (
                     <div style={{
                       width:"100%",
