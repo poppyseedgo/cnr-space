@@ -2,6 +2,11 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-28 Phase G 보충 18] 시간 필드 "N분 사용" 배지 padding 변경
+ *      · padding: 4 → "16px 4px" (상하 16px / 좌우 4px)
+ *      · 변경 위치: L2043 (데스크톱 좌측 시간 필드 validTime 분기 내 배지)
+ *      · 미변경: 배지 높이(26) / 반경(6) / 배경(#edf8ff) / 폰트 / 판단 로직 일체
+ *
  *  - [2026-04-27 Phase G 보충 17] 참석자 chip X 아이콘 — 사용자 제공 SVG 교체
  *      · 사용자 명시 요청 (Figma 331:1232 참석자 chip / 331:1238 close 아이콘)
  *      · 변경 위치 2곳:
@@ -2035,12 +2040,12 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                       </select>
                     </div>
                   </div>
-                  {/* 동적 "N분 사용" 배지 — Figma 337:1265 (h26 / p4 / r6 / bg #edf8ff / 12px Regular #111) — 변경 없음 */}
+                  {/* 동적 "N분 사용" 배지 — Figma 337:1265 (h26 / r6 / bg #edf8ff / 12px Regular #111) */}
                   {validTime && (
                     <div style={{
                       width:"100%",
                       height:26,
-                      padding:4,
+                      padding:"16px 4px", // ← [2026-04-28 Phase G 보충 18] 4 → "16px 4px" (상하 16 / 좌우 4)
                       borderRadius:6,
                       background:"#edf8ff",
                       display:"flex", alignItems:"center", justifyContent:"center",
