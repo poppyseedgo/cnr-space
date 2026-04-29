@@ -2,6 +2,13 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-04-29] 캘린더 탭 재진입 시 selectedDate 오늘로 리셋
+ *      · 증상: 캘린더에서 다른 날짜 탐색 → 실시간 현황으로 이동 → 캘린더 탭 재클릭 시
+ *              이전에 보던 날짜가 그대로 남아 있어 오늘 현황을 바로 볼 수 없었음
+ *      · 해결: setView('calendar') 호출 시 setSelectedDate(todayStr()) 동시 실행
+ *      · 변경 위치: setView 함수 내 1줄 추가
+ *      · 사이드 이펙트 없음 (addBooking 폴백 미도달 / React 배치 렌더 / 타 뷰 무관)
+ *
  *  - [2026-04-24 P2] HomeView 호출에 currentUserId prop 전달 추가
  *      · 목적: HomeView "오늘 내 예약" 필터를 MyPage 방식(UUID + email)으로 통일
  *      · 증상: 팀즈에서 이름 변경한 사용자의 홈 '오늘 내 예약' 카드 미표시
@@ -271,7 +278,7 @@ function AppContent() {
     window.scrollTo({ top: 0, behavior: 'instant' })
     // 탭 전환 시 해당 화면 필터 초기화
     if (v === 'home')     setHomeFilterFloor('ALL')
-    if (v === 'calendar') setCalFilterFloor('ALL')
+    if (v === 'calendar') { setCalFilterFloor('ALL'); setSelectedDate(todayStr()) } // ← [2026-04-29] 캘린더 탭 재진입 시 오늘로 리셋 — 다른 날짜 탐색 후 홈 갔다 돌아와도 항상 오늘부터 시작
   }
   const [calView, setCalView]     = useState("daily");
   const [selectedDate, setSelectedDate] = useState(todayStr());
