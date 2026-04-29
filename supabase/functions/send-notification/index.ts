@@ -254,13 +254,14 @@ function buildEmailItems(
   for (const att of recipients.attendees) {
     if (!att.email) continue
     const role = 'attendee' as const
-    // 본인 제외된 참석자 목록 (본인은 수신자니까 목록에서 뺌)
-    const listForThisAttendee = attendeeList.filter(a => a.email !== att.email)
+    // ← [2026-04-29] 본인 filter 제거 — 참석자도 전체 참석자 목록(본인 포함) 표시
+    //   기존: attendeeList.filter(본인 제외) → 본인이 빠진 목록 or 1인일 때 목록 자체 미노출
+    //   수정: attendeeList 그대로 전달 (예약자 메일과 동일하게 전체 참석자 노출)
     const html = renderEmail({
       ...baseInput,
       role,
       recipientName: att.name,
-      attendeeList:  listForThisAttendee,
+      attendeeList,
     })
     items.push({
       to:      att.email,
