@@ -1,5 +1,5 @@
 import { useBreakpoint } from '../../hooks/useBreakpoint'
-import { AlertTriangle, CheckCircle2, Clock, ShieldCheck, ShieldX } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock, LogOut, ShieldCheck, ShieldX } from 'lucide-react'
 import { useState } from 'react'
 import { todayStr, nowMinutes, tsDate, tsMin, fmtTSFull, fmtTSDateFull, CHECKIN_WINDOW_MIN } from '../../utils/time'
 import { getFloor } from '../../data/floors'
@@ -52,6 +52,12 @@ import { isMyBooking, isAttendee } from '../../utils/bookingOwnership'  // ← [
  *    · 후속: 동일 패턴 9곳(HomeView/CalendarShell/slotHelpers/Badge/ListTable/MyPage/Admin)
  *            은 P2~P8로 분리 배포 예정 — 본 P1은 '권한 손실' 긴급 복구에 한정.
  *
+ *  - [2026-04-29] 조기반납 버튼 추가
+ *    · 조건: isAct(진행중) && b.checkedIn(체크인 완료) → 닫기 + 조기반납 버튼 표시
+ *    · 섹션 3(Admin·본인) / 섹션 4(유저·본인) 에 분기 추가
+ *    · onEarlyEnd prop 신설 (App.tsx에서 전달 필요)
+ *    · isDone에 b.earlyEnded 이미 포함 → 조기반납 완료 후 닫기만 표시됨 (기존 로직 유지)
+ *
  *  - [2026-04-22 피그마 UI 재구성] Figma node 180:534 절대 기준 적용 (로직 무수정)
  *    · 헤더: 사각 상태칩(chip--square, radius 8) + 제목 21px SemiBold
  *    · 정보 리스트: 카드형(#F8FAFC) → 0.5px #F1F5F9 구분선형
@@ -78,7 +84,7 @@ function fmtDuration(startISO: string, endISO: string): string {
   return `${m}분`
 }
 
-export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,currentUser, currentUserId='', currentUserEmail='', rooms:rp=[], users:up=[], isAdmin=false, onApprove=null, onReject=null, onForceCancel=null}: any) {  // ← [2026-04-24 P1-hotfix] currentUserEmail 추가 — MyPage 방식 참석자 판정용
+export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarlyEnd=null,currentUser, currentUserId='', currentUserEmail='', rooms:rp=[], users:up=[], isAdmin=false, onApprove=null, onReject=null, onForceCancel=null}: any) {  // ← [2026-04-29] onEarlyEnd 추가 — 체크인 완료 후 조기반납 버튼용  // ← [2026-04-24 P1-hotfix] currentUserEmail 추가 — MyPage 방식 참석자 판정용
   const { isMobile } = useBreakpoint();
   const r=rp.find(r=>r.room_id===b.room_id);
   const floor=r ? getFloor(r.floor_id) : null;
@@ -318,6 +324,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         //         사유 입력 받은 후 adminForceCancelBooking(id, reason) 실행
         //   onClose() 유지: DetailModal 닫고 → 강제취소 다이얼로그가 그 자리에 뜸 (자연스러운 모달 교체)
         const BtnForce    = () => <Button variant="danger-outline" flex onClick={()=>{onForceCancel(b.id);onClose();}}>강제취소</Button>
+        const BtnEarlyEnd = () => <Button variant="danger-outline" flex onClick={()=>{onEarlyEnd(b.id);onClose();}} icon={<LogOut size={14} strokeWidth={1.8}/>}>조기반납</Button>  {/* ← [2026-04-29] 체크인 완료 후 조기반납 버튼 */}
 
         // ── [P2 v8] 체크인 대기 표시 조건 ──────────────────────────
         //   isFuture(시작 전) + tl <= 10 (10분 이내) + confirmed(승인된) + 취소/거절/체크인 안 됨
@@ -348,6 +355,8 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
           if (adminCanApprove) return btnWrap(<>{onApprove&&<BtnApprove />}<BtnCancel /></>)
           // 진행중 미체크인 → 체크인 + 취소
           if (isAct && !b.checkedIn) return btnWrap(<><BtnCancel /><BtnCheckin /></>)
+          // ← [2026-04-29] 진행중 체크인 완료 → 닫기 + 조기반납
+          if (isAct && b.checkedIn) return btnWrap(<><BtnClose />{onEarlyEnd&&<BtnEarlyEnd />}</>)
           // ← [P2 v8] 시작 10분 이내 confirmed → 취소 + 변경 + 체크인 대기(비활성)
           //   에메랄드룸은 변경 불가 → 취소 + 체크인 대기만
           if (showCheckinWait) return btnWrap(<><BtnCancel />{!isApprovedAdminRoom&&<BtnEdit />}<BtnCheckinWait /></>)
@@ -360,6 +369,8 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         if (isOwner) {
           // 진행중 미체크인 → 체크인 + 취소
           if (isAct && !b.checkedIn) return btnWrap(<><BtnCancel /><BtnCheckin /></>)
+          // ← [2026-04-29] 진행중 체크인 완료 → 닫기 + 조기반납
+          if (isAct && b.checkedIn) return btnWrap(<><BtnClose />{onEarlyEnd&&<BtnEarlyEnd />}</>)
           // ← [P2 v8] 시작 10분 이내 confirmed → 취소 + 변경 + 체크인 대기(비활성)
           //   정책: 체크인은 시작 후 10분 이내만 가능 → 지금은 '대기' 상태만 노출
           //   에메랄드룸 승인완료도 동일 로직 (에메랄드는 변경 불가이므로 BtnEdit 제외)
