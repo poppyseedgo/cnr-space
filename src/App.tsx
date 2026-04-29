@@ -2,6 +2,17 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-04-29] 캘린더 탭 재진입 시 오늘 일 뷰로 리셋
+ *      · 증상: 주간/월간 뷰 보다가 홈 갔다 캘린더 재진입 시 이전 뷰·날짜 그대로 유지됨
+ *      · 해결: setView('calendar') 분기에 setCalView('daily') 추가 (setSelectedDate(todayStr()) 기존 존재)
+ *
+ *  - [2026-04-29] subModal DetailModal에 onEarlyEnd / currentUserId / currentUserEmail 누락 추가
+ *      · RoomDetailModal → 예약 클릭(subModal) 경로에서 세 prop이 전달되지 않아
+ *        조기반납 버튼 미노출, 예약자 판정 불가 문제
+ *
+ *  - [2026-04-29] DetailModal onEarlyEnd={confirmAndEarlyEnd} 추가
+ *      · 기존 modal.type==='detail' 호출부에 prop 누락으로 조기반납 버튼 미출력
+ *
  *  - [2026-04-24 P2] HomeView 호출에 currentUserId prop 전달 추가
  *      · 목적: HomeView "오늘 내 예약" 필터를 MyPage 방식(UUID + email)으로 통일
  *      · 증상: 팀즈에서 이름 변경한 사용자의 홈 '오늘 내 예약' 카드 미표시
@@ -273,7 +284,7 @@ function AppContent() {
     window.scrollTo({ top: 0, behavior: 'instant' })
     // 탭 전환 시 해당 화면 필터 초기화
     if (v === 'home')     setHomeFilterFloor('ALL')
-    if (v === 'calendar') { setCalFilterFloor('ALL'); setSelectedDate(todayStr()) } // ← [2026-04-29] 캘린더 탭 재진입 시 오늘로 리셋
+    if (v === 'calendar') { setCalFilterFloor('ALL'); setSelectedDate(todayStr()); setCalView('daily') } // ← [2026-04-29] 캘린더 탭 재진입 시 오늘 일 뷰로 리셋
   }
   const [calView, setCalView]     = useState("daily");
   const [selectedDate, setSelectedDate] = useState(todayStr());
