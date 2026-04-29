@@ -300,12 +300,13 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
                      [upper | gap | button] 2-children 구조 유지 → 버튼 항상 맨 아래 */}
                 <div style={{display:"flex", flexDirection:"column", alignItems:"flex-start", flexShrink:0}}>
 
-                  {/* ① 타이틀 행 (377:315): h-24px, flex items-center, pb-6px, w-146px
-                       · 참석자·반복 뱃지가 있을 때 gap-6px로 타이틀과 분리 */}
+                  {/* ① 타이틀 행 (377:315): height auto, padding 0 0 4px 0, w-146px */}
                   <div style={{
-                    display:"flex", alignItems:"center", height:24,
-                    paddingBottom:6, width:146,  /* ← [Figma] pb-6px / w-146px */
-                    gap:6,                       /* ← [Figma 306:5704] gap-6px (참석자 카드 기준) */
+                    display:"flex", alignItems:"center",
+                    height:"auto",          /* ← [변경] 24px → auto */
+                    padding:"0 0 4px 0",    /* ← [변경] paddingBottom:6 → padding: 0 0 4px 0 */
+                    width:146,
+                    gap:6,
                     overflow:"hidden"
                   }}>
                     {/* ← [Figma UI갱신] 참석자 뱃지: bg-white border-1px-solid-#111 radius-4 */}
