@@ -259,17 +259,20 @@ export function RoomDetailModal({room:r, bookings, users = [], onClose, onBook, 
                       const startMin = tsMin(b.start_at);
                       const endMin   = tsMin(b.end_at);
 
-                      // ← [P2 v7] 상태 분기 재정리
-                      //   기존: isNoshow 판별이 `cancelledBy='system' && !checkedIn`으로
-                      //         시간축 없음 → pending_expired도 노쇼로 오분류
-                      //   변경: pending_expired 제외하고 '진짜 노쇼'만 isNoshow로 분류
-                      //         시각적 뱃지 표시는 BookingStatusBadge 단일 소스 사용
-                      const isSystemCancel = b.autoCancelled && b.cancelledBy === 'system'
-                                             && b.status !== 'rejected'
-                      // 기한초과: status='pending' 유지 OR cancelled지만 시작 후 10분 이내
-                      const isExpired  = isSystemCancel
-                                         && (b.status === 'pending' || bNow < startMin + 10)
-                      const isNoshow   = isSystemCancel && !isExpired
+                      // ── 기한초과 / 노쇼 판별 (2026-04-29 재정립) ──────────────────────
+                      // 기한초과(isExpired):
+                      //   · pending은 admin_only 룸에서만 발생 → r.is_admin_only로 룸 구분
+                      //   · cron 처리 시 status='cancelled' + cancelledBy='system'
+                      const isExpired  = !!r.is_admin_only          // ← [변경] 룸 구분
+                                       && b.status === 'cancelled'  // ← [변경] cron 처리 후 상태
+                                       && b.cancelledBy === 'system'
+                      // 노쇼(isNoshow):
+                      //   · status='confirmed' + cancelledBy='system' + !checkedIn
+                      //   · status='confirmed' 추가로 isExpired(status='cancelled')과 자연적 배타
+                      //   · !isExpired 가드 불필요 (status 조건이 이미 분리 역할)
+                      const isNoshow   = b.status === 'confirmed'        // ← [변경] status 명시
+                                       && b.cancelledBy === 'system'
+                                       && !b.checkedIn
                       const isPending  = !b.autoCancelled && b.status === 'pending';
                       const isEarlyEnd = !b.autoCancelled && b.earlyEnded;
                       const isActive   = !b.autoCancelled && !b.earlyEnded && startMin <= bNow && bNow < endMin;

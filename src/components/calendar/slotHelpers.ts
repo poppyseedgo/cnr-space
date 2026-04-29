@@ -108,26 +108,25 @@ export function getSlotState(
   const sm = tsMin(b.start_at)
   const em = tsMin(b.end_at)
 
-  // ── 시스템 취소 분리 (BookingStatusBadge P2 v7과 동일 로직) ──────
-  const isRejected    = b.status === 'rejected'
-  const isUserCancel  = b.autoCancelled && b.cancelledBy === 'user'
-  const isAdminCancel = b.autoCancelled && b.cancelledBy === 'admin'
-                        && !isRejected && !isUserCancel
-  const isSystemCancel = b.autoCancelled && b.cancelledBy === 'system'
-                         && !isRejected && !isUserCancel && !isAdminCancel
-  // 기한초과: status='pending' 유지되거나, cancelled지만 start_at 도달 직후 (10분 이내)
-  //  ← [2026-04-24 HOTFIX] isToday 가드 추가
-  //    tsMin()은 당일 자정 기준 분 단위, nowMinutes()는 "오늘"의 분 단위.
-  //    두 값은 같은 날짜일 때만 의미 있는 비교가 됨.
-  //    isToday=false(과거/미래 날짜)에서 `now < sm + 10` 비교하면,
-  //    예: 어제 10:30(sm=630) + 오늘 01:05(now=65) → 65 < 640 = true로 오판정됨
-  //    → 어제 노쇼가 오늘 새벽~오전에 전부 isExpiredPending=true로 오판정되어
-  //       isNoshow=false가 되면서 캘린더 Daily 뷰에서 "노쇼 박제"가 사라지는 버그.
-  //    해결: isToday일 때만 시간 비교, 아닐 때는 status만 확인.
-  const isExpiredPending = isSystemCancel
-                           && (b.status === 'pending' || (isToday && now < sm + 10))
-  // 노쇼: 그 외 시스템 취소 (start_at + 10분 경과 이후, 또는 오늘이 아닌 과거 날짜)
-  const isNoshow         = isSystemCancel && !isExpiredPending
+  // ── 기한초과 / 노쇼 판별 (2026-04-29 재정립) ──────────────────────
+  //
+  // 기한초과(isExpiredPending):
+  //   · pending(승인대기) 예약은 admin_only 룸(room_id=3)에서만 발생
+  //   · cron이 기한 초과 처리하면 → status='cancelled' + cancelledBy='system'
+  //   · 세 조건을 AND로 확정: room_id=3 + status='cancelled' + cancelledBy='system'
+  //   · 기존 isRejected/isUserCancel/isAdminCancel/isSystemCancel 소거법 제거
+  //   · 기존 시간 조건(isToday && now < sm+10) 제거
+  const isExpiredPending = b.room_id === 3             // ← [변경] admin only 룸 확정
+                         && b.status === 'cancelled'   // ← [변경] cron 처리 후 상태
+                         && b.cancelledBy === 'system' // ← [변경] 시스템 취소
+
+  // 노쇼(isNoshow):
+  //   · status='confirmed' + cancelledBy='system' + !checkedIn
+  //   · status='confirmed' 추가로 isExpiredPending(status='cancelled')과 자연적 배타
+  //   · !isExpiredPending 가드 불필요 (status 조건이 이미 분리 역할)
+  const isNoshow = b.status === 'confirmed'        // ← [변경] status 명시
+                 && b.cancelledBy === 'system'
+                 && !b.checkedIn
 
   const isEnded     = b.earlyEnded
   const isAct       = isToday && sm <= now && now < em
