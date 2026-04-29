@@ -1,6 +1,23 @@
 /**
  * api.ts — Supabase 기반 데이터 레이어
  *
+ * [2026-04-29] booking_attendees 중복 행 표시/저장 차단 (4지점 dedupe)
+ *   배경: DB의 booking_attendees 테이블에 (booking_id, email) 중복 행 43건 누적
+ *         원인 추적 종료 — 외부 INSERT 경로(트리거/race/자동작업) 차단 우선 적용
+ *   변경 위치 (4곳, 모두 api.ts):
+ *     ① loadBookings           — attendees 파싱 시 email 기준 dedupe (화면 표시 차단)
+ *     ② loadBookingsByRange    — Admin Dashboard 경로 동일 처리
+ *     ③ getBookingAttendees    — diff 계산 정확도 보장 (반환 email 목록 dedupe)
+ *     ④ upsertBookingAttendees — rows 생성 시 dedupe (신규 INSERT부터 중복 차단)
+ *   효과:
+ *     · 즉시: 기존 DB 중복 43건이 화면에서 1명씩만 표시 (DB 데이터는 그대로 보존)
+ *     · 이후: 새 예약/수정 시 DB 자체에 중복 INSERT 안 됨
+ *   호환성:
+ *     · email 정규화 trim().toLowerCase() — 대소문자/공백 차이로 인한 dedupe 누락 방지
+ *     · email 없는 행(외부인/이름만 있음)은 dedupe 제외 — 동명이인 보호
+ *     · 호출 측 시그니처/반환 타입 100% 동일 — 기존 컴포넌트 영향 0
+ *     · RLS / FK / Realtime 영향 0
+ *
  * 버그 수정:
  *  1. UTC→KST 변환: Supabase는 timestamptz를 UTC로 반환 → +9h 보정 필요
  *  2. [2026-04-23] loadBookings/loadUsers/loadRooms: 일시 오류 재시도 로직 추가
@@ -166,9 +183,12 @@ export async function loadBookings(): Promise<Booking[]> {
     return (data ?? []).map(row => {
       const parsed = rowToBooking(row)
       // booking_attendees 테이블에서 attendees 파싱 (email이 유일 키)
-      parsed.attendees = (row.booking_attendees ?? [])
-        .map((a: any): AttendeeRef => ({ email: a.email ?? '', name: a.name ?? '' }))
-        .filter((a: AttendeeRef) => a.email || a.name)
+      // ← [2026-04-29] dedupeAttendeesByEmail 적용 — DB 중복 행이 있어도 화면엔 1명씩만 표시
+      parsed.attendees = dedupeAttendeesByEmail(
+        (row.booking_attendees ?? [])
+          .map((a: any): AttendeeRef => ({ email: a.email ?? '', name: a.name ?? '' }))
+          .filter((a: AttendeeRef) => a.email || a.name)
+      )
       return parsed
     })
   } catch (e) {
@@ -194,9 +214,12 @@ export async function loadBookingsByRange(from: string, to: string): Promise<Boo
     if (error) throw error
     return (data ?? []).map(row => {
       const b = rowToBooking(row)
-      b.attendees = (row.booking_attendees ?? [])
-        .map((a: any): AttendeeRef => ({ email: a.email ?? '', name: a.name ?? '' }))
-        .filter((a: AttendeeRef) => a.email || a.name)
+      // ← [2026-04-29] dedupeAttendeesByEmail 적용 — Admin Dashboard 경로 동일 보장
+      b.attendees = dedupeAttendeesByEmail(
+        (row.booking_attendees ?? [])
+          .map((a: any): AttendeeRef => ({ email: a.email ?? '', name: a.name ?? '' }))
+          .filter((a: AttendeeRef) => a.email || a.name)
+      )
       return b
     })
   } catch (e) {
@@ -250,6 +273,29 @@ export async function insertBooking(booking: Booking): Promise<Booking> {
   return saved
 }
 
+// ── 참석자 email 기준 dedupe 헬퍼 ─────────────────────────────────────────────
+// [2026-04-29] booking_attendees 중복 행 표시/저장 양쪽 차단용
+//   · email 정규화: trim().toLowerCase() (대소문자/공백 차이로 인한 dedupe 누락 방지)
+//   · email 없는 행(외부인/이름만 있는 참석자)은 dedupe 제외 — 동명이인 보호
+//   · 첫 번째 등장한 행 우선 유지 (Stable order preservation)
+//   · 적용 위치: loadBookings / loadBookingsByRange / upsertBookingAttendees (3곳)
+function dedupeAttendeesByEmail<T extends { email?: string; name?: string }>(arr: T[]): T[] {
+  const seen = new Set<string>()
+  const result: T[] = []
+  for (const a of arr) {
+    const key = (a.email ?? '').trim().toLowerCase()
+    if (!key) {
+      // email 없는 행(이름만 있는 외부인)은 그대로 유지 — 동명이인 가능성 보호
+      result.push(a)
+      continue
+    }
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(a)
+  }
+  return result
+}
+
 // ── booking_attendees 저장 (예약 생성/수정 시 호출) ────────────────────────
 export async function upsertBookingAttendees(
   bookingId: string,
@@ -257,7 +303,10 @@ export async function upsertBookingAttendees(
 ): Promise<void> {
   await supabase.from('booking_attendees').delete().eq('booking_id', bookingId)
   if (!attendees || attendees.length === 0) return
-  const rows = attendees
+  // ← [2026-04-29] dedupeAttendeesByEmail 적용 — 새 INSERT부터는 DB 중복 차단
+  //   기존 동작: form.attendees가 어떤 경로로 중복을 포함하면 그대로 INSERT됨
+  //   변경 후:   email 기준 dedupe 후 INSERT → 같은 (booking_id, email) 행이 1개만 저장
+  const rows = dedupeAttendeesByEmail(attendees)
     .map(a => ({
       booking_id: bookingId,
       email: a.email ?? '',
@@ -277,7 +326,19 @@ export async function getBookingAttendees(bookingId: string): Promise<string[]> 
     .select('email')
     .eq('booking_id', bookingId)
   if (error) return []
-  return (data ?? []).map(r => r.email).filter(Boolean)
+  // ← [2026-04-29] email 기준 dedupe — diff 계산 정확도 보장
+  //   배경: DB 중복 행이 있을 때 동일 email이 2번 반환 → App.tsx의 oldAttendeeEmails 비교가 어긋남
+  //   처리: 정규화 trim().toLowerCase() 기준 첫 등장만 유지 (원본 email 문자열은 보존)
+  const seen = new Set<string>()
+  return (data ?? [])
+    .map(r => r.email)
+    .filter((e): e is string => Boolean(e))
+    .filter(e => {
+      const key = e.trim().toLowerCase()
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
 }
 
 // ── 단건 수정 ────────────────────────────────────────────────────────────────
