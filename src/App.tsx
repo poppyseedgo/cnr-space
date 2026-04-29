@@ -154,6 +154,8 @@ import { CalendarShell } from './components/layout/CalendarShell'
 import { BookingDoneModal } from './components/booking/BookingDoneModal'
 import { RecurDoneModal } from './components/booking/RecurDoneModal'
 import { ConfirmCancelModal } from './components/booking/ConfirmCancelModal'
+import { ConfirmEarlyEndModal } from './components/booking/ConfirmEarlyEndModal'   // ← [2026-04-29] 조기반납 확인 다이얼로그
+import { ConfirmRejectModal } from './components/booking/ConfirmRejectModal'       // ← [2026-04-29] 승인거절 다이얼로그
 import { ConfirmForceCancelModal } from './components/booking/ConfirmForceCancelModal' // ← [2026-04-24 P8-B] 관리자 강제취소 공통 다이얼로그
 import { BookingModal } from './components/booking/BookingModal'
 import { DetailModal } from './components/booking/DetailModal'
@@ -926,6 +928,36 @@ function AppContent() {
     }
   }, [bookings, rooms, users, currentUser, showToast, sendNotification])
 
+  // ── [2026-04-29] 조기반납 확인 다이얼로그 경유 헬퍼 ─────────────────────
+  //   용도: HomeView 소형카드 "조기반납" 버튼
+  //   구현: setModal로 ConfirmEarlyEndModal 띄우고, 확정 시 earlyEnd 실행
+  const confirmAndEarlyEnd = useCallback((id: string) => {
+    const targetBooking = bookings.find(b => b.id === id)
+    if (!targetBooking) return
+    setModal({
+      type: 'confirmEarlyEnd',
+      data: {
+        booking: targetBooking,
+        onConfirm: () => earlyEnd(id),
+      },
+    })
+  }, [bookings, earlyEnd])
+
+  // ── [2026-04-29] 승인거절 확인 다이얼로그 경유 헬퍼 ─────────────────────
+  //   용도: DetailModal 관리자 권한 "거절" 버튼 (기존 인라인 flow 대체)
+  //   구현: setModal로 ConfirmRejectModal 띄우고, 확정 시 rejectPendingBooking(id, reason) 실행
+  const confirmAndRejectBooking = useCallback((id: string) => {
+    const targetBooking = bookings.find(b => b.id === id)
+    if (!targetBooking) return
+    setModal({
+      type: 'confirmReject',
+      data: {
+        booking: targetBooking,
+        onConfirm: (reason: string) => rejectPendingBooking(id, reason),
+      },
+    })
+  }, [bookings, rejectPendingBooking])
+
   // ── [2026-04-24 P8-B] 강제취소 확인 다이얼로그 경유 헬퍼 ─────────────────
   //   용도: AdminPage 예약 관리 탭 + DetailModal 관리자 권한 강제취소 버튼
   //   동기: DetailModal이 하드코딩 사유('관리자 강제취소')로 즉시 호출하던 버그 해결
@@ -1483,7 +1515,7 @@ function AppContent() {
               const s = `${fmt2(Math.floor(clampedStart/60))}:${fmt2(clampedStart%60)}`;
               const e = `${fmt2(Math.floor(clampedEnd/60))}:${fmt2(clampedEnd%60)}`;
               setModal({type:"new", prefill:{room_id:r.room_id, start:s, end:e}});
-            }} onDetail={(r)=>setModal({type:"roomDetail",data:r})} onBookingDetail={(b)=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={confirmAndCancelBooking} currentUser={currentUser} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} dark={dark} />}{/* ← [2026-04-24 P8-A] onCancel: cancelBooking → confirmAndCancelBooking — 홈 "오늘 내 예약" 취소 버튼도 ConfirmCancelModal 다이얼로그 경유 (DetailModal과 동일 정책, 전체 취소 UX 통일) */}
+            }} onDetail={(r)=>setModal({type:"roomDetail",data:r})} onBookingDetail={(b)=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={confirmAndEarlyEnd} onCancel={confirmAndCancelBooking} currentUser={currentUser} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} dark={dark} />}{/* ← [2026-04-24 P8-A] onCancel: cancelBooking → confirmAndCancelBooking — 홈 "오늘 내 예약" 취소 버튼도 ConfirmCancelModal 다이얼로그 경유 (DetailModal과 동일 정책, 전체 취소 UX 통일) */}
           {/* ← [2026-04-24 P5] CalendarShell에 currentUserId/currentUserEmail/users 추가
                 · Daily 슬롯의 이름 live 표시 + filterMine/isOwner UUID/email 판정
                 · 원칙: 이름이 바뀌어도 부서가 바뀌어도 본인 예약으로 인식 */}
@@ -1492,7 +1524,7 @@ function AppContent() {
       )}
 
       {/* ← [2026-04-18 P0 fix] LazyErrorBoundary로 감싸 청크 로드 실패 시 흰 화면 방지 */}
-      {view==="mypage" && <LazyErrorBoundary><Suspense fallback={<MyPageSkeleton />}><MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={earlyEnd} onCancel={confirmAndCancelBooking} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} avatarUrl={authUser?.avatar_url ?? null} /></Suspense></LazyErrorBoundary>}{/* ← [2026-04-24 P8-A] onCancel: cancelBooking → confirmAndCancelBooking — MyPage 취소 버튼도 ConfirmCancelModal 경유 */}
+      {view==="mypage" && <LazyErrorBoundary><Suspense fallback={<MyPageSkeleton />}><MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={confirmAndEarlyEnd} onCancel={confirmAndCancelBooking} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} avatarUrl={authUser?.avatar_url ?? null} /></Suspense></LazyErrorBoundary>}{/* ← [2026-04-24 P8-A] onCancel: cancelBooking → confirmAndCancelBooking — MyPage 취소 버튼도 ConfirmCancelModal 경유 */}
       {/* ← [2026-04-24 P8-B] AdminView onForceCancel도 공통 다이얼로그 경유로 통일 */}
       {view==="admin" && <LazyErrorBoundary><Suspense fallback={<AdminSkeleton />}><AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={confirmAndAdminForceCancel} onDetail={b=>setModal({type:'detail',data:b})} /></Suspense></LazyErrorBoundary>}
 
@@ -1528,7 +1560,7 @@ function AppContent() {
                    원인: setModal({data:b}) 시점 박제. bookings state 갱신되어도 modal.data는 React state 아님
                    해결: bookings에서 id로 매번 다시 찾아 전달 — Realtime/markNoshow 직후 자동 re-render
                    짝 배포: lib/api.ts cancelBooking Layer 1 가드 (DB 단 차폐) */}
-            {modal.type==="detail"      && <DetailModal booking={bookings.find(b=>b.id===modal.data?.id) ?? modal.data} onClose={()=>setModal(null)} onCheckIn={checkIn} onCancel={confirmAndCancelBooking} onEdit={(b)=>setModal({type:"edit",data:b})} currentUser={currentUser} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} isAdmin={isAdmin} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={confirmAndAdminForceCancel} />}
+            {modal.type==="detail"      && <DetailModal booking={bookings.find(b=>b.id===modal.data?.id) ?? modal.data} onClose={()=>setModal(null)} onCheckIn={checkIn} onCancel={confirmAndCancelBooking} onEdit={(b)=>setModal({type:"edit",data:b})} currentUser={currentUser} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} isAdmin={isAdmin} onApprove={approvePendingBooking} onReject={confirmAndRejectBooking} onForceCancel={confirmAndAdminForceCancel} />}
             {modal.type==="bookingDone" && <BookingDoneModal booking={modal.data} onClose={()=>setModal(null)} rooms={rooms} users={users} />}
             {modal.type==="recurDone"    && <RecurDoneModal data={modal.data} onClose={()=>setModal(null)} />}
             {/* ← [P2 v8 신규] 예약 취소 확인 다이얼로그 */}
@@ -1538,10 +1570,25 @@ function AppContent() {
               onConfirm={modal.data.onConfirm}
               onClose={()=>setModal(null)}
             />}
+            {/* ← [2026-04-29] 조기반납 확인 다이얼로그 */}
+            {modal.type==="confirmEarlyEnd" && <ConfirmEarlyEndModal
+              booking={modal.data.booking}
+              room={rooms.find((r: any) => r.room_id === modal.data.booking.room_id)}
+              onConfirm={modal.data.onConfirm}
+              onClose={()=>setModal(null)}
+            />}
+            {/* ← [2026-04-29] 승인거절 확인 다이얼로그 */}
+            {modal.type==="confirmReject" && <ConfirmRejectModal
+              booking={modal.data.booking}
+              room={rooms.find((r: any) => r.room_id === modal.data.booking.room_id)}
+              onConfirm={modal.data.onConfirm}
+              onClose={()=>setModal(null)}
+            />}
             {/* ← [2026-04-24 P8-B] 관리자 강제취소 공통 다이얼로그 분기 추가
                    confirmAndAdminForceCancel 헬퍼로 띄움. onConfirm은 사유 문자열 받아 처리. */}
             {modal.type==="confirmForceCancel" && <ConfirmForceCancelModal
               booking={modal.data.booking}
+              room={rooms.find((r: any) => r.room_id === modal.data.booking.room_id)}
               onConfirm={modal.data.onConfirm}
               onClose={()=>setModal(null)}
             />}
@@ -1592,7 +1639,7 @@ function AppContent() {
             users={users}
             isAdmin={isAdmin}
             onApprove={approvePendingBooking}
-            onReject={rejectPendingBooking}
+            onReject={confirmAndRejectBooking}
             onForceCancel={confirmAndAdminForceCancel}
             /* ← [2026-04-24 P8-B] SubModal도 공통 다이얼로그 경유 */
           />}

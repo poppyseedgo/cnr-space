@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { LogOut } from 'lucide-react'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { fmtTSDateFull, fmtTSRangeFull } from '../../utils/time'
 import type { Booking, Room } from '../../types'
@@ -7,37 +7,31 @@ import { Button } from '../common/Button'
 import { ModalCloseButton } from '../common/ModalCloseButton'
 
 /**
- * ConfirmForceCancelModal — 관리자 강제 취소 확인 다이얼로그
+ * ConfirmEarlyEndModal — 조기 반납 확인 다이얼로그
  *
  * 설계 원칙:
- *  · 파괴적 액션(예약 강제취소)에 대한 실수 방지 장벽
- *  · 기본 focus = "돌아가기" 버튼 (Enter 연타로 실수 방지)
- *  · ESC 키로 닫기
- *  · 사유 입력은 선택 — 빈값 제출 시 기본값 '관리자 강제 취소' 적용
+ *  · 진행 중 예약의 조기 반납 전 실수 방지 확인
+ *  · 기본 focus = "닫기" 버튼 (Enter 연타로 실수 방지)
+ *  · ESC 키로 취소 (닫기)
+ *  · 확정 버튼 = 우측 + 검정 (primary action, 위험 없는 상태변경)
  *  · 비동기 처리 중 버튼 비활성화 (중복 클릭 방지)
  *
  * 적용 범위:
- *  · AdminPage 예약 관리 탭의 "강제 취소" 버튼
- *  · DetailModal 관리자 권한 "강제취소" 버튼
+ *  · HomeView 소형카드 "조기반납" 버튼
  *
  * ✅ 변경 이력
- *  - [2026-04-24 P8-B 신규] AdminPage 인라인 모달을 공통 컴포넌트로 추출
- *  - [2026-04-29 리디자인] ConfirmCancelModal 스타일 통일, isMobile 지원, room prop 추가
- *    · 기존: AdminPage 원본 UI 1:1 복사 (구형 스타일, isMobile 없음)
- *    · 변경: 예약 요약 카드 + 아이콘 헤더 + ModalCloseButton — 전체 다이얼로그 디자인 통일
+ *  - [2026-04-29 신규] 조기반납 confirm dialog 도입 (즉시 실행 → 다이얼로그 경유로 변경)
  */
 
-interface ConfirmForceCancelModalProps {
+interface ConfirmEarlyEndModalProps {
   booking:   Booking
   room?:     Room
-  /** 사유 문자열 전달 — 빈값이면 내부에서 '관리자 강제 취소' 기본값 적용 */
-  onConfirm: (reason: string) => Promise<void> | void
+  onConfirm: () => Promise<void> | void
   onClose:   () => void
 }
 
-export function ConfirmForceCancelModal({ booking: b, room: r, onConfirm, onClose }: ConfirmForceCancelModalProps) {
+export function ConfirmEarlyEndModal({ booking: b, room: r, onConfirm, onClose }: ConfirmEarlyEndModalProps) {
   const { isMobile } = useBreakpoint()
-  const [reason, setReason]   = useState('')
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -52,7 +46,7 @@ export function ConfirmForceCancelModal({ booking: b, room: r, onConfirm, onClos
     if (loading) return
     setLoading(true)
     try {
-      await onConfirm(reason || '관리자 강제 취소') // ← 빈값이면 기본값 치환
+      await onConfirm()
     } catch {
       setLoading(false)
     }
@@ -86,10 +80,10 @@ export function ConfirmForceCancelModal({ booking: b, room: r, onConfirm, onClos
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
             <div style={{
               width: 36, height: 36, borderRadius: '50%',
-              background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center',
               flexShrink: 0,
             }}>
-              <AlertTriangle size={18} strokeWidth={2} color="#DC2626" />
+              <LogOut size={18} strokeWidth={2} color="#D97706" />
             </div>
             <div style={{
               fontSize: isMobile ? 16 : 17,
@@ -97,7 +91,7 @@ export function ConfirmForceCancelModal({ booking: b, room: r, onConfirm, onClos
               color: '#111111',
               lineHeight: 1.4,
             }}>
-              예약 강제 취소
+              지금 조기 반납하시겠습니까?
             </div>
           </div>
           <ModalCloseButton onClick={onClose} disabled={loading} style={{ marginLeft: 8 }} />
@@ -117,7 +111,6 @@ export function ConfirmForceCancelModal({ booking: b, room: r, onConfirm, onClos
             {b.title}
           </div>
           <div style={{ fontSize: 12, color: '#64748B', lineHeight: 1.6 }}>
-            <div>{b.user}{(b as any).dept ? ` · ${(b as any).dept}` : ''}</div>
             <div>
               <span style={{ color: r?.color ?? '#64748B', fontWeight: 600 }}>
                 {r?.room_name ?? '-'}
@@ -131,42 +124,15 @@ export function ConfirmForceCancelModal({ booking: b, room: r, onConfirm, onClos
           </div>
         </div>
 
-        {/* 사유 입력 */}
-        <label style={{
-          fontSize: 11, fontWeight: 600, color: '#94A3B8',
-          display: 'block', marginBottom: 6,
-        }}>
-          취소 사유 (선택)
-        </label>
-        <textarea
-          value={reason}
-          onChange={e => setReason(e.target.value)}
-          rows={3}
-          placeholder="취소 사유를 입력하세요 (선택)"
-          disabled={loading}
-          style={{
-            width: '100%',
-            background: '#F8FAFC',
-            border: '1px solid #E2E8F0',
-            borderRadius: 10,
-            padding: '10px 14px',
-            fontSize: 13,
-            outline: 'none',
-            resize: 'none',
-            boxSizing: 'border-box',
-            marginBottom: 12,
-          }}
-        />
-
         {/* 안내 문구 */}
         <div style={{
           fontSize: 12, color: '#64748B', lineHeight: 1.6, marginBottom: 4,
         }}>
-          취소 즉시 회의실이 해제되며, 예약자와 참석자에게 알림이 발송됩니다.
+          반납 즉시 회의실이 해제되며, 남은 시간은 다른 사람이 예약할 수 있습니다.
         </div>
       </div>
 
-      {/* 버튼 영역 — 기본 focus = "돌아가기" (실수 방지) */}
+      {/* 버튼 영역 — 기본 focus = "닫기" (실수 방지) */}
       <div style={{
         display: 'flex', gap: 8,
         padding: isMobile ? '8px 20px 20px' : '8px 24px 20px',
@@ -178,15 +144,15 @@ export function ConfirmForceCancelModal({ booking: b, room: r, onConfirm, onClos
           disabled={loading}
           autoFocus
         >
-          돌아가기
+          닫기
         </Button>
         <Button
-          variant="danger"
+          variant="primary"
           flex
           onClick={handleConfirm}
           loading={loading}
         >
-          {loading ? '처리 중' : '강제 취소'}
+          {loading ? '처리 중' : '조기 반납'}
         </Button>
       </div>
     </div>

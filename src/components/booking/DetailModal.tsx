@@ -102,9 +102,6 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
   const isExpiredPending = b.status === 'pending' && b.autoCancelled;
   // 승인완료된 관리자 전용룸(에메랄드) → 변경 불가, 취소만 가능
   const isApprovedAdminRoom = !!(r?.is_admin_only && b.status === 'confirmed')
-  // 관리자 거절 인라인 flow 상태
-  const [showRejectInput, setShowRejectInput] = useState(false);
-  const [rejectReasonInput, setRejectReasonInput] = useState('');
   return(
     <div className="anm" style={{
       background:"#fff",
@@ -314,7 +311,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
         //   UX: disabled로 시각 안내만 제공, 실제 클릭 불가 (Button.disabled → opacity 0.45 + cursor 'not-allowed')
         const BtnCheckinWait = () => <Button variant="secondary"   flex disabled icon={<Clock size={14} strokeWidth={1.8}/>}>체크인 대기</Button>
         const BtnApprove  = () => <Button variant="success"        flex onClick={()=>{onApprove(b.id);onClose();}} icon={<ShieldCheck size={14} strokeWidth={1.8}/>}>승인</Button>
-        const BtnReject   = () => <Button variant="danger-outline" flex onClick={()=>setShowRejectInput(true)} icon={<ShieldX size={13} strokeWidth={1.8}/>}>거절</Button>
+        const BtnReject   = () => <Button variant="danger-outline" flex onClick={()=>onReject(b.id)} icon={<ShieldX size={13} strokeWidth={1.8}/>}>거절</Button> // ← [2026-04-29] 인라인 flow 제거 → confirmAndRejectBooking 다이얼로그 경유
         // ← [2026-04-24 P8-B] 강제취소 버튼 동작 변경
         //   기존: onForceCancel(id, '관리자 강제취소') — 하드코딩 사유로 즉시 실행 (사유 입력 다이얼로그 없음)
         //   변경: onForceCancel(id) — App.tsx confirmAndAdminForceCancel이 ConfirmForceCancelModal 자동 오픈
@@ -336,23 +333,6 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,current
 
         // ── 2. Admin · 타인 ──────────────────────────────────────────
         if (isAdmin && !isOwner) {
-          // 거절 사유 입력 flow
-          if (showRejectInput) return (
-            <div style={{flexShrink:0}}>
-              <div style={{padding: isMobile?"8px 20px 0":"8px 20px 0"}}>
-                <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"12px 14px",marginBottom:8}}>
-                  <div style={{fontSize:11,color:"#92400E",marginBottom:8,fontWeight:600}}>⚠️ 거절 시 예약이 즉시 취소되며 신청자에게 알림이 발송됩니다</div>
-                  <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:6}}>거절 사유 (신청자에게 전달됩니다)</label>
-                  <textarea value={rejectReasonInput} onChange={e=>setRejectReasonInput(e.target.value)} rows={2} placeholder="거절 사유를 입력하세요 (선택)"
-                    style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid #E2E8F0",fontSize:12,outline:"none",resize:"none",background:"#fff",boxSizing:"border-box" as const}} />
-                </div>
-                <div style={{display:"flex",gap:8,marginBottom:8}}>
-                  <Button variant="ghost"  flex size="sm" onClick={()=>{setShowRejectInput(false);setRejectReasonInput('');}}>취소</Button>
-                  <Button variant="danger" flex size="sm" onClick={()=>{onReject(b.id,rejectReasonInput||'');setShowRejectInput(false);setRejectReasonInput('');onClose();}}>거절 확정</Button>
-                </div>
-              </div>
-            </div>
-          )
           // pending → 닫기 + 거절 + 승인
           if (adminCanApprove) return btnWrap(<><BtnClose />{onReject&&<BtnReject />}{onApprove&&<BtnApprove />}</>)
           // confirmed 미래 → 닫기 + 변경 + 강제취소
