@@ -2,6 +2,14 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-04-29] 우측 패널 noTimeLeft 상태 안내 추가
+ *      · 증상: 오후 7시 이후 모달 열면 우측에 시간·회의실이 그대로 표시됨
+ *      · 원인: 우측 패널이 validTime만 체크 — noTimeLeft(오늘+슬롯 없음)를 무시
+ *      · 해결: noTimeLeft 우선 분기 추가
+ *        · 헤더: "시간을 선택하세요" (#CBD5E1 회색)
+ *        · 회의실 영역: Clock 아이콘 + "선택할 수 있는 회의실이 없습니다"
+ *      · 판단 로직(noTimeLeft/validTime/availableRooms) 무수정
+ *
  *  - [2026-04-28 Phase G 보충 18] 시간 필드 "N분 사용" 배지 padding 변경
  *      · padding: 4 → "16px 4px" (상하 16px / 좌우 4px)
  *      · 변경 위치: L2043 (데스크톱 좌측 시간 필드 validTime 분기 내 배지)
@@ -2468,7 +2476,13 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             {/*   시간: 18px SemiBold + ⎯ + 18px SemiBold (gap 8) */}
             {/*   서브: "{N}" SemiBold #111 + "개 예약 가능" Regular #96a0b3 + "클릭해서 선택" Regular rgba(150,160,179,0.5) */}
             <div style={{display:"flex", flexDirection:"column", gap:4}}>
-              {validTime ? (
+              {/* ← [2026-04-29] noTimeLeft 우선 분기 추가 — validTime이 true여도 예약 불가 시간대면 안내 표시 */}
+              {noTimeLeft ? (
+                <div style={{
+                  fontFamily:"Pretendard, sans-serif",
+                  fontWeight:600, fontSize:18, lineHeight:1.5, color:"#CBD5E1",
+                }}>시간을 선택하세요</div>
+              ) : validTime ? (
                 <>
                   {/* 시간 행 */}
                   <div style={{display:"flex", alignItems:"center", gap:8}}>
@@ -2512,7 +2526,12 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 }}>시간을 먼저 선택해주세요</div>
               )}
             </div>
-            {!validTime ? (
+            {noTimeLeft ? (  /* ← [2026-04-29] noTimeLeft 시 회의실 그리드 대신 안내 문구 */
+              <div style={{textAlign:"center",padding:"60px 20px",color:"#CBD5E1"}}>
+                <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><Clock size={40} strokeWidth={1.8} color="#CBD5E1"/></div>
+                <div style={{fontSize:13}}>선택할 수 있는 회의실이 없습니다</div>
+              </div>
+            ) : !validTime ? (
               <div style={{textAlign:"center",padding:"60px 20px",color:"#CBD5E1"}}>
                 <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><Clock size={40} strokeWidth={1.8} color="#CBD5E1"/></div>
                 <div style={{fontSize:13}}>시작/종료 시간을 설정하면<br/>예약 가능한 회의실이 자동으로 표시됩니다</div>

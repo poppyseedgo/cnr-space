@@ -1,7 +1,18 @@
 import type { Booking, ConflictResult, RoomStatus } from '../types'
 
+/**
+ * time.ts
+ * ✅ 변경 이력
+ *  - [2026-04-29] HOURS 배열 length 13 → 12 (범위 7~18, 오후7시 열 제거)
+ *    · 증상: 캘린더 데일리/위클리뷰에서 오후 7시 이후 슬롯 클릭 시
+ *            startMin=19:15+, endMin=Math.min(+15, 19*60)=19:00 → start>end 역전
+ *            → BookingModal 시간 필드 오류 상태로 열림
+ *    · 해결: h=19(오후7시) 열 자체를 제거. 마지막 열 h=18이 6:00~7:00을 표현하므로
+ *            6:45까지 클릭 가능(endMin=7:00) — 예약 가능 범위 동일하게 유지
+ */
+
 // ─── Util ─────────────────────────────────────────────────────────────────────
-export const HOURS = Array.from({ length: 13 }, (_, i) => i + 7);
+export const HOURS = Array.from({ length: 12 }, (_, i) => i + 7); // ← [2026-04-29] 13→12: h=19(오후7시) 열 제거 — 19:xx 클릭 시 start>end 역전 버그 차단. 마지막 열 h=18(오후6시)이 6:00~7:00 범위 표현
 export const DAY_NAMES = ["일","월","화","수","목","금","토"];
 export const MONTH_NAMES = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
 export const CHECKIN_WINDOW_MIN = 10;
