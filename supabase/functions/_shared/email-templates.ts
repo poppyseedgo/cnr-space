@@ -306,7 +306,7 @@ function renderLogoSection(input: EmailRenderInput): string {
   return `<tr><td style="padding-bottom:${D.LOGO_PB};">` +
     `<div style="margin:0 0 16px;">${logoHtml}</div>` +
     // ← [2026-04-18 P2 v4] 로고 아래 여백 8px → 16px (Figma 디자인 pb-[16px] 반영)
-    `<p style="margin:0 0 4px;font-family:${FONT};font-size:16px;font-weight:500;line-height:1.4;color:${C.TEXT};">${escapeHtml(headerLabel)}</p>` +
+    `<p style="margin:0 0 4px;font-family:${FONT};font-size:16px;font-weight:500;line-height:1.4;color:${C.TEXT};">${escapeHtml(headerLabel).replace(/\n/g, '<br>')}</p>` +
     badge +
   `</td></tr>`
 }
@@ -449,14 +449,24 @@ function renderBanner(input: EmailRenderInput): string {
   const mainParts: string[] = []
   if (b) {
     // title이 비어있지 않을 때만 렌더 (rejected.booker의 경우 title 없음)
+    // ← [2026-04-29] \n → <br> 변환 지원 (checkin_warning_5 헤더 등 다행 문구)
     if (b.title) {
       mainParts.push(
-        `<p style="margin:0;font-family:${FONT};font-size:12px;font-weight:600;line-height:1.4;color:${C.TEXT};">${escapeHtml(b.title)}</p>`
+        `<p style="margin:0;font-family:${FONT};font-size:12px;font-weight:600;line-height:1.4;color:${C.TEXT};">${escapeHtml(b.title).replace(/\n/g, '<br>')}</p>`
       )
     }
     if (b.body) {
+      // ← [2026-04-29] \n → <br> 변환 지원
+      let bodyHtml = escapeHtml(b.body).replace(/\n/g, '<br>')
+      // ← [2026-04-29] {NOSHOW_TIME} 플레이스홀더 치환 — checkin_start: start_at+10분 자동 계산
+      //   정책 body에 {NOSHOW_TIME} 포함 시 예약 시작시각 기준 +10분 포맷 시간으로 치환
+      if (bodyHtml.includes('{NOSHOW_TIME}') && input.booking.start_at) {
+        const noshowMs = new Date(input.booking.start_at).getTime() + 10 * 60 * 1000
+        const noshowTime = escapeHtml(fmtTime(new Date(noshowMs).toISOString()))
+        bodyHtml = bodyHtml.replace('{NOSHOW_TIME}', noshowTime)
+      }
       mainParts.push(
-        `<p style="margin:${mainParts.length > 0 ? '4px' : '0'} 0 0;font-family:${FONT};font-size:12px;font-weight:500;line-height:1.4;color:${C.TEXT};">${escapeHtml(b.body)}</p>`
+        `<p style="margin:${mainParts.length > 0 ? '4px' : '0'} 0 0;font-family:${FONT};font-size:12px;font-weight:500;line-height:1.4;color:${C.TEXT};">${bodyHtml}</p>`
       )
     }
   }

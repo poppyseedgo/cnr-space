@@ -360,8 +360,9 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
     inappTitleAttendee: '참석 예약이 노쇼로 자동 취소되었습니다',
     inappTitleAdmin:    '',
     contextBanner: {
-      booker:   { ...BANNER_PRESETS.warning, title: '체크인 미완료로 예약이 자동 취소되었습니다.',    body: '예약 시작 후 10분 이내에 체크인이 없으면 자동 취소됩니다.' },
-      attendee: { ...BANNER_PRESETS.warning, title: '예약자가 체크인하지 않아 회의가 자동 취소되었습니다.' },
+      // ← [2026-04-29] 배너 title 공통 변경 (예약자/참석자)
+      booker:   { ...BANNER_PRESETS.warning, title: '체크인 하지 않아 예약이 노쇼처리 되었습니다.',    body: '예약 시작 후 10분 이내에 체크인이 없으면 자동 취소됩니다.' },
+      attendee: { ...BANNER_PRESETS.warning, title: '체크인 하지 않아 예약이 노쇼처리 되었습니다.' },
     },
     cta: {
       booker: CTA_NEW,
@@ -416,18 +417,20 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
     //   기존: 배너 body + CTA "체크인하러 가기" + 인앱 제목 "체크인 대기" 포함
     //         → 사용자 혼란 (실제 체크인은 시작 후 10분만 가능한데 시작 전에 체크인 버튼 노출)
     //   변경: CTA 삭제, 배너 body 삭제, 인앱 제목에서 "체크인 대기" 제거
+    // ← [2026-04-29] recipients booker_only → booker_and_attendees (참석자도 이동 안내 수신)
     subjectTag:         '[회의10분전]',
     headerLabel:        '회의 시작 10분 전입니다',
     headerColor:        COLORS.CYAN,
-    recipients:         'booker_only',
+    recipients:         'booker_and_attendees',  // ← [2026-04-29] booker_only → booker_and_attendees
     inappType:          'checkin_before_10',
-    inappTitleBooker:   '회의 시작 10분 전입니다', // ← [수정] "체크인 대기" 워딩 제거
-    inappTitleAttendee: '',
+    inappTitleBooker:   '회의 시작 10분 전입니다',
+    inappTitleAttendee: '회의 시작 10분 전입니다',  // ← [2026-04-29] 참석자 인앱 추가
     inappTitleAdmin:    '',
     contextBanner: {
-      booker: { ...BANNER_PRESETS.info, title: '회의 시작 10분 전 입니다.' }, // ← [수정] title 변경, body 삭제
+      booker:   { ...BANNER_PRESETS.info, title: '회의 시작 10분 전입니다. 회의실로 이동해 주세요.' },
+      attendee: { ...BANNER_PRESETS.info, title: '회의 시작 10분 전입니다. 회의실로 이동해 주세요.' }, // ← [2026-04-29] 참석자 배너 추가
     },
-    // ← [수정] cta 필드 자체를 제거 — email-templates.ts L519의 `if (!policy.cta) return ''` 에 의해 CTA 블록 미렌더링
+    // cta 없음 — 이동 안내이므로 버튼 불필요
     isCancelledStyle: false,
   },
 
@@ -441,29 +444,44 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
     inappTitleAttendee: '참석 회의가 시작되었습니다',
     inappTitleAdmin:    '',
     contextBanner: {
-      booker:   { ...BANNER_PRESETS.info, title: '지금 체크인하지 않으면 10분 후 자동 취소됩니다.' },
-      attendee: { ...BANNER_PRESETS.info, title: '회의실로 이동하실 시간입니다.' },
+      // ← [2026-04-29] 배너 문구 공통 변경 (예약자/참석자 동일)
+      //   · title: \n 사용 → email-templates.ts에서 <br> 변환
+      //   · body: {NOSHOW_TIME} 플레이스홀더 → email-templates.ts에서 start_at+10분 자동 치환
+      booker: {
+        ...BANNER_PRESETS.info,
+        title: '회의 시작 후 10분 동안\n체크인하지 않으면\n노쇼처리 됩니다.',
+        body:  '{NOSHOW_TIME}에 자동취소되어 회의실을 사용할 수 없으니, 꼭 체크인 해 주세요.',
+      },
+      attendee: {
+        ...BANNER_PRESETS.info,
+        title: '회의 시작 후 10분 동안\n체크인하지 않으면\n노쇼처리 됩니다.',
+        body:  '{NOSHOW_TIME}에 자동취소되어 회의실을 사용할 수 없으니, 꼭 체크인 해 주세요.',
+      },
     },
     cta: {
-      booker: CTA_CHECKIN,
+      booker:   CTA_CHECKIN,
+      attendee: CTA_CHECKIN,
     },
     isCancelledStyle: false,
   },
 
   checkin_warning_5: {
     subjectTag:         '[자동취소경고]',
-    headerLabel:        '5분 후 예약이 자동 취소됩니다',
+    headerLabel:        '5분 후 예약이 자동취소 됩니다.\n체크인 하세요!',  // ← [2026-04-29] 헤더 라벨 변경 (\n → email-templates에서 <br> 변환)
     headerColor:        COLORS.AMBER,
-    recipients:         'booker_only',
+    recipients:         'booker_and_attendees',
     inappType:          'checkin_warning_5',
     inappTitleBooker:   '미체크인 — 5분 후 자동 취소 예정',
-    inappTitleAttendee: '',
+    inappTitleAttendee: '미체크인 — 5분 후 자동 취소 예정',
     inappTitleAdmin:    '',
     contextBanner: {
-      booker: { ...BANNER_PRESETS.warning, title: '체크인이 없으면 5분 후 예약이 자동 취소됩니다.', body: '지금 즉시 체크인해 주세요.' },
+      // ← [2026-04-29] 배너 문구 공통 변경 (예약자/참석자 동일), booker body 제거
+      booker:   { ...BANNER_PRESETS.warning, title: '체크인 하지 않으면 5분 후 예약이 자동 취소됩니다.' },
+      attendee: { ...BANNER_PRESETS.warning, title: '체크인 하지 않으면 5분 후 예약이 자동 취소됩니다.' },
     },
     cta: {
-      booker: CTA_CHECKIN,
+      booker:   CTA_CHECKIN,
+      attendee: CTA_CHECKIN,
     },
     isCancelledStyle: false,
   },
@@ -476,23 +494,28 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
     subjectTag:         '[반납완료]',
     headerLabel:        '회의실 이용 완료 — 반납 처리되었습니다',
     headerColor:        COLORS.INDIGO,
-    recipients:         'booker_only',                      // 예약자 본인에게만
+    recipients:         'booker_and_attendees',  // ← [2026-04-29] booker_only → booker_and_attendees
     inappType:          'booking_early_end',
     inappTitleBooker:   '회의실 반납 완료',
-    inappTitleAttendee: '',                                 // 참석자 알림 없음
-    inappTitleAdmin:    '',                                 // 관리자 알림 없음
+    inappTitleAttendee: '참석 회의실이 조기 반납되었습니다',  // ← [2026-04-29] 참석자 인앱 추가
+    inappTitleAdmin:    '',
     contextBanner: {
       booker: {
         ...BANNER_PRESETS.info,
         title: '회의실 이용이 완료되어 반납 처리되었습니다.',
         body:  '원래 종료 시간 이전에 조기 반납되었으며, 다른 사용자가 해당 시간을 예약할 수 있습니다.',
       },
+      attendee: {                                               // ← [2026-04-29] 참석자 배너 추가
+        ...BANNER_PRESETS.info,
+        title: '참석하신 회의실이 조기 반납 처리되었습니다.',
+        body:  '원래 종료 시간 이전에 반납되었습니다.',
+      },
     },
     cta: {
-      // 해당 예약 모달 직접 오픈 (반납된 예약 상세 확인 가능)
-      booker: CTA_BOOKING_DETAIL,
+      booker:   CTA_BOOKING_DETAIL,
+      attendee: CTA_BOOKING_DETAIL, // ← [2026-04-29] 참석자 CTA 추가 — 예약 모달 직접 오픈
     },
-    isCancelledStyle: false,  // 취소 스타일 아님 (정상 완료)
+    isCancelledStyle: false,
   },
 
   // ──────────────────────────────────────────────────────────────────────
@@ -504,7 +527,7 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
     //   기존: booker 배너 "예약 시작 10분 전부터 체크인 가능" (정책 오기재) + CTA_CHECKIN
     //         → 아침 07:00 메일에 체크인 링크는 부적절 (실제 체크인은 시작 후 10분만 가능)
     //   변경: booker 배너를 attendee와 동일 문구로 통일, booker CTA 제거
-    //         attendee의 배너/CTA_APP_ROOT는 그대로 유지 (체크인 워딩 아니므로)
+    // ← [2026-04-29] booker CTA_APP_ROOT 추가 (예약자도 예약 확인하기 버튼 수신)
     subjectTag:         '[오늘의예약]',
     headerLabel:        '오늘의 예약 안내',
     headerColor:        COLORS.CYAN,
@@ -514,11 +537,11 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
     inappTitleAttendee: '오늘 참석 예정 회의가 있습니다',
     inappTitleAdmin:    '',
     contextBanner: {
-      booker:   { ...BANNER_PRESETS.info, title: '회의 시작 시간에 맞춰 회의실로 이동해 주세요.' }, // ← [수정] 체크인 워딩 제거, attendee와 동일 문구
+      booker:   { ...BANNER_PRESETS.info, title: '회의 시작 시간에 맞춰 회의실로 이동해 주세요.' },
       attendee: { ...BANNER_PRESETS.info, title: '회의 시작 시간에 맞춰 회의실로 이동해 주세요.' },
     },
     cta: {
-      // ← [수정] booker CTA_CHECKIN 제거 — attendee CTA_APP_ROOT만 유지
+      booker:   CTA_APP_ROOT,  // ← [2026-04-29] 예약자 CTA 추가
       attendee: CTA_APP_ROOT,
     },
     isCancelledStyle: false,
