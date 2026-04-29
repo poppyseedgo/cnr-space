@@ -271,7 +271,7 @@ function AppContent() {
     window.scrollTo({ top: 0, behavior: 'instant' })
     // 탭 전환 시 해당 화면 필터 초기화
     if (v === 'home')     setHomeFilterFloor('ALL')
-    if (v === 'calendar') setCalFilterFloor('ALL')
+    if (v === 'calendar') { setCalFilterFloor('ALL'); setSelectedDate(todayStr()) } // ← [2026-04-29] 캘린더 탭 재진입 시 오늘로 리셋
   }
   const [calView, setCalView]     = useState("daily");
   const [selectedDate, setSelectedDate] = useState(todayStr());
