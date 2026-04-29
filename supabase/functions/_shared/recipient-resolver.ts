@@ -180,9 +180,25 @@ async function fetchAttendees(
       return []
     }
 
-    const attendees = (rawAttendees ?? [])
+    const attendeesRaw = (rawAttendees ?? [])
       .map((a: any) => ({ email: a.email ?? '', name: a.name ?? '' }))
       .filter((a: any) => a.email && a.email !== excludeEmail)
+
+    // ← [2026-04-29] email 기준 dedupe 추가 (메일 폭탄 즉시 차단)
+    //   배경: booking_attendees 테이블에 (booking_id, email) 중복 행 누적 시
+    //         · 메일 본문에 동일 인물 N번 표시
+    //         · 같은 사람에게 메일 N번 발송 (수신자 목록 중복)
+    //         · 인앱 알림 N번 INSERT
+    //   처리: email 정규화 trim().toLowerCase() 기준 첫 등장만 유지
+    //         (DB 데이터는 보존, 메일/알림 출력 단에서만 dedupe)
+    //   효과: 1곳 수정으로 send-notification의 모든 메일 + 인앱 알림 동시 차단
+    const seen = new Set<string>()
+    const attendees = attendeesRaw.filter((a: any) => {
+      const key = a.email.trim().toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
 
     if (attendees.length === 0) return []
 
