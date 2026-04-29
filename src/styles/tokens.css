@@ -77,13 +77,14 @@
 /* ── 칩 사이즈 modifier ─────────────────────────────────────────────────────
    base .chip        : font-size 12px / padding 3px 10px / fw 500 — index.css 정의
    .chip--sm         : font-size  9px / padding 2px 7px
-   .chip--xs         : font-size  9px / padding 1px 4px / border-radius 4px  — 캘린더 슬롯 XS
+   .chip--xs         : font-size 10px / padding 1px 4px / border-radius 4px  — 캘린더 슬롯 XS
    .chip--square     : font-size 12px / padding 8px 14px / border-radius 10px / line-height 14px — DetailModal 전용
                        ※ 사이즈는 :root의 --chip-square-* 토큰으로 통제
 ─────────────────────────────────────────────────────────────────────────── */
 .chip--sm { font-size: 9px;  padding: 2px 7px; }
 /* ← [피그마 반영] chip--xs: 9px / padding 1px 4px / radius 4 (RoomModal StatusBadge-XS 기준) */
-.chip--xs { font-size: 9px;  padding: 1px 4px; border-radius: 4px; }
+/* ← [2026-04-29] font-size 9px → 10px */
+.chip--xs { font-size: 10px; padding: 1px 4px; border-radius: 4px; }
 /* ← [피그마 212:322 / 2026-04-24] chip--square: DetailModal 전용 사각형 칩 modifier
       · 사이즈는 :root의 --chip-square-* 토큰으로 일관 관리
       · radius 8 → 10 (2026-04-24 요청)
