@@ -236,6 +236,8 @@ Deno.serve(async () => {
       .eq('status',         'confirmed')
       .eq('checked_in',     false)
       .eq('auto_cancelled', false)
+      .eq('early_ended',    false)        // ← [변경] App.tsx 필터와 동일 조건 추가
+      .is('cancelled_by',   null)         // ← [변경] 이미 취소 처리된 건 차단
       .gte('start_at',      noshowLowerBound)
       .lt('start_at',       noshowCutoff)
 
@@ -244,12 +246,16 @@ Deno.serve(async () => {
     }
 
     for (const booking of (noshowTargetsFresh ?? [])) {
-      // 프론트와 race 방지: .eq('auto_cancelled', false)로 원자성 확보
+      // 프론트와 race 방지: markNoshow()와 동일한 5-guard 원자적 UPDATE
       const { data: updated, error: upErr } = await supabase
         .from('bookings')
         .update({ auto_cancelled: true, cancelled_by: 'system' })
-        .eq('id', booking.id)
-        .eq('auto_cancelled', false)  // ← race 발생 시 UPDATE 0 rows
+        .eq('id',            booking.id)
+        .eq('status',        'confirmed')  // ← [변경] markNoshow() 가드 ①
+        .eq('checked_in',    false)        // ← [변경] markNoshow() 가드 ②
+        .eq('early_ended',   false)        // ← [변경] markNoshow() 가드 ③
+        .eq('auto_cancelled', false)       // markNoshow() 가드 ④ (기존 유지)
+        .is('cancelled_by',  null)         // ← [변경] markNoshow() 가드 ⑤
         .select('id')
 
       if (upErr) {
@@ -334,6 +340,7 @@ Deno.serve(async () => {
       .from('bookings')
       .select('*')
       .eq('status',                 'pending')
+      .eq('room_id',                3)           // ← [변경] pending은 admin only 룸(room_id=3)에서만 발생
       .eq('approval_reminder_sent', false)
       .gte('start_at', reminderWindowStart)
       .lte('start_at', reminderWindowEnd)
@@ -365,19 +372,16 @@ Deno.serve(async () => {
     // ─── 3. 승인 기한 초과 자동 취소 ───────────────────────────────────
     // pending 예약 중 start_at이 현재+1분 이내면 자동 취소 (승인 안 됨)
     //
+    // ← [2026-04-29] 쿼리/UPDATE 정비
+    //   (1) room_id=3 추가 — pending은 admin only 룸에서만 발생
+    //   (2) .or(cancelled_by) → .is('cancelled_by', null) 단순화
+    //       App.tsx 낙관적 업데이트가 status:'cancelled'도 세팅하므로
+    //       App.tsx 처리 건은 status='pending' 쿼리에서 이미 배제됨
+    //       → cancelled_by='system' 허용 조건이 불필요해짐
+    //   (3) UPDATE에 room_id=3 + cancelled_by IS NULL 가드 추가
+    //   isExpiredPending 공식: status='cancelled' && cancelledBy='system' && room_id=3
+    //
     // ← [2026-04-19 P2 v6] auto_cancelled=false 필터 제거 + UPDATE 원자성 강화
-    //   배경:
-    //     · 기존: `auto_cancelled=false` 필터로만 재처리 방지 → 프론트가 선점한 건들 전부 누락
-    //     · App.tsx의 expirePendingBooking() 호출 제거(근본 해결)와 병행하는 방어막
-    //   변경:
-    //     (1) 쿼리에서 `auto_cancelled=false` 제거 — pending + start_at 조건만으로 대상 식별
-    //     (2) UPDATE에 `.eq('status', 'pending')` + `.select('id')` 추가
-    //         → 원자적 조건부 UPDATE: pending일 때만 cancelled로 바꾸고 실제 바뀐 행 수 확인
-    //         → 다른 주체가 이미 status를 바꿨다면 UPDATE 0 rows (재처리 방지)
-    //     (3) UPDATE 결과가 0 rows면 알림 발송 skip (이미 다른 주체가 처리한 건)
-    //   효과:
-    //     · 프론트가 auto_cancelled=true로 선점한 과거 17건도 cron이 다시 처리함 (backfill)
-    //     · 동시 cron 인스턴스가 같은 건을 처리해도 1건만 UPDATE 성공 (알림 중복 방지)
     // ← [2026-04-17] start_at lower bound 추가 (과거 1시간만 스캔)
     const expireDeadline     = new Date(now.getTime() + 1 * 60 * 1000).toISOString()
     const expireLowerBound   = new Date(now.getTime() - 60 * 60 * 1000).toISOString()
@@ -386,12 +390,8 @@ Deno.serve(async () => {
       .from('bookings')
       .select('*')
       .eq('status',    'pending')
-      // ← [P2 v6] auto_cancelled=false 필터 제거 (프론트 선점 건 backfill)
-      //   · 대신 cancelled_by로 "누가 취소했는지" 구분하여 사용자/관리자 수동 취소는 제외
-      //   · 허용: cancelled_by IS NULL (정상 pending) OR 'system' (프론트 expirePendingBooking)
-      //   · 제외: cancelled_by IN ('user', 'admin') — 사용자 수동 취소 / 관리자 강제 취소
-      //   · PostgREST는 .or('cancelled_by.is.null,cancelled_by.eq.system') 형태로 표현
-      .or('cancelled_by.is.null,cancelled_by.eq.system')
+      .eq('room_id',   3)                 // ← [변경] admin only 룸 조건 추가
+      .is('cancelled_by', null)           // ← [변경] .or() 단순화 — null만 허용
       .gte('start_at', expireLowerBound)
       .lt('start_at',  expireDeadline)
 
@@ -400,13 +400,8 @@ Deno.serve(async () => {
     }
 
     for (const booking of (expiredTargets ?? [])) {
-      // ← [CRITICAL] pending_expired는 status를 cancelled로 저장해야 함
-      //    (BookingStatusBadge 로직: status==='cancelled' && auto_cancelled && cancelled_by==='system')
-      //
-      // ← [P2 v6] 원자적 조건부 UPDATE
-      //   · .eq('status', 'pending')를 UPDATE 절에도 추가 → pending일 때만 바꿈
-      //   · .select('id')로 실제 UPDATE된 행 반환
-      //   · 0 rows면 다른 주체가 이미 처리한 것 → 알림 skip (재발송 방지)
+      // ← [P2 v6] 원자적 조건부 UPDATE — pending일 때만 cancelled로 바꿈
+      // ← [2026-04-29] room_id=3 + cancelled_by IS NULL 가드 추가
       const { data: updated, error: upErr } = await supabase
         .from('bookings')
         .update({
@@ -414,8 +409,10 @@ Deno.serve(async () => {
           auto_cancelled: true,
           cancelled_by:   'system',
         })
-        .eq('id',     booking.id)
-        .eq('status', 'pending')   // ← [P2 v6] 원자성: pending일 때만 UPDATE
+        .eq('id',       booking.id)
+        .eq('status',   'pending')        // 원자성: pending일 때만 UPDATE
+        .eq('room_id',  3)                // ← [변경] admin only 룸 가드
+        .is('cancelled_by', null)         // ← [변경] 이미 취소 처리된 건 덮어쓰기 방지
         .select('id')
 
       if (upErr) {
