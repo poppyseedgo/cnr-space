@@ -237,15 +237,15 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
           {/* + 예약하기 첫 카드 */}
           <button onClick={()=>{/* onBook 없이 새 예약 모달 */document.dispatchEvent(new CustomEvent("openNewBooking"))}}
             className="btn flex-none flex flex-col items-center justify-center rounded-3xl text-white font-medium"
-            style={{width:170, height:160, /* ← [Figma UI갱신] 170×160px 고정 (isMobile 분기 제거) */
+            style={{width:isMobile?150:170, height:160, /* ← [Figma UI갱신] height 160px / width 모바일 150 데스크탑 170 */
               background:"#111111", flexShrink:0, gap:8}}>
             <span style={{fontSize:24, lineHeight:1}}>＋</span>
-            <span style={{fontSize:13}}>예약하기</span>
+            <span style={{fontSize:isMobile?12:13}}>예약하기</span>
           </button>
 
           {myBookings.length === 0 ? (
             <div className="flex-none flex items-center justify-center rounded-3xl text-slate-300 dark:text-slate-600 text-sm"
-              style={{width:170, height:160, background:"#F3F4F8"}}> {/* ← [Figma UI갱신] 170×160px 고정 */}
+              style={{width:isMobile?150:170, height:160, background:"#F3F4F8"}}> {/* ← [Figma UI갱신] height 160px 고정 / width 모바일 분기 유지 */}
               오늘 예약 없음
             </div>
           ) : myBookings.map(b => {
@@ -286,10 +286,10 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
             const isCancellable = cardState==="waiting" || cardState==="soon" || cardState==="pending";
 
             return (
-              /* ← [Figma UI갱신] 377:314 기준 — 170×160 고정 / justify-between 2-children (upper+button) */
+              /* ← [Figma UI갱신] 377:314 기준 — height 160px 고정 / width 모바일 분기 유지 */
               <div key={b.id} className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 rounded-3xl p-3"
                 onClick={()=>onBookingDetail&&onBookingDetail(b)}
-                style={{width:170, height:160,  /* ← [Figma] 170×160 고정 */
+                style={{width:isMobile?150:170, height:160,  /* ← [Figma] 데스크탑 170 / 모바일 150 / height 160 */
                   flexShrink:0, overflow:"hidden",
                   opacity: (cardState==="cancelled"||cardState==="noshow"||cardState==="adminCancel"||cardState==="rejected"||cardState==="pendingExpired") ? 0.45 : 1,
                   border: cardState==="pending" ? "1.5px solid #FCD34D" : "none",
@@ -343,11 +343,11 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
                   </div>
 
                   {/* ③ 회의실 정보 (377:325): flex-col gap-6px items-start py-8px
-                       11px Medium leading-none whitespace-nowrap */}
+                       12px Medium leading-none whitespace-nowrap */}
                   <div style={{
                     display:"flex", flexDirection:"column", gap:6, alignItems:"flex-start",
-                    fontSize:11, fontWeight:500, lineHeight:1, whiteSpace:"nowrap",
-                    paddingTop:8, paddingBottom:8  /* ← [Figma 377:325] py-8px */
+                    fontSize:12, fontWeight:500, lineHeight:1, whiteSpace:"nowrap",  /* ← [변경] 11px → 12px */
+                    paddingTop:8, paddingBottom:8
                   }}>
                     <span style={{color:"#262930"}}>{r?.room_name ?? ''}</span>  {/* ← [Figma] #262930 */}
                     <span style={{color:"#6a7282"}}>{fmtTSRangeFull(b.start_at, b.end_at)}</span>  {/* ← [Figma] #6a7282 */}
