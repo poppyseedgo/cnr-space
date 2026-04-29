@@ -1637,7 +1637,10 @@ function AppContent() {
             onCheckIn={checkIn}
             onCancel={confirmAndCancelBooking}
             onEdit={(b)=>{ setSubModal(null); setModal({type:"edit",data:b}); }}
+            onEarlyEnd={(id: string)=>{ setSubModal(null); confirmAndEarlyEnd(id); }}
             currentUser={currentUser}
+            currentUserId={authUser?.user_id ?? ''}
+            currentUserEmail={authUser?.email ?? ''}
             rooms={rooms}
             users={users}
             isAdmin={isAdmin}
@@ -1645,6 +1648,7 @@ function AppContent() {
             onReject={confirmAndRejectBooking}
             onForceCancel={confirmAndAdminForceCancel}
             /* ← [2026-04-24 P8-B] SubModal도 공통 다이얼로그 경유 */
+            /* ← [2026-04-29] onEarlyEnd / currentUserId / currentUserEmail 누락 추가 */
           />}
         </div>
       )}
