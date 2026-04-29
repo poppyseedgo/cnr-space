@@ -2,13 +2,6 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
- *  - [2026-04-29] 캘린더 탭 재진입 시 selectedDate 오늘로 리셋
- *      · 증상: 캘린더에서 다른 날짜 탐색 → 실시간 현황으로 이동 → 캘린더 탭 재클릭 시
- *              이전에 보던 날짜가 그대로 남아 있어 오늘 현황을 바로 볼 수 없었음
- *      · 해결: setView('calendar') 호출 시 setSelectedDate(todayStr()) 동시 실행
- *      · 변경 위치: setView 함수 내 1줄 추가
- *      · 사이드 이펙트 없음 (addBooking 폴백 미도달 / React 배치 렌더 / 타 뷰 무관)
- *
  *  - [2026-04-24 P2] HomeView 호출에 currentUserId prop 전달 추가
  *      · 목적: HomeView "오늘 내 예약" 필터를 MyPage 방식(UUID + email)으로 통일
  *      · 증상: 팀즈에서 이름 변경한 사용자의 홈 '오늘 내 예약' 카드 미표시
@@ -278,7 +271,7 @@ function AppContent() {
     window.scrollTo({ top: 0, behavior: 'instant' })
     // 탭 전환 시 해당 화면 필터 초기화
     if (v === 'home')     setHomeFilterFloor('ALL')
-    if (v === 'calendar') { setCalFilterFloor('ALL'); setSelectedDate(todayStr()) } // ← [2026-04-29] 캘린더 탭 재진입 시 오늘로 리셋 — 다른 날짜 탐색 후 홈 갔다 돌아와도 항상 오늘부터 시작
+    if (v === 'calendar') setCalFilterFloor('ALL')
   }
   const [calView, setCalView]     = useState("daily");
   const [selectedDate, setSelectedDate] = useState(todayStr());
@@ -1093,14 +1086,15 @@ function AppContent() {
     // ① 노쇼: 오늘 예약 중 체크인 없이 CHECKIN_WINDOW_MIN 경과
     const toNoshow=bookings.filter(b=>
       tsDate(b.start_at)===today &&
-      !b.checkedIn && !b.autoCancelled && !b.earlyEnded &&
-      b.status !== 'pending' && b.status !== 'rejected' &&   // pending·rejected는 별도 처리
+      !b.checkedIn && !b.autoCancelled && b.cancelledBy == null && !b.earlyEnded &&
+      b.status !== 'cancelled' &&                              // ← [변경] cancelled 건 차단 (pending·rejected보다 더 중요)
+      b.status !== 'pending' && b.status !== 'rejected' &&
       now > tsMin(b.start_at)+CHECKIN_WINDOW_MIN
     );
     if(toNoshow.length>0){
       const ids=new Set(toNoshow.map(b=>b.id));
       // ← [v3] 낙관적 UI: state에 즉시 반영 (system으로 기록 — 노쇼 뱃지 즉시 표시)
-      setBookings(prev => prev.map(b => ids.has(b.id) ? {...b, autoCancelled:true, cancelledBy:'system'} : b));
+      setBookings(prev => prev.map(b => ids.has(b.id) ? {...b, status:'confirmed', autoCancelled:true, cancelledBy:'system'} : b));  // ← [변경] status:'confirmed' 명시 추가
       // ← [v3] DB에 cancelled_by='system'으로 기록 (과거 apiCancelBooking = 'user' 오염 해결)
       //   이메일/인앱 알림은 auto-cancel-bookings cron이 noshow_notified=false 조회로 발송
       Promise.all(toNoshow.map(b => markNoshow(b.id))).catch(console.error);
@@ -1128,12 +1122,15 @@ function AppContent() {
     //   최악 지연: 5분 (cron 주기). 이미 기한 초과된 상태이므로 업무상 허용 가능
     const pendingExpired = bookings.filter(b =>
       b.status === 'pending' && !b.autoCancelled &&
+      b.room_id === 3 &&  // ← [변경] pending은 admin only 룸(room_id=3)에서만 발생
       nowMs >= new Date(b.start_at).getTime() - 60_000
     );
     if(pendingExpired.length > 0){
       const expiredIds = new Set(pendingExpired.map(b => b.id));
-      // 낙관적 UI: state만 업데이트 (사용자에겐 즉시 "취소됨"으로 보임)
-      setBookings(prev => prev.map(b => expiredIds.has(b.id) ? {...b, autoCancelled:true, cancelledBy:'system'} : b));
+      // 낙관적 UI: state만 업데이트
+      // ← [변경] status:'cancelled' 추가 — isExpiredPending 공식과 일치
+      //   (status='cancelled' && cancelledBy='system' && room_id=3)
+      setBookings(prev => prev.map(b => expiredIds.has(b.id) ? {...b, autoCancelled:true, cancelledBy:'system', status:'cancelled'} : b));
       // ← expirePendingBooking() 호출 제거
       //   DB 쓰기는 auto-cancel-bookings cron이 단독 처리 (경쟁 조건 방지)
     }
