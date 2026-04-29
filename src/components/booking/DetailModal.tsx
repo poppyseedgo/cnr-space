@@ -324,7 +324,8 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
         //         사유 입력 받은 후 adminForceCancelBooking(id, reason) 실행
         //   onClose() 유지: DetailModal 닫고 → 강제취소 다이얼로그가 그 자리에 뜸 (자연스러운 모달 교체)
         const BtnForce    = () => <Button variant="danger-outline" flex onClick={()=>{onForceCancel(b.id);onClose();}}>강제취소</Button>
-        const BtnEarlyEnd = () => <Button variant="danger-outline" flex onClick={()=>{onEarlyEnd(b.id);onClose();}} icon={<LogOut size={14} strokeWidth={1.8}/>}>조기반납</Button>  {/* ← [2026-04-29] 체크인 완료 후 조기반납 버튼 */}
+        // ← [2026-04-29] 체크인 완료 후 조기반납 버튼
+        const BtnEarlyEnd = () => <Button variant="danger-outline" flex onClick={()=>{onEarlyEnd(b.id);onClose();}} icon={<LogOut size={14} strokeWidth={1.8}/>}>조기반납</Button>
 
         // ── [P2 v8] 체크인 대기 표시 조건 ──────────────────────────
         //   isFuture(시작 전) + tl <= 10 (10분 이내) + confirmed(승인된) + 취소/거절/체크인 안 됨
