@@ -749,6 +749,7 @@ function AppContent() {
     setBookings(prev => prev.map(b => b.id===id
       ? {...b, originalEndAt: target.end_at, end_at: newEndAt, earlyEnded: true} : b
     ));
+    setModal(null);  // ← [2026-04-29] 다이얼로그 경유 구조로 변경됨에 따라 추가 (cancelBooking 패턴 동일)
     setTick(t => t+1);
     try {
       await apiUpdateBooking(id, {
