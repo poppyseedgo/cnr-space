@@ -1,14 +1,30 @@
 /**
  * api.ts — Supabase 기반 데이터 레이어
  *
- * [2026-04-29] booking_attendees 중복 행 표시/저장 차단 (4지점 dedupe)
+ * [2026-04-29 v2] booking_attendees 중복 누적 영구 차단 (upsertBookingAttendees 재설계)
+ *   배경: DB 분석 결과 — 4/22 5건 INSERT (정상) → 4/29 수정 시 5건 더 INSERT (DELETE 미동작) → 10건
+ *         created_at microsecond까지 동일 → 한 번의 INSERT가 5 row를 한꺼번에 추가
+ *         즉 DELETE가 silent fail(RLS 의심)되고 INSERT만 누적되는 구조
+ *   변경: delete-all → insert-all 패턴 폐기, SELECT 후 diff 패턴으로 전환
+ *     1. 기존 행 SELECT
+ *     2. wanted(form) vs existing(DB) email 기준 비교
+ *     3. toInsert: DB에 없는 것만 INSERT (중복 누적 영구 차단)
+ *     4. toDeleteIds: form엔 없는 것 + DB 자체 중복 행 정밀 DELETE
+ *     5. .select() 가드로 silent fail 감지 + 콘솔 경고
+ *   효과:
+ *     · 수정 시 중복 누적   → ✅ 영구 차단 (SELECT에서 잡혀 INSERT 제외)
+ *     · 참석자 추가/변경    → ✅ 정상
+ *     · 참석자 제거 (RLS 정상) → ✅ 정상
+ *     · 참석자 제거 (RLS silent fail) → ⚠️ 제거 안 됨 (단 중복은 안 만듦, RLS 정책 별도 추적)
+ *
+ * [2026-04-29 v1] booking_attendees 중복 행 표시/저장 차단 (4지점 dedupe)
  *   배경: DB의 booking_attendees 테이블에 (booking_id, email) 중복 행 43건 누적
  *         원인 추적 종료 — 외부 INSERT 경로(트리거/race/자동작업) 차단 우선 적용
  *   변경 위치 (4곳, 모두 api.ts):
  *     ① loadBookings           — attendees 파싱 시 email 기준 dedupe (화면 표시 차단)
  *     ② loadBookingsByRange    — Admin Dashboard 경로 동일 처리
  *     ③ getBookingAttendees    — diff 계산 정확도 보장 (반환 email 목록 dedupe)
- *     ④ upsertBookingAttendees — rows 생성 시 dedupe (신규 INSERT부터 중복 차단)
+ *     ④ upsertBookingAttendees — rows 생성 시 dedupe (v2에서 재설계로 통합)
  *   효과:
  *     · 즉시: 기존 DB 중복 43건이 화면에서 1명씩만 표시 (DB 데이터는 그대로 보존)
  *     · 이후: 새 예약/수정 시 DB 자체에 중복 INSERT 안 됨
@@ -297,25 +313,119 @@ function dedupeAttendeesByEmail<T extends { email?: string; name?: string }>(arr
 }
 
 // ── booking_attendees 저장 (예약 생성/수정 시 호출) ────────────────────────
+// [2026-04-29 v2 — 재설계] SELECT 후 diff 패턴으로 변경
+//
+// 배경:
+//   기존 패턴(delete 전체 → insert 전체)은 DELETE가 silent fail되면 누적 INSERT 발생
+//   실제 발생: 4/22 5건 INSERT (정상) → 4/29 수정 시 5건 더 INSERT (DELETE 미동작) → 10건
+//   created_at microsecond까지 동일 → 한 INSERT 호출이 5 row를 한꺼번에 넣은 것
+//   즉 DELETE가 아예 안 일어나거나 0건 처리되고 INSERT만 누적됨
+//
+// 변경:
+//   [기존 — 위험]
+//     delete eq booking_id → insert all
+//
+//   [변경 — 안전]
+//     1. SELECT 기존 (booking_id로 조회)
+//     2. wanted(form) vs existing(DB) email 기준 비교
+//     3. toInsert: form엔 있고 DB엔 없는 것만 INSERT
+//     4. toDeleteIds: DB엔 있고 form엔 없는 것의 row id로 정밀 DELETE
+//
+// 효과 (시나리오별):
+//   · 수정 시 중복 누적     → ✅ 영구 차단 (같은 email은 SELECT에서 잡혀 INSERT 제외)
+//   · 참석자 추가만         → ✅ 추가분만 INSERT (불필요한 라운드트립 제거)
+//   · 참석자 이름·정보 변경 → ✅ 같은 email 유지
+//   · 참석자 제거 (DELETE 정상) → ✅ 정상 제거
+//   · 참석자 제거 (DELETE silent fail) → ⚠️ 제거 안 됨 (RLS 진범이면 정책 수정 별도 필요)
+//                                          단 중복은 여전히 안 만듦
+//
+// 호환성:
+//   · 함수 시그니처/반환 타입 동일 (Promise<void>)
+//   · 빈 attendees 처리 동일 (early return)
+//   · 호출 측 영향 0 (insertBooking, App.tsx 수정 핸들러)
 export async function upsertBookingAttendees(
   bookingId: string,
   attendees: { email?: string; name?: string }[]
 ): Promise<void> {
-  await supabase.from('booking_attendees').delete().eq('booking_id', bookingId)
-  if (!attendees || attendees.length === 0) return
-  // ← [2026-04-29] dedupeAttendeesByEmail 적용 — 새 INSERT부터는 DB 중복 차단
-  //   기존 동작: form.attendees가 어떤 경로로 중복을 포함하면 그대로 INSERT됨
-  //   변경 후:   email 기준 dedupe 후 INSERT → 같은 (booking_id, email) 행이 1개만 저장
-  const rows = dedupeAttendeesByEmail(attendees)
+  // ── 1. 입력 정규화 + dedupe (form.attendees 자체에 중복 있어도 안전) ──
+  const wanted = dedupeAttendeesByEmail(attendees ?? [])
     .map(a => ({
-      booking_id: bookingId,
-      email: a.email ?? '',
-      name:  a.name  ?? '',
+      email: (a.email ?? '').trim(),
+      name:  (a.name  ?? '').trim(),
     }))
-    .filter(r => r.email || r.name)
-  if (rows.length === 0) return
-  const { error } = await supabase.from('booking_attendees').insert(rows)
-  if (error) console.warn('[api] booking_attendees 저장 실패:', error.message)
+    .filter(a => a.email || a.name)
+
+  const norm = (e: string) => e.trim().toLowerCase()
+  const wantedKeys = new Set(wanted.map(a => norm(a.email)).filter(Boolean))
+
+  // ── 2. 기존 행 조회 ──
+  const { data: existing, error: selErr } = await supabase
+    .from('booking_attendees')
+    .select('id, email')
+    .eq('booking_id', bookingId)
+
+  if (selErr) {
+    // SELECT 실패 시 안전하게 종료 (이전엔 delete→insert로 진행 → 중복 누적 가능했음)
+    console.error('[api] booking_attendees SELECT 실패 — 안전 종료:', selErr.message)
+    return
+  }
+
+  // existing rows: norm(email) → row.id 첫 등장 매핑 (DB에 같은 email 중복 있어도 1개만 매핑)
+  const existingMap = new Map<string, string>()
+  const dupExistingIds: string[] = []  // DB 자체에 중복 행이 있으면 추가본은 정리 대상
+  for (const r of existing ?? []) {
+    const k = norm(r.email ?? '')
+    if (!k) continue
+    if (existingMap.has(k)) {
+      dupExistingIds.push(r.id)  // 같은 email의 중복 행은 정리 후보
+    } else {
+      existingMap.set(k, r.id)
+    }
+  }
+
+  // ── 3. 제거 대상 (DB엔 있는데 form엔 없음) + DB 자체 중복 행 ──
+  const toDeleteIds: string[] = [
+    ...dupExistingIds,  // 이번 호출 시점에 발견된 DB 중복도 같이 정리
+    ...[...existingMap.entries()]
+      .filter(([k]) => !wantedKeys.has(k))
+      .map(([, id]) => id),
+  ]
+
+  // ── 4. 추가 대상 (form엔 있는데 DB엔 없음) ──
+  const toInsert = wanted.filter(a => {
+    const k = norm(a.email)
+    if (!k) return true   // email 없는 외부인은 항상 추가 (동명이인 보호)
+    return !existingMap.has(k)
+  })
+
+  // ── 5. DELETE — 실패해도 INSERT는 그대로 진행 (중복 누적 차단이 최우선 보장) ──
+  if (toDeleteIds.length > 0) {
+    const { data: delData, error: delErr } = await supabase
+      .from('booking_attendees')
+      .delete()
+      .in('id', toDeleteIds)
+      .select('id')   // ← .select() 가드: 실제 삭제 행 수 확인
+
+    if (delErr) {
+      console.warn('[api] booking_attendees DELETE 오류 (중복 누적은 차단됨):', delErr.message, { toDeleteIds })
+    } else if (!delData || delData.length < toDeleteIds.length) {
+      console.warn('[api] booking_attendees DELETE silent fail 의심 (RLS?):', {
+        requested: toDeleteIds.length,
+        actual:    delData?.length ?? 0,
+      })
+    }
+  }
+
+  // ── 6. INSERT — toInsert에는 이미 DB에 없는 행만 들어 있어 중복 안 만듦 ──
+  if (toInsert.length > 0) {
+    const rows = toInsert.map(a => ({
+      booking_id: bookingId,
+      email: a.email,
+      name:  a.name,
+    }))
+    const { error: insErr } = await supabase.from('booking_attendees').insert(rows)
+    if (insErr) console.warn('[api] booking_attendees INSERT 실패:', insErr.message)
+  }
 }
 
 // ── 현재 참석자 이메일 목록 조회 (업데이트 전 diff 계산용) ─────────────────
