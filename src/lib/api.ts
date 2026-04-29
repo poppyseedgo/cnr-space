@@ -1,6 +1,19 @@
 /**
  * api.ts — Supabase 기반 데이터 레이어
  *
+ * [2026-04-29 Phase 1] Audit log 확장 — buildBookingDiff 헬퍼 추가
+ *   배경: 기존 BOOKING_UPDATED audit는 title/start_at/end_at/room_id 4개 필드만 raw 저장
+ *         memo/status/attendees 변경은 추적 안 됨, 변경 안 된 필드도 같이 기록되어 노이즈
+ *   변경: buildBookingDiff(prev, next, rooms, prevAttendees, nextAttendees) 헬퍼 추가
+ *     · 변경된 필드만 before/after 객체에 포함 (변경 0개면 빈 객체)
+ *     · room: id + name 함께 (메일 본문 가독성)
+ *     · attendees: added/removed 가공 정보 + 전체 목록 모두 저장
+ *   효과:
+ *     · 모든 사용자 직접 수정이 정밀 audit (어떤 필드가 어떻게 바뀌었는지)
+ *     · 변경 안 된 필드 노이즈 제거
+ *     · Phase 2 메일 diff 페이로드와 동일 객체 재사용 가능 (단일 진실 소스)
+ *   사용처: App.tsx update 핸들러 + 향후 Phase 2 sendNotification('updated')
+ *
  * [2026-04-29 v3] upsertBookingAttendees → RPC 'sync_booking_attendees' 호출로 전환
  *   배경: v2 (SELECT-then-diff)는 클라이언트 측 DELETE silent fail (RLS 차단)을
  *         회피하지 못해 참석자 제거가 동작하지 않음 + 누적 정리도 RLS 막힘
@@ -732,6 +745,130 @@ export type AuditAction =
   | 'BOOKING_CHECKIN'
   | 'BOOKING_EARLY_END'
   | 'ADMIN_FORCE_CANCEL'
+
+// ── Booking 변경 diff 계산 ─────────────────────────────────────────────────
+// [2026-04-29 Phase 1] audit_log + 변경 메일 본문 비교용 단일 진실 소스
+//
+// 동작:
+//   prev vs next의 각 필드를 비교 → 변경된 필드만 before/after에 포함
+//   변경 안 된 필드는 양쪽 객체 모두에서 제외 (노이즈 제거)
+//
+// 입력:
+//   prev               — 변경 전 booking (DB 또는 메모리 원본)
+//   next               — 변경 후 changes payload
+//   rooms              — 회의실 lookup (room_id → room_name 변환)
+//   prevAttendeeEmails — 변경 전 attendees email 목록 (booking_attendees 테이블 별도 조회 결과)
+//   nextAttendees      — 변경 후 attendees ({email, name}[])
+//
+// 반환:
+//   { before, after } — audit_log의 before_data/after_data에 그대로 저장 가능
+//   변경 0개면 둘 다 빈 객체 {}
+//
+// 사용처:
+//   1. App.tsx update 핸들러 → insertAuditLog 의 beforeData/afterData
+//   2. (Phase 2 예정) sendNotification('updated') 의 diff 페이로드
+export interface BookingChangeRecord {
+  before: Record<string, any>
+  after:  Record<string, any>
+}
+
+export function buildBookingDiff(
+  prev: Partial<{
+    title:    string
+    memo:     string
+    status:   string
+    start_at: string
+    end_at:   string
+    room_id:  number
+  }>,
+  next: Partial<{
+    title:    string
+    memo:     string
+    status:   string
+    start_at: string
+    end_at:   string
+    room_id:  number
+  }>,
+  rooms: { room_id: number; room_name?: string; room_name_ko?: string }[] = [],
+  prevAttendeeEmails: string[] = [],
+  nextAttendees:      { email?: string; name?: string }[] = [],
+): BookingChangeRecord {
+  const before: Record<string, any> = {}
+  const after:  Record<string, any> = {}
+
+  // 단순 텍스트 필드
+  if (next.title !== undefined && (prev.title ?? '') !== next.title) {
+    before.title = prev.title ?? ''
+    after.title  = next.title
+  }
+  if (next.memo !== undefined && (prev.memo ?? '') !== next.memo) {
+    before.memo = prev.memo ?? ''
+    after.memo  = next.memo
+  }
+  if (next.status !== undefined && prev.status && prev.status !== next.status) {
+    before.status = prev.status
+    after.status  = next.status
+  }
+
+  // 시간 필드 (ISO 문자열 비교)
+  if (next.start_at !== undefined && prev.start_at && prev.start_at !== next.start_at) {
+    before.start_at = prev.start_at
+    after.start_at  = next.start_at
+  }
+  if (next.end_at !== undefined && prev.end_at && prev.end_at !== next.end_at) {
+    before.end_at = prev.end_at
+    after.end_at  = next.end_at
+  }
+
+  // 회의실 변경 (id + name 함께 — 메일 본문에서 사용자가 읽기 쉽도록)
+  if (next.room_id !== undefined && prev.room_id !== undefined && prev.room_id !== next.room_id) {
+    const fromRoom = rooms.find(r => r.room_id === prev.room_id)
+    const toRoom   = rooms.find(r => r.room_id === next.room_id)
+    before.room = {
+      room_id:   prev.room_id,
+      room_name: fromRoom?.room_name_ko ?? fromRoom?.room_name ?? `Room ${prev.room_id}`,
+    }
+    after.room = {
+      room_id:   next.room_id,
+      room_name: toRoom?.room_name_ko   ?? toRoom?.room_name   ?? `Room ${next.room_id}`,
+    }
+  }
+
+  // 참석자 변경 (email 정규화 후 비교)
+  if (nextAttendees.length > 0 || prevAttendeeEmails.length > 0) {
+    const norm = (e: string) => e.trim().toLowerCase()
+    const prevSet = new Set(prevAttendeeEmails.map(norm).filter(Boolean))
+    const nextMap = new Map<string, AttendeeRef>()
+    for (const a of nextAttendees) {
+      const k = norm(a.email ?? '')
+      if (!k) continue
+      if (!nextMap.has(k)) nextMap.set(k, { email: a.email ?? '', name: a.name ?? '' })
+    }
+
+    // 실제 변경 여부 검증 (set equality)
+    const prevKeys = [...prevSet].sort().join(',')
+    const nextKeys = [...nextMap.keys()].sort().join(',')
+
+    if (prevKeys !== nextKeys) {
+      const added: AttendeeRef[]   = []
+      const removed: AttendeeRef[] = []
+      for (const [k, ref] of nextMap.entries()) {
+        if (!prevSet.has(k)) added.push(ref)
+      }
+      for (const k of prevSet) {
+        if (!nextMap.has(k)) removed.push({ email: k, name: '' })
+      }
+      // before에는 변경 전 전체 목록 (저장 시 fallback용)
+      before.attendees = prevAttendeeEmails.map(e => ({ email: e, name: '' }))
+      // after에는 변경 후 전체 목록 + 변환 정보 (added/removed)
+      after.attendees  = [...nextMap.values()]
+      after.attendees_added   = added
+      after.attendees_removed = removed
+    }
+  }
+
+  return { before, after }
+}
 
 export async function insertAuditLog(params: {
   action:      AuditAction

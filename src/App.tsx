@@ -154,7 +154,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from './utils/time'
 import { getFloor } from './data/floors'
-import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, markNoshow, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, approveBooking, rejectBooking, upsertBookingAttendees, getBookingAttendees, insertNotification, loadNotifications, markNotificationRead, markAllNotificationsRead, subscribeNotifications, adminForceCancel, type AppNotification } from './lib/api'
+import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, markNoshow, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, buildBookingDiff, approveBooking, rejectBooking, upsertBookingAttendees, getBookingAttendees, insertNotification, loadNotifications, markNotificationRead, markAllNotificationsRead, subscribeNotifications, adminForceCancel, type AppNotification } from './lib/api'
 import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView } from './components/room/HomeView'
@@ -1048,13 +1048,34 @@ function AppContent() {
       //   send-notification('updated')가 booker + attendees에게 자동 INSERT
       //   pending 전환 시에도 send-notification('pending')이 자동 처리
 
-      // Audit log
-      insertAuditLog({
-        action: 'BOOKING_UPDATED', entityType: 'booking', entityId: originalId,
-        actorName: currentUser,
-        beforeData: prevBooking ? { title: prevBooking.title, start_at: prevBooking.start_at, end_at: prevBooking.end_at, room_id: prevBooking.room_id } : undefined,
-        afterData:  { title: changes.title, start_at: changes.start_at, end_at: changes.end_at, room_id: changes.room_id }
-      }).catch(() => {})
+      // ── [2026-04-29 Phase 1] 변경 diff 계산 (audit_log + 향후 메일 본문 공통) ──
+      //   기존: title/start_at/end_at/room_id 4개 필드만 raw 저장 (memo/status/attendees 누락)
+      //   변경: buildBookingDiff()로 변경된 필드만 정밀 추출 (변경 0개면 audit 스킵)
+      //   효과: memo/status/attendees 변경도 audit, 변경 안 된 필드는 노이즈 제거
+      const diffRecord = prevBooking ? buildBookingDiff(
+        {
+          title:    prevBooking.title,
+          memo:     prevBooking.memo,
+          status:   prevBooking.status,
+          start_at: prevBooking.start_at,
+          end_at:   prevBooking.end_at,
+          room_id:  prevBooking.room_id,
+        },
+        changes,
+        rooms,
+        oldAttendeeEmails,
+        changes.attendees as { email?: string; name?: string }[],
+      ) : { before: {}, after: {} }
+
+      // 변경 사항이 있을 때만 audit 기록 (빈 변경 노이즈 방지)
+      if (Object.keys(diffRecord.after).length > 0) {
+        insertAuditLog({
+          action: 'BOOKING_UPDATED', entityType: 'booking', entityId: originalId,
+          actorName: currentUser,
+          beforeData: diffRecord.before,
+          afterData:  diffRecord.after,
+        }).catch(() => {})
+      }
       showToast(newStatus === 'pending' ? "예약이 변경되었습니다. 관리자 승인 후 확정됩니다." : "예약이 변경되었습니다.");
 
       // ── 일반 → 에메랄드룸 변경으로 pending이 된 경우 → Admin 알림 ──
@@ -1144,6 +1165,20 @@ function AppContent() {
       // ← [v3] DB에 cancelled_by='system'으로 기록 (과거 apiCancelBooking = 'user' 오염 해결)
       //   이메일/인앱 알림은 auto-cancel-bookings cron이 noshow_notified=false 조회로 발송
       Promise.all(toNoshow.map(b => markNoshow(b.id))).catch(console.error);
+      // ← [2026-04-29 Phase 1] 노쇼 처리 audit 기록 (BOOKING_NOSHOW)
+      //   각 노쇼 건마다 actor='system', entityId=booking.id로 기록
+      //   메모리 원칙: 시스템 자동 변경도 audit (옵션 ③ B)
+      //   주의: cron이 추가로 처리하는 노쇼는 Edge Function 측에서 별도 audit 필요 (Phase 외)
+      for (const b of toNoshow) {
+        insertAuditLog({
+          action: 'BOOKING_NOSHOW',
+          entityType: 'booking',
+          entityId: b.id,
+          actorName: 'system',
+          beforeData: { status: 'confirmed', checkedIn: false },
+          afterData:  { status: 'confirmed', autoCancelled: true, cancelledBy: 'system' },
+        }).catch(() => {})
+      }
     }
 
     // ② pending 승인 기한 초과: start_at 1분 전 이후 경과
