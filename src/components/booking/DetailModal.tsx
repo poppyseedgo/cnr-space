@@ -1,5 +1,5 @@
 import { useBreakpoint } from '../../hooks/useBreakpoint'
-import { AlertTriangle, CheckCircle2, Clock, LogOut, ShieldCheck, ShieldX } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock, ShieldCheck, ShieldX } from 'lucide-react'
 import { useState } from 'react'
 import { todayStr, nowMinutes, tsDate, tsMin, fmtTSFull, fmtTSDateFull, CHECKIN_WINDOW_MIN } from '../../utils/time'
 import { getFloor } from '../../data/floors'
@@ -323,9 +323,12 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
         //   변경: onForceCancel(id) — App.tsx confirmAndAdminForceCancel이 ConfirmForceCancelModal 자동 오픈
         //         사유 입력 받은 후 adminForceCancelBooking(id, reason) 실행
         //   onClose() 유지: DetailModal 닫고 → 강제취소 다이얼로그가 그 자리에 뜸 (자연스러운 모달 교체)
-        const BtnForce    = () => <Button variant="danger-outline" flex onClick={()=>{onForceCancel(b.id);onClose();}}>강제취소</Button>
-        // ← [2026-04-29] 체크인 완료 후 조기반납 버튼
-        const BtnEarlyEnd = () => <Button variant="danger-outline" flex onClick={()=>{onEarlyEnd(b.id);onClose();}} icon={<LogOut size={14} strokeWidth={1.8}/>}>조기반납</Button>
+        // onClose() 없음 — confirmAndAdminForceCancel이 setModal('confirmForceCancel')로 교체하는 구조 (BtnReject 동일 패턴)
+        const BtnForce    = () => <Button variant="danger-outline" flex onClick={()=>onForceCancel(b.id)}>강제취소</Button>
+        // ← [2026-04-29] 체크인 완료 후 조기반납 버튼 (bg #111, text #FFF)
+        // onClose() 없음 — confirmAndEarlyEnd가 setModal('confirmEarlyEnd')로 모달 교체하는 구조
+        // onClose() 같이 호출 시 React 18 배칭으로 setModal(null)이 마지막 적용 → 다이얼로그 소멸
+        const BtnEarlyEnd = () => <Button variant="primary" flex onClick={()=>onEarlyEnd(b.id)}>조기반납</Button>
 
         // ── [P2 v8] 체크인 대기 표시 조건 ──────────────────────────
         //   isFuture(시작 전) + tl <= 10 (10분 이내) + confirmed(승인된) + 취소/거절/체크인 안 됨
