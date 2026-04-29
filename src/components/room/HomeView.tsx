@@ -108,9 +108,19 @@ import { FLOORS, getFloor } from '../../data/floors'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 import { RoomStatusBadge } from '../common/RoomStatusBadge'
 import { BookingStatusBadge } from '../common/BookingStatusBadge'
+import type { BadgeType } from '../common/BookingStatusBadge'  // ← [Figma UI갱신 2026-04-29] MINI_BADGE_ONLY 상수 타입용
 import { MetaBadge } from '../common/MetaBadge'  // ← [10차] 반복·참석자 뱃지 공통화
 import { RoomCardButtonArea } from './RoomCardButtonArea' // ← [6차] 공통 컴포넌트 추출
 import { isMyBooking, isAttendee } from '../../utils/bookingOwnership' // ← [2026-04-24 P2/P6-C] isMyBooking(필터) + isAttendee(참석자 뱃지)
+
+// ← [Figma UI갱신 2026-04-29] 소형 카드 뱃지 정책 상수
+//   · '내 예약'(mine) 숨김: 오늘 내 예약 섹션은 모두 "내 것"이므로 중복 정보
+//   · maxChips=1 조합: 우선순위 1위 칩만 표시 (2개 이상 숨김)
+const MINI_BADGE_ONLY: BadgeType[] = [
+  'rejected', 'expired-pending', 'admin-cancel', 'noshow', 'user-cancel',
+  'pending', 'approved', 'active', 'checkin-wait', 'checkin-done',
+  'past', 'early-end', 'countdown',
+]
 
 export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearchQ, filterFloor, setFilterFloor, onBook, onDetail, onBookingDetail, onCheckIn, onEarlyEnd, onCancel, currentUser, currentUserId='', currentUserEmail='', dark}) {  // ← [2026-04-24 P2] currentUserId 추가 — MyPage 방식 예약자 판정용
   const { isMobile, isTablet } = useBreakpoint();
@@ -226,16 +236,16 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
 
           {/* + 예약하기 첫 카드 */}
           <button onClick={()=>{/* onBook 없이 새 예약 모달 */document.dispatchEvent(new CustomEvent("openNewBooking"))}}
-            className="btn flex-none flex flex-col items-center justify-center rounded-3xl text-white font-medium"  /* ← border-radius: rounded-3xl(24px) 유지 */
-            style={{width:isMobile?150:170, height:isMobile?160:180, /* ← [Figma UI갱신] 높이 140/160 → 160/180 (버튼 h-40 수용) */
+            className="btn flex-none flex flex-col items-center justify-center rounded-3xl text-white font-medium"
+            style={{width:170, height:160, /* ← [Figma UI갱신] 170×160px 고정 (isMobile 분기 제거) */
               background:"#111111", flexShrink:0, gap:8}}>
             <span style={{fontSize:24, lineHeight:1}}>＋</span>
-            <span style={{fontSize:isMobile?12:13}}>예약하기</span>
+            <span style={{fontSize:13}}>예약하기</span>
           </button>
 
           {myBookings.length === 0 ? (
-            <div className="flex-none flex items-center justify-center rounded-3xl text-slate-300 dark:text-slate-600 text-sm"  /* ← border-radius: rounded-3xl(24px) 유지 */
-              style={{width:isMobile?150:170, height:isMobile?160:180, background:"#F3F4F8"}}> {/* ← [Figma UI갱신] 높이 140/160 → 160/180 */}
+            <div className="flex-none flex items-center justify-center rounded-3xl text-slate-300 dark:text-slate-600 text-sm"
+              style={{width:170, height:160, background:"#F3F4F8"}}> {/* ← [Figma UI갱신] 170×160px 고정 */}
               오늘 예약 없음
             </div>
           ) : myBookings.map(b => {
@@ -276,75 +286,85 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
             const isCancellable = cardState==="waiting" || cardState==="soon" || cardState==="pending";
 
             return (
-              /* ← [Figma UI갱신] 카드 컨테이너: 높이 140/160→160/180 */
-              <div key={b.id} className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 rounded-3xl p-3"  /* ← border-radius: rounded-3xl(24px) 유지 */
+              /* ← [Figma UI갱신] 377:314 기준 — 170×160 고정 / justify-between 2-children (upper+button) */
+              <div key={b.id} className="flex-none flex flex-col justify-between bg-white dark:bg-slate-800 rounded-3xl p-3"
                 onClick={()=>onBookingDetail&&onBookingDetail(b)}
-                style={{width:isMobile?150:170, height:isMobile?160:180,
+                style={{width:170, height:160,  /* ← [Figma] 170×160 고정 */
                   flexShrink:0, overflow:"hidden",
                   opacity: (cardState==="cancelled"||cardState==="noshow"||cardState==="adminCancel"||cardState==="rejected"||cardState==="pendingExpired") ? 0.45 : 1,
                   border: cardState==="pending" ? "1.5px solid #FCD34D" : "none",
                   cursor:"pointer"}}>
 
-                {/* ① 타이틀 행: [참석자 뱃지 인라인] + 예약 제목 */}
-                {/* ← [Figma UI갱신] 참석자뱃지를 별도행 → 제목 앞 인라인으로, title row pb-6px */}
-                <div style={{display:"flex", alignItems:"center",
-                  gap: isAttendee(b, currentUserEmail) ? 6 : 0,  /* ← [Figma] 참석자일 때 gap-6px */
-                  paddingBottom:6, width:"100%"}}>
-                  {/* ← [Figma 306:5704] 참석자 뱃지: bg-white border-1px-solid-#111 radius-4 px-4 py-1 */}
-                  {isAttendee(b, currentUserEmail) && (
-                    <span style={{
-                      background:"#fff",
-                      border:"1px solid #111",
-                      borderRadius:4,
-                      padding:"1px 4px",
-                      fontSize:10,
-                      fontWeight:500,
-                      color:"#111",
-                      flexShrink:0,
-                      whiteSpace:"nowrap",
-                      lineHeight:1.5
-                    }}>참석자</span>
-                  )}
-                  {/* ← [Figma] 제목: Bold 12px #111 whitespace-nowrap overflow-hidden text-ellipsis flex-1 */}
-                  <p style={{
-                    fontSize:12, fontWeight:700, color:"#111",
-                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-                    flex:"1 0 0", minWidth:0, lineHeight:1.5,
-                    margin:0
-                  }}>{b.title}</p>
-                </div>
+                {/* ── Upper block (377:334): flex-col items-start shrink-0
+                     title + badge + info 를 하나로 묶어 justify-between이
+                     [upper | gap | button] 2-children 구조 유지 → 버튼 항상 맨 아래 */}
+                <div style={{display:"flex", flexDirection:"column", alignItems:"flex-start", flexShrink:0}}>
 
-                {/* ② 상태 뱃지 행: BookingStatusBadge(xs) + 반복 뱃지 */}
-                {/* ← [Figma UI갱신] 상태칩 size sm→xs / 반복뱃지 상단에서 이 행으로 이동 */}
-                <div style={{display:"flex", gap:4, alignItems:"flex-start", flexWrap:"wrap"}}>
-                  <BookingStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only}
-                    size="xs"  /* ← [Figma UI갱신] sm → xs (10px / 1px 4px / radius 4px) */
-                    currentUserId={currentUserId} currentUserEmail={currentUserEmail} />
-                  {/* ← [Figma UI갱신] 반복 뱃지: 상단 별도행 → 상태칩 행으로 이동 */}
-                  {b.recurGroupId && <MetaBadge type="recurring" size="xs" />}
-                </div>
+                  {/* ① 타이틀 행 (377:315): h-24px, flex items-center, pb-6px, w-146px
+                       · 참석자·반복 뱃지가 있을 때 gap-6px로 타이틀과 분리 */}
+                  <div style={{
+                    display:"flex", alignItems:"center", height:24,
+                    paddingBottom:6, width:146,  /* ← [Figma] pb-6px / w-146px */
+                    gap:6,                       /* ← [Figma 306:5704] gap-6px (참석자 카드 기준) */
+                    overflow:"hidden"
+                  }}>
+                    {/* ← [Figma UI갱신] 참석자 뱃지: bg-white border-1px-solid-#111 radius-4 */}
+                    {isAttendee(b, currentUserEmail) && (
+                      <span style={{
+                        flexShrink:0,
+                        background:"#fff", border:"1px solid #111", borderRadius:4,
+                        padding:"1px 4px", fontSize:10, fontWeight:500,
+                        color:"#111", whiteSpace:"nowrap", lineHeight:1.5
+                      }}>참석자</span>
+                    )}
+                    {/* ← [Figma UI갱신] 반복 뱃지: 상태칩 행 → 타이틀 행으로 이동 */}
+                    {b.recurGroupId && <MetaBadge type="recurring" size="xs" />}
+                    {/* ← [Figma] 제목: Bold 12px #111 flex-1 text-ellipsis whitespace-nowrap leading-1.5 */}
+                    <p style={{
+                      flex:"1 0 0", minWidth:0,
+                      fontSize:12, fontWeight:700, color:"#111",
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                      lineHeight:1.5, margin:0
+                    }}>{b.title}</p>
+                  </div>
 
-                {/* ③ 회의실 정보: 방 이름 + 시간 (flex-col gap-6 pt-4 pb-8) */}
-                {/* ← [Figma UI갱신] 10px text-slate-400 → 11px font-500, 방#262930 / 시간#6a7282 */}
-                <div style={{
-                  display:"flex", flexDirection:"column", gap:6,
-                  fontSize:11, fontWeight:500, lineHeight:1, whiteSpace:"nowrap",
-                  paddingTop:4, paddingBottom:8
-                }}>
-                  <span style={{color:"#262930"}}>{r?.room_name ?? ''}</span>  {/* ← [Figma] #262930 */}
-                  <span style={{color:"#6a7282"}}>{fmtTSRangeFull(b.start_at, b.end_at)}</span>  {/* ← [Figma] #6a7282 */}
-                </div>
+                  {/* ② 상태 뱃지 행 (377:320): flex gap-4px items-start py-2px
+                       · mine 숨김 (MINI_BADGE_ONLY), 최대 1칩 (maxChips=1) */}
+                  <div style={{
+                    display:"flex", gap:4, alignItems:"flex-start",
+                    paddingTop:2, paddingBottom:2  /* ← [Figma] py-2px */
+                  }}>
+                    <BookingStatusBadge
+                      booking={b} room={r} isAdminRoom={!!r?.is_admin_only}
+                      size="xs"              /* ← [Figma] StatusBadge-XS: 10px / px-4 py-1 / radius-4 */
+                      maxChips={1}           /* ← [Figma UI갱신] 2개 이상 숨김 */
+                      only={MINI_BADGE_ONLY} /* ← [Figma UI갱신] '내 예약' 칩 제외 */
+                      currentUserId={currentUserId} currentUserEmail={currentUserEmail} />
+                  </div>
 
-                {/* ④ 버튼 영역: h-40px radius-14px 12px/500 */}
-                {/* ← [Figma UI갱신] minHeight-32/py-2/rounded-xl/11px → h-40/radius-14/12px/font-500 */}
+                  {/* ③ 회의실 정보 (377:325): flex-col gap-6px items-start py-8px
+                       11px Medium leading-none whitespace-nowrap */}
+                  <div style={{
+                    display:"flex", flexDirection:"column", gap:6, alignItems:"flex-start",
+                    fontSize:11, fontWeight:500, lineHeight:1, whiteSpace:"nowrap",
+                    paddingTop:8, paddingBottom:8  /* ← [Figma 377:325] py-8px */
+                  }}>
+                    <span style={{color:"#262930"}}>{r?.room_name ?? ''}</span>  {/* ← [Figma] #262930 */}
+                    <span style={{color:"#6a7282"}}>{fmtTSRangeFull(b.start_at, b.end_at)}</span>  {/* ← [Figma] #6a7282 */}
+                  </div>
+
+                </div>{/* /Upper block */}
+
+                {/* ④ 버튼 영역 (377:328): h-40px rounded-14px w-146px
+                     justify-between의 2번째 자식 → 항상 카드 맨 아래 */}
                 <div style={{display:"flex", gap:6}}>
                   {S.showBtn && (
                     <button className="btn flex-1"
                       onClick={e=>{e.stopPropagation(); S.action?.();}}
                       disabled={S.disabled}
                       style={{
-                        height:40, borderRadius:14,                        /* ← [Figma] h-40 / radius-14 */
-                        fontSize:12, fontWeight:500,                        /* ← [Figma] 12px / Medium */
+                        height:40, borderRadius:14,       /* ← [Figma] h-40px / rounded-14px */
+                        fontSize:12, fontWeight:500,       /* ← [Figma] 12px / Medium */
                         background:S.btnBg, color:S.btnColor,
                         cursor:S.disabled?"default":"pointer",
                         display:"flex", alignItems:"center", justifyContent:"center",
@@ -357,13 +377,14 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
                     <button className="btn dark:bg-slate-700 text-slate-500 dark:text-slate-400"
                       onClick={e=>{e.stopPropagation(); onCancel(b.id);}}
                       style={{
-                        height:40, borderRadius:14,                        /* ← [Figma UI갱신] 동일 비율 */
+                        height:40, borderRadius:14,
                         fontSize:11, fontWeight:500,
                         background:"#F3F4F8", padding:"0 10px",
                         whiteSpace:"nowrap"
                       }}>취소</button>
                   )}
                 </div>
+
               </div>
             );
           })}

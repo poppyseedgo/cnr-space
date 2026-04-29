@@ -86,6 +86,12 @@ interface BookingStatusBadgeProps {
   only?:        BadgeType[]
   /** ← [피그마 180:534 신규] 'square' = BookingDetailModal 사각형 칩(radius 8) / 기본 'pill' */
   shape?:       'pill' | 'square'
+  /** ← [Figma UI갱신 2026-04-29] 소형 카드용 표시 칩 수 상한 (기본: 제한 없음)
+   *    · 우선순위 순서대로 chipList 수집 후 slice(0, maxChips) 처리
+   *    · 뱃지 순서: rejected > expired-pending > admin-cancel > noshow > user-cancel
+   *               > pending > approved > active > checkin-wait > checkin-done
+   *               > early-end > past > countdown */
+  maxChips?:    number
 }
 
 /** size별 chip modifier 클래스 — tokens.css 정의 */
@@ -105,6 +111,7 @@ export function BookingStatusBadge({
   size = 'md',
   only,
   shape = 'pill',
+  maxChips,                // ← [Figma UI갱신 2026-04-29] 소형 카드 1칩 제한용
 }: BookingStatusBadgeProps) {
   const now     = nowMinutes()
   const isToday = tsDate(b.start_at) === todayStr()
@@ -224,58 +231,70 @@ export function BookingStatusBadge({
     <span className={`chip ${sizeClass} ${shapeClass} ${cls}`.trim().replace(/\s+/g, ' ')}>{children}</span>
   )
 
+  // ← [Figma UI갱신 2026-04-29] 칩을 배열로 수집 → maxChips로 slice 가능하게 변경
+  //   · 기존: 각 칩을 JSX 조건부 렌더로 직렬 나열 → maxChips 지원 불가
+  //   · 변경: chipList 배열에 push → slice(0, maxChips) 후 렌더
+  //   · 판정 조건 완전 동일 (공식 변경 없음, 렌더 방식만 변경)
+  //   · 뱃지 순서 정책 (소형 카드 우선순위 기준):
+  //     mine → rejected → expired-pending → admin-cancel → noshow → user-cancel
+  //     → pending → approved → active → checkin-wait → checkin-done
+  //     → early-end → past → countdown
+  const chipList: React.ReactNode[] = []
+
+  // ← [피그마 180:534] 내 예약은 항상 맨 앞. sm 소형카드 제외, 노쇼(생성자 박제)도 표시
+  if (show('mine') && isOwner && (!b.autoCancelled || isNoshow) && !isRejected && size !== 'sm')
+    chipList.push(<C key="mine" cls="chip-mine">내 예약</C>)
+  // ① 거절됨 — 최우선, 단독 표시
+  if (show('rejected') && isRejected)
+    chipList.push(<C key="rejected" cls="chip-rejected">거절됨</C>)
+  // ② 기한초과 취소 (pending + autoCancelled)
+  if (show('expired-pending') && isExpiredPending)
+    chipList.push(<C key="expired" cls="chip-expired">기한초과 취소</C>)
+  // ③ 관리자 강제취소 (rejected 제외)
+  if (show('admin-cancel') && isAdminCancel)
+    chipList.push(<C key="admin" cls="chip-admin">관리자 강제취소</C>)
+  // ④ 노쇼 (system 자동취소)
+  if (show('noshow') && isNoshow)
+    chipList.push(<C key="noshow" cls="chip-noshow">노쇼</C>)
+  // ⑤ 사용자 직접 취소 — 본인 컨텍스트(MyPage)에서만
+  if (show('user-cancel') && isUserCancel && isOwner)
+    chipList.push(<C key="usercancel" cls="chip-neutral">취소됨</C>)
+  // ⑥ 승인 대기
+  if (show('pending') && b.status === 'pending' && !b.autoCancelled)
+    chipList.push(<C key="pending" cls="chip-pending">승인 대기</C>)
+  // ⑦ 승인완료
+  if (show('approved') && isApproved)
+    chipList.push(<C key="approved" cls="chip-approved">승인완료</C>)
+  // ⑧ 진행 중 (room color 동적 적용)
+  if (show('active') && isAct && !b.autoCancelled)
+    chipList.push(
+      <span key="active" className={`chip ${sizeClass} ${shapeClass}`.trim().replace(/\s+/g, ' ')}
+        style={{ background: (r?.color ?? '#6366F1') + '18', color: r?.color ?? '#6366F1' }}>
+        진행 중
+      </span>
+    )
+  // ⑨ 체크인 대기 / 완료
+  if (show('checkin-wait') && nci)
+    chipList.push(<C key="checkin-wait" cls="chip-checkin-wait">체크인 대기</C>)
+  if (show('checkin-done') && b.checkedIn && isAct)
+    chipList.push(<C key="checkin-done" cls="chip-success">체크인 완료</C>)
+  // ⑩ 조기반납 — '사용완료'보다 먼저 (Figma 242:427 순서)
+  //    ← [2026-04-23] earlyEnded=true면 '조기반납' + '사용완료' 세트로 표시
+  if (show('early-end') && b.earlyEnded)
+    chipList.push(<C key="early-end" cls="chip-earlyend">조기반납</C>)
+  // ⑪ 사용완료 ← [2026-04-23] 라벨 '종료' → '사용완료', !earlyEnded 제외
+  if (show('past') && isPast)
+    chipList.push(<C key="past" cls="chip-done">사용완료</C>)
+  // ⑫ N분 후 카운트다운
+  if (show('countdown') && !isAct && !b.autoCancelled && isToday && tl > 0 && tl <= 10)
+    chipList.push(<C key="countdown" cls="chip-countdown">{tl}분 후</C>)
+
+  // ← [Figma UI갱신] maxChips 미지정 시 전체 표시, 지정 시 상위 N개만
+  const visibleChips = maxChips !== undefined ? chipList.slice(0, maxChips) : chipList
+
   return (
     <div style={{ display: 'inline-flex', gap, flexWrap: 'wrap', alignItems: 'center' }}>
-      {/* ← [피그마 180:534] 내 예약은 항상 맨 앞. sm 소형카드 제외, 노쇼(생성자 박제)도 표시 */}
-      {show('mine') && isOwner && (!b.autoCancelled || isNoshow) && !isRejected && size !== 'sm' && <C cls="chip-mine">내 예약</C>}
-
-      {/* ① 거절됨 — 최우선, 단독 표시 */}
-      {show('rejected') && isRejected && <C cls="chip-rejected">거절됨</C>}
-
-      {/* ② 기한초과 취소 (pending + autoCancelled) */}
-      {show('expired-pending') && isExpiredPending && <C cls="chip-expired">기한초과 취소</C>}
-
-      {/* ③ 관리자 강제취소 (rejected 제외) */}
-      {show('admin-cancel') && isAdminCancel && <C cls="chip-admin">관리자 강제취소</C>}
-
-      {/* ④ 노쇼 (system 자동취소) */}
-      {show('noshow') && isNoshow && <C cls="chip-noshow">노쇼</C>}
-
-      {/* ⑤ 사용자 직접 취소 — 본인 컨텍스트(MyPage)에서만 */}
-      {show('user-cancel') && isUserCancel && isOwner && <C cls="chip-neutral">취소됨</C>}
-
-      {/* ── 이하 정상 상태 (취소 없는 경우) ── */}
-      {/* ⑥ 승인 대기 */}
-      {show('pending') && b.status === 'pending' && !b.autoCancelled && <C cls="chip-pending">승인 대기</C>}
-
-      {/* ⑦ 승인완료 */}
-      {show('approved') && isApproved && <C cls="chip-approved">승인완료</C>}
-
-      {/* ⑧ 진행 중 */}
-      {show('active') && isAct && !b.autoCancelled && (
-        <span className={`chip ${sizeClass} ${shapeClass}`.trim().replace(/\s+/g, ' ')} style={{ background: (r?.color ?? '#6366F1') + '18', color: r?.color ?? '#6366F1' }}>
-          진행 중
-        </span>
-      )}
-
-      {/* ⑨ 체크인 대기 / 완료 */}
-      {show('checkin-wait') && nci && <C cls="chip-checkin-wait">체크인 대기</C>}
-      {show('checkin-done') && b.checkedIn && isAct && <C cls="chip-success">체크인 완료</C>}
-
-      {/* ⑩ 조기반납 — '사용완료'보다 먼저 (Figma 242:427 순서)
-          ← [2026-04-23] 조기반납도 사용완료의 서브셋으로 처리됨
-          · earlyEnded=true면 '조기반납' + '사용완료' 세트로 표시 */}
-      {show('early-end') && b.earlyEnded && <C cls="chip-earlyend">조기반납</C>}
-
-      {/* ⑪ 사용완료 (이전 '종료')
-          ← [2026-04-23] 라벨 '종료' → '사용완료' 통일 (Figma 242:439 스펙)
-          · isPast 조건에서 !earlyEnded 제외 → 조기반납도 사용완료에 포함 */}
-      {show('past') && isPast && <C cls="chip-done">사용완료</C>}
-
-      {/* ⑫ N분 후 카운트다운 */}
-      {show('countdown') && !isAct && !b.autoCancelled && isToday && tl > 0 && tl <= 10 && (
-        <C cls="chip-countdown">{tl}분 후</C>
-      )}
+      {visibleChips}
     </div>
   )
 }
