@@ -859,6 +859,7 @@ function AppContent() {
   }, [showToast, bookings, rooms, users, sendNotification])
 
   const rejectPendingBooking = useCallback(async (id: string, reason: string) => {
+    setModal(null)  // ← [2026-04-29] 다이얼로그 경유 구조 (confirmAndRejectBooking) — cancelBooking 패턴 동일
     try {
       await rejectBooking(id, reason, currentUser, authUser?.avatar_url ?? null)
       const target = bookings.find(b => b.id === id)
@@ -896,6 +897,7 @@ function AppContent() {
       // 낙관적 UI 업데이트
       // ← [2026-04-23 HOTFIX] status:'cancelled' 추가 (api.ts adminForceCancel과 동기화)
       setBookings(prev => prev.map(b => b.id === id ? { ...b, status: 'cancelled', autoCancelled: true, cancelledBy: 'admin' } : b))
+      setModal(null)  // ← [2026-04-29] 다이얼로그 경유 구조 (confirmAndAdminForceCancel) — earlyEnd 패턴 동일
 
       // Audit log
       insertAuditLog({
