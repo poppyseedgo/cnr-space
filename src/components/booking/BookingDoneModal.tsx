@@ -5,6 +5,22 @@
  * 방금 생성한 예약의 요약 정보를 표시 (회의실, 시간, 예약자, 참석자 등).
  *
  * ✅ 변경 이력
+ *  - [2026-04-30 피그마 273:891 알림 영역 복원]
+ *    · 증상: 미래 예약(오늘이 아닌 예약) 생성 시 체크인 안내 영역이 표시되지 않음
+ *    · 원인: `tsDate(b.start_at) === todayStr()` 조건으로 오늘 예약에만 표시
+ *            → 5월 2일 예약 생성 시 4월 30일 today 조건 false → 알림 사라짐
+ *    · 해결: 조건 제거 → Figma 디자인대로 항상 표시
+ *            (BookingDoneModal은 "방금 만든 예약 확인" 모달이라 과거 예약 케이스 없음.
+ *             미래 예약에도 시작 후 체크인 안내가 의미 있음)
+ *    · 추가 텍스트 정정 (Figma 273:891 일치):
+ *      └ "회의 시작 후" 통째 Medium → "회의" Medium + "시작 후" Bold (강조 분리)
+ *      └ "체크인이 필요합니다." → "체크인 하세요." (Figma 273:894)
+ *      └ "체크인 하지 않으면 자동취소 됩니다." → "체크인 하지 않으면 자동취소(노쇼) 됩니다." (Figma 273:895)
+ *    · 무수정: 모든 로직/props/시그니처 — Booking 타입, isPending 분기,
+ *              메모/참석자 조건부 렌더링, 색상(#F0FFCF), padding(12), borderRadius(10)
+ *    · 짝 배포: 없음 (단일 파일 변경)
+ *    · 미반영: "중요분류" row (Figma 272:788) — Booking 타입에 해당 필드 없음 (별도 협의 필요, 메모리 기존 룰)
+ *
  *  - [2026-04-25 피그마 272:769 전면 재적용] UI 디자인 Figma 절대 기준 일치
  *    · 무수정: 모든 로직/props/시그니처 — isPending 분기, P4-A-2 live 조회 패턴 B/C,
  *              체크인 안내 조건(tsDate===todayStr), 메모/참석자 조건부 렌더링
@@ -34,7 +50,8 @@
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 // ← [2026-04-25] lucide 아이콘 제거 (피그마 디자인은 라벨 옆 아이콘 없음)
 // ← [2026-04-25] time.ts import 정리 — 신규 디자인에서 실제 사용하는 함수만
-import { todayStr, tsDate, tsMin, fmtDateFull, fmtTSRangeFull, CHECKIN_WINDOW_MIN } from '../../utils/time'
+// ← [2026-04-30] todayStr import 제거 — 체크인 안내 조건 제거로 더 이상 사용처 없음
+import { tsDate, tsMin, fmtDateFull, fmtTSRangeFull, CHECKIN_WINDOW_MIN } from '../../utils/time'
 import { getFloor } from '../../data/floors'
 import { UserChip } from '../common/UserChip'
 import { AttendeeChip } from '../common/AttendeeChip'
@@ -221,26 +238,32 @@ export function BookingDoneModal({booking:b, onClose, rooms:rp=[], users:up=[]})
         )}
       </div>
 
-      {/* ── 체크인 안내 ──   ← [2026-04-25 피그마 273:891]
+      {/* ── 체크인 안내 ──   ← [2026-04-25 피그마 273:891 / 2026-04-30 조건 제거]
             #F0FFCF rounded 10 padding 12, no icon, no border (기존 #FFF7ED + Clock 폐기)
-            ← [무수정 보존] tsDate(b.start_at)===todayStr() 조건 — 오늘 시작 예약에만 표시 */}
-      {tsDate(b.start_at)===todayStr() && (
-        <div style={{padding: 10, background:"#fff", flexShrink:0}}>
-          <div style={{
-            background: "#F0FFCF", borderRadius: 10, padding: 12,
-            display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center",
-            gap: 4,
-            fontSize: 12, color: "#000", lineHeight: 1.5,
-          }}>
-            <div style={{display:"flex", alignItems:"center", gap:4}}>
-              <span style={{fontWeight:500}}>회의 시작 후</span>
-              <span style={{fontWeight:700}}>{CHECKIN_WINDOW_MIN}분 이내</span>
-              <span style={{fontWeight:500}}>체크인이 필요합니다.</span>
-            </div>
-            <span style={{fontWeight:500}}>체크인 하지 않으면 자동취소 됩니다.</span>
+            ← [2026-04-30] tsDate(b.start_at)===todayStr() 조건 제거
+            · 배경: 미래 예약(예: 5/2) 생성 시 알림이 사라지는 결함 발생
+            · 해결: Figma 디자인대로 항상 표시 (방금 만든 예약 확인 모달 컨텍스트상 안전)
+            ← [2026-04-30 텍스트 정정] Figma 273:892~895 1:1 일치
+            · "시작 후" Bold 분리, "체크인 하세요", "자동취소(노쇼)" */}
+      <div style={{padding: 10, background:"#fff", flexShrink:0}}>
+        <div style={{
+          background: "#F0FFCF", borderRadius: 10, padding: 12,
+          display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center",
+          gap: 4,
+          fontSize: 12, color: "#000", lineHeight: 1.5,
+        }}>
+          <div style={{display:"flex", alignItems:"center", gap:4}}>
+            {/* ← [2026-04-30 피그마 273:892] "회의" Medium + "시작 후" Bold (강조 분리) */}
+            <span style={{fontWeight:500}}>회의</span>
+            <span style={{fontWeight:700}}>시작 후</span>
+            <span style={{fontWeight:700}}>{CHECKIN_WINDOW_MIN}분 이내</span>
+            {/* ← [2026-04-30 피그마 273:894] "체크인이 필요합니다" → "체크인 하세요" */}
+            <span style={{fontWeight:500}}>체크인 하세요.</span>
           </div>
+          {/* ← [2026-04-30 피그마 273:895] "자동취소" → "자동취소(노쇼)" */}
+          <span style={{fontWeight:500}}>체크인 하지 않으면 자동취소(노쇼) 됩니다.</span>
         </div>
-      )}
+      </div>
 
       {/* ── Footer ──   ← [2026-04-25 피그마 272:869]
             border-top 제거 → 모달 하단 corner rounded 24 적용, padding 8 (모바일은 safe area) */}
