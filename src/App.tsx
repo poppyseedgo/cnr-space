@@ -1490,9 +1490,10 @@ function AppContent() {
           className="dark:bg-slate-800 dark:border-b dark:border-slate-700"
           style={{
             position: "relative",
-            background: dark ? "rgba(15, 23, 42, 0.85)" : "rgba(255, 255, 255, 0.85)",
-            backdropFilter: "blur(8px)",
-            WebkitBackdropFilter: "blur(8px)",
+            // ── [2026-04-30] backdrop-blur 제거 → 불투명 흰색
+            //    이유: 콘텐츠가 헤더 뒤로 비쳐서 시각적으로 지저분함
+            //    그라데이션 fade는 헤더 아래 24px에서만 유지 (자연스러운 경계)
+            background: dark ? "#0F172A" : "#FFFFFF",
           }}>
         <div className="max-w-[1400px] mx-auto px-3 sm:px-7">
           <div className="grid items-center gap-3"
@@ -1788,7 +1789,7 @@ function AppContent() {
         {/* ── 그라데이션 fade — Claude UI 스타일
              [2026-04-30] Figma 헤더 배경 이미지 → CSS gradient로 변환
              · 헤더 바로 아래 24px 영역에서 콘텐츠가 자연스럽게 페이드 아웃
-             · backdrop-filter blur(8px)와 함께 동작 (헤더 자체 반투명)
+             · 헤더가 불투명 흰색으로 변경됨에 따라 그라데이션 시작점도 1.0으로 (이전 0.85)
              · pointer-events:none으로 콘텐츠 클릭 통과 보장 */}
         <div
           aria-hidden
@@ -1799,8 +1800,8 @@ function AppContent() {
             right: 0,
             height: 24,
             background: dark
-              ? "linear-gradient(to bottom, rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0))"
-              : "linear-gradient(to bottom, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0))",
+              ? "linear-gradient(to bottom, rgba(15, 23, 42, 1), rgba(15, 23, 42, 0))"
+              : "linear-gradient(to bottom, rgba(255, 255, 255, 1), rgba(255, 255, 255, 0))",
             pointerEvents: "none",
           }}
         />
