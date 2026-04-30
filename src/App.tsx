@@ -319,10 +319,13 @@ function AppContent() {
   // ── [2026-04-30 보강] 초기값을 viewport 폭 기반 추정값으로 ──
   //    useState(0)이면 첫 paint에서 한 프레임 동안 콘텐츠가 헤더 영역에 들어옴.
   //    정확한 값은 useLayoutEffect에서 즉시 보정되지만, 첫 frame 가림 방지를 위해
-  //    추정 초기값 사용. (NoticeBar 41 + 헤더 데스크톱 72 / 모바일 52)
+  //    추정 초기값 사용.
+  //    [2026-04-30 #2] 헤더 슬림화(padding 8/8, minHeight auto) + NoticeBar 비활성화 반영
+  //                    이전: 113 (NoticeBar 41 + 헤더 72)
+  //                    이후: 56 (헤더 슬림 ~48 + 여유 8) — NoticeBar 활성화되면 ResizeObserver가 보정
   const [headerHeight, setHeaderHeight] = useState<number>(() => {
-    if (typeof window === 'undefined') return 113;       // SSR 안전 기본값
-    return window.innerWidth < 640 ? 93 : 113;           // 모바일 93 / 데스크톱 113
+    if (typeof window === 'undefined') return 56;       // SSR 안전 기본값
+    return 56;                                          // 슬림 헤더 (모바일/데스크톱 동일)
   });
   // URL 해시에서 초기 view 복원 (#home, #calendar, #mypage, #admin)
   const getViewFromHash = (): string => {
@@ -1549,13 +1552,16 @@ function AppContent() {
           <div className="grid items-center gap-3"
             style={{
               gridTemplateColumns:"1fr auto 1fr",
-              // ── [2026-04-30 사용자 요청 반영] padding-bottom 32→10, min-height 90→72
-              //    모바일은 기존 52px / 7px 유지 (사용자 결정사항)
-              paddingTop: isMobile ? 7 : 10,
-              paddingBottom: isMobile ? 7 : 10,
-              minHeight: isMobile ? 52 : 72,
+              // ── [2026-04-30 사용자 요청] 헤더 슬림화 ──
+              //    padding-top/bottom: 8px (이전 데스크탑 10 / 모바일 7)
+              //    min-height: auto (이전 데스크탑 72 / 모바일 52)
+              //    데스크탑/모바일 분기 제거 → 단일값으로 코드 단순화
+              //    실제 높이는 콘텐츠(아바타 32px + padding 16) 기준 ~48px 내외
+              paddingTop: 8,
+              paddingBottom: 8,
+              minHeight: 'auto',
             }}
-            data-desktop-height="72">
+            data-desktop-height="auto">
 
             {/* ① 브랜드 (left) — 클릭 시 홈
                 Figma 410:6864: Pretendard Medium 19px / letter-spacing 0.57 / #1E1E1E / line-height 1.25
