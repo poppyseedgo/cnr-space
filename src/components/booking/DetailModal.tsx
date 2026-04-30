@@ -16,6 +16,17 @@ import { isMyBooking, isAttendee } from '../../utils/bookingOwnership'  // ← [
  * BookingDetailModal (export name: DetailModal)
  *
  * ✅ 변경 이력
+ *  - [2026-04-30 참석자 가로스크롤 회귀 fix]
+ *    · 증상: 긴 이름(예: "안영환_Yeonghwan An", "권혁준_David Hyuckjun") 참석자 시
+ *            모달 전체 가로 스크롤 발생, 칩이 영역 밖으로 삐져나감
+ *    · 원인: grid `repeat(2, minmax(0, 1fr))`는 grid track shrink 허용하지만
+ *            grid item 자체의 `min-width: auto` 기본값이 콘텐츠 최소 너비를 강제 →
+ *            grid track이 콘텐츠 크기로 늘어나며 부모 width 초과
+ *    · 해결: 참석자 컨테이너 grid → flex-wrap 변경 (Figma 의도와 일치)
+ *            짝 변경: AttendeeChip 조회 모드에 wrapper 추가 (max-width:100% + min-width:0)
+ *            → 칩 단위로 자연스럽게 다음 줄 wrap, Figma 272:831 동작 일치
+ *    · 무수정: UserChip 자체 (다른 사용처 영향 차단), props/로직/시그니처
+ *
  *  - [2026-04-24 P4-A-1] 예약자·참석자 이름을 snapshot → live 데이터로 전환
  *    · 배경: 팀즈/Azure AD에서 이름 변경 후 Admin 동기화 실행 시 profiles.name은
  *            최신으로 갱신되지만 bookings.user_name / booking_attendees.name은
@@ -220,25 +231,29 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
               />
             )
           })()}
-          {/* 참석자 — 2-grid (피그마 repeat(2, fit-content), gap 10)
-              ← [2026-04-23] 1열 무너짐 버그 수정 (근본 원인):
-                 · 기존: `flex: 1` 이 grid 컨테이너에 있어 부모가 flex가 아닌데도
-                   flex-basis 0% 해석 + minmax(0, 1fr) 조합으로 cell이 0까지 축소돼
-                   2열이 시각적으로 무너짐
-                 · 변경: flex 제거 + width 100% 명시 → grid가 부모 전체 폭을 사용
-                 · 효과: 일반 짧은 이름은 2열로 정상 배치
-                         긴 이름(셀 폭 초과) 시에만 ellipsis 처리
-                         필요 시 auto-fit으로 추가 반응형 전환 가능 */}
+          {/* 참석자 — flex-wrap (Figma 272:831 의도: 짧은 이름 2칩 한 줄, 긴 이름은 칩 단위로 다음 줄 wrap)
+              ← [2026-04-30 가로스크롤 회귀 fix]
+                 · 증상: 긴 이름(예: "안영환_Yeonghwan An", "권혁준_David Hyuckjun") 시
+                         모달 전체 가로 스크롤 발생, 칩이 영역 밖으로 삐져나감
+                 · 원인: grid `repeat(2, minmax(0, 1fr))`는 grid track shrink 허용하지만
+                         grid item 자체의 `min-width: auto` 기본값이 콘텐츠 최소 너비를
+                         강제 → grid track이 늘어나 부모 width 초과
+                 · 해결: grid → flex-wrap (Figma 의도와 일치, 칩 단위 wrap)
+                         + AttendeeChip wrapper의 max-width:100% (부모 너비 초과 차단)
+                 · 짝 배포: AttendeeChip wrapper 추가 (한 묶음으로만 효과 있음)
+              ← [2026-04-23] 1열 무너짐 버그 수정 흔적 — grid 패턴은 회귀로 인해 폐기 */}
           {b.attendees && b.attendees.length > 0 && (
             <InfoRow
               label="참석자"
               alignTop
               value={
                 <div style={{
-                  display:"grid",
-                  gridTemplateColumns:"repeat(2, minmax(0, 1fr))",
-                  columnGap:10, rowGap:10,
-                  width:"100%",     // ← [2026-04-23] flex:1 제거 + width 100% 명시
+                  display:"flex",
+                  flexWrap:"wrap",
+                  columnGap:14,        // ← Figma 272:831 자식 칩 간 가로 간격
+                  rowGap:10,
+                  width:"100%",
+                  minWidth:0,          // ← 부모 너비 강제로 초과 방지
                 }}>
                   {b.attendees.map((a:any, idx:number) => {
                     const u = (up as any[]).find((u:any) => u.email === a.email)
