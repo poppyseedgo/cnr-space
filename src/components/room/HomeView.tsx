@@ -290,13 +290,13 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
           {myBookings.length === 0 ? (
             // [2026-04-30 Figma 417:7471 정밀 반영]
             // · 좌측 상단 정렬, padding 12, justify-between + 40px 빈 영역
-            // · bg #E3E6ED, 텍스트 white Pretendard Bold 16px line-height 1.25
+            // · [2026-04-30 사용자 요청] bg #E3E6ED → #FFF, color #fff → #E5E6EB (연한 회색)
             // · 3줄 텍스트: "오늘 / 내 예약이 / 없어요"
             <div className="flex-none flex flex-col items-start justify-between"
               style={{
                 width: isMobile ? 150 : 170,
                 height: 160,
-                background: "#E3E6ED",
+                background: "#FFF",
                 borderRadius: 24,
                 padding: 12,
                 flexShrink: 0,
@@ -305,7 +305,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
                 fontSize: 16,
                 fontWeight: 700,        // Pretendard Bold
                 lineHeight: 1.25,
-                color: "#fff",
+                color: "#E5E6EB",       // ← [2026-04-30] rgb(229, 230, 235) 연한 회색
                 flex: "1 0 0",          // 텍스트가 위 공간 모두 차지
               }}>
                 오늘<br/>내 예약이<br/>없어요
