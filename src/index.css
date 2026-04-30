@@ -11,7 +11,7 @@
   /* 서피스 */
   --color-surface:       #FFFFFF;
   --color-surface-muted: #F8FAFC;
-  --color-page:          #F3F4F8;
+  --color-page:          #F5F7F9;  /* ← [2026-04-30] #F3F4F8 → #F5F7F9 (앱 배경 미세 밝게) */
 
   /* 테두리 */
   --color-border:        #E2E8F0;
@@ -436,7 +436,7 @@
 
 .sk-wrap {
   width: 100%;
-  background: #F3F4F8;
+  background: #F5F7F9;  /* ← [2026-04-30] --color-page와 동기화 */
   min-height: calc(100vh - 52px);
 }
 

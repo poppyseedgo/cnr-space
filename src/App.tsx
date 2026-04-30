@@ -1424,7 +1424,7 @@ function AppContent() {
       display:"flex", flexDirection:"column",
       alignItems:"center", justifyContent:"center",
       minHeight:"100vh",
-      background: "#F3F4F8",
+      background: "#F5F7F9",
       gap: 10, position:"relative", overflow:"hidden"
     }}>
       <style>{`
@@ -1485,7 +1485,7 @@ function AppContent() {
       //    이전: return null → 흰색 빈 화면 → 콘텐츠 점프 (새로고침 느낌 X)
       //    이후: 본문 배경색만 표시 → 색 점프 없음 + 가벼운 인상 유지
       //    skeleton 정책 200/200 하이브리드와 짝을 이루어 동작.
-      return <div style={{ minHeight: '100vh', background: '#F3F4F8' }} />;
+      return <div style={{ minHeight: '100vh', background: '#F5F7F9' }} />;
     }
     // 현재 뷰에 맞는 스켈레톤 렌더
     const SkeletonComp = view === 'calendar' ? CalendarSkeleton
@@ -1493,7 +1493,7 @@ function AppContent() {
                        : view === 'admin'    ? AdminSkeleton
                        : null; // home: 헤더 스켈레톤만, 콘텐츠 영역은 비워둠
     return (
-      <div style={{background:'#F3F4F8', minHeight:'100vh'}}>
+      <div style={{background:'#F5F7F9', minHeight:'100vh'}}>
         {/* 헤더 스켈레톤 — 좌:로고pill / 중:nav2개 / 우:유저pill */}
         <div style={{background:'#fff', height:60, borderBottom:'1px solid #E2E8F0',
           display:'flex', alignItems:'center', padding:'0 28px'}}>
@@ -1517,7 +1517,7 @@ function AppContent() {
     <div
       className="dark:bg-slate-900 min-h-screen text-slate-800 dark:text-slate-200"
       style={{
-        background: "#F3F4F8",
+        background: "#F5F7F9",
         // ── [2026-04-30] 헤더 fixed로 인한 본문 가림 방지 ──
         //    headerHeight는 ResizeObserver로 NoticeBar 활성/비활성 등 모든 변경 자동 반영
         paddingTop: headerHeight,
