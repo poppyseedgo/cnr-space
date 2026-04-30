@@ -1565,12 +1565,12 @@ function AppContent() {
 
             {/* ① 브랜드 (left) — 클릭 시 홈
                 Figma 410:6864: Pretendard Medium 19px / letter-spacing 0.57 / #1E1E1E / line-height 1.25
-                모바일은 기존 13px / 600 유지 (사용자 결정: 모바일 분기 그대로) */}
+                [2026-04-30 사용자 요청] 데스크탑 19px → 17px (모바일 13px 유지) */}
             <div className="flex items-center min-w-0 cursor-pointer" onClick={()=>setView("home")}>
               <div className="min-w-0">
                 <div className="text-slate-900 dark:text-white truncate"
                   style={{
-                    fontSize: isMobile ? 13 : 19,
+                    fontSize: isMobile ? 13 : 17,
                     fontWeight: isMobile ? 600 : 500,
                     letterSpacing: isMobile ? 0 : 0.57,
                     lineHeight: 1.25,
@@ -1844,7 +1844,8 @@ function AppContent() {
 
         {/* ── 그라데이션 fade — Claude UI 스타일
              [2026-04-30] Figma 헤더 배경 이미지 → CSS gradient로 변환
-             · 헤더 바로 아래 24px 영역에서 콘텐츠가 자연스럽게 페이드 아웃
+             · 헤더 바로 아래 32px 영역에서 콘텐츠가 자연스럽게 페이드 아웃
+             · [2026-04-30 사용자 요청] 24px → 32px (페이드 영역 확장)
              · 헤더가 불투명 흰색으로 변경됨에 따라 그라데이션 시작점도 1.0으로 (이전 0.85)
              · pointer-events:none으로 콘텐츠 클릭 통과 보장 */}
         <div
@@ -1854,7 +1855,7 @@ function AppContent() {
             top: "100%",
             left: 0,
             right: 0,
-            height: 24,
+            height: 32,
             background: dark
               ? "linear-gradient(to bottom, rgba(15, 23, 42, 1), rgba(15, 23, 42, 0))"
               : "linear-gradient(to bottom, rgba(255, 255, 255, 1), rgba(255, 255, 255, 0))",
