@@ -73,7 +73,13 @@ export default {
         'lg':  '12px',
         'xl':  '14px',
         '2xl': '16px',
-        '3xl': '20px',
+        // ← [2026-04-30] 20px → 24px 수정
+        //   사유: 디자인 토큰 (--radius-3xl: 24px / index.css)과 일치시켜야 함
+        //   영향: rounded-3xl 사용처 4곳 모두 24px로 통일
+        //         · HomeView 룸 카드 (이번 사용자 요청)
+        //         · HomeView "오늘 내 예약" 카드 3종 (사용자 메모리상 이미 24px로 인식)
+        //         · LoginPage 카드 (시각적 회귀 영향 미미)
+        '3xl': '24px',
       },
     },
   },
