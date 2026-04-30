@@ -1770,8 +1770,8 @@ function AppContent() {
                   {!isMobile && (
                     <>
                       <span style={{
-                        fontSize: 15,           // ← [2026-04-30] 14 → 15
-                        fontWeight: 600,        // Pretendard SemiBold
+                        fontSize: 15,
+                        fontWeight: 500,        // ← [2026-04-30] 600 → 500 (Pretendard Medium)
                         lineHeight: 1.5,
                         color: dark ? "#fff" : "#1E1E1E",
                         whiteSpace: "nowrap",
