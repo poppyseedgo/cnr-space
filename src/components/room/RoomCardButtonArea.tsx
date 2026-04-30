@@ -8,6 +8,11 @@
 //   - 컨테이너 padding도 인라인이라 조정 시마다 D.btnBottomPadding 문자열 파싱 필요
 //   - 이 컴포넌트로 추출하여 단일 변경 지점(Single Point of Change) 확보
 //
+// 2026-04-30 (사용자 요청): "바로 예약" 버튼만 padding/borderRadius 강조
+//   - BOOK_BTN_STYLE에 padding: 16, borderRadius: 16 override 추가
+//   - SOON("N분 뒤 사용") / DETAIL("자세히 보기") 버튼은 BASE 그대로 (변경 없음)
+//   - primary action 시각 강조 + 룸 카드 24px와 함께 부드러운 디자인 일관성
+//
 // 2026-04-17 (8차): 버튼 스타일 리팩토링
 //   - 3개 스타일 객체(BOOK/SOON/DETAIL) 공통 속성을 BASE_BTN으로 추출
 //   - spread + override 패턴으로 중복 제거 (46줄 → 15줄)
@@ -60,6 +65,10 @@ export function RoomCardButtonArea({
   //   - BOOK: 검정 배경, 흰 글자 (primary action)
   //   - SOON: 핑크 배경, 와인색 글자, not-allowed 커서 (비활성 상태)
   //   - DETAIL: 투명 배경, 회색 글자 (ghost action)
+  // [2026-04-30 사용자 요청] BOOK 버튼만 padding/borderRadius 강조
+  //   - padding: btnPadding("14px") → 16px (primary action 시각 강조)
+  //   - borderRadius: 12 → 16 (룸 카드 24px와 함께 더 부드러운 인상)
+  //   - SOON/DETAIL은 BASE 그대로 유지 (변경 없음)
   const BASE_BTN: React.CSSProperties = {
     flex: 1,
     fontWeight: 600,
@@ -70,7 +79,7 @@ export function RoomCardButtonArea({
     textAlign: 'center',
     cursor: 'pointer',
   }
-  const BOOK_BTN_STYLE:   React.CSSProperties = { ...BASE_BTN, background: '#111111', color: '#fff' }
+  const BOOK_BTN_STYLE:   React.CSSProperties = { ...BASE_BTN, background: '#111111', color: '#fff', padding: 16, borderRadius: 16 }
   const SOON_BTN_STYLE:   React.CSSProperties = { ...BASE_BTN, background: '#FCE7F3', color: '#BE185D', cursor: 'not-allowed' }
   const DETAIL_BTN_STYLE: React.CSSProperties = { ...BASE_BTN, background: 'none',    color: '#64748B' }
 
