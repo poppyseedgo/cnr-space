@@ -461,7 +461,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
         {/* 상태 필터 */}
         {[
           {id:"ALL",label:"전체",count:withStatusAll.length},
-          {id:"AVAILABLE",label:"예약가능",count:availCount,badgeBg:"#D3F3FF",badgeColor:"#000"},
+          {id:"AVAILABLE",label:"예약가능",count:availCount,badgeBg:"#D5F0FF",badgeColor:"#000"},
           {id:"BUSY",label:"사용중",count:busyCount,badgeBg:"#ffdaed",badgeColor:"#000"},
         ].map(s=>(
           <button key={s.id} className="btn flex-shrink-0 font-semibold rounded-full"

@@ -22,7 +22,7 @@
 :root {
   /* ── 룸/예약 공통 상태 뱃지 토큰 ── */
   /* ← [피그마 196:1073] 예약가능 text: #0369A1 → #111 */
-  --color-available-bg:   #D3F3FF;  --color-available-text: #111;
+  --color-available-bg:   #D5F0FF;  --color-available-text: #111;
   /* ← [피그마 195:1071 신규] 승인 후 확정(에메랄드룸 표식) 뱃지 */
   --color-approval-required-bg: #E6FFB0;  --color-approval-required-text: #111;
   --color-busy-bg:        #FCE7F3;  --color-busy-text:      #BE185D;
