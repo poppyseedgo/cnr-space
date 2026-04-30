@@ -1,5 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // [변경 이력]
+// 2026-04-30 (사용자 요청): 룸 카드 컨텐츠/버튼 영역 padding 1rem 통일
+//   - 데스크탑 버튼 영역: D.btnBottomPadding 0.5rem → 1rem
+//   - 모바일 컨텐츠 영역: D.cardPadding p-2(0.5rem) → p-4(1rem)
+//   - 모바일 버튼 영역: D.btnBottomPadding 0.5rem → 1rem (위와 동일 - 환경 무관 단일값)
+//   - 결과: 모든 환경(데스크탑/태블릿/모바일)에서 컨텐츠/버튼 영역 모두 1rem 통일
+//
 // 2026-04-29 (Figma UI갱신): "오늘 내 예약" 소형 카드 디자인 전면 개편
 //   - Figma 노드 377:314 (기본) / 306:5704 (참석자) 기준 정확히 반영
 //   - 구조 재편: 뱃지→제목→상태칩 순 → 제목행→상태칩행→방+시간행→버튼 순
@@ -552,15 +558,18 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
   // ← [density에 따른 스타일 값 한 곳에 모음 - 유지보수 용이]
   // ← [2026-04-17 4차] 썸네일은 isMobile만, 폰트는 isTouchLayout 기준으로 분기
   // ← [2026-04-17 5차] 1024 미만 padding/폰트 미세조정
+  // ← [2026-04-30 사용자 요청] 컨텐츠/버튼 영역 padding 0.5rem → 1rem
+  //    · 모바일(touchLayout) 컨텐츠 영역: p-2(0.5rem) → p-4(1rem)
+  //    · 모든 환경 버튼 영역: 0.5rem → 1rem (데스크탑+모바일 동일)
   const isCompact = density === 'compact';
   const D = {
     thumbHeight: isMobile ? 80 : (isCompact ? 120 : 160),
-    cardPadding: isTouchLayout ? "p-2 gap-2" : (isCompact ? "p-4 gap-2" : "p-4 gap-3"),   // ← [9차] comfortable: p-5 → p-4 (터치/compact는 기존 유지)
+    cardPadding: isTouchLayout ? "p-4 gap-2" : (isCompact ? "p-4 gap-2" : "p-4 gap-3"),   // ← [2026-04-30] touchLayout p-2 → p-4 (모바일 컨텐츠 영역 1rem)
     roomNameSize: isTouchLayout ? 16 : (isCompact ? 16 : 21),                              // ← [5차] 1024 미만: 14 → 16
     metaSize: isCompact ? 12 : 13,
     btnSize: isCompact ? 13 : 14,
     btnPadding: "14px",                                                                             // ← [8차] 전체 상황 14px 통일 (이전: compact 10px / comfortable 13px)
-    btnBottomPadding: "0.5rem",                                                                     // ← [9차] 전체 뷰포트 상하좌우 0.5rem(8px) 통일 (이전 데스크탑 비대칭 패딩 제거)
+    btnBottomPadding: "1rem",                                                                       // ← [2026-04-30] 0.5rem → 1rem (데스크탑+모바일 버튼 영역 통일)
     showDetailBtn: !isTouchLayout,
   };
 
