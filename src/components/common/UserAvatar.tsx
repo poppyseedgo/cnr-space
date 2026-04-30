@@ -7,6 +7,7 @@ interface UserAvatarProps {
   bgColor?:   string
   textColor?: string
   fontSize?:  number
+  fontWeight?: number   // ← [2026-04-30] override 가능 (기본값 500 유지로 기존 사용처 영향 0)
   className?: string
 }
 
@@ -18,15 +19,17 @@ interface UserAvatarProps {
  *     · 24px 아바타 → 12px 이니셜 (이전 9px, 너무 작음)
  *     · 36px → 18px / 44px → 22px 자동 환산
  * ← [피그마 180:534] 기본값: bg #000, text #E7E7E7, fw 500
+ * ← [2026-04-30] fontWeight prop 추가 (헤더 프로필은 400으로 override)
  */
 export function UserAvatar({
   name,
   avatarUrl,
-  size      = 36,
-  bgColor   = '#000',
-  textColor = '#E7E7E7',
+  size       = 36,
+  bgColor    = '#000',
+  textColor  = '#E7E7E7',
   fontSize,
-  className = '',
+  fontWeight = 500,    // ← 기본값 500 유지 (다른 사용처 영향 0)
+  className  = '',
 }: UserAvatarProps) {
   const [imgError, setImgError] = useState(false)
 
@@ -67,8 +70,8 @@ export function UserAvatar({
         background: bgColor,
         color:      textColor,
         fontSize:   resolvedFontSize,
-        fontWeight: 500,      // ← [피그마 180:534] fw 800 → 500
-        lineHeight: 1.3,      // ← [피그마] leading 1.3
+        fontWeight,                 // ← [2026-04-30] prop 사용 (기본값 500)
+        lineHeight: 1.3,            // ← [피그마] leading 1.3
       }}
       className={className}
     >

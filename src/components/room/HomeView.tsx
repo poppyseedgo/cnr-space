@@ -284,7 +284,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <path d="M11.5 20V12.5H4V11.5H11.5V4H12.5V11.5H20V12.5H12.5V20H11.5Z" fill="white"/>
             </svg>
-            <span style={{ fontSize: 16, fontWeight: 600, lineHeight: 1.5 }}>예약하기</span>
+            <span style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.5 }}>예약하기</span>
           </button>
 
           {myBookings.length === 0 ? (

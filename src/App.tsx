@@ -1603,8 +1603,9 @@ function AppContent() {
                       padding: isMobile
                         ? "7px 10px"
                         : (view===v ? "14px 24px" : "14px 20px"),
-                      fontSize: isMobile ? 11 : 16,
-                      // ── [2026-04-30 사용자 요청] 활성/비활성 모두 500으로 통일
+                      fontSize: isMobile ? 11 : 15,
+                      // ── [2026-04-30 사용자 요청] 데스크탑 16 → 15 (모바일 11 그대로)
+                      // ── [이전] 활성/비활성 모두 500으로 통일
                       fontWeight: 500,
                       borderRadius: 1000,
                       background: view===v ? (dark?"#F1F5F9":"#000000") : "transparent",
@@ -1764,11 +1765,12 @@ function AppContent() {
                     size={isMobile ? 28 : 32}
                     bgColor="#CBECFF"
                     textColor="#1E1E1E"
+                    fontWeight={400}    // ← [2026-04-30] 헤더 프로필 아바타만 400 (기본 500 override)
                   />
                   {!isMobile && (
                     <>
                       <span style={{
-                        fontSize: 14,
+                        fontSize: 15,           // ← [2026-04-30] 14 → 15
                         fontWeight: 600,        // Pretendard SemiBold
                         lineHeight: 1.5,
                         color: dark ? "#fff" : "#1E1E1E",
