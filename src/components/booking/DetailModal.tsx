@@ -435,6 +435,13 @@ function InfoRow({ label, value, alignTop = false }: InfoRowProps) {
         flexShrink: 0,
         lineHeight: 1.5,
       }}>{label}</div>
+      {/* ── [2026-04-30] value 영역 정렬 수정 ──
+           이전: 일반 block + lineHeight 1.5 → 자식이 칩 컴포넌트면 baseline에
+                 의해 위로 떠서 부모 행 가운데 정렬 안 됨 (예약자 행 시각 결함)
+           수정: alignTop=false일 땐 flex + alignItems:center로 자식 강제 가운데 정렬
+                  · 텍스트 자식: anonymous flex item으로 정상 표시 + wordBreak 보존
+                  · 칩 자식: 부모 행 높이 안에서 항상 가운데 (예약자 칩 정상화)
+                 alignTop=true (메모·참석자 등 여러 줄) 케이스는 block 그대로 유지 */}
       <div style={{
         fontSize:   16,
         fontWeight: 400,
@@ -443,6 +450,8 @@ function InfoRow({ label, value, alignTop = false }: InfoRowProps) {
         flex:       1,
         minWidth:   0,
         wordBreak:  "break-word",
+        display:    alignTop ? "block" : "flex",
+        alignItems: alignTop ? undefined : "center",
       }}>{value}</div>
     </div>
   )
