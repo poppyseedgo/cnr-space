@@ -594,12 +594,27 @@ export async function markNoshow(id: string): Promise<void> {
 }
 
 // ── Realtime 구독 ────────────────────────────────────────────────────────────
-export function subscribeBookings(onUpdate: () => void) {
+//
+// ← [2026-04-30 Step 3-A] onResubscribe 옵셔널 콜백 추가
+//    배경: Realtime 끊김(네트워크 단절/슬립/와이파이 전환 등) 후 자동 재연결 시
+//          그 사이의 변경 메시지를 놓쳤을 가능성이 있음 → React state stale 발생
+//    해결: subscribe()의 status callback에서 'SUBSCRIBED' 도래 시 onResubscribe 호출
+//          → 호출 측이 loadBookings로 fresh data 강제 sync
+//    호환성: onResubscribe는 옵셔널이므로 기존 호출(`subscribeBookings(cb)`)은 그대로 작동
+//    짝 배포: src/App.tsx (호출 측에서 onResubscribe 사용)
+export function subscribeBookings(
+  onUpdate: () => void,
+  onResubscribe?: () => void,
+) {
   if (!isSupabaseEnabled) return () => {}
   const channel = supabase
     .channel('bookings-realtime')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => onUpdate())
-    .subscribe()
+    .subscribe((status) => {
+      // SUBSCRIBED는 최초 구독 + 재연결 성공 모두에서 발생
+      // 끊김 사이 변경을 놓쳤을 수 있어 호출 측에서 fresh data fetch
+      if (status === 'SUBSCRIBED' && onResubscribe) onResubscribe()
+    })
   return () => { supabase.removeChannel(channel) }
 }
 

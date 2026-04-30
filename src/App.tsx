@@ -2,6 +2,28 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-04-30] 캘린더 stale 화면 노쇼 오표시 근본 해결 (Step 1+2+3-A)
+ *      · 증상: DailyView에서 브라우저 오래 켜두면 체크인된 예약·진행중 예약이 모두
+ *              노쇼 박제로 표시. 클릭하거나 새로고침하면 정상 복원. DB는 정상.
+ *      · 진단:
+ *        - markNoshow API는 DB 가드 5종(api.ts:562~590)으로 stale 시도를 거름 → DB 안전
+ *        - 그러나 useEffect [tick]의 setBookings는 prev에 가드 없이 마킹
+ *          → React state만 오염되는 비대칭 결함
+ *        - state 오염의 근본은 Realtime 끊김 후 React state ↔ DB sync 단절
+ *      · 해결 (3단계, 함께 적용):
+ *        Step 1 — 노쇼 useEffect setBookings에 DB 가드 5종 대칭 적용
+ *                 (status='confirmed', !checkedIn, !earlyEnded, !autoCancelled, cancelledBy=null)
+ *        Step 2 — pending_expired useEffect setBookings에 가드 4종 적용
+ *                 (room_id=3, status='pending', !autoCancelled, cancelledBy=null)
+ *                 · 메모리 원칙: checkedIn/earlyEnded는 pending에서 의미 없으므로 제외
+ *                   ("defensive bloat 금지")
+ *        Step 3-A — Realtime 끊김 회복 시 fresh data 강제 sync + 10분 주기 백업 sync
+ *                 · subscribeBookings에 onResubscribe 옵셔널 콜백 추가 (api.ts 짝 변경)
+ *                 · SUBSCRIBED status 도래 시 loadBookings → setBookings 호출
+ *                 · 15분 주기 별도 setInterval로 옵션 다 사각지대(메시지 누락 등) 보강
+ *      · 짝 배포: src/lib/api.ts (subscribeBookings 시그니처 확장)
+ *      · 원칙: "DB가드와 state가드를 1:1 대칭"이 v3 HOTFIX(4-22) 정신의 일관 적용
+ *
  *  - [2026-04-29] 캘린더 탭 재진입 시 오늘 일 뷰로 리셋
  *      · 증상: 주간/월간 뷰 보다가 홈 갔다 캘린더 재진입 시 이전 뷰·날짜 그대로 유지됨
  *      · 해결: setView('calendar') 분기에 setCalView('daily') 추가 (setSelectedDate(todayStr()) 기존 존재)
@@ -461,13 +483,14 @@ function AppContent() {
       setTick(t => t+1);
     }, 10000);
 
-    // ② Realtime 구독 → 다른 사람 예약/취소/체크인 시 즉시 반영
-    // 500ms 디바운스: Realtime 재연결 시 연속 호출로 인한 auth lock 경쟁 방지
-    let realtimeDebounce: ReturnType<typeof setTimeout> | null = null;
-    const unsubscribe = subscribeBookings(() => {
-      if (realtimeDebounce) clearTimeout(realtimeDebounce);
-      realtimeDebounce = setTimeout(() => {
-        loadBookings().then(fresh => {
+    // ── [2026-04-30 Step 3-A] state ↔ DB sync 보강 헬퍼 ────────────────────
+    //   호출 시점:
+    //     · Realtime 재연결 직후 (subscribeBookings의 onResubscribe)
+    //     · 15분 주기 백업 sync (옵션 다 사각지대 보강 — 사일런트 메시지 누락 등)
+    //   실패 시: console.error로 기록만 하고 silent skip (다음 sync 기회로 회복)
+    const resyncFromDB = () => {
+      loadBookings()
+        .then(fresh => {
           setBookings(fresh)
           setModal(prev => {
             if (prev?.type !== 'detail') return prev
@@ -475,9 +498,42 @@ function AppContent() {
             return updated ? { ...prev, data: updated } : prev
           })
         })
-      }, 500);
-    });
+        .catch(err => console.error('[step3a] resync 실패:', err))
+    }
 
+    // ② Realtime 구독 → 다른 사람 예약/취소/체크인 시 즉시 반영
+    // 500ms 디바운스: Realtime 재연결 시 연속 호출로 인한 auth lock 경쟁 방지
+    let realtimeDebounce: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribe = subscribeBookings(
+      () => {
+        if (realtimeDebounce) clearTimeout(realtimeDebounce);
+        realtimeDebounce = setTimeout(() => {
+          loadBookings().then(fresh => {
+            setBookings(fresh)
+            setModal(prev => {
+              if (prev?.type !== 'detail') return prev
+              const updated = fresh.find((b: any) => b.id === (prev.data as any)?.id)
+              return updated ? { ...prev, data: updated } : prev
+            })
+          })
+        }, 500);
+      },
+      // ← [2026-04-30 Step 3-A] 끊김 회복 시 fresh data 강제 sync
+      //   Supabase Realtime은 끊김 후 자동 재연결됨 → SUBSCRIBED status 다시 호출됨
+      //   그 사이 놓친 메시지가 있을 수 있어 명시적으로 loadBookings 트리거
+      resyncFromDB,
+    );
+
+    // ── [2026-04-30 Step 3-A] 10분 주기 백업 sync ──────────────────────────
+    //   옵션 다(Realtime 끊김 감지)의 사각지대 보강:
+    //     · 사일런트 메시지 누락 (연결은 살아있으나 일부 메시지 손실)
+    //     · OS 레벨 sleep 등으로 timeout 감지가 늦는 케이스
+    //   주기 결정 근거:
+    //     · 너무 짧으면 Realtime 메시지 폭증 사건(2026-04-22, 9.74M/일) 재발 우려
+    //       (단 이건 WebSocket 채널 문제이고 본 sync는 HTTP 채널이라 직접 무관)
+    //     · 옵션 다가 99% 케이스를 잡으므로 백업은 보수적으로 운용
+    //   비용: 사용자 300명 × 6회/시간 × 8시간 ≈ 14,400 쿼리/일 (낮음)
+    const syncIv = setInterval(resyncFromDB, 10 * 60 * 1000);
 
     // ③ Page Visibility API → 탭 복귀 시 데이터 강제 새로고침
     // (자리 비운 사이 바뀐 예약 상태를 즉시 반영)
@@ -497,6 +553,7 @@ function AppContent() {
     return () => {
       if (realtimeDebounce) clearTimeout(realtimeDebounce);
       clearInterval(iv);
+      clearInterval(syncIv);  // ← [2026-04-30 Step 3-A] 10분 주기 백업 sync 정리
       document.removeEventListener('visibilitychange', onVisibilityChange);
       document.removeEventListener("openNewBooking", handler);
       unsubscribe();
@@ -1161,7 +1218,20 @@ function AppContent() {
     if(toNoshow.length>0){
       const ids=new Set(toNoshow.map(b=>b.id));
       // ← [v3] 낙관적 UI: state에 즉시 반영 (system으로 기록 — 노쇼 뱃지 즉시 표시)
-      setBookings(prev => prev.map(b => ids.has(b.id) ? {...b, status:'confirmed', autoCancelled:true, cancelledBy:'system'} : b));  // ← [변경] status:'confirmed' 명시 추가
+      // ← [2026-04-30 Step 1] DB markNoshow 가드 5종 대칭 적용 (api.ts:562~590)
+      //   배경: filter 시점은 effect 클로저 캡처 bookings, prev는 React 보장 최신 state.
+      //         이 사이에 b.checkedIn 등이 변할 수 있어 prev 시점 재검증 필수.
+      //   특히 가드 ②(checkedIn) — 사용자 본인이 같은 탭에서 체크인 중이거나
+      //   Realtime으로 다른 사용자 체크인이 들어온 race를 차단.
+      setBookings(prev => prev.map(b => {
+        if (!ids.has(b.id))           return b
+        if (b.status !== 'confirmed') return b   // ① status='confirmed'
+        if (b.checkedIn)              return b   // ② !checkedIn (양방향 오염 핵심)
+        if (b.earlyEnded)             return b   // ③ !earlyEnded
+        if (b.autoCancelled)          return b   // ④ !autoCancelled (멱등성)
+        if (b.cancelledBy != null)    return b   // ⑤ cancelledBy IS NULL
+        return {...b, status:'confirmed', autoCancelled:true, cancelledBy:'system'}
+      }));
       // ← [v3] DB에 cancelled_by='system'으로 기록 (과거 apiCancelBooking = 'user' 오염 해결)
       //   이메일/인앱 알림은 auto-cancel-bookings cron이 noshow_notified=false 조회로 발송
       Promise.all(toNoshow.map(b => markNoshow(b.id))).catch(console.error);
@@ -1211,7 +1281,19 @@ function AppContent() {
       // 낙관적 UI: state만 업데이트
       // ← [변경] status:'cancelled' 추가 — isExpiredPending 공식과 일치
       //   (status='cancelled' && cancelledBy='system' && room_id=3)
-      setBookings(prev => prev.map(b => expiredIds.has(b.id) ? {...b, autoCancelled:true, cancelledBy:'system', status:'cancelled'} : b));
+      // ← [2026-04-30 Step 2] state 가드 4종 추가 — DB 쓰기 없는 단독 방어
+      //   배경: pending_expired는 cron 단독 DB 처리(P2 v6) 구조라 대칭할 DB 가드 없음.
+      //         setBookings만 단독 방어 — admin 승인 덮어쓰기 등 잘못된 마킹 차단.
+      //   메모리 원칙: pending에선 checkedIn/earlyEnded 의미 없음 → 가드에 추가 금지
+      //               ("defensive bloat" 금지 원칙)
+      setBookings(prev => prev.map(b => {
+        if (!expiredIds.has(b.id))   return b
+        if (b.room_id !== 3)         return b   // ★ 에메랄드 룸 외엔 pending_expired 자체가 불가
+        if (b.status !== 'pending')  return b   // ★ admin 승인/사용자 취소/거절 덮어쓰기 차단
+        if (b.autoCancelled)         return b   // 중복 마킹 방지 (멱등성)
+        if (b.cancelledBy != null)   return b   // 누군가 처리한 건 보호
+        return {...b, autoCancelled:true, cancelledBy:'system', status:'cancelled'}
+      }));
       // ← expirePendingBooking() 호출 제거
       //   DB 쓰기는 auto-cancel-bookings cron이 단독 처리 (경쟁 조건 방지)
     }
