@@ -373,14 +373,50 @@ function AppContent() {
   const [calFilterFloor,  setCalFilterFloor]  = useState("ALL");  // 캘린더 전용
   const [tick, setTick]           = useState(0);
   const [loading, setLoading]       = useState(true);
-  const [showSkeleton, setShowSkeleton] = useState(false); // 100ms 딜레이 후 표시
+  const [showSkeleton, setShowSkeleton] = useState(false);
+  // ── [2026-04-30] skeleton 표시 정책 = 200/200 하이브리드 ─────────────────
+  // 배경: 4월 17일 Disk IO 최적화 후 fetch 100~250ms로 빨라짐 → 기존 300ms
+  //       트리거에 안 걸려 shimmer 자체가 화면에 안 그려짐.
+  //       동시에 `if (!showSkeleton) return null` 때문에 0~300ms 빈 화면 발생.
+  // 정책 (가볍게 보이기 우선):
+  //   ① 트리거 지연 200ms — 이보다 빠른 응답에선 skeleton 안 보임 (가벼움 유지)
+  //   ② 최소 유지 200ms  — 한번 보였으면 200ms는 보장 (깜빡임 방지, 새로고침 신호)
+  //   ③ 추가 지연 최대 +50ms (일반 응답 시) — 인지 한도 미만 (시스템 무거워 보임 방지)
+  //   ④ 빈 화면 제거 — 0~200ms는 회색 배경만 (헤더 placeholder는 skeleton 화면에서)
+  // 시나리오:
+  //   · 빠른 응답(150ms)  : 즉시 콘텐츠 (skeleton 거치지 않음, +0ms)
+  //   · 일반 응답(350ms)  : skeleton 200ms 보임 → 콘텐츠 (+50ms)
+  //   · 느린 응답(800ms+) : skeleton 600ms+ 보임 → 콘텐츠 (+0ms)
+  const skeletonShownAtRef = useRef<number | null>(null);
 
-  // 100ms 이상 로딩 시에만 스켈레톤 표시 (짧은 로딩은 깜박임 방지)
   useEffect(() => {
-    if (!loading) { setShowSkeleton(false); return; }
-    const t = setTimeout(() => setShowSkeleton(true), 300);
-    return () => clearTimeout(t);
-  }, [loading]);
+    if (loading) {
+      // ── 로딩 시작 → 200ms 후 skeleton 표시 ──
+      const showTimer = setTimeout(() => {
+        setShowSkeleton(true);
+        skeletonShownAtRef.current = Date.now();
+      }, 200);
+      return () => clearTimeout(showTimer);
+    }
+
+    // ── 로딩 완료 ──
+    if (!showSkeleton) {
+      // skeleton 미표시 상태에서 데이터 도착 → 즉시 실제 화면 (가볍게)
+      return;
+    }
+
+    // skeleton 표시 중 데이터 도착 → 최소 유지 시간(200ms) 보장
+    const elapsed = Date.now() - (skeletonShownAtRef.current ?? Date.now());
+    const remaining = Math.max(0, 200 - elapsed);
+
+    const hideTimer = setTimeout(() => {
+      setShowSkeleton(false);
+      skeletonShownAtRef.current = null;
+    }, remaining);
+    return () => clearTimeout(hideTimer);
+  }, [loading]);  // showSkeleton은 의존성 X (자기 자신 의존 시 무한 루프 위험)
+                  // loading 변경 시 showSkeleton의 현재 값을 closure로 capture
+                  // ESLint 경고 가능: 의도적 — showSkeleton은 loading의 부수 결과로만 변경됨
   const [splashDone, setSplashDone] = useState(false); // Text Reveal 최소 표시 보장
 
   // Text Reveal 최소 표시 시간 (애니메이션 완료 타이밍)
@@ -398,6 +434,10 @@ function AppContent() {
   //   2) RAF 재측정 (다음 frame)        : 폰트/이미지 비동기 로드 후 height 변동 잡기
   //   3) ResizeObserver (지속 관찰)     : NoticeBar dismiss / 자식 콘텐츠 변경 자동 추적
   //   4) window resize (fallback)      : 화면 회전 / 창 크기 변경 / 모바일↔데스크톱 전환
+  // ── [2026-04-30 보강] 의존성 [] → [loading]
+  //    이전 버그: loading=true 첫 mount 시 실제 헤더가 없어 measure 실패.
+  //              의존성 []이라 loading=false 전환 시 재실행 안 됨 → 영구 추정값 사용.
+  //    수정: [loading] 의존성으로 loading=false 전환 시 헤더 mount되면 재측정.
   useLayoutEffect(() => {
     const el = headerWrapRef.current;
     if (!el) return;
@@ -426,7 +466,7 @@ function AppContent() {
       ro.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, []);
+  }, [loading]);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
@@ -1433,7 +1473,13 @@ function AppContent() {
 
   // ── 데이터 로딩 중 ──
   if (loading) {
-    if (!showSkeleton) return null; // 100ms 미만이면 아무것도 표시 안 함
+    if (!showSkeleton) {
+      // ── [2026-04-30] 0~200ms 윈도우: skeleton 미표시 + 빈 화면 방지 ──
+      //    이전: return null → 흰색 빈 화면 → 콘텐츠 점프 (새로고침 느낌 X)
+      //    이후: 본문 배경색만 표시 → 색 점프 없음 + 가벼운 인상 유지
+      //    skeleton 정책 200/200 하이브리드와 짝을 이루어 동작.
+      return <div style={{ minHeight: '100vh', background: '#F3F4F8' }} />;
+    }
     // 현재 뷰에 맞는 스켈레톤 렌더
     const SkeletonComp = view === 'calendar' ? CalendarSkeleton
                        : view === 'mypage'   ? MyPageSkeleton
