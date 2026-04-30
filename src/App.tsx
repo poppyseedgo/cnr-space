@@ -169,7 +169,7 @@
  *      · Realtime 구독(subscribeNotifications)이 INSERT 이벤트를 <100ms로 푸시하여 UX 지연 없음
  */
 
-import React, { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense, Component, type ErrorInfo, type ReactNode } from 'react'
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, lazy, Suspense, Component, type ErrorInfo, type ReactNode } from 'react'
 import { Bell, Calendar, Home, LogOut, Settings, User } from 'lucide-react'
 // ← [2026-04-30] 헤더 상단 공지 영역 (NoticeBar) 도입 — Figma node 410:6745 반영
 import { NoticeBar, type AnnouncementConfig } from './components/layout/NoticeBar'
@@ -303,6 +303,16 @@ function AppContent() {
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const unreadCount = notifications.filter((n: AppNotification) => !n.is_read).length;
+
+  // ─── [2026-04-30] 헤더 fixed + 본문 padding-top 동적 계산 ─────────────────
+  // 배경: index.css의 `html, body { overflow-x: hidden }`(iOS 가로 흔들림 방지)
+  //       으로 인해 position: sticky의 컨테이닝 블록이 viewport가 아닌 body로
+  //       잡히면서 sticky가 정상 작동하지 않음.
+  // 해결: 헤더 wrap을 position: fixed로 viewport 기준 고정 + 본문에 동일 높이만큼
+  //       padding-top 동적 적용. ResizeObserver로 NoticeBar dismiss/모바일 전환
+  //       등 모든 높이 변경을 자동 반영 → 콘텐츠가 헤더에 가려지지 않음.
+  const headerWrapRef = useRef<HTMLDivElement>(null);
+  const [headerHeight, setHeaderHeight] = useState(0);
   // URL 해시에서 초기 view 복원 (#home, #calendar, #mypage, #admin)
   const getViewFromHash = (): string => {
     const hash = window.location.hash.replace('#', '')
@@ -374,6 +384,27 @@ function AppContent() {
 
   // modal 닫히면 subModal도 자동 클리어
   useEffect(() => { if (!modal) setSubModal(null) }, [modal]);
+
+  // ─── [2026-04-30] 헤더 wrap 높이 측정 → 본문 padding-top 동기화 ───────────
+  // useLayoutEffect: paint 직전 동기 측정으로 첫 렌더 시 깜빡임 방지
+  // ResizeObserver: NoticeBar dismiss / 모바일↔데스크톱 전환 / 폰트 로드 등
+  //                 모든 높이 변경을 자동 감지하여 padding-top 재계산
+  useLayoutEffect(() => {
+    const el = headerWrapRef.current;
+    if (!el) return;
+    // 초기 측정 (paint 전 동기)
+    setHeaderHeight(el.getBoundingClientRect().height);
+    // 변경 감지
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        // contentRect는 padding 제외, border-box 측정엔 borderBoxSize 사용
+        // 헤더 wrap엔 padding/border 없으므로 contentRect로 충분
+        setHeaderHeight(entry.contentRect.height);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
@@ -1408,13 +1439,30 @@ function AppContent() {
 
   return (
     <div className={dark ? "dark" : ""}>
-    <div className="dark:bg-slate-900 min-h-screen text-slate-800 dark:text-slate-200" style={{background:"#F3F4F8"}}>
-{/* ── Sticky 영역: NoticeBar + Header + Gradient Fade ──
-     [2026-04-30] Figma node 410:6745 반영
-     · NoticeBar : 헤더 위 공지 영역 (Admin 활성화 시 표시, X 닫기 = 세션 한정)
-     · Header    : Pretendard 폰트 + Figma 정확한 색상/패딩으로 재구성 (데스크톱)
-     · Gradient  : Header 하단으로 24px 페이드 (Claude UI 스타일, blur 8px) */}
-      <div style={{position:"sticky", top:0, zIndex:100}}>
+    <div
+      className="dark:bg-slate-900 min-h-screen text-slate-800 dark:text-slate-200"
+      style={{
+        background: "#F3F4F8",
+        // ── [2026-04-30] 헤더 fixed로 인한 본문 가림 방지 ──
+        //    headerHeight는 ResizeObserver로 NoticeBar 활성/비활성 등 모든 변경 자동 반영
+        paddingTop: headerHeight,
+      }}>
+{/* ── 고정 영역: NoticeBar + Header + Gradient Fade ──
+     [2026-04-30] Figma node 410:6745 반영 + sticky→fixed 전환
+     · sticky가 body의 overflow-x:hidden(iOS 흔들림 방지)과 충돌해 작동 안 함
+     · fixed로 viewport 기준 고정 + 본문에 동적 padding-top으로 가림 방지
+     · NoticeBar: 헤더 위 공지 영역 (Admin 활성화 시 표시, X 닫기 = 세션 한정)
+     · Header  : Pretendard 폰트 + Figma 정확한 색상/패딩 반영 (데스크톱)
+     · Gradient: Header 하단 24px 페이드 (Claude UI 스타일, blur 8px) */}
+      <div
+        ref={headerWrapRef}
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 100,
+        }}>
         <NoticeBar announcement={MOCK_ANNOUNCEMENT} />
         <header
           className="dark:bg-slate-800 dark:border-b dark:border-slate-700"
@@ -1735,7 +1783,7 @@ function AppContent() {
         />
       </header>
       </div>
-{/* ── Sticky 영역 끝 ── */}
+{/* ── 고정 영역 끝 ── */}
 
       {/* ── Views ── */}
       {(view==="home"||view==="calendar") && (
