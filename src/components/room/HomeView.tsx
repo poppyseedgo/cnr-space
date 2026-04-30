@@ -303,9 +303,9 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
               }}>
               <div style={{
                 fontSize: 16,
-                fontWeight: 700,        // Pretendard Bold
+                fontWeight: 500,        // ← [2026-04-30] 700 → 500 (Pretendard Bold → Medium)
                 lineHeight: 1.25,
-                color: "#C7CED1",       // ← [2026-04-30] rgb(199, 206, 209) — 이전 #E5E6EB 보다 약간 진한 회색
+                color: "#C7CED1",       // rgb(199, 206, 209)
                 flex: "1 0 0",          // 텍스트가 위 공간 모두 차지
               }}>
                 오늘<br/>내 예약이<br/>없어요
