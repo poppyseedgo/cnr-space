@@ -15,6 +15,15 @@ import { isBooker } from '../../utils/bookingOwnership'  // ← [2026-04-24 P4-B
  *    - 예: "이 위치엔 승인 대기 뱃지만 보이기"
  *
  * ✅ 변경 이력
+ *  - [2026-04-30 다이아몬드 hotfix] isExpiredPending에 room_id=3 가드 추가
+ *    · 증상: 다이아몬드 룸 예약이 stale state 사고로 cancelledBy='system' 마킹되면
+ *            "기한초과 취소" 칩이 오표시됨 (audit_log로 다수 케이스 확인)
+ *    · 원인: BookingStatusBadge의 isExpiredPending 공식에 room_id 가드 부재
+ *    · 해결: && b.room_id === 3 한 줄 추가 (pending_expired는 Emerald 전용 — 메모리 표준)
+ *    · 짝 배포: 없음 (단일 파일 변경)
+ *    · 후속 (대기): BookingStatusBadge isExpiredPending 공식을 slotHelpers.ts와 통일
+ *                  (단일 진실 원천 — 별도 정책 결정 후 진행 예정)
+ *
  *  - [2026-04-24 P7-A] isOwner fallback 제거 — 이름 비교 코드 완전 삭제
  *    · 호출부 4곳 (MyPage/HomeView/BookingListTable/DetailModal 경유 DetailModalStatusBadge)
  *      모두 currentUserId/Email 전달 완료 확인 → fallback 불필요
@@ -169,7 +178,15 @@ export function BookingStatusBadge({
   //    예: 어제 09:00(sm=540) 건을 오늘 01:40(now=100)에 조회 시
   //        100 < 550 = true로 오판정되어 "기한초과"로 표시됨 (실제로는 노쇼)
   //    해결: isToday일 때만 시간 비교, 아닐 때는 status만으로 판정.
+  //  ← [2026-04-30 다이아몬드 hotfix] room_id=3 가드 추가
+  //    배경: stale state 사고로 다이아몬드(room_id≠3) 예약이 React state에서
+  //          cancelledBy='system' 마킹된 케이스에서 "기한초과 취소" 칩 오표시 발생.
+  //          (audit_log로 확인 — 2026-04-30 06:11 다수 발생)
+  //    원칙: pending_expired는 Emerald 전용(메모리 표준). slotHelpers.ts L119와 일관.
+  //    단일 진실 원천: BookingStatusBadge와 slotHelpers의 isExpiredPending 공식 자체는
+  //                   여전히 다름(별도 통일 작업 대기). 본 hotfix는 room_id 가드만 보강.
   const isExpiredPending = isSystemCancel
+                           && b.room_id === 3                                       // ← [2026-04-30] Emerald 전용 가드
                            && (b.status === 'pending' || (isToday && now < sm + 10))
   // ③-2 노쇼: start_at + 10분 경과 + status='cancelled' (또는 confirmed 단계 건)
   //     (또는 isToday=false인 과거 날짜의 status='confirmed' + system 취소 건)
