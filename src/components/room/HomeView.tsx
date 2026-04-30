@@ -1,5 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // [변경 이력]
+// 2026-04-30 (사용자 요청 #3): 데스크탑 룸 카드 버튼 영역 padding 1rem → 0.75rem
+//   - D.btnBottomPadding: 분기(데스크탑 1rem / touchLayout 0.75rem) → "0.75rem" 단일값
+//   - 데스크탑 컨텐츠 영역은 그대로 1rem 유지 (변경 X)
+//   - 결과: 모든 환경에서 버튼 영역 0.75rem 통일, 컨텐츠/버튼 의도적 비대칭
+//
 // 2026-04-30 (사용자 요청 #2): 태블릿+모바일 룸 카드 padding 1rem → 0.75rem
 //   - D.cardPadding (touchLayout): p-4(1rem) → p-3(0.75rem)
 //   - D.btnBottomPadding: "1rem" 단일값 → 데스크탑 "1rem" / touchLayout "0.75rem" 분기
@@ -567,8 +572,9 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
   // ← [2026-04-17 5차] 1024 미만 padding/폰트 미세조정
   // ← [2026-04-30 사용자 요청 #1] 컨텐츠/버튼 영역 padding 0.5rem → 1rem
   // ← [2026-04-30 사용자 요청 #2] 태블릿+모바일(touchLayout)만 1rem → 0.75rem
-  //    · 데스크탑은 1rem 그대로 유지 (큰 화면에서 시각 여유 필요)
-  //    · 태블릿/모바일은 0.75rem로 압축 (작은 화면에서 정보 밀도 확보)
+  // ← [2026-04-30 사용자 요청 #3] 데스크탑 버튼 영역도 1rem → 0.75rem
+  //    · 결과: btnBottomPadding 모든 환경 0.75rem 단일값 (분기 제거)
+  //    · cardPadding은 그대로: 데스크탑 1rem / 태블릿+모바일 0.75rem 유지
   const isCompact = density === 'compact';
   const D = {
     thumbHeight: isMobile ? 80 : (isCompact ? 120 : 160),
@@ -577,7 +583,7 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
     metaSize: isCompact ? 12 : 13,
     btnSize: isCompact ? 13 : 14,
     btnPadding: "14px",                                                                             // ← [8차] 전체 상황 14px 통일 (이전: compact 10px / comfortable 13px)
-    btnBottomPadding: isTouchLayout ? "0.75rem" : "1rem",                                           // ← [2026-04-30 #2] 데스크탑 1rem / 태블릿+모바일 0.75rem 분기
+    btnBottomPadding: "0.75rem",                                                                    // ← [2026-04-30 #3] 데스크탑 1rem → 0.75rem (전 환경 단일값)
     showDetailBtn: !isTouchLayout,
   };
 
