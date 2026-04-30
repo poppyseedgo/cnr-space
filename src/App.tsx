@@ -171,6 +171,8 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense, Component, type ErrorInfo, type ReactNode } from 'react'
 import { Bell, Calendar, Home, LogOut, Settings, User } from 'lucide-react'
+// ← [2026-04-30] 헤더 상단 공지 영역 (NoticeBar) 도입 — Figma node 410:6745 반영
+import { NoticeBar, type AnnouncementConfig } from './components/layout/NoticeBar'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtTSFull, fmtTSRangeFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
@@ -273,6 +275,20 @@ class LazyErrorBoundary extends Component<{ children: ReactNode, fallback?: Reac
     }
     return this.props.children
   }
+}
+
+// ─── 공지 영역 mock 데이터 ────────────────────────────────────────────────
+// ← [2026-04-30] Figma node 410:6876 공지 배너 영역 신규 도입
+//    · 현재 단계: 하드코딩된 mock 데이터로 UI 동작 확인
+//    · 추후 단계: Supabase `announcements` 테이블 fetch → useState로 전환
+//      (Admin이 활성화/비활성화/메시지/배경색 관리 → 이 인터페이스 그대로 사용 가능)
+//    · null 또는 active=false면 NoticeBar는 렌더되지 않음 (헤더만 표시)
+const MOCK_ANNOUNCEMENT: AnnouncementConfig | null = {
+  id: 'notice-2026-04-30-01',
+  active: true,
+  message: '🌙 오늘은 운영시간이 모두 끝났습니다. 내일 만나요!',
+  bgColor: '#E6F2FF',
+  textColor: '#1E1E1E',
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
@@ -1393,35 +1409,80 @@ function AppContent() {
   return (
     <div className={dark ? "dark" : ""}>
     <div className="dark:bg-slate-900 min-h-screen text-slate-800 dark:text-slate-200" style={{background:"#F3F4F8"}}>
-{/* ── Header ── */}
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-[100]">
+{/* ── Sticky 영역: NoticeBar + Header + Gradient Fade ──
+     [2026-04-30] Figma node 410:6745 반영
+     · NoticeBar : 헤더 위 공지 영역 (Admin 활성화 시 표시, X 닫기 = 세션 한정)
+     · Header    : Pretendard 폰트 + Figma 정확한 색상/패딩으로 재구성 (데스크톱)
+     · Gradient  : Header 하단으로 24px 페이드 (Claude UI 스타일, blur 8px) */}
+      <div style={{position:"sticky", top:0, zIndex:100}}>
+        <NoticeBar announcement={MOCK_ANNOUNCEMENT} />
+        <header
+          className="dark:bg-slate-800 dark:border-b dark:border-slate-700"
+          style={{
+            position: "relative",
+            background: dark ? "rgba(15, 23, 42, 0.85)" : "rgba(255, 255, 255, 0.85)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+          }}>
         <div className="max-w-[1400px] mx-auto px-3 sm:px-7">
-          <div className="grid items-center gap-3" style={{gridTemplateColumns:"1fr auto 1fr", height:52}} data-desktop-height="64">
+          <div className="grid items-center gap-3"
+            style={{
+              gridTemplateColumns:"1fr auto 1fr",
+              // ── Figma 데스크톱: padding 10/32 + inner 48 = 90px
+              //    모바일은 기존 52px 유지 (사용자 결정사항)
+              paddingTop: isMobile ? 7 : 10,
+              paddingBottom: isMobile ? 7 : 32,
+              minHeight: isMobile ? 52 : 90,
+            }}
+            data-desktop-height="90">
 
-            {/* ① 브랜드 (left) — 클릭 시 홈 */}
+            {/* ① 브랜드 (left) — 클릭 시 홈
+                Figma 410:6864: Pretendard Medium 19px / letter-spacing 0.57 / #1E1E1E / line-height 1.25
+                모바일은 기존 13px / 600 유지 (사용자 결정: 모바일 분기 그대로) */}
             <div className="flex items-center min-w-0 cursor-pointer" onClick={()=>setView("home")}>
               <div className="min-w-0">
-                <div className="font-semibold text-slate-900 dark:text-white truncate"
-                  style={{fontSize: isMobile?13:15, letterSpacing:0}}>
+                <div className="text-slate-900 dark:text-white truncate"
+                  style={{
+                    fontSize: isMobile ? 13 : 19,
+                    fontWeight: isMobile ? 600 : 500,
+                    letterSpacing: isMobile ? 0 : 0.57,
+                    lineHeight: 1.25,
+                  }}>
                   {isMobile ? "C&R" : "C&R SPACE"}
                 </div>
               </div>
             </div>
 
-            {/* ② Nav pills (center) */}
+            {/* ② Nav pills (center)
+                Figma 410:6865: 컨테이너 bg #F5F9FF, border-radius 1000px, gap 0
+                · 비활성 (410:6866/6868): padding 14px 20px, Pretendard Medium 16px, color #808899
+                · 활성   (410:6869/6870): padding 14px 24px, Pretendard SemiBold 16px, color #fff, bg #000
+                모바일은 기존 7/10px padding + 11px 유지 */}
             {(view==="home"||view==="calendar") ? (
-              <div className="flex dark:bg-slate-700 rounded-full p-1 gap-1" style={{background:"#F3F4F8"}}>
+              <div className="flex dark:bg-slate-700"
+                style={{
+                  background: dark ? undefined : "#F5F9FF",
+                  borderRadius: 1000,
+                  padding: 0,
+                  gap: 0,
+                }}>
                 {([
                   ["home",       <Home size={14} strokeWidth={1.8}/>,     "실시간 현황", "현황"]    as const,
                   ["calendar",   <Calendar size={14} strokeWidth={1.8}/>,  "캘린더 뷰",  "캘린더"]  as const,
                 ] as [string, React.ReactElement, string, string][]).map(([v,icon,label,mLabel])=>(
                   <button key={v} onClick={()=>setView(v)}
-                    className="btn flex items-center gap-1.5 rounded-full font-semibold transition-all whitespace-nowrap"
+                    className="btn flex items-center gap-1.5 transition-all whitespace-nowrap"
                     style={{
-                      padding: isMobile?"7px 10px":"8px 18px",
-                      fontSize: isMobile?11:13,
-                      background: view===v ? (dark?"#F1F5F9":"#111111") : "transparent",
-                      color: view===v ? (dark?"#111111":"#fff") : (dark?"#94A3B8":"#64748B"),
+                      padding: isMobile
+                        ? "7px 10px"
+                        : (view===v ? "14px 24px" : "14px 20px"),
+                      fontSize: isMobile ? 11 : 16,
+                      fontWeight: view===v ? 600 : 500,
+                      borderRadius: 1000,
+                      background: view===v ? (dark?"#F1F5F9":"#000000") : "transparent",
+                      color: view===v
+                        ? (dark?"#111111":"#fff")
+                        : (dark?"#94A3B8":"#808899"),
                       boxShadow: view===v ? "0 2px 8px rgba(0,0,0,0.18)" : "none",
                     }}>
                     <span style={{fontSize: isMobile?13:14}}>{icon}</span>
@@ -1556,22 +1617,50 @@ function AppContent() {
               </div>
 
               <div ref={dropdownRef} style={{position:"relative"}}>
-                <button className="btn flex items-center gap-2 rounded-full border flex-shrink-0"
+                {/* Figma 410:6871: bg #F6F9FF / padding 2px 10px 2px 2px / gap 8px / border-radius 1000 / border 없음
+                    아바타: 32×32 #CBECFF / 이름 14 SemiBold #1E1E1E / 부서 13 Regular #A4B2BF max-w 100 ellipsis
+                    모바일은 기존 4px 패딩 유지 (텍스트 미표시) */}
+                <button className="btn flex items-center flex-shrink-0"
                   onClick={()=>setShowDropdown(v=>!v)}
                   style={{
-                    padding: isMobile?"4px 4px":"5px 14px 5px 5px",
-                    background: dark?"rgba(255,255,255,0.05)":"#F8FAFC",
-                    borderColor: dark?"#475569":"#E2E8F0",
+                    padding: isMobile ? "4px 4px" : "2px 10px 2px 2px",
+                    gap: 8,
+                    borderRadius: 1000,
+                    background: dark ? "rgba(255,255,255,0.05)" : "#F6F9FF",
+                    border: "none",
                     cursor:"pointer",
                   }}>
-                  <UserAvatar name={currentUser} avatarUrl={authUser?.avatar_url} size={28} bgColor="#CBECFF" textColor="#111111" />
+                  <UserAvatar
+                    name={currentUser}
+                    avatarUrl={authUser?.avatar_url}
+                    size={isMobile ? 28 : 32}
+                    bgColor="#CBECFF"
+                    textColor="#1E1E1E"
+                  />
                   {!isMobile && (
-                    <span style={{
-                      fontSize:13, fontWeight:600,
-                      color: dark?"#fff":"#111111",
-                    }}>
-                      {currentUser} <span style={{fontWeight:400,opacity:0.6}}>{currentDept.length > 10 ? currentDept.slice(0, 10) + '…' : currentDept}</span>
-                    </span>
+                    <>
+                      <span style={{
+                        fontSize: 14,
+                        fontWeight: 600,        // Pretendard SemiBold
+                        lineHeight: 1.5,
+                        color: dark ? "#fff" : "#1E1E1E",
+                        whiteSpace: "nowrap",
+                      }}>
+                        {currentUser}
+                      </span>
+                      <span style={{
+                        fontSize: 13,
+                        fontWeight: 400,        // Pretendard Regular
+                        lineHeight: 1.5,
+                        color: dark ? "#94A3B8" : "#A4B2BF",
+                        maxWidth: 100,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}>
+                        {currentDept}
+                      </span>
+                    </>
                   )}
                 </button>
 
@@ -1624,7 +1713,29 @@ function AppContent() {
 
           </div>
         </div>
+
+        {/* ── 그라데이션 fade — Claude UI 스타일
+             [2026-04-30] Figma 헤더 배경 이미지 → CSS gradient로 변환
+             · 헤더 바로 아래 24px 영역에서 콘텐츠가 자연스럽게 페이드 아웃
+             · backdrop-filter blur(8px)와 함께 동작 (헤더 자체 반투명)
+             · pointer-events:none으로 콘텐츠 클릭 통과 보장 */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            right: 0,
+            height: 24,
+            background: dark
+              ? "linear-gradient(to bottom, rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0))"
+              : "linear-gradient(to bottom, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0))",
+            pointerEvents: "none",
+          }}
+        />
       </header>
+      </div>
+{/* ── Sticky 영역 끝 ── */}
 
       {/* ── Views ── */}
       {(view==="home"||view==="calendar") && (
