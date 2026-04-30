@@ -247,31 +247,42 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
               label="참석자"
               alignTop
               value={
-                /* ── [2026-04-30 #2 사용자 요청] flex-wrap → grid 2컬럼 ──
-                     이전(flex-wrap): 짧은 이름은 한 줄에 3+개 들어가서 2컬럼 정렬 깨짐
-                     이후(grid 2컬럼): 강제 2컬럼 — 짝수/홀수 인덱스로 좌우 분배
-                     · `minmax(0, 1fr)` + AttendeeChip wrapper의 minWidth:0 → 컬럼 너비 강제,
-                       이전 가로스크롤 회귀 원인(grid item min-width:auto 기본값) 무력화
-                     · 긴 이름: AttendeeChip wrapper의 overflow:hidden으로 컬럼 안에서 안전하게 잘림
-                       (ellipsis 표시는 UserChip 변경 필요 — 다른 8곳 사용처 영향 커서 보류) */
+                /* ── [2026-04-30 #3 사용자 요청] flex-wrap + outer wrapper minWidth 50% ──
+                     #2 시도(grid 2컬럼)는 긴 이름이 컬럼 안에서 잘리는 문제 → 사용자 거부.
+                     사용자 의도:
+                       · 이름은 자르거나 줄이지 않고 100% 표시
+                       · 짧은 이름들은 2컬럼으로 정렬
+                       · 긴 이름은 다음 줄로 자동 wrap (image 1 같은 자연스러운 동작)
+
+                     해결: flex-wrap + 각 칩 outer wrapper에 minWidth 50% 강제
+                       · 짧은 이름: minWidth 50%로 강제 → 한 줄에 2개 (2컬럼 정렬)
+                       · 긴 이름: 콘텐츠 너비대로 차지 → 다음 칩이 자동 wrap
+                       · gap 14 → 자식 minWidth는 calc(50% - 7px)로 보정
+
+                     이전 가로스크롤 회귀 방지: AttendeeChip wrapper의
+                     max-width:100% + min-width:0 + overflow:hidden 그대로 유지 */
                 <div style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  display: "flex",
+                  flexWrap: "wrap",
                   columnGap: 14,
                   rowGap: 10,
                   width: "100%",
-                  alignItems: "start",
                 }}>
                   {b.attendees.map((a:any, idx:number) => {
                     const u = (up as any[]).find((u:any) => u.email === a.email)
                     return (
-                      <AttendeeChip
-                        key={a.email || idx}
-                        name={u?.name ?? a.name ?? a.email}
-                        avatarUrl={u?.avatar_url ?? null}
-                        dept={u?.dept}
-                        userInfo={u}
-                      />
+                      <div key={a.email || idx} style={{
+                        flex: "0 1 auto",                  // 콘텐츠 너비 우선, 필요시 shrink
+                        minWidth: "calc(50% - 7px)",       // 기본 절반 강제 (gap 14의 절반)
+                        maxWidth: "100%",                  // 부모 100% 초과 방지
+                      }}>
+                        <AttendeeChip
+                          name={u?.name ?? a.name ?? a.email}
+                          avatarUrl={u?.avatar_url ?? null}
+                          dept={u?.dept}
+                          userInfo={u}
+                        />
+                      </div>
                     )
                     // ← [2026-04-24 P4-A-1] 이름 표시 live 우선
                     //   기존: name={a.name || a.email} (booking_attendees.name snapshot)
