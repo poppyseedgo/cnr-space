@@ -1600,18 +1600,16 @@ function AppContent() {
                   <button key={v} onClick={()=>setView(v)}
                     className="btn flex items-center gap-1.5 transition-all whitespace-nowrap"
                     style={{
-                      padding: isMobile
-                        ? "7px 10px"
-                        : (view===v ? "14px 24px" : "14px 20px"),
+                      // ── [2026-04-30 사용자 요청] padding 활성/비활성 통일 14px 24px
+                      padding: isMobile ? "7px 10px" : "14px 24px",
                       fontSize: isMobile ? 11 : 15,
-                      // ── [2026-04-30 사용자 요청] 데스크탑 16 → 15 (모바일 11 그대로)
                       // ── [이전] 활성/비활성 모두 500으로 통일
                       fontWeight: 500,
                       borderRadius: 1000,
                       background: view===v ? (dark?"#F1F5F9":"#000000") : "transparent",
                       color: view===v
                         ? (dark?"#111111":"#fff")
-                        : (dark?"#94A3B8":"#808899"),
+                        : (dark?"#94A3B8":"#2F394A"),     // ← [2026-04-30] 비활성 색 #808899 → #2F394A (rgb 47 57 74) 더 진하게
                       boxShadow: view===v ? "0 2px 8px rgba(0,0,0,0.18)" : "none",
                     }}>
                     <span style={{fontSize: isMobile?13:14}}>{icon}</span>
