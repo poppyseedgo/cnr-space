@@ -373,7 +373,7 @@
  *           · 부가정보: 10px Medium #6a7282 / #ff8b8b, gap 2 with "•" bullet
  *           · 배지: padding 4/8, radius 24, gap 2
  *             · 선택됨: bg #b9f8cf + Check 16 + 텍스트
- *             · 예약가능: bg #cbecff
+ *             · 예약가능: bg #d3f3ff
  *             · HR 승인 필요: bg #e6ffb0 (라임)
  *             · 예약됨/곧 사용: bg #ffdbdb, text #dc1a1a (곧 사용은 SemiBold)
  *           · "곧 시작" → "곧 사용" 표시 변환 (getRoomUnavailStatus의 label은 그대로 두고 표시 시점 변환)
@@ -1232,7 +1232,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
               {isSel
                 ? <span style={{background:"#B9F8CF",color:"#111",fontSize:10,fontWeight:600,padding:"3px 10px",borderRadius:999,display:"inline-flex",alignItems:"center",gap:3}}><Check size={10} strokeWidth={1.8}/>선택됨</span>
-                : <span style={{background:"#CBECFF",color:"#000",fontSize:10,fontWeight:600,padding:"3px 10px",borderRadius:999}}>예약가능</span>}
+                : <span style={{background:"#D3F3FF",color:"#000",fontSize:10,fontWeight:600,padding:"3px 10px",borderRadius:999}}>예약가능</span>}
               {isAdminRoom && !isSel && (
                 <span style={{background:"#FEF3C7",color:"#92400E",fontSize:10,fontWeight:600,padding:"3px 10px",borderRadius:999}}>승인 필요</span>
               )}
@@ -1347,7 +1347,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               ) : (
                 /* 예약가능 배지 */
                 <div style={{
-                  background:"#cbecff",
+                  background:"#D3F3FF",
                   padding:"4px 8px",
                   borderRadius:24,
                   display:"flex", alignItems:"center", justifyContent:"center",
