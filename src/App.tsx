@@ -284,9 +284,9 @@ class LazyErrorBoundary extends Component<{ children: ReactNode, fallback?: Reac
 //      (Admin이 활성화/비활성화/메시지/배경색 관리 → 이 인터페이스 그대로 사용 가능)
 //    · null 또는 active=false면 NoticeBar는 렌더되지 않음 (헤더만 표시)
 const MOCK_ANNOUNCEMENT: AnnouncementConfig | null = {
-  id: 'notice-2026-04-30-01',
+  id: 'notice-2026-04-30-02',  // ← id 변경 시 세션 dismiss 초기화 → 사용자에게 재표시
   active: true,
-  message: '🌙 오늘은 운영시간이 모두 끝났습니다. 내일 만나요!',
+  message: '임직원 여러분, 좋은 주말 보내세요.',
   bgColor: '#E6F2FF',
   textColor: '#1E1E1E',
 }
@@ -1476,13 +1476,13 @@ function AppContent() {
           <div className="grid items-center gap-3"
             style={{
               gridTemplateColumns:"1fr auto 1fr",
-              // ── Figma 데스크톱: padding 10/32 + inner 48 = 90px
-              //    모바일은 기존 52px 유지 (사용자 결정사항)
+              // ── [2026-04-30 사용자 요청 반영] padding-bottom 32→10, min-height 90→72
+              //    모바일은 기존 52px / 7px 유지 (사용자 결정사항)
               paddingTop: isMobile ? 7 : 10,
-              paddingBottom: isMobile ? 7 : 32,
-              minHeight: isMobile ? 52 : 90,
+              paddingBottom: isMobile ? 7 : 10,
+              minHeight: isMobile ? 52 : 72,
             }}
-            data-desktop-height="90">
+            data-desktop-height="72">
 
             {/* ① 브랜드 (left) — 클릭 시 홈
                 Figma 410:6864: Pretendard Medium 19px / letter-spacing 0.57 / #1E1E1E / line-height 1.25
@@ -1525,7 +1525,8 @@ function AppContent() {
                         ? "7px 10px"
                         : (view===v ? "14px 24px" : "14px 20px"),
                       fontSize: isMobile ? 11 : 16,
-                      fontWeight: view===v ? 600 : 500,
+                      // ── [2026-04-30 사용자 요청] 활성/비활성 모두 500으로 통일
+                      fontWeight: 500,
                       borderRadius: 1000,
                       background: view===v ? (dark?"#F1F5F9":"#000000") : "transparent",
                       color: view===v

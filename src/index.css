@@ -46,6 +46,7 @@
   --radius-lg:  12px;
   --radius-xl:  14px;
   --radius-2xl: 16px;
+  --radius-3xl: 24px;   /* ← [2026-04-30] 룸 카드 등 더 부드러운 모서리용 토큰 추가 */
   --radius-full: 9999px;
 
   /* 그림자 */
@@ -228,7 +229,8 @@
   /* ── 회의실 카드 ── */
   .room-card {
     background: var(--color-surface);
-    border-radius: var(--radius-2xl);
+    /* ← [2026-04-30 사용자 요청] 16px → 24px (rounded-2xl → rounded-3xl) */
+    border-radius: var(--radius-3xl);
     overflow: hidden;
     transition: box-shadow 0.22s, transform 0.22s;
     position: relative;

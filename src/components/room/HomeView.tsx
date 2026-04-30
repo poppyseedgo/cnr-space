@@ -579,7 +579,7 @@ export function RoomCard({room:r, status, onBook, onDetail, bookings, onCheckIn,
   const thumbnail = r.thumbnail ?? '';
 
   return (
-    <div className="anm room-card bg-white dark:bg-slate-800 rounded-2xl flex flex-col"
+    <div className="anm room-card bg-white dark:bg-slate-800 rounded-3xl flex flex-col"
       style={{animationDelay:`${animDelay}ms`, overflow:"hidden", cursor:"pointer"}}
       onClick={()=>onDetail&&onDetail(r)}>
 
