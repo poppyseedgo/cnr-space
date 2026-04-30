@@ -312,7 +312,14 @@ function AppContent() {
   //       padding-top 동적 적용. ResizeObserver로 NoticeBar dismiss/모바일 전환
   //       등 모든 높이 변경을 자동 반영 → 콘텐츠가 헤더에 가려지지 않음.
   const headerWrapRef = useRef<HTMLDivElement>(null);
-  const [headerHeight, setHeaderHeight] = useState(0);
+  // ── [2026-04-30 보강] 초기값을 viewport 폭 기반 추정값으로 ──
+  //    useState(0)이면 첫 paint에서 한 프레임 동안 콘텐츠가 헤더 영역에 들어옴.
+  //    정확한 값은 useLayoutEffect에서 즉시 보정되지만, 첫 frame 가림 방지를 위해
+  //    추정 초기값 사용. (NoticeBar 41 + 헤더 데스크톱 72 / 모바일 52)
+  const [headerHeight, setHeaderHeight] = useState<number>(() => {
+    if (typeof window === 'undefined') return 113;       // SSR 안전 기본값
+    return window.innerWidth < 640 ? 93 : 113;           // 모바일 93 / 데스크톱 113
+  });
   // URL 해시에서 초기 view 복원 (#home, #calendar, #mypage, #admin)
   const getViewFromHash = (): string => {
     const hash = window.location.hash.replace('#', '')
@@ -386,24 +393,39 @@ function AppContent() {
   useEffect(() => { if (!modal) setSubModal(null) }, [modal]);
 
   // ─── [2026-04-30] 헤더 wrap 높이 측정 → 본문 padding-top 동기화 ───────────
-  // useLayoutEffect: paint 직전 동기 측정으로 첫 렌더 시 깜빡임 방지
-  // ResizeObserver: NoticeBar dismiss / 모바일↔데스크톱 전환 / 폰트 로드 등
-  //                 모든 높이 변경을 자동 감지하여 padding-top 재계산
+  // 4단계 측정 전략 (모든 사이드 케이스 대응):
+  //   1) 동기 측정 (useLayoutEffect)    : paint 직전 1차 보정 (추정값 → 실제값)
+  //   2) RAF 재측정 (다음 frame)        : 폰트/이미지 비동기 로드 후 height 변동 잡기
+  //   3) ResizeObserver (지속 관찰)     : NoticeBar dismiss / 자식 콘텐츠 변경 자동 추적
+  //   4) window resize (fallback)      : 화면 회전 / 창 크기 변경 / 모바일↔데스크톱 전환
   useLayoutEffect(() => {
     const el = headerWrapRef.current;
     if (!el) return;
-    // 초기 측정 (paint 전 동기)
-    setHeaderHeight(el.getBoundingClientRect().height);
-    // 변경 감지
-    const ro = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        // contentRect는 padding 제외, border-box 측정엔 borderBoxSize 사용
-        // 헤더 wrap엔 padding/border 없으므로 contentRect로 충분
-        setHeaderHeight(entry.contentRect.height);
-      }
-    });
+
+    const measure = () => {
+      const h = el.getBoundingClientRect().height;
+      // 0 측정값은 무시 (자식 lazy mount 중 측정되는 케이스 방지)
+      if (h > 0) setHeaderHeight(h);
+    };
+
+    // 1) 동기 측정 (paint 전, 추정값 → 실제값 1차 보정)
+    measure();
+
+    // 2) 다음 frame 재측정 — 폰트 로드 / 자식 비동기 렌더 후 height 변동 보정
+    const rafId = requestAnimationFrame(measure);
+
+    // 3) ResizeObserver — 모든 후속 높이 변경 자동 추적 (dismiss 애니메이션 포함)
+    const ro = new ResizeObserver(() => measure());
     ro.observe(el);
-    return () => ro.disconnect();
+
+    // 4) window resize — 모바일 회전 / 데스크톱↔모바일 분기 변경
+    window.addEventListener('resize', measure);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
   }, []);
 
   const [showDropdown, setShowDropdown] = useState(false);
