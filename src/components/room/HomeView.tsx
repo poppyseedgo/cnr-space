@@ -1,5 +1,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // [변경 이력]
+// 2026-04-30 (Figma 417 재디자인): "예약하기" 버튼 + "오늘 예약 없음" 카드 정밀 반영
+//   - "+ 예약하기" (Figma 417:7465):
+//     · 가운데 정렬 → 좌측 상단 (items-start), padding 16, gap 2
+//     · "+" 텍스트 24px → plus.svg 인라인 (24×24 white)
+//     · "예약하기" 12/13px Medium → 16px Pretendard SemiBold
+//     · drop-shadow 4px 4px 10px rgba(0,0,0,0.1) 추가
+//   - "오늘 예약 없음" (Figma 417:7471):
+//     · "오늘 예약 없음" 한 줄 → "오늘\n내 예약이\n없어요" 3줄
+//     · 회색 텍스트 → white Pretendard Bold 16px line-height 1.25
+//     · bg #F3F4F8 → #E3E6ED
+//     · 가운데 정렬 → 좌측 상단 + justify-between (40px 하단 빈 영역)
+//
 // 2026-04-30 (사용자 요청 #3): 데스크탑 룸 카드 버튼 영역 padding 1rem → 0.75rem
 //   - D.btnBottomPadding: 분기(데스크탑 1rem / touchLayout 0.75rem) → "0.75rem" 단일값
 //   - 데스크탑 컨텐츠 영역은 그대로 1rem 유지 (변경 X)
@@ -252,19 +264,53 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
           style={{overflowX:"auto",scrollbarWidth:"none",WebkitOverflowScrolling:"touch",
             paddingLeft:0, paddingRight:4}}>
 
-          {/* + 예약하기 첫 카드 */}
+          {/* + 예약하기 첫 카드 — [2026-04-30 Figma 417:7465 정밀 반영]
+              · 좌측 상단 정렬 (items-start), padding 16, gap 2
+              · plus.svg 인라인 적용 (mask 단순화 - path만 사용)
+              · "예약하기" Pretendard SemiBold 16px white
+              · drop-shadow 4px 4px 10px rgba(0,0,0,0.1) */}
           <button onClick={()=>{/* onBook 없이 새 예약 모달 */document.dispatchEvent(new CustomEvent("openNewBooking"))}}
-            className="btn flex-none flex flex-col items-center justify-center rounded-3xl text-white font-medium"
-            style={{width:isMobile?150:170, height:160, /* ← [Figma UI갱신] height 160px / width 모바일 150 데스크탑 170 */
-              background:"#111111", flexShrink:0, gap:8}}>
-            <span style={{fontSize:24, lineHeight:1}}>＋</span>
-            <span style={{fontSize:isMobile?12:13}}>예약하기</span>
+            className="btn flex-none flex flex-col items-start text-white"
+            style={{
+              width: isMobile ? 150 : 170,
+              height: 160,
+              background: "#111111",
+              borderRadius: 24,
+              padding: 16,
+              gap: 2,
+              boxShadow: "4px 4px 10px rgba(0,0,0,0.1)",
+              flexShrink: 0,
+            }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M11.5 20V12.5H4V11.5H11.5V4H12.5V11.5H20V12.5H12.5V20H11.5Z" fill="white"/>
+            </svg>
+            <span style={{ fontSize: 16, fontWeight: 600, lineHeight: 1.5 }}>예약하기</span>
           </button>
 
           {myBookings.length === 0 ? (
-            <div className="flex-none flex items-center justify-center rounded-3xl text-slate-300 dark:text-slate-600 text-sm"
-              style={{width:isMobile?150:170, height:160, background:"#F3F4F8"}}> {/* ← [Figma UI갱신] height 160px 고정 / width 모바일 분기 유지 */}
-              오늘 예약 없음
+            // [2026-04-30 Figma 417:7471 정밀 반영]
+            // · 좌측 상단 정렬, padding 12, justify-between + 40px 빈 영역
+            // · bg #E3E6ED, 텍스트 white Pretendard Bold 16px line-height 1.25
+            // · 3줄 텍스트: "오늘 / 내 예약이 / 없어요"
+            <div className="flex-none flex flex-col items-start justify-between"
+              style={{
+                width: isMobile ? 150 : 170,
+                height: 160,
+                background: "#E3E6ED",
+                borderRadius: 24,
+                padding: 12,
+                flexShrink: 0,
+              }}>
+              <div style={{
+                fontSize: 16,
+                fontWeight: 700,        // Pretendard Bold
+                lineHeight: 1.25,
+                color: "#fff",
+                flex: "1 0 0",          // 텍스트가 위 공간 모두 차지
+              }}>
+                오늘<br/>내 예약이<br/>없어요
+              </div>
+              <div style={{ height: 40, width: "100%", flexShrink: 0 }} aria-hidden />
             </div>
           ) : myBookings.map(b => {
             const r = roomsData.find(r=>r.room_id===b.room_id);
