@@ -247,13 +247,20 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
               label="참석자"
               alignTop
               value={
+                /* ── [2026-04-30 #2 사용자 요청] flex-wrap → grid 2컬럼 ──
+                     이전(flex-wrap): 짧은 이름은 한 줄에 3+개 들어가서 2컬럼 정렬 깨짐
+                     이후(grid 2컬럼): 강제 2컬럼 — 짝수/홀수 인덱스로 좌우 분배
+                     · `minmax(0, 1fr)` + AttendeeChip wrapper의 minWidth:0 → 컬럼 너비 강제,
+                       이전 가로스크롤 회귀 원인(grid item min-width:auto 기본값) 무력화
+                     · 긴 이름: AttendeeChip wrapper의 overflow:hidden으로 컬럼 안에서 안전하게 잘림
+                       (ellipsis 표시는 UserChip 변경 필요 — 다른 8곳 사용처 영향 커서 보류) */
                 <div style={{
-                  display:"flex",
-                  flexWrap:"wrap",
-                  columnGap:14,        // ← Figma 272:831 자식 칩 간 가로 간격
-                  rowGap:10,
-                  width:"100%",
-                  minWidth:0,          // ← 부모 너비 강제로 초과 방지
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  columnGap: 14,
+                  rowGap: 10,
+                  width: "100%",
+                  alignItems: "start",
                 }}>
                   {b.attendees.map((a:any, idx:number) => {
                     const u = (up as any[]).find((u:any) => u.email === a.email)
