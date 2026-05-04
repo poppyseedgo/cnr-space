@@ -2,6 +2,22 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-05-04] NotificationBell 분리 (Phase 1+2 Step 3)
+ *      · 대상: 헤더 알림 벨 + 알림 패널 (~110줄 JSX)
+ *      · 신규:
+ *        - src/components/layout/NotificationBell.tsx (자기완결적: 자체 state/ref/effect)
+ *        - src/data/notificationMeta.ts (type별 색상 맵 + getNotificationColor 헬퍼)
+ *      · App.tsx 변경:
+ *        - JSX 영역 → <NotificationBell ... /> 한 줄 호출로 교체
+ *        - state 4개 제거: notifications / showNotifPanel / notifRef / unreadCount
+ *        - useEffect 2개 제거: 알림 load+Realtime 구독 / 외부클릭(잔존)
+ *        - import 제거: Bell (lucide) / loadNotifications / markNotificationRead / markAllNotificationsRead / subscribeNotifications / AppNotification
+ *        - import 유지: insertNotification (sendNotification 함수에서 사용 중)
+ *      · 핵심 설계:
+ *        - 알림 클릭 → onOpenBookingDetail(bookingId) 콜백으로 위임
+ *        - 부모(App.tsx)가 booking 검색 + setModal 처리 → NotificationBell의 bookings 배열 의존성 0
+ *      · 동작 로직 무수정 — Realtime 구독 / payload.new prepend / unsub cleanup 모두 동일
+ *
  *  - [2026-05-04] ProfileDropdown 분리 (Phase 1+2 Step 2)
  *      · 대상: 헤더 우측 프로필 버튼 + 드롭다운 메뉴 (140줄 JSX)
  *      · 신규: src/components/layout/ProfileDropdown.tsx
@@ -200,16 +216,17 @@
  */
 
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react'  // ← [2026-05-04] Component/ErrorInfo/ReactNode 제거 (LazyErrorBoundary 분리)
-import { Bell, Calendar, Home } from 'lucide-react'  // ← [2026-05-04] LayoutDashboard/LogOut/UserCircle 제거 (ProfileDropdown 분리)
+import { Calendar, Home } from 'lucide-react'  // ← [2026-05-04] Bell 제거 (NotificationBell 분리 / Phase 1+2 Step 3)
 // ← [2026-04-30] 헤더 상단 공지 영역 (NoticeBar) 도입 — Figma node 410:6745 반영
 import { NoticeBar, type AnnouncementConfig } from './components/layout/NoticeBar'
 import { ProfileDropdown } from './components/layout/ProfileDropdown'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 2)
+import { NotificationBell } from './components/layout/NotificationBell'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 3)
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtTSFull, fmtTSRangeFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from './utils/time'
 import { getFloor } from './data/floors'
-import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, markNoshow, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, buildBookingDiff, approveBooking, rejectBooking, upsertBookingAttendees, getBookingAttendees, insertNotification, loadNotifications, markNotificationRead, markAllNotificationsRead, subscribeNotifications, adminForceCancel, type AppNotification } from './lib/api'
+import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, markNoshow, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, buildBookingDiff, approveBooking, rejectBooking, upsertBookingAttendees, getBookingAttendees, insertNotification, adminForceCancel } from './lib/api'  // ← [2026-05-04] loadNotifications/markNotificationRead/markAllNotificationsRead/subscribeNotifications/AppNotification 제거 (NotificationBell 분리 / Phase 1+2 Step 3) — insertNotification은 sendNotification에서 사용 중이라 유지
 import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView } from './components/room/HomeView'
@@ -267,10 +284,7 @@ function AppContent() {
   const [bookings, setBookings]   = useState([]);
   const [rooms, setRooms]         = useState<any[]>([]);
   const [users, setUsers]         = useState<any[]>([]);
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [showNotifPanel, setShowNotifPanel] = useState(false);
-  const notifRef = useRef<HTMLDivElement>(null);
-  const unreadCount = notifications.filter((n: AppNotification) => !n.is_read).length;
+  // ← [2026-05-04] notifications / showNotifPanel / notifRef / unreadCount → NotificationBell 내부로 이동 (Phase 1+2 Step 3)
 
   // ─── [2026-04-30] 헤더 fixed + 본문 padding-top 동적 계산 ─────────────────
   // 배경: index.css의 `html, body { overflow-x: hidden }`(iOS 가로 흔들림 방지)
@@ -475,29 +489,8 @@ function AppContent() {
   }, [authLoading, authUser?.user_id]);
 
   // 알림 로드 + Realtime 구독
-  useEffect(() => {
-    if (!authUser) { setNotifications([]); return; }
-    loadNotifications().then(setNotifications);
-    const unsub = subscribeNotifications((payload) => {
-      // payload.new 에서 직접 새 알림 추가 — Edge Function insert 즉시 반영
-      if (payload?.new) {
-        const n = payload.new;
-        setNotifications(prev => [{
-          id:         n.id,
-          user_id:    n.user_id,
-          type:       n.type,
-          title:      n.title,
-          body:       n.body ?? '',
-          booking_id: n.booking_id ?? null,
-          is_read:    false,
-          created_at: n.created_at,
-        } as AppNotification, ...prev]);
-      } else {
-        loadNotifications().then(setNotifications);
-      }
-    }, authUser.user_id);
-    return unsub;
-  }, [authUser?.user_id]);
+  // ← [2026-05-04] 알림 로드 + Realtime 구독 useEffect → NotificationBell 내부로 이동 (Phase 1+2 Step 3)
+  //                인증 의존(authUser?.user_id), payload.new prepend 패턴, unsub cleanup 모두 컴포넌트 내부로 이전
 
   // admin-booking- 딥링크 해시를 sessionStorage에 저장 (OAuth 리다이렉트 시 소실 방지)
   useEffect(() => {
@@ -640,15 +633,9 @@ function AppContent() {
   }, []);
 
   // 드롭다운 외부 클릭 닫기
-  // ← [2026-05-04] dropdown 외부클릭은 ProfileDropdown 내부로 이동 (Phase 1+2 Step 2)
-  //                notifRef 외부클릭은 Step 3에서 NotificationBell로 이동 예정
-  useEffect(() => {
-    const h = (e) => {
-      if(notifRef.current && !notifRef.current.contains(e.target)) setShowNotifPanel(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
+  // ← [2026-05-04] dropdown 외부클릭 → ProfileDropdown 내부로 이동 (Phase 1+2 Step 2)
+  //                notif 외부클릭 → NotificationBell 내부로 이동 (Phase 1+2 Step 3)
+  //                각 컴포넌트가 자체 외부클릭 effect 보유 (자기완결성 ↑)
 
   const showToast = useCallback((msg, type="success") => {
     setToast({msg,type}); setTimeout(()=>setToast(null), 3500);
@@ -1596,116 +1583,17 @@ function AppContent() {
             <div className="flex items-center gap-2 justify-end">
 
               {/* 알림 벨 */}
-              <div ref={notifRef} style={{position:"relative"}}>
-                <button className="btn" onClick={()=>setShowNotifPanel(v=>!v)}
-                  style={{position:"relative",width:36,height:36,borderRadius:"50%",
-                    display:"flex",alignItems:"center",justifyContent:"center",
-                    background:showNotifPanel?(dark?"rgba(255,255,255,0.1)":"#F1F5F9"):"transparent",
-                    color:dark?"#94A3B8":"#64748B"}}>
-                  <Bell size={18} strokeWidth={1.8}/>
-                  {unreadCount > 0 && (
-                    <span style={{position:"absolute",top:4,right:4,
-                      background:"#EF4444",color:"#fff",
-                      fontSize:9,fontWeight:600,borderRadius:999,
-                      padding:"1px 4px",lineHeight:1.4,minWidth:14,textAlign:"center"}}>
-                      {unreadCount > 99 ? "99+" : unreadCount}
-                    </span>
-                  )}
-                </button>
-
-                {/* 알림 패널 */}
-                {showNotifPanel && (
-                  <div className="anm" style={{
-                    position:"absolute",top:"calc(100% + 8px)",right:0,zIndex:300,
-                    background:"#fff",border:"1px solid #E2E8F0",borderRadius:16,
-                    boxShadow:"0 8px 32px rgba(0,0,0,0.12)",width:340,overflow:"hidden"}}>
-
-                    {/* 패널 헤더 */}
-                    <div style={{padding:"14px 16px",borderBottom:"1px solid #F1F5F9",
-                      display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                      <span style={{fontSize:14,fontWeight:600,color:"#111"}}>
-                        알림 {unreadCount > 0 && <span style={{color:"#EF4444",fontSize:12}}>({unreadCount})</span>}
-                      </span>
-                      {unreadCount > 0 && (
-                        <button className="btn" onClick={()=>{
-                          markAllNotificationsRead()
-                          setNotifications(prev => prev.map(n => ({...n, is_read:true})))
-                        }} style={{fontSize:11,color:"#64748B",padding:"2px 8px",borderRadius:6,
-                          border:"1px solid #E2E8F0",background:"#F8FAFC"}}>
-                          모두 읽음
-                        </button>
-                      )}
-                    </div>
-
-                    {/* 알림 목록 */}
-                    <div style={{maxHeight:400,overflowY:"auto"}}>
-                      {notifications.length === 0 ? (
-                        <div style={{padding:"40px 0",textAlign:"center",color:"#94A3B8",fontSize:13}}>
-                          알림이 없습니다
-                        </div>
-                      ) : notifications.map(n => {
-                        const typeColors: Record<string,string> = {
-                          booking_created:          "#16A34A",
-                          booking_pending:          "#D97706",
-                          booking_approved:         "#16A34A",
-                          booking_rejected:         "#DC2626",
-                          booking_cancelled:        "#64748B",
-                          booking_admin_cancelled:  "#DC2626",  // 관리자 강제취소 — 빨간색
-                          booking_checkin:          "#2563EB",
-                          booking_early_end:        "#7C3AED",
-                          booking_noshow:           "#EF4444",
-                          booking_expired:          "#94A3B8",
-                          booking_updated:          "#0891B2",
-                          checkin_reminder_10:      "#0891B2",
-                          checkin_required:         "#16A34A",
-                          checkin_warning:          "#EF4444",
-                        }
-                        const color = typeColors[n.type] ?? "#64748B"
-                        return (
-                          <div key={n.id}
-                            onClick={()=>{
-                              if (!n.is_read) {
-                                markNotificationRead(n.id)
-                                setNotifications(prev => prev.map(x => x.id===n.id ? {...x,is_read:true} : x))
-                              }
-                              if (n.booking_id) setModal({type:"detail", data: bookings.find(b=>b.id===n.booking_id) ?? null})
-                              setShowNotifPanel(false)
-                            }}
-                            style={{padding:"12px 16px",borderBottom:"1px solid #F8FAFC",cursor:"pointer",
-                              background:n.is_read?"transparent":"#F0F9FF",transition:"background 0.15s"}}
-                            onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
-                            onMouseLeave={e=>e.currentTarget.style.background=n.is_read?"transparent":"#F0F9FF"}>
-                            <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-                              <div style={{width:6,height:6,borderRadius:"50%",
-                                background:n.is_read?"transparent":color,
-                                marginTop:6,flexShrink:0}}/>
-                              <div style={{flex:1,minWidth:0}}>
-                                {/* 알림 제목 (상태 메시지) */}
-                                <div style={{fontSize:13,fontWeight:n.is_read?400:600,color:"#111",
-                                  marginBottom:3}}>{n.title}</div>
-                                {/* body 파싱: "회의제목 · 회의실 · 날짜 오전/오후 H:MM" */}
-                                {n.body && (() => {
-                                  const parts = n.body.split(' · ')
-                                  return (
-                                    <div style={{display:"flex",flexDirection:"column",gap:1}}>
-                                      {parts[0] && <div style={{fontSize:12,fontWeight:600,color:"#374151",
-                                        overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{parts[0]}</div>}
-                                      {parts.slice(1).map((p,i) => (
-                                        <div key={i} style={{fontSize:11,color:"#64748B"}}>{p}</div>
-                                      ))}
-                                    </div>
-                                  )
-                                })()}
-
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
+              {/* ← [2026-05-04] 알림 벨 + 패널 → NotificationBell 컴포넌트로 분리 (Phase 1+2 Step 3)
+                    동작 무수정. state(notifications/showNotifPanel/unreadCount), ref(notifRef),
+                    useEffect(load+subscribe, 외부클릭) 모두 컴포넌트 내부로 이동.
+                    onOpenBookingDetail으로 부모 setModal 위임 (booking 검색은 부모 책임). */}
+              <NotificationBell
+                authUser={authUser}
+                dark={dark}
+                onOpenBookingDetail={(bookingId) => {
+                  setModal({type:"detail", data: bookings.find(b=>b.id===bookingId) ?? null})
+                }}
+              />
 
               {/* ← [2026-05-04] 프로필 + 드롭다운 메뉴 → ProfileDropdown 컴포넌트로 분리 (Phase 1+2 Step 2)
                     동작 무수정. state(showDropdown), ref(dropdownRef), 외부클릭 effect 모두 컴포넌트 내부로 이동.
