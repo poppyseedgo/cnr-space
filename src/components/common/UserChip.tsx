@@ -66,11 +66,20 @@ export function UserChip({ name, avatarUrl, variant = 'md', isAdmin = false, use
           onClick={() => setOpen(false)}
           style={{ position:'fixed', inset:0, zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(15,23,42,0.35)', backdropFilter:'blur(2px)' }}
         >
-          <div onClick={e => e.stopPropagation()} style={{ background:'#fff', borderRadius:16, padding:'20px', width:260, boxShadow:'0 8px 32px rgba(0,0,0,0.16)', position:'relative' }}>
+          {/* ← [2026-05-04 핫픽스 v16] 사용자 지정값 적용
+                · 컨테이너: padding 20→16, width 260→320 (나머지 속성 이미 일치)
+                · 내부 UserAvatar: size 44→72, fontSize 24, fontWeight 300 */}
+          <div onClick={e => e.stopPropagation()} style={{ background:'#fff', borderRadius:16, padding:'16px', width:320, boxShadow:'0 8px 32px rgba(0,0,0,0.16)', position:'relative' }}>
             {/* ← [피그마 2026-04-22] ModalCloseButton sm (28×28) 공통화 */}
             <ModalCloseButton onClick={() => setOpen(false)} size="sm" style={{ position:'absolute', top:12, right:12 }} />
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-              <UserAvatar name={userInfo.name} avatarUrl={userInfo.avatar_url ?? null} size={44} />
+              <UserAvatar
+                name={userInfo.name}
+                avatarUrl={userInfo.avatar_url ?? null}
+                size={72}                /* ← [핫픽스 v16] 44 → 72 */
+                fontSize={24}            /* ← [핫픽스 v16] 자동 환산(36) → 24 명시 */
+                fontWeight={300}         /* ← [핫픽스 v16] 500 → 300 (Light) */
+              />
               <div>
                 <div style={{ fontSize:14, fontWeight:600, color:'#111', lineHeight:1.3 }}>{userInfo.name}</div>
                 {userInfo.dept && <div style={{ fontSize:11, color:'#94A3B8', marginTop:3 }}>{userInfo.dept}</div>}
