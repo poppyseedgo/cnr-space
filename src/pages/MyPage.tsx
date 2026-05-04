@@ -286,7 +286,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
             />
             {/* 이름 30 SemiBold #111 leading 1.25 (Figma node 454:3889) */}
             <span style={{
-              fontSize:32,                                        // ← [2026-05-04] 사용자 요청 32 (이전 30)
+              fontSize:27,                                        // ← [2026-05-04] 사용자 요청 27 (이전 32)
               fontWeight:600,                                     // ← Figma: SemiBold
               color:'#111',                                       // ← Figma: #111
               lineHeight:1.25,                                    // ← Figma: leading 1.25
