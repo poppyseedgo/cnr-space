@@ -366,7 +366,17 @@ export function MyBookingTable({
                 onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = '#fff'}>
                 {/* 날짜 */}
                 <Td width={160} pad="10 16">
-                  <span style={{ fontSize:14, fontWeight:500, color:'#64748B', lineHeight:1.5 }}>
+                  {/* ← [2026-05-04 핫픽스 v9] 줄바꿈 근본 차단
+                       원인: 기존 span에 whiteSpace 미지정 → "2026년 4월 30일 (목)" 자동 wrap
+                       해결: 다른 셀(시간/회의/회의실/예약자)과 동일 정책 적용
+                             · whiteSpace:'nowrap' — 한 줄 강제
+                             · overflow:'hidden' + textOverflow:'ellipsis' — 폭 부족 시 ... 처리 */}
+                  <span style={{
+                    fontSize:14, fontWeight:500, color:'#64748B', lineHeight:1.5,
+                    whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+                    display:'block',                              // ← span에 overflow 적용 위해 block 화
+                    width:'100%',
+                  }}>
                     {fmtDateFullWithDay(tsDate(b.start_at))}
                   </span>
                 </Td>
