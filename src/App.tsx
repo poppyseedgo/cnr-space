@@ -2,6 +2,17 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-05-04] ProfileDropdown 분리 (Phase 1+2 Step 2)
+ *      · 대상: 헤더 우측 프로필 버튼 + 드롭다운 메뉴 (140줄 JSX)
+ *      · 신규: src/components/layout/ProfileDropdown.tsx
+ *      · App.tsx 변경:
+ *        - JSX 영역 → <ProfileDropdown ... /> 한 줄 호출로 교체
+ *        - state(showDropdown) + ref(dropdownRef) 제거 → 컴포넌트 내부로 이동
+ *        - 외부클릭 useEffect 분할: dropdown 처리는 컴포넌트 내부로, notifRef 처리는 잔존 (Step 3에서 이동 예정)
+ *        - import 제거: UserCircle / LayoutDashboard / LogOut (lucide) + UserAvatar
+ *      · Figma 사양은 ProfileDropdown.tsx 헤더 주석에 명시 (445:535 / 445:377)
+ *      · 동작 로직 무수정 — 자기완결적 컴포넌트 (자체 ref + 자체 외부클릭 effect)
+ *
  *  - [2026-05-04] LazyErrorBoundary 분리 (Phase 1+2 Step 1)
  *      · 대상: L220~290 (interface ErrorBoundaryState + class LazyErrorBoundary)
  *      · 신규: src/components/common/LazyErrorBoundary.tsx
@@ -189,9 +200,10 @@
  */
 
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react'  // ← [2026-05-04] Component/ErrorInfo/ReactNode 제거 (LazyErrorBoundary 분리)
-import { Bell, Calendar, Home, LayoutDashboard, LogOut, UserCircle } from 'lucide-react'  // ← [2026-05-04] 헤더 드롭다운 Figma 반영: User→UserCircle, Settings→LayoutDashboard, 미사용 제거
+import { Bell, Calendar, Home } from 'lucide-react'  // ← [2026-05-04] LayoutDashboard/LogOut/UserCircle 제거 (ProfileDropdown 분리)
 // ← [2026-04-30] 헤더 상단 공지 영역 (NoticeBar) 도입 — Figma node 410:6745 반영
 import { NoticeBar, type AnnouncementConfig } from './components/layout/NoticeBar'
+import { ProfileDropdown } from './components/layout/ProfileDropdown'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 2)
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtTSFull, fmtTSRangeFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
@@ -213,7 +225,7 @@ import { ConfirmRejectModal } from './components/booking/ConfirmRejectModal'    
 import { ConfirmForceCancelModal } from './components/booking/ConfirmForceCancelModal' // ← [2026-04-24 P8-B] 관리자 강제취소 공통 다이얼로그
 import { BookingModal } from './components/booking/BookingModal'
 import { DetailModal } from './components/booking/DetailModal'
-import { UserAvatar } from './components/common/UserAvatar'
+// ← [2026-05-04] UserAvatar import 제거 — ProfileDropdown 내부로 이동 (Phase 1+2 Step 2)
 import { LazyErrorBoundary } from './components/common/LazyErrorBoundary'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 1)
 import LoginPage from './pages/LoginPage'
 import { useBreakpoint, useVisualViewport } from './hooks/useBreakpoint'
@@ -427,8 +439,7 @@ function AppContent() {
     };
   }, [loading]);
 
-  const [showDropdown, setShowDropdown] = useState(false);
-  const dropdownRef = useRef(null);
+  // ← [2026-05-04] showDropdown / dropdownRef → ProfileDropdown 컴포넌트 내부로 이동 (Phase 1+2 Step 2)
   const { currentUser: authUser, logout, isAdmin, loading: authLoading } = useAuth()
   const currentUser = authUser?.name ?? ""
   const currentDept = authUser?.dept ?? ""
@@ -629,9 +640,10 @@ function AppContent() {
   }, []);
 
   // 드롭다운 외부 클릭 닫기
+  // ← [2026-05-04] dropdown 외부클릭은 ProfileDropdown 내부로 이동 (Phase 1+2 Step 2)
+  //                notifRef 외부클릭은 Step 3에서 NotificationBell로 이동 예정
   useEffect(() => {
     const h = (e) => {
-      if(dropdownRef.current && !dropdownRef.current.contains(e.target)) setShowDropdown(false);
       if(notifRef.current && !notifRef.current.contains(e.target)) setShowNotifPanel(false);
     };
     document.addEventListener("mousedown", h);
@@ -1695,146 +1707,20 @@ function AppContent() {
                 )}
               </div>
 
-              <div ref={dropdownRef} style={{position:"relative"}}>
-                {/* Figma 410:6871: bg #F6F9FF / padding 2px 10px 2px 2px / gap 8px / border-radius 1000 / border 없음
-                    아바타: 32×32 #CBECFF / 이름 14 SemiBold #1E1E1E / 부서 13 Regular #A4B2BF max-w 100 ellipsis
-                    모바일은 기존 4px 패딩 유지 (텍스트 미표시) */}
-                <button className="btn flex items-center flex-shrink-0"
-                  onClick={()=>setShowDropdown(v=>!v)}
-                  style={{
-                    padding: isMobile ? "4px 4px" : "2px 10px 2px 2px",
-                    gap: 8,
-                    borderRadius: 1000,
-                    background: dark ? "rgba(255,255,255,0.05)" : "#F6F9FF",
-                    border: "none",
-                    cursor:"pointer",
-                  }}>
-                  <UserAvatar
-                    name={currentUser}
-                    avatarUrl={authUser?.avatar_url}
-                    size={isMobile ? 28 : 32}
-                    bgColor="#CBECFF"
-                    textColor="#1E1E1E"
-                    fontWeight={400}    // ← [2026-04-30] 헤더 프로필 아바타만 400 (기본 500 override)
-                  />
-                  {!isMobile && (
-                    <>
-                      <span style={{
-                        fontSize: 15,
-                        fontWeight: 500,        // ← [2026-04-30] 600 → 500 (Pretendard Medium)
-                        lineHeight: 1.5,
-                        color: dark ? "#fff" : "#1E1E1E",
-                        whiteSpace: "nowrap",
-                      }}>
-                        {currentUser}
-                      </span>
-                      <span style={{
-                        fontSize: 13,
-                        fontWeight: 400,        // Pretendard Regular
-                        lineHeight: 1.5,
-                        color: dark ? "#94A3B8" : "#A4B2BF",
-                        maxWidth: 100,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}>
-                        {currentDept}
-                      </span>
-                    </>
-                  )}
-                </button>
-
-                {/* 드롭다운 메뉴
-                    [2026-05-04] Figma 445:535(일반사용자) / 445:377(관리자) 정확 반영
-                    · 컨테이너: width 200 / radius 16 / border 제거 / shadow 유지
-                    · ModalHeader: padding 12 / 이름 14 Medium #111 / 부서 14 Regular #96A0B3 ellipsis / gap 2
-                    · Dropdown contents: padding 4px 0 / 메뉴 padding 8px 12px / 텍스트 14 Medium #111 letter-spacing 0.14px
-                    · Modal Bottom (로그아웃): 외부 padding 8px 12px / 내부 padding 4px 0 / 색상 #99A1AF (회색, 기존 빨강에서 변경)
-                    · 아이콘: User → UserCircle, Settings → LayoutDashboard, LogOut 유지 / size 20 strokeWidth 1.5
-                    · 메뉴 라벨: "My Page"→"MY PAGE", "Admin"→"ADMIN" (Figma 정확 표기) */}
-                {showDropdown && (
-                  <div className="anm" style={{
-                    position:"absolute", top:"calc(100% + 6px)", right:0, zIndex:200,
-                    background:"#fff",                                           // ← [변경] border 제거
-                    borderRadius:16,                                             // ← [변경] 12 → 16
-                    boxShadow:"0 8px 32px rgba(0,0,0,0.12)",
-                    overflow:"hidden",
-                    width:200,                                                   // ← [변경] minWidth 180 → width 200 (Figma 고정 사이즈)
-                  }}>
-                    {/* ModalHeader (사용자 정보) — Figma 445:536 / 445:423 */}
-                    <div style={{
-                      padding:12,                                                // ← [변경] 14px 16px → 12px (전 방향)
-                      borderBottom:"1px solid #F1F5F9",
-                      display:"flex", flexDirection:"column", gap:2,             // ← [변경] marginTop:2 → flex gap:2
-                    }}>
-                      <div style={{
-                        fontSize:14, fontWeight:500, lineHeight:1.5, color:"#111",  // ← [변경] 13/600 → 14/500
-                        whiteSpace:"nowrap",
-                      }}>{currentUser}</div>
-                      <div style={{
-                        fontSize:14, fontWeight:400, lineHeight:1.5, color:"#96A0B3",  // ← [변경] 11/#94A3B8 → 14/#96A0B3
-                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-                      }}>{currentDept}</div>
-                    </div>
-                    {/* Dropdown contents (메뉴 항목) — Figma 445:539 / 445:378 */}
-                    <div style={{padding:"4px 0", background:"#fff"}}>
-                      <button className="btn" onClick={()=>{setView("mypage");setShowDropdown(false);}}
-                        style={{
-                          width:"100%", textAlign:"left",
-                          padding:"8px 12px",                                    // ← [변경] 10/16 → 8/12
-                          fontSize:14, fontWeight:500, lineHeight:1.5,           // ← [변경] 13 → 14 + Medium 500
-                          letterSpacing:"0.14px",                                // ← [신규] Figma tracking
-                          background:view==="mypage"?"#F8FAFC":"transparent",
-                          color:"#111",
-                          display:"flex", alignItems:"center", gap:8,
-                          border:"none", cursor:"pointer",
-                        }}
-                        onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
-                        onMouseLeave={e=>e.currentTarget.style.background=view==="mypage"?"#F8FAFC":"transparent"}>
-                        <UserCircle size={20} strokeWidth={1.5}/>                {/* ← [변경] User 15 → UserCircle 20 */}
-                        MY PAGE                                                  {/* ← [변경] "My Page" → "MY PAGE" */}
-                      </button>
-                      {isAdmin && (
-                        <button className="btn" onClick={()=>{setView("admin");setShowDropdown(false);}}
-                          style={{
-                            width:"100%", textAlign:"left",
-                            padding:"8px 12px",
-                            fontSize:14, fontWeight:500, lineHeight:1.5,
-                            letterSpacing:"0.14px",
-                            background:view==="admin"?"#F8FAFC":"transparent",
-                            color:"#111",
-                            display:"flex", alignItems:"center", gap:8,
-                            border:"none", cursor:"pointer",
-                          }}
-                          onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
-                          onMouseLeave={e=>e.currentTarget.style.background=view==="admin"?"#F8FAFC":"transparent"}>
-                          <LayoutDashboard size={20} strokeWidth={1.5}/>         {/* ← [변경] Settings → LayoutDashboard */}
-                          ADMIN                                                  {/* ← [변경] "Admin" → "ADMIN" */}
-                        </button>
-                      )}
-                    </div>
-                    {/* Modal Bottom (로그아웃) — Figma 445:552 / 445:430 */}
-                    <div style={{
-                      borderTop:"1px solid #F1F5F9",
-                      padding:"8px 12px",                                        // ← [변경] 4px 0 → 8px 12px (외부 패딩)
-                    }}>
-                      <button className="btn" onClick={()=>{logout();setShowDropdown(false);}}
-                        style={{
-                          width:"100%", textAlign:"left",
-                          padding:"4px 0",                                       // ← [변경] 10/16 → 4/0 (Figma 내부 row py-4)
-                          fontSize:14, fontWeight:500, lineHeight:1.5,           // ← [변경] 13 → 14 + Medium
-                          color:"#99A1AF",                                       // ← [변경] #EF4444(빨강) → #99A1AF(Figma 회색)
-                          background:"transparent",
-                          display:"flex", alignItems:"center", gap:8,
-                          border:"none", cursor:"pointer",
-                        }}>
-                        <LogOut size={20} strokeWidth={1.5}/>                    {/* ← [변경] size 15 → 20 */}
-                        로그아웃
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+              {/* ← [2026-05-04] 프로필 + 드롭다운 메뉴 → ProfileDropdown 컴포넌트로 분리 (Phase 1+2 Step 2)
+                    동작 무수정. state(showDropdown), ref(dropdownRef), 외부클릭 effect 모두 컴포넌트 내부로 이동.
+                    Figma 사양은 ProfileDropdown.tsx 헤더 주석 참조. */}
+              <ProfileDropdown
+                currentUser={currentUser}
+                currentDept={currentDept}
+                avatarUrl={authUser?.avatar_url}
+                isAdmin={isAdmin}
+                isMobile={isMobile}
+                dark={dark}
+                view={view}
+                onSetView={setView}
+                onLogout={logout}
+              />
             </div>
 
           </div>
