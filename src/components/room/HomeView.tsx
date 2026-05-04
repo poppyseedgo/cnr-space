@@ -384,10 +384,13 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
                     )}
                     {/* ← [Figma UI갱신] 반복 뱃지: 상태칩 행 → 타이틀 행으로 이동 */}
                     {b.recurGroupId && <MetaBadge type="recurring" size="xs" />}
-                    {/* ← [Figma] 제목: Bold 12px #111 flex-1 text-ellipsis whitespace-nowrap leading-1.5 */}
+                    {/* ← [2026-05-04 핫픽스 v8] 회의 제목 폰트 변경 (사용자 요청)
+                         · fontSize 12 → 13
+                         · fontWeight 700 → 600
+                         · 색상/leading/ellipsis 유지 */}
                     <p style={{
                       flex:"1 0 0", minWidth:0,
-                      fontSize:12, fontWeight:700, color:"#111",
+                      fontSize:13, fontWeight:600, color:"#111",
                       overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
                       lineHeight:1.5, margin:0
                     }}>{b.title}</p>

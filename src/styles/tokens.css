@@ -84,14 +84,21 @@
 /* ── 칩 사이즈 modifier ─────────────────────────────────────────────────────
    base .chip        : font-size 12px / padding 3px 10px / fw 500 — index.css 정의
    .chip--sm         : font-size  9px / padding 2px 7px
-   .chip--xs         : font-size 10px / padding 1px 4px / border-radius 4px  — 캘린더 슬롯 XS
+   .chip--xs         : font-size 11px / padding 3px 6px / border-radius 6px  — 캘린더 슬롯/소형카드 XS (2026-05-04 변경)
    .chip--square     : font-size 12px / padding 8px 14px / border-radius 10px / line-height 14px — DetailModal 전용
                        ※ 사이즈는 :root의 --chip-square-* 토큰으로 통제
 ─────────────────────────────────────────────────────────────────────────── */
 .chip--sm { font-size: 9px;  padding: 2px 7px; }
 /* ← [피그마 반영] chip--xs: 9px / padding 1px 4px / radius 4 (RoomModal StatusBadge-XS 기준) */
 /* ← [2026-04-29] font-size 9px → 10px */
-.chip--xs { font-size: 10px; padding: 1px 4px; border-radius: 4px; }
+/* ── [2026-05-04 핫픽스 v8] chip--xs 스타일 변경 (사용자 요청 A안) ──
+      · padding 1px 4px → 3px 6px
+      · font-size 10px → 11px
+      · border-radius 4px → 6px
+      · 영향 범위: HomeView 소형카드 + RoomDetailModal + DetailModal + CalendarShell 슬롯 (4곳 동시)
+      · 단, .chip-mine.chip--xs override는 그대로 유지 (사용자 명시: "내 예약 칩은 유지")
+        → padding 1 4 / radius 4 / font-size 9 (캘린더 슬롯 내 예약 컴팩트 유지) */
+.chip--xs { font-size: 11px; padding: 3px 6px; border-radius: 6px; }
 /* ── [2026-05-04 STEP 3] chip--list: MY PAGE 테이블/리스트 전용 사이즈 ──
       · 배경: 기존 .chip--xs는 캘린더 슬롯 전용(padding 1×4 / radius 4)
               새 MY PAGE 테이블 디자인의 chip-XS(Figma node 449:1334)는 padding 2×7 / radius pill로 다름
@@ -133,8 +140,10 @@
 /* ← [피그마 242:350 / 2026-04-23] 캘린더 슬롯용 내 예약 뱃지 오버라이드
       · 일/주/월 캘린더 슬롯에서만 사용하는 XS 사이즈 내 예약 칩
       · Figma 스펙: bg #fff, border 0.5px #000, radius 4, padding 1 4, text 9px #000 Medium
-      · base .chip-mine(padding 4 10)을 덮어써서 슬롯 내부에서 컴팩트하게 표시 */
-.chip-mine.chip--xs { background: #fff; color: #000; border: 0.5px solid #000; padding: 1px 4px; border-radius: 4px; }
+      · base .chip-mine(padding 4 10)을 덮어써서 슬롯 내부에서 컴팩트하게 표시
+      · ← [2026-05-04 핫픽스 v8] font-size 10px 명시 추가 — chip--xs 변경(11px) 영향 차단
+            (사용자 명시 "내 예약 칩은 유지"에 따라 시각적 변화 0 보장) */
+.chip-mine.chip--xs { background: #fff; color: #000; border: 0.5px solid #000; padding: 1px 4px; border-radius: 4px; font-size: 10px; }
 /* ← [2026-04-24] DetailModal 전용 내 예약 칩 오버라이드
       · .chip--square(padding 8 14 / radius 10) 위에 .chip-mine의 기본(padding 4 10 / pill radius 24)이
         덮어쓰는 것을 무효화 — padding·radius 모두 재지정
