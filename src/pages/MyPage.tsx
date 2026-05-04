@@ -2,6 +2,20 @@
  * MyPage.tsx — 내 마이페이지 (MyPageView) + 주간 뷰 (MyBookingWeeklyView)
  *
  * ✅ 변경 이력
+ *  - [2026-05-04 STEP 5] 상단 카드 영역 재디자인 (Figma node 454:3883 1:1)
+ *    · 영역 높이: 196 → 152 (더 컴팩트)
+ *    · 프로필 카드 폭: 475 → 540 + min-width 320
+ *    · 프로필 카드 레이아웃: 아바타 위 세로 → 아바타 + 이름 가로 (gap 8)
+ *    · 아바타: 64×64 rounded-24 / bg #CBECFF / text #1E1E1E 24 Regular
+ *           → 42×42 rounded-full(원형) / bg #000(기본) / text #fff Light(300) 24
+ *    · 이름 폰트: 24 SemiBold → 30 SemiBold (+6)
+ *    · 부서/이메일: 별도 블록 + mail 아이콘 + 메일 12 / 부서 12
+ *                → 하나의 블록 (둘 다 12 Regular #AEB5C4 leading 1.5), mail 아이콘 제거
+ *    · 부서명 없을 때 div 출력 안 함 (Figma 명시: "부서명 없을 시에 div 출력하지 않기")
+ *    · 우측 카드(이번달예약/노쇼횟수) 폭: 226.5 → 194 (flex-1 자동), 높이 196 → 152
+ *    · 노쇼 안내문: 자연 줄바꿈 → 명시적 3줄 ("3회 이상 누적시" / "패널티가 적용됩니다." / "꼭 체크인 해주세요!")
+ *    · MailIcon import 제거 (mail 아이콘 새 디자인에서 미사용)
+ *
  *  - [2026-05-04 STEP 4] MY PAGE 재설계 통합 — 모든 영역 새 디자인 적용 완료
  *    · BookingListTable → MyBookingTable로 교체 (Admin은 BookingListTable 그대로 유지)
  *    · 월별 이용 통계 섹션 완전 제거 (statYear/statMonth/monthStats useMemo + UI 통째 제거)
@@ -18,8 +32,7 @@
  *      - 신규: thisMonthCount (미래 확정+승인대기, 노쇼/취소/거절 제외)
  *      - 신규: noshowCount (전체 누적 — 예약자+참석자 공통 책임)
  *    · 상단 1-통합카드 → 3-분리카드 (프로필 / 이번 달 예약 / 노쇼 횟수)
- *    · UserAvatar borderRadius prop 활용 (64×64 rounded-24, 원형 아님)
- *    · Icons.tsx에서 MailIcon import (Figma 추출 SVG)
+ *    · UserAvatar borderRadius prop 활용 (STEP 5에서 다시 기본 '50%' 원형으로 복원)
  *
  *  - [2026-04-27 KST FIX] mapRow에서 utcToKST 변환 적용
  *  - 이전 이력은 git log 참조
@@ -46,7 +59,8 @@ import { useBreakpoint } from '../hooks/useBreakpoint'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../types'
 
 import { UserAvatar } from '../components/common/UserAvatar'
-import { MailIcon } from '../components/common/Icons'   // ← [2026-05-04 STEP 1] Figma 추출 SVG 아이콘 (프로필 카드 이메일 옆)
+// ← [2026-05-04 STEP 5] MailIcon import 제거 — 새 디자인 (Figma node 454:3883)은 이메일 옆 mail 아이콘 미사용
+//   · Icons.tsx의 MailIcon export 자체는 유지 (향후 재사용 가능성)
 // ← [2026-05-04 STEP 4] BookingListTable → MyBookingTable로 교체 (Admin은 BookingListTable 그대로 유지)
 import { MyBookingTable } from '../components/common/MyBookingTable'
 import { Button } from '../components/common/Button' 
@@ -224,87 +238,100 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
       <div style={{maxWidth:960,margin:"0 auto",padding:isMobile?"16px 12px":"28px 24px"}}>{/* ← 기존 콘텐츠 wrapper 그대로 유지 */}
 
       {/* ═══════════════════════════════════════════════════════════════════
-          ↓ [2026-05-04 STEP 1] 상단 카드 영역 — Figma node 445:702 1:1 반영
+          ↓ [2026-05-04 STEP 5] 상단 카드 영역 — Figma node 454:3883 1:1 재반영
           ─────────────────────────────────────────────────────────────────
-          · 데스크톱: 가로 3-카드 (프로필 475px / 이번 달 예약 flex-1 / 노쇼 횟수 flex-1)
-          · 모바일: 세로 스택 (각 카드 폭 100%) — Figma는 데스크톱만 정의, 모바일은 응답형 적용
-          · 카드 공통: bg #fff, padding/내부구조는 카드별 상이, border-radius 24
-          · gap: 16px (카드 사이)
-          · 기존 1-통합카드 + 체크인율 카드 → 모두 제거됨
+          · 영역 높이: 196 → 152 (더 컴팩트)
+          · 카드 1 프로필: 540 (min 320) / padding 16 / radius 24 / bg #fff
+            - 내부 gap 12 (가로 블록 ↔ 부서/이메일 블록)
+            - 가로 블록 (Figma 454:3886): avatar 42 + 이름 30 SemiBold, gap 8
+            - 부서/이메일 블록: 둘 다 12 Regular #AEB5C4 leading 1.5, mail 아이콘 제거
+            - 부서명 빈 경우 div 출력 X (Figma 454:3891 명시)
+          · 카드 2/3 폭: 226.5 → 194 (flex-1 자동), 높이 196 → 152
+          · 데스크톱: 가로 3-카드 / 모바일: 세로 스택
           ═══════════════════════════════════════════════════════════════════ */}
       <div className="anm" style={{
         display:'flex',
         gap:16,                                                  // ← Figma: gap 16
-        alignItems:'stretch',                                    // ← 카드 높이 균일 (flex-1 카드들이 prof 카드에 맞춤)
+        alignItems:'stretch',                                    // ← 카드 높이 균일
         flexDirection: isMobile ? 'column' : 'row',              // ← 모바일은 세로 스택
         marginBottom:24,                                         // ← Figma: 영역 간 24
       }}>
 
-        {/* ── 카드 1: 프로필 카드 (Figma node 449:2525) ──────────────────── */}
-        {/*    · width 475 (모바일은 100%) / padding 16 / radius 24 / bg #fff
-              · 내부 gap 12 (avatar ↔ 프로필 정보)
-              · 프로필 정보: padding 4 0 8 0 / gap 12 (이름블록 ↔ 이메일줄)
+        {/* ── 카드 1: 프로필 카드 (Figma node 454:3884) ──────────────────── */}
+        {/*    · width 540 (min 320, 모바일 100%) / padding 16 / radius 24 / bg #fff
+              · 내부: flex flex-col gap 12 (가로 블록 ↔ 부서/이메일 블록)
         ─────────────────────────────────────────────────────────────── */}
         <div style={{
-          width: isMobile ? '100%' : 475,                        // ← Figma: 475
-          padding: 16,                                            // ← Figma: padding 16
+          width:    isMobile ? '100%' : 540,                    // ← Figma: 540 (이전 475)
+          minWidth: isMobile ? undefined : 320,                  // ← Figma: min-w 320
+          minHeight: isMobile ? 120 : 152,                       // ← Figma: 152 (이전 196)
+          padding:  16,                                          // ← Figma: padding 16
           borderRadius: 24,                                       // ← Figma: rounded 24
           background: '#fff',                                     // ← Figma: bg #fff
-          display:'flex', flexDirection:'column', gap:12,
+          display:'flex', flexDirection:'column', gap:12,        // ← Figma: gap 12
         }}>
-          {/* 아바타 64×64, bg #CBECFF, rounded 24, 글자 #1E1E1E 24px Regular(400) */}
-          <UserAvatar
-            name={currentUser}
-            avatarUrl={avatarUrl}
-            size={64}                                             // ← Figma: 64×64
-            bgColor="#CBECFF"                                     // ← Figma: bg #CBECFF (avatar)
-            textColor="#1E1E1E"                                   // ← Figma: text #1E1E1E
-            fontSize={24}                                          // ← Figma: 24px
-            fontWeight={400}                                       // ← Figma: Regular
-            borderRadius={24}                                      // ← [2026-05-04 STEP 1] 신규 prop — 새 디자인 사각 둥근모서리(원형 아님)
-          />
-
-          {/* 프로필 정보: 이름/부서 블록 + 이메일 줄 */}
+          {/* 가로 블록: 아바타 + 이름 (Figma node 454:3886) */}
           <div style={{
-            paddingTop: 4, paddingBottom: 8,                       // ← Figma: pt 4 pb 8
-            display:'flex', flexDirection:'column', gap:12,        // ← Figma: gap 12
+            display:'flex', alignItems:'center', gap:8,          // ← Figma: gap 8 / items-center
           }}>
-            {/* 이름 블록: 이름(24/SemiBold/#111/lh 1.25) + 부서(12/Regular/#AEB5C4/lh 1) */}
-            <div style={{display:'flex', flexDirection:'column', gap:6}}>{/* ← Figma: gap 6 */}
-              <div style={{
-                fontSize:24,                                       // ← Figma: 24
-                fontWeight:600,                                    // ← Figma: SemiBold
-                color:'#111',                                      // ← Figma: #111
-                lineHeight:1.25,                                   // ← Figma: leading 1.25
-                wordBreak:'keep-all',                              // ← 한글 줄바꿈 자연스럽게 (Figma "성이름이 진짜 길면 줄바꿈으로 표기")
-              }}>{currentUser}</div>
-              <div style={{
-                fontSize:12,                                       // ← Figma: 12
-                fontWeight:400,                                    // ← Figma: Regular
-                color:'#AEB5C4',                                   // ← Figma: #AEB5C4
-                lineHeight:1,                                      // ← Figma: leading none
-              }}>{currentDept}</div>
-            </div>
-            {/* 이메일 줄: mail 아이콘 16 + 이메일 텍스트 12/Regular/#262930 / gap 4 */}
-            <div style={{display:'flex', alignItems:'center', gap:4}}>{/* ← Figma: gap 4 */}
-              <MailIcon size={16}/>{/* ← Figma 추출 SVG (color #262930) */}
-              <span style={{
-                fontSize:12,                                       // ← Figma: 12
-                fontWeight:400,                                    // ← Figma: Regular
-                color:'#262930',                                   // ← Figma: #262930
-                lineHeight:1,                                      // ← Figma: leading none
+            {/* 아바타 42×42 원형, bg #000 black, text #fff Light(300) 24 (Figma node 454:3887) */}
+            <UserAvatar
+              name={currentUser}
+              avatarUrl={avatarUrl}
+              size={42}                                          // ← Figma: 42 (이전 64)
+              fontSize={24}                                       // ← Figma: 24
+              fontWeight={300}                                    // ← Figma: Light (Pretendard:Light)
+              textColor="#fff"                                    // ← Figma: white (기본 #E7E7E7 → 명시적 #fff)
+              /* bgColor / borderRadius는 기본값 (#000 / '50%' 원형) 그대로 사용 */
+            />
+            {/* 이름 30 SemiBold #111 leading 1.25 (Figma node 454:3889) */}
+            <span style={{
+              fontSize:30,                                        // ← Figma: 30 (이전 24)
+              fontWeight:600,                                     // ← Figma: SemiBold
+              color:'#111',                                       // ← Figma: #111
+              lineHeight:1.25,                                    // ← Figma: leading 1.25
+              whiteSpace:'nowrap',
+              overflow:'hidden', textOverflow:'ellipsis',         // ← 이름 너무 길 때 ellipsis (이전 디자인의 wordBreak는 가로 배치이므로 부적합)
+              minWidth:0,
+            }}>{currentUser}</span>
+          </div>
+
+          {/* 부서/이메일 블록 (Figma node 454:3890) — 둘 다 12 Regular #AEB5C4 leading 1.5 */}
+          <div style={{
+            display:'flex', flexDirection:'column', alignItems:'flex-start',
+            // ← Figma: 두 텍스트 같은 스타일이라 gap 0 (각 텍스트의 line-height 1.5로 자연 간격)
+          }}>
+            {/* ← Figma 454:3891 명시 요구사항: "부서명 없을 시에 div 출력하지 않기"
+                  currentDept가 falsy(undefined/null/'')일 때 div 자체 미출력 */}
+            {currentDept && (
+              <p style={{
+                margin:0,                                         // ← p 기본 margin 제거
+                fontSize:12,                                      // ← Figma: 12
+                fontWeight:400,                                   // ← Figma: Regular
+                color:'#AEB5C4',                                  // ← Figma: #AEB5C4
+                lineHeight:1.5,                                   // ← Figma: leading 1.5
                 whiteSpace:'nowrap',
                 overflow:'hidden', textOverflow:'ellipsis',
-              }}>{userInfo?.email ?? '—'}</span>
-            </div>
+                maxWidth:'100%',
+              }}>{currentDept}</p>
+            )}
+            <p style={{
+              margin:0,
+              fontSize:12,
+              fontWeight:400,
+              color:'#AEB5C4',
+              lineHeight:1.5,
+              whiteSpace:'nowrap',
+              overflow:'hidden', textOverflow:'ellipsis',
+              maxWidth:'100%',
+            }}>{userInfo?.email ?? '—'}</p>
           </div>
         </div>
 
-        {/* ── 카드 2: 이번 달 예약 카드 (Figma node 446:385) ─────────────── */}
-        {/*    · flex-1 / padding 16 12 (좌우 16 상하 12) / radius 24 / bg #fff
-              · 라벨 #9ED2FF Bold 16, 부제 #AEB5C4 Medium 12
-              · 숫자 #111 Medium 32, text-align right
-              · justify-content: space-between (라벨 위, 숫자 아래)
+        {/* ── 카드 2: 이번 달 예약 카드 (Figma node 454:3893) ─────────────── */}
+        {/*    · flex-1 / padding 16 12 / radius 24 / bg #fff
+              · 높이 196 → 152 (모바일 120 유지)
+              · 라벨/숫자 디자인 동일
         ─────────────────────────────────────────────────────────────── */}
         <div style={{
           flex:1, minWidth:0,                                      // ← Figma: flex 1 0 0 / min-w 1px
@@ -312,7 +339,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
           borderRadius:24,                                         // ← Figma: rounded 24
           background:'#fff',
           display:'flex', flexDirection:'column', justifyContent:'space-between',
-          minHeight: isMobile ? 120 : 196,                         // ← 모바일에선 좀 작게 / 데스크톱은 Figma 196 동일
+          minHeight: isMobile ? 120 : 152,                         // ← [STEP 5] Figma: 152 (이전 196)
         }}>
           {/* 라벨 + 부제 (gap 2) */}
           <div style={{display:'flex', flexDirection:'column', gap:2}}>{/* ← Figma: gap 2 */}
@@ -320,40 +347,35 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
               fontSize:16,                                         // ← Figma: 16
               fontWeight:700,                                      // ← Figma: Bold
               color:'#9ED2FF',                                     // ← Figma: #9ED2FF (브랜드 블루 액센트)
-              lineHeight:1.5,                                      // ← Figma: leading 1.5
+              lineHeight:1.5,
             }}>이번 달 예약</div>
             <div style={{
               fontSize:12,                                         // ← Figma: 12
               fontWeight:500,                                      // ← Figma: Medium
-              color:'#AEB5C4',                                     // ← Figma: #AEB5C4
+              color:'#AEB5C4',
               lineHeight:1.5,
             }}>{thisMonthLabel}</div>{/* ← 동적: "5월 예약 수" 등 */}
           </div>
           {/* 숫자 (오른쪽 정렬, 32 Medium) */}
           <div style={{display:'flex', alignItems:'center', justifyContent:'flex-end'}}>
             <span style={{
-              fontSize:32,                                         // ← Figma: 32
-              fontWeight:500,                                      // ← Figma: Medium
-              color:'#111',                                        // ← Figma: #111
-              lineHeight:1.5,                                      // ← Figma: leading 1.5
-              textAlign:'right',
+              fontSize:32, fontWeight:500, color:'#111',
+              lineHeight:1.5, textAlign:'right',
             }}>{allLoading ? '—' : thisMonthCount}</span>
           </div>
         </div>
 
-        {/* ── 카드 3: 노쇼 횟수 카드 (Figma node 446:410) ────────────────── */}
-        {/*    · flex-1 / padding 16 12 / radius 24 / bg #fff
-              · 라벨 #FF6969 Bold 16 (브랜드 레드 액센트)
-              · 안내문 #AEB5C4 Medium 12 leading 1.5 (2줄, 자동 줄바꿈)
-              · 숫자 #111 Medium 32, text-align right
+        {/* ── 카드 3: 노쇼 횟수 카드 (Figma node 454:3899) ────────────────── */}
+        {/*    · flex-1 / padding 16 12 / radius 24 / bg #fff / 높이 152
+              · 안내문 명시적 3줄 (Figma 디자이너 의도)
         ─────────────────────────────────────────────────────────────── */}
         <div style={{
-          flex:1, minWidth:0,                                      // ← Figma: flex 1 0 0
-          padding:'12px 16px',                                     // ← Figma: 16 12
-          borderRadius:24,                                         // ← Figma: rounded 24
+          flex:1, minWidth:0,
+          padding:'12px 16px',
+          borderRadius:24,
           background:'#fff',
           display:'flex', flexDirection:'column', justifyContent:'space-between',
-          minHeight: isMobile ? 120 : 196,
+          minHeight: isMobile ? 120 : 152,                         // ← [STEP 5] Figma: 152 (이전 196)
         }}>
           <div style={{display:'flex', flexDirection:'column', gap:2}}>
             <div style={{
@@ -362,15 +384,17 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
               color:'#FF6969',                                     // ← Figma: #FF6969 (브랜드 레드 액센트)
               lineHeight:1.5,
             }}>노쇼 횟수</div>
+            {/* ← [STEP 5] Figma node 454:3902 1:1: 명시적 3줄 분리
+                기존 STEP 1에서는 자연 줄바꿈으로 2줄 표시. 새 디자인은 3줄로 끊음. */}
             <div style={{
               fontSize:12,                                         // ← Figma: 12
               fontWeight:500,                                      // ← Figma: Medium
               color:'#AEB5C4',
               lineHeight:1.5,
-              wordBreak:'keep-all',                                // ← 한글 자연스러운 줄바꿈
             }}>
-              {/* ← Figma: 2줄 안내문 — 패널티 정책 안내 (3회 이상 누적 시 적용) */}
-              3회 이상 누적시 패널티가 적용됩니다.<br/>꼭 체크인 해주세요!
+              <p style={{margin:0, lineHeight:1.5}}>3회 이상 누적시</p>
+              <p style={{margin:0, lineHeight:1.5}}>패널티가 적용됩니다.</p>
+              <p style={{margin:0, lineHeight:1.5}}>꼭 체크인 해주세요!</p>
             </div>
           </div>
           <div style={{display:'flex', alignItems:'center', justifyContent:'flex-end'}}>
@@ -383,7 +407,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
 
       </div>
       {/* ═══════════════════════════════════════════════════════════════════
-          ↑ [2026-05-04 STEP 1] 상단 3-카드 영역 끝
+          ↑ [2026-05-04 STEP 5] 상단 3-카드 영역 끝
           ═══════════════════════════════════════════════════════════════════ */}
 
       {/* ═══════════════════════════════════════════════════════════════════
