@@ -139,11 +139,15 @@
 .chip-mine          { background: transparent; color: #111; border: 1px solid #000; padding: 4px 10px; font-weight: 500; }
 /* ← [피그마 242:350 / 2026-04-23] 캘린더 슬롯용 내 예약 뱃지 오버라이드
       · 일/주/월 캘린더 슬롯에서만 사용하는 XS 사이즈 내 예약 칩
-      · Figma 스펙: bg #fff, border 0.5px #000, radius 4, padding 1 4, text 9px #000 Medium
-      · base .chip-mine(padding 4 10)을 덮어써서 슬롯 내부에서 컴팩트하게 표시
-      · ← [2026-05-04 핫픽스 v8] font-size 10px 명시 추가 — chip--xs 변경(11px) 영향 차단
-            (사용자 명시 "내 예약 칩은 유지"에 따라 시각적 변화 0 보장) */
-.chip-mine.chip--xs { background: #fff; color: #000; border: 0.5px solid #000; padding: 1px 4px; border-radius: 4px; font-size: 10px; }
+      · ← [2026-05-04 핫픽스 v15] 사용자 지정값으로 6개 속성 일괄 변경
+            · background: #fff (그대로)
+            · color: #000 (그대로)
+            · border: 0.5px solid #000 → 0.75px solid #111
+            · padding: 1px 4px → 2px 6px
+            · border-radius: 4px → 6px
+            · font-size: 10px → 11px
+      · 영향: 캘린더 슬롯 내 예약 칩만 (다른 chip--xs 사용처는 .chip-mine 미적용 → 영향 0) */
+.chip-mine.chip--xs { background: #fff; color: #000; border: 0.75px solid #111; padding: 2px 6px; border-radius: 6px; font-size: 11px; }
 /* ← [2026-04-24] DetailModal 전용 내 예약 칩 오버라이드
       · .chip--square(padding 8 14 / radius 10) 위에 .chip-mine의 기본(padding 4 10 / pill radius 24)이
         덮어쓰는 것을 무효화 — padding·radius 모두 재지정
