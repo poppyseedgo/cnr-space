@@ -709,6 +709,11 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   const attendeeRef  = useRef(null);
   const [attendeeQ,  setAttendeeQ]  = useState("");
   const [attendeeFocus, setAttendeeFocus] = useState(false);
+  // ← [2026-05-04 핫픽스 v14] 키보드 네비게이션 — 하이라이트 인덱스 state
+  //   · -1: 하이라이트 없음 (마우스 모드)
+  //   · 0~N-1: 키보드로 선택된 항목 인덱스
+  //   · 검색어 변경 시 자동 -1로 리셋 (useEffect)
+  const [attendeeHighlight, setAttendeeHighlight] = useState(-1);
   const [recur, setRecur] = useState("NEVER"); // "NEVER" | "EVERY_DAY" | "EVERY_WEEK"
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -945,6 +950,43 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   const attendeeSuggestions = graphUsers
     .filter(u => !form.attendees.find(a => a.user_id === u.user_id));
 
+  // ─── [2026-05-04 핫픽스 v14] 키보드 네비게이션 ────────────────────────────
+  //   ↓/↑: 드롭다운 항목 이동 (순환) / Enter: 선택 / Esc: 드롭다운 닫기
+  //   적용: 모바일 input(L974) + 데스크톱 input(L2228) 두 곳 모두
+  //
+  //   1) 검색어 변경 → 결과 갱신 → 인덱스 -1로 자동 리셋 (잘못된 인덱스 선택 방지)
+  //      attendeeQ가 바뀔 때마다 실행 (graphUsers 변경 트리거 됨)
+  useEffect(() => {
+    setAttendeeHighlight(-1);
+  }, [attendeeQ]);
+
+  //   2) 키보드 이벤트 핸들러 (모바일/데스크톱 input 공통)
+  const onAttendeeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const items = attendeeSuggestions;
+    if (!attendeeFocus || items.length === 0) {
+      // Enter만 특별 처리 — 결과 0 + Enter는 무시 (input 기본 동작 차단)
+      if (e.key === 'Enter') e.preventDefault();
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setAttendeeHighlight(i => (i + 1) % items.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setAttendeeHighlight(i => (i <= 0 ? items.length - 1 : i - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      // 하이라이트 없으면(-1) 첫 번째 자동 선택 (UX 관행)
+      const idx = attendeeHighlight >= 0 ? attendeeHighlight : 0;
+      const target = items[idx];
+      if (target) addAttendee(target);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setAttendeeFocus(false);
+      setAttendeeHighlight(-1);
+    }
+  };
+
   // 참석자 UI JSX (재사용: 모바일 Step1 + 데스크톱 폼)
   const AttendeeSection = (compact = false) => (
     <div>
@@ -974,6 +1016,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
           value={attendeeQ}
           onChange={e=>{setAttendeeQ(e.target.value);setAttendeeFocus(true);}}
           onFocus={()=>setAttendeeFocus(true)}
+          onKeyDown={onAttendeeKeyDown}/* ← [핫픽스 v14] ↓/↑/Enter/Esc 키보드 네비게이션 */
           placeholder="이름 또는 부서로 검색..."
           style={{width:"100%",background:"#F8FAFC",border:`1px solid ${attendeeFocus?"#6366F1":"#E2E8F0"}`,
             borderRadius:10,color:"#111111",padding:"10px 14px",fontSize:13,outline:"none"}}/>
@@ -982,12 +1025,12 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
           <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:400,
             background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
             boxShadow:"0 8px 24px rgba(0,0,0,0.10)",overflow:"hidden"}}>
-            {attendeeSuggestions.map(u => (
+            {attendeeSuggestions.map((u, idx) => (
               <div key={u.user_id} onClick={()=>addAttendee(u)}
+                onMouseEnter={()=>setAttendeeHighlight(idx)/* ← [핫픽스 v14] 마우스 hover로 인덱스 동기화 */}
                 style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",
-                  cursor:"pointer",borderBottom:"1px solid #F8FAFC"}}
-                onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
-                onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                  cursor:"pointer",borderBottom:"1px solid #F8FAFC",
+                  background: attendeeHighlight === idx ? "#F8FAFC" : "#fff"/* ← [핫픽스 v14] 하이라이트 표시 */}}>
                 <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={28} />
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:13,fontWeight:600,color:"#111111"}}>{u.name}</div>
@@ -2223,6 +2266,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                     value={attendeeQ}
                     onChange={e=>{setAttendeeQ(e.target.value);setAttendeeFocus(true);}}
                     onFocus={()=>setAttendeeFocus(true)}
+                    onKeyDown={onAttendeeKeyDown}/* ← [핫픽스 v14] ↓/↑/Enter/Esc 키보드 네비게이션 */
                     placeholder="" // ← [Phase G 보충 7] native placeholder 제거 — div 오버레이로 대체
                     aria-label="팀즈에 등록된 이름으로 검색하세요"
                     className="bm-boxless"
@@ -2276,8 +2320,9 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                       display:"flex", flexDirection:"column", gap:10,
                       boxShadow:"0 8px 24px rgba(0,0,0,0.06)",
                     }}>
-                      {attendeeSuggestions.map(u => (
+                      {attendeeSuggestions.map((u, idx) => (
                         <div key={u.user_id} onClick={()=>addAttendee(u)}
+                          onMouseEnter={()=>setAttendeeHighlight(idx)/* ← [핫픽스 v14] 마우스 hover로 인덱스 동기화 */}
                           style={{
                             display:"flex",
                             alignItems:"center",
@@ -2285,9 +2330,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                             padding:"4px 10px 4px 2px",
                             borderRadius:8,
                             cursor:"pointer",
-                          }}
-                          onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
-                          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                            background: attendeeHighlight === idx ? "#F8FAFC" : "transparent",/* ← [핫픽스 v14] 하이라이트 */
+                          }}>
                           {/* 좌측: 아바타 32 + 이름 + 이메일 */}
                           <div style={{display:"flex", alignItems:"center", gap:7}}>
                             <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={32} />
