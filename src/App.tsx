@@ -2,6 +2,15 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-05-04] HeaderNav 분리 (Phase 1+2 Step 4 — Phase 완료)
+ *      · 대상: 헤더 가운데 Nav pills + "← 홈으로" 버튼 (~47줄 JSX)
+ *      · 신규: src/components/layout/HeaderNav.tsx
+ *      · App.tsx 변경:
+ *        - JSX 영역 → <HeaderNav ... /> 한 줄 호출로 교체
+ *        - lucide-react import 라인 통째로 제거 (Calendar/Home → HeaderNav 내부로)
+ *      · 동작 로직 무수정 (view 분기 / 모바일 분기 / dark 모드 / Figma 사양 모두 보존)
+ *      · 🎉 Phase 1+2 (4 Step) 완료 — App.tsx 2120 → 약 1790줄 (-330줄, -15.6%)
+ *
  *  - [2026-05-04] NotificationBell 분리 (Phase 1+2 Step 3)
  *      · 대상: 헤더 알림 벨 + 알림 패널 (~110줄 JSX)
  *      · 신규:
@@ -216,11 +225,13 @@
  */
 
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react'  // ← [2026-05-04] Component/ErrorInfo/ReactNode 제거 (LazyErrorBoundary 분리)
-import { Calendar, Home } from 'lucide-react'  // ← [2026-05-04] Bell 제거 (NotificationBell 분리 / Phase 1+2 Step 3)
+// ← [2026-05-04] lucide-react import 제거 — Calendar/Home은 HeaderNav 내부로 이동 (Phase 1+2 Step 4)
+//                Phase 1+2 분리 후 App.tsx에서 직접 사용하는 lucide 아이콘 없음
 // ← [2026-04-30] 헤더 상단 공지 영역 (NoticeBar) 도입 — Figma node 410:6745 반영
 import { NoticeBar, type AnnouncementConfig } from './components/layout/NoticeBar'
 import { ProfileDropdown } from './components/layout/ProfileDropdown'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 2)
 import { NotificationBell } from './components/layout/NotificationBell'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 3)
+import { HeaderNav } from './components/layout/HeaderNav'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 4)
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtTSFull, fmtTSRangeFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
@@ -1531,53 +1542,17 @@ function AppContent() {
               </div>
             </div>
 
-            {/* ② Nav pills (center)
-                Figma 410:6865: 컨테이너 bg #F5F9FF, border-radius 1000px, gap 0
-                · 비활성 (410:6866/6868): padding 14px 20px, Pretendard Medium 16px, color #808899
-                · 활성   (410:6869/6870): padding 14px 24px, Pretendard SemiBold 16px, color #fff, bg #000
-                모바일은 기존 7/10px padding + 11px 유지 */}
-            {(view==="home"||view==="calendar") ? (
-              <div className="flex dark:bg-slate-700"
-                style={{
-                  background: dark ? undefined : "#F5F9FF",
-                  borderRadius: 1000,
-                  padding: 0,
-                  gap: 0,
-                }}>
-                {([
-                  ["home",       <Home size={14} strokeWidth={1.8}/>,     "실시간 현황", "현황"]    as const,
-                  ["calendar",   <Calendar size={14} strokeWidth={1.8}/>,  "캘린더 뷰",  "캘린더"]  as const,
-                ] as [string, React.ReactElement, string, string][]).map(([v,icon,label,mLabel])=>(
-                  <button key={v} onClick={()=>setView(v)}
-                    className="btn flex items-center gap-1.5 transition-all whitespace-nowrap"
-                    style={{
-                      // ── [2026-04-30 사용자 요청] padding 활성/비활성 통일 14px 24px
-                      padding: isMobile ? "7px 10px" : "14px 24px",
-                      fontSize: isMobile ? 11 : 15,
-                      // ── [이전] 활성/비활성 모두 500으로 통일
-                      fontWeight: 500,
-                      borderRadius: 1000,
-                      background: view===v ? (dark?"#F1F5F9":"#000000") : "transparent",
-                      color: view===v
-                        ? (dark?"#111111":"#fff")
-                        : (dark?"#94A3B8":"#2F394A"),     // ← [2026-04-30] 비활성 색 #808899 → #2F394A (rgb 47 57 74) 더 진하게
-                      boxShadow: view===v ? "0 2px 8px rgba(0,0,0,0.18)" : "none",
-                    }}>
-                    <span style={{fontSize: isMobile?13:14}}>{icon}</span>
-                    {!isMobile && label}
-                    {isMobile && mLabel}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div style={{display:"flex",alignItems:"center",gap:8,justifyContent:"center"}}>
-                <button className="btn" onClick={()=>setView("home")}
-                  style={{background:"#F3F4F8",color:"#64748B",padding:"6px 14px",fontSize:12,borderRadius:999,
-                    display:"flex",alignItems:"center",gap:5}}>
-                  ← <span style={{fontWeight:600}}>{view==="mypage"?"My Page":"Admin"}</span>에서 홈으로
-                </button>
-              </div>
-            )}
+            {/* ② Nav pills (center) — Figma 410:6865
+                [2026-05-04] HeaderNav 컴포넌트로 분리 (Phase 1+2 Step 4)
+                · home/calendar 모드 → Nav pills (Home/Calendar 아이콘)
+                · mypage/admin 모드 → "← 홈으로" 버튼
+                · Figma 사양 / 모바일 분기 / dark 모드 모두 컴포넌트 내부에 보존 */}
+            <HeaderNav
+              view={view}
+              onSetView={setView}
+              isMobile={isMobile}
+              dark={dark}
+            />
 
             {/* ③ 우측: 알림 벨 + 유저 드롭다운 */}
             <div className="flex items-center gap-2 justify-end">
