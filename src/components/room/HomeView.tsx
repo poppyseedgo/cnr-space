@@ -373,15 +373,11 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
                     gap:6,
                     overflow:"hidden"
                   }}>
-                    {/* ← [Figma UI갱신] 참석자 뱃지: bg-white border-1px-solid-#111 radius-4 */}
-                    {isAttendee(b, currentUserEmail) && (
-                      <span style={{
-                        flexShrink:0,
-                        background:"#fff", border:"1px solid #111", borderRadius:4,
-                        padding:"1px 4px", fontSize:10, fontWeight:500,
-                        color:"#111", whiteSpace:"nowrap", lineHeight:1.5
-                      }}>참석자</span>
-                    )}
+                    {/* ← [2026-05-04 핫픽스 v13] 인라인 "참석자" span 제거
+                          배경: 제목 행 앞 인라인 → 사용자 요청 "사용완료 칩 앞으로 (상태 뱃지 행에 통합)"
+                          해결: BookingStatusBadge가 상태 뱃지 행에서 mine 칩(=참석자) 표시 담당
+                                · 본인이 참석자(isAttendeeOnly): MINI_BADGE_ATTENDEE only로 "참석자" 칩 표시
+                                · 본인이 예약자(isOwner): mine 칩은 자명하므로 숨김 (기존 정책 유지) */}
                     {/* ← [Figma UI갱신] 반복 뱃지: 상태칩 행 → 타이틀 행으로 이동 */}
                     {b.recurGroupId && <MetaBadge type="recurring" size="xs" />}
                     {/* ← [2026-05-04 핫픽스 v8] 회의 제목 폰트 변경 (사용자 요청)
@@ -397,18 +393,35 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
                   </div>
 
                   {/* ② 상태 뱃지 행 (377:320): flex gap-4px items-start py-2px
-                       · mine 숨김 (MINI_BADGE_ONLY), 최대 1칩 (maxChips=1) */}
-                  <div style={{
-                    display:"flex", gap:4, alignItems:"flex-start",
-                    paddingTop:2, paddingBottom:2  /* ← [Figma] py-2px */
-                  }}>
-                    <BookingStatusBadge
-                      booking={b} room={r} isAdminRoom={!!r?.is_admin_only}
-                      size="xs"              /* ← [Figma] StatusBadge-XS: 10px / px-4 py-1 / radius-4 */
-                      maxChips={1}           /* ← [Figma UI갱신] 2개 이상 숨김 */
-                      only={MINI_BADGE_ONLY} /* ← [Figma UI갱신] '내 예약' 칩 제외 */
-                      currentUserId={currentUserId} currentUserEmail={currentUserEmail} />
-                  </div>
+                       · ← [2026-05-04 핫픽스 v13] 본인이 참석자일 때 "참석자" 칩 + 상태 칩 동시 표시
+                         정책 분기 (isAttendeeOnly 판정 — 메인 행 처리 전에 계산):
+                           · 본인이 예약자: mine 칩 제외 (기존 정책 — "내 예약"은 자명)
+                           · 본인이 참석자: mine 칩 포함 ("참석자" 라벨, BookingStatusBadge에서 자동 분기)
+                         maxChips: 참석자일 때 2 (참석자 + 상태) / 그 외 1 (상태만)
+                         only 배열: 참석자일 때 'mine' 추가 / 그 외 기존 MINI_BADGE_ONLY */}
+                  {(() => {
+                    // ← [핫픽스 v13] 본인이 참석자(예약자가 아니면서 attendees에 포함)인지 판정
+                    //   userMemories §1.3: 예약자 OR 참석자 상호 배타 → user_id 비교만으로 충분
+                    //   email fallback도 함께 사용 (UUID OR email 이중 복원 룰)
+                    const isMyAttendee = isAttendee(b, currentUserEmail)
+                                       && b.user_id !== currentUserId
+                                       && b.user_email !== currentUserEmail
+                    const onlyArr: BadgeType[] = isMyAttendee ? [...MINI_BADGE_ONLY, 'mine'] : MINI_BADGE_ONLY
+                    const maxN = isMyAttendee ? 2 : 1
+                    return (
+                      <div style={{
+                        display:"flex", gap:4, alignItems:"flex-start",
+                        paddingTop:2, paddingBottom:2  /* ← [Figma] py-2px */
+                      }}>
+                        <BookingStatusBadge
+                          booking={b} room={r} isAdminRoom={!!r?.is_admin_only}
+                          size="xs"              /* ← [Figma] StatusBadge-XS: 10px / px-4 py-1 / radius-4 */
+                          maxChips={maxN}        /* ← [핫픽스 v13] 참석자일 때 2 (참석자+상태) */
+                          only={onlyArr}         /* ← [핫픽스 v13] 참석자일 때만 'mine' 포함 */
+                          currentUserId={currentUserId} currentUserEmail={currentUserEmail} />
+                      </div>
+                    )
+                  })()}
 
                   {/* ③ 회의실 정보 (377:325): flex-col gap-6px items-start py-8px
                        12px Medium leading-none whitespace-nowrap */}
