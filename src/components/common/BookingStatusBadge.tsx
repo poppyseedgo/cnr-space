@@ -1,6 +1,6 @@
 import type { Booking, Room } from '../../types'
 import { tsDate, tsMin, todayStr, nowMinutes } from '../../utils/time'
-import { isBooker } from '../../utils/bookingOwnership'  // ← [2026-04-24 P4-B] isOwner를 isBooker(UUID/email)로 교체
+import { isBooker, isAttendee } from '../../utils/bookingOwnership'  // ← [2026-04-24 P4-B] isOwner를 isBooker(UUID/email)로 교체 / [2026-05-04 핫픽스 v11] isAttendee 추가 — mine 칩 라벨 분기용
 
 /**
  * BookingStatusBadge — 예약 상태 뱃지 묶음
@@ -211,6 +211,18 @@ export function BookingStatusBadge({
   //   주의: currentUser prop은 인터페이스 레벨에서 유지 (@deprecated), 내부 로직에서 참조 안 함
   const isOwner = isBooker(b, currentUserId, currentUserEmail)
 
+  // ─── [2026-05-04 핫픽스 v11] mine 칩 라벨 분기 ───────────────────────────
+  //   배경: 본인이 예약자(booker)일 때와 참석자(attendee)일 때 동일한 "내 예약" 칩 표시 → 역할 모호
+  //   해결: A안+C안 — 라벨만 분기 (스타일 chip-mine 동일)
+  //         · isOwner=true              → "내 예약"  (예약자 본인)
+  //         · isOwner=false + isAttendeeOnly=true → "참석자" (참석자 본인)
+  //   isAttendeeOnly: 본인이 예약자가 아니면서 참석자 목록에 있는 경우 (이중 신원 식별)
+  //   정책 (userMemories §1.3): 예약자 OR 참석자 상호 배타 (예약자는 attendees에 포함 안 함)
+  //                            → isOwner와 isAttendeeOnly는 동시 true 불가능
+  const isAttendeeOnly = !isOwner && isAttendee(b, currentUserEmail)
+  // mine 칩 표시 조건: 본인이 예약자이거나 참석자
+  const isMine = isOwner || isAttendeeOnly
+
   // ── only 필터 헬퍼 ─────────────────────────────────────────────
   const show = (t: BadgeType) => !only || only.includes(t)
 
@@ -233,7 +245,7 @@ export function BookingStatusBadge({
     //         예상치 못한 디자인 변경 발생. 일단 MyBookingTable 전용으로 제한.
     //   추후: 다른 화면 디자인 정책 통일 시 가드 제거 가능 (Admin 재설계 채팅에서 검토)
     (show('confirmed')       && isConfirmed && size === 'list') ||
-    (show('mine')            && isOwner && !b.autoCancelled && !isRejected) ||
+    (show('mine')            && isMine && !b.autoCancelled && !isRejected) ||
     (show('active')          && isAct) ||
     (show('checkin-wait')    && nci) ||
     (show('checkin-done')    && b.checkedIn && isAct) ||
@@ -264,8 +276,14 @@ export function BookingStatusBadge({
 
   // ← [피그마 180:534] 내 예약은 항상 맨 앞. sm 소형카드 + list 테이블행 제외, 노쇼(생성자 박제)도 표시
   //   ← [2026-05-04 STEP 3] size='list' 추가 — MyBookingTable은 단일 상태 칩만 표시 (mine 별도 칩 X)
-  if (show('mine') && isOwner && (!b.autoCancelled || isNoshow) && !isRejected && size !== 'sm' && size !== 'list')
-    chipList.push(<C key="mine" cls="chip-mine">내 예약</C>)
+  //   ← [2026-05-04 핫픽스 v11] isOwner → isMine (예약자 OR 참석자) + 라벨 동적 분기
+  //      예약자 → "내 예약" / 참석자 → "참석자"  (스타일 chip-mine 동일)
+  if (show('mine') && isMine && (!b.autoCancelled || isNoshow) && !isRejected && size !== 'sm' && size !== 'list')
+    chipList.push(
+      <C key="mine" cls="chip-mine">
+        {isOwner ? '내 예약' : '참석자'}
+      </C>
+    )
   // ① 거절됨 — 최우선, 단독 표시
   if (show('rejected') && isRejected)
     chipList.push(<C key="rejected" cls="chip-rejected">거절됨</C>)

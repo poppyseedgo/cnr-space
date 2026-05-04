@@ -10,7 +10,7 @@ import { DetailModalStatusBadge } from '../common/DetailModalStatusBadge'  // �
 import { MetaBadge } from '../common/MetaBadge'
 import { Button } from '../common/Button'
 import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22] 모달 X 버튼 공통화
-import { isMyBooking, isAttendee } from '../../utils/bookingOwnership'  // ← [2026-04-24 P6-C] isAttendee 추가 — MetaBadge guest 조건 이름 비교 제거
+import { isMyBooking } from '../../utils/bookingOwnership'  // ← [2026-04-24 P6-C] / [2026-05-04 핫픽스 v11] isAttendee 사용처 0건되어 import 제거
 
 /**
  * BookingDetailModal (export name: DetailModal)
@@ -149,16 +149,11 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
             {b.recurGroupId && (
               <div><MetaBadge type="recurring" size="sm" /></div>
             )}
-            {/* ← [2026-04-24 P6-C] 참석자 뱃지 표시 조건 이름 비교 → isAttendee(email) 전환
-                  기존: b.user !== currentUser && attendees.some(a => a.name === currentUser)
-                        · b.user(snapshot) vs currentUser(live name) 이름 비교
-                        · attendees의 a.name도 snapshot — 이름 변경 시 전부 false
-                  변경: isAttendee(b, currentUserEmail) — email 고정 식별자 기반
-                        · 참석자 목록에 내 email 포함 여부만 판정 (booking_attendees.email 단일 기준)
-                        · 예약자 OR 참석자 상호 배타 정책(§1.3)에 따라 예약자는 자동 제외됨 */}
-            {isAttendee(b, currentUserEmail) && (
-              <div><MetaBadge type="guest" size="sm" /></div>
-            )}
+            {/* ← [2026-05-04 핫픽스 v11] 별도 '참석자' MetaBadge 제거
+                  배경: BookingStatusBadge의 'mine' 칩이 라벨 분기로 "참석자" 자동 표시 (status badge 영역)
+                        → 같은 정보를 두 곳에 표시하면 중복
+                  해결: 여기서는 제거. status badge 영역(L145)에서 chip-mine 스타일로 단일 표시
+                  isAttendee import는 유지 (다른 곳에서 사용 가능성 대비) */}
           </div>
           {/* ← [피그마 2026-04-22] Close 공통 컴포넌트로 교체 */}
           <ModalCloseButton onClick={onClose} />
@@ -195,8 +190,18 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
               ) : (
                 <span style={{display:"inline-flex", alignItems:"center", gap:6, flexWrap:"wrap"}}>
                   <span>{fmtTSFull(b.start_at)} – {fmtTSFull(b.end_at)}</span>
-                  {/* ← [피그마 191:375] 소요시간 칩: border 0.5px #AFAFAF, text 9px Medium #AFAFAF, radius 4 */}
-                  <span className="chip chip--xs" style={{border:"0.5px solid #AFAFAF", color:"#AFAFAF", background:"transparent", fontWeight:500}}>
+                  {/* ← [2026-05-04 핫픽스 v11] 소요시간 칩 단독 스타일 분리 (사용자 요청)
+                        · 기존: className="chip chip--xs" + inline 색상 → chip--xs 토큰 변경에 휘둘림
+                        · 변경: chip 클래스 의존 0, 단독 inline style 완전 분리
+                        · Figma: fontSize 11px / padding 1px 6px / borderRadius 6px / line-height 1.5
+                        · 색상은 기존 유지 (border 0.5 #AFAFAF / text #AFAFAF / bg transparent / fw 500) */}
+                  <span style={{
+                    display:'inline-flex', alignItems:'center',
+                    border:'0.5px solid #AFAFAF', color:'#AFAFAF', background:'transparent',
+                    fontSize:11, fontWeight:500, lineHeight:1.5,
+                    padding:'1px 6px', borderRadius:6,
+                    whiteSpace:'nowrap', flexShrink:0,
+                  }}>
                     {fmtDuration(b.start_at, b.end_at)}
                   </span>
                 </span>
