@@ -235,7 +235,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
       background:'#F3F4F7',                              // ← Figma: 페이지 배경
       width:'100%',
     }}>
-      <div style={{maxWidth:960,margin:"0 auto",padding:isMobile?"16px 12px":"28px 24px"}}>{/* ← 기존 콘텐츠 wrapper 그대로 유지 */}
+      <div style={{maxWidth:1024,margin:"0 auto",padding:isMobile?"16px 12px":"28px 24px"}}>{/* ← [2026-05-04] max-width 960 → 1024 (상태 컬럼 잘림 방지) */}
 
       {/* ═══════════════════════════════════════════════════════════════════
           ↓ [2026-05-04 STEP 5] 상단 카드 영역 — Figma node 454:3883 1:1 재반영
@@ -286,7 +286,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
             />
             {/* 이름 30 SemiBold #111 leading 1.25 (Figma node 454:3889) */}
             <span style={{
-              fontSize:30,                                        // ← Figma: 30 (이전 24)
+              fontSize:32,                                        // ← [2026-05-04] 사용자 요청 32 (이전 30)
               fontWeight:600,                                     // ← Figma: SemiBold
               color:'#111',                                       // ← Figma: #111
               lineHeight:1.25,                                    // ← Figma: leading 1.25
