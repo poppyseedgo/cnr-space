@@ -8,6 +8,7 @@ interface UserAvatarProps {
   textColor?: string
   fontSize?:  number
   fontWeight?: number   // ← [2026-04-30] override 가능 (기본값 500 유지로 기존 사용처 영향 0)
+  borderRadius?: number | string   // ← [2026-05-04 STEP 1] 추가: MY PAGE 프로필 카드 64×64 rounded-24 대응 (기본값 '50%' 유지로 기존 사용처 영향 0)
   className?: string
 }
 
@@ -20,6 +21,8 @@ interface UserAvatarProps {
  *     · 36px → 18px / 44px → 22px 자동 환산
  * ← [피그마 180:534] 기본값: bg #000, text #E7E7E7, fw 500
  * ← [2026-04-30] fontWeight prop 추가 (헤더 프로필은 400으로 override)
+ * ← [2026-05-04 STEP 1] borderRadius prop 추가 (MY PAGE 64px 프로필 카드: 24px rounded)
+ *     · 기본값 '50%' 유지 → 기존 사용처(BookingModal/UserChip/ProfileDropdown/AdminPage 등) 영향 0
  */
 export function UserAvatar({
   name,
@@ -29,6 +32,7 @@ export function UserAvatar({
   textColor  = '#E7E7E7',
   fontSize,
   fontWeight = 500,    // ← 기본값 500 유지 (다른 사용처 영향 0)
+  borderRadius = '50%', // ← [2026-05-04 STEP 1] 기본값 '50%' (원형) — 기존 동일
   className  = '',
 }: UserAvatarProps) {
   const [imgError, setImgError] = useState(false)
@@ -40,7 +44,7 @@ export function UserAvatar({
   const baseStyle: React.CSSProperties = {
     width:          size,
     height:         size,
-    borderRadius:   '50%',
+    borderRadius,                       // ← [2026-05-04 STEP 1] prop 사용 (기본값 '50%' = 기존 동일)
     flexShrink:     0,
     overflow:       'hidden',
     display:        'flex',
