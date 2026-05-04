@@ -2,6 +2,18 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-05-04] 헤더 프로필 드롭다운 메뉴 Figma 정확 반영
+ *      · 대상: 1746~1880 영역 중 드롭다운 메뉴 부분 (1796~)
+ *      · Figma: 445:535 (일반사용자) / 445:377 (관리자)
+ *      · 컨테이너: minWidth 180 → width 200, border-radius 12 → 16, 외곽선(1px #E2E8F0) 제거
+ *      · ModalHeader: padding 14/16 → 12, 이름 13/600 → 14/500, 부서 11/#94A3B8 → 14/#96A0B3
+ *      · 메뉴: padding 10/16 → 8/12, 텍스트 13 → 14 Medium + letter-spacing 0.14px
+ *      · 메뉴 라벨: "My Page"→"MY PAGE", "Admin"→"ADMIN" (Figma 표기)
+ *      · 아이콘: User → UserCircle, Settings → LayoutDashboard, size 15 → 20
+ *      · 로그아웃: 색상 #EF4444(빨강) → #99A1AF(회색, Figma 기준), 외부 padding 4/0 → 8/12
+ *      · 짝 변경: lucide-react import 라인 (User, Settings 제거 / UserCircle, LayoutDashboard 추가)
+ *      · 동작 로직 무수정 (setView/setShowDropdown/logout 호출 동일)
+ *
  *  - [2026-04-30] 캘린더 stale 화면 노쇼 오표시 근본 해결 (Step 1+2+3-A)
  *      · 증상: DailyView에서 브라우저 오래 켜두면 체크인된 예약·진행중 예약이 모두
  *              노쇼 박제로 표시. 클릭하거나 새로고침하면 정상 복원. DB는 정상.
@@ -170,7 +182,7 @@
  */
 
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, lazy, Suspense, Component, type ErrorInfo, type ReactNode } from 'react'
-import { Bell, Calendar, Home, LogOut, Settings, User } from 'lucide-react'
+import { Bell, Calendar, Home, LayoutDashboard, LogOut, UserCircle } from 'lucide-react'  // ← [2026-05-04] 헤더 드롭다운 Figma 반영: User→UserCircle, Settings→LayoutDashboard, 미사용 제거
 // ← [2026-04-30] 헤더 상단 공지 영역 (NoticeBar) 도입 — Figma node 410:6745 반영
 import { NoticeBar, type AnnouncementConfig } from './components/layout/NoticeBar'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
@@ -1792,46 +1804,92 @@ function AppContent() {
                   )}
                 </button>
 
-                {/* 드롭다운 메뉴 */}
+                {/* 드롭다운 메뉴
+                    [2026-05-04] Figma 445:535(일반사용자) / 445:377(관리자) 정확 반영
+                    · 컨테이너: width 200 / radius 16 / border 제거 / shadow 유지
+                    · ModalHeader: padding 12 / 이름 14 Medium #111 / 부서 14 Regular #96A0B3 ellipsis / gap 2
+                    · Dropdown contents: padding 4px 0 / 메뉴 padding 8px 12px / 텍스트 14 Medium #111 letter-spacing 0.14px
+                    · Modal Bottom (로그아웃): 외부 padding 8px 12px / 내부 padding 4px 0 / 색상 #99A1AF (회색, 기존 빨강에서 변경)
+                    · 아이콘: User → UserCircle, Settings → LayoutDashboard, LogOut 유지 / size 20 strokeWidth 1.5
+                    · 메뉴 라벨: "My Page"→"MY PAGE", "Admin"→"ADMIN" (Figma 정확 표기) */}
                 {showDropdown && (
                   <div className="anm" style={{
                     position:"absolute", top:"calc(100% + 6px)", right:0, zIndex:200,
-                    background:"#fff", border:"1px solid #E2E8F0", borderRadius:12,
-                    boxShadow:"0 8px 32px rgba(0,0,0,0.12)", overflow:"hidden",
-                    minWidth:180,
+                    background:"#fff",                                           // ← [변경] border 제거
+                    borderRadius:16,                                             // ← [변경] 12 → 16
+                    boxShadow:"0 8px 32px rgba(0,0,0,0.12)",
+                    overflow:"hidden",
+                    width:200,                                                   // ← [변경] minWidth 180 → width 200 (Figma 고정 사이즈)
                   }}>
-                    {/* 사용자 정보 */}
-                    <div style={{padding:"14px 16px",borderBottom:"1px solid #F1F5F9"}}>
-                      <div style={{fontSize:13,fontWeight:600,color:"#111"}}>{currentUser}</div>
-                      <div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>{currentDept}</div>
+                    {/* ModalHeader (사용자 정보) — Figma 445:536 / 445:423 */}
+                    <div style={{
+                      padding:12,                                                // ← [변경] 14px 16px → 12px (전 방향)
+                      borderBottom:"1px solid #F1F5F9",
+                      display:"flex", flexDirection:"column", gap:2,             // ← [변경] marginTop:2 → flex gap:2
+                    }}>
+                      <div style={{
+                        fontSize:14, fontWeight:500, lineHeight:1.5, color:"#111",  // ← [변경] 13/600 → 14/500
+                        whiteSpace:"nowrap",
+                      }}>{currentUser}</div>
+                      <div style={{
+                        fontSize:14, fontWeight:400, lineHeight:1.5, color:"#96A0B3",  // ← [변경] 11/#94A3B8 → 14/#96A0B3
+                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                      }}>{currentDept}</div>
                     </div>
-                    {/* 메뉴 항목 */}
-                    <div style={{padding:"4px 0"}}>
+                    {/* Dropdown contents (메뉴 항목) — Figma 445:539 / 445:378 */}
+                    <div style={{padding:"4px 0", background:"#fff"}}>
                       <button className="btn" onClick={()=>{setView("mypage");setShowDropdown(false);}}
-                        style={{width:"100%",textAlign:"left",padding:"10px 16px",fontSize:13,
-                          background:view==="mypage"?"#F8FAFC":"transparent",color:"#111",
-                          display:"flex",alignItems:"center",gap:8}}
+                        style={{
+                          width:"100%", textAlign:"left",
+                          padding:"8px 12px",                                    // ← [변경] 10/16 → 8/12
+                          fontSize:14, fontWeight:500, lineHeight:1.5,           // ← [변경] 13 → 14 + Medium 500
+                          letterSpacing:"0.14px",                                // ← [신규] Figma tracking
+                          background:view==="mypage"?"#F8FAFC":"transparent",
+                          color:"#111",
+                          display:"flex", alignItems:"center", gap:8,
+                          border:"none", cursor:"pointer",
+                        }}
                         onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
                         onMouseLeave={e=>e.currentTarget.style.background=view==="mypage"?"#F8FAFC":"transparent"}>
-                        <User size={15} strokeWidth={1.8}/> My Page
+                        <UserCircle size={20} strokeWidth={1.5}/>                {/* ← [변경] User 15 → UserCircle 20 */}
+                        MY PAGE                                                  {/* ← [변경] "My Page" → "MY PAGE" */}
                       </button>
                       {isAdmin && (
                         <button className="btn" onClick={()=>{setView("admin");setShowDropdown(false);}}
-                          style={{width:"100%",textAlign:"left",padding:"10px 16px",fontSize:13,
-                            background:view==="admin"?"#F8FAFC":"transparent",color:"#111",
-                            display:"flex",alignItems:"center",gap:8}}
+                          style={{
+                            width:"100%", textAlign:"left",
+                            padding:"8px 12px",
+                            fontSize:14, fontWeight:500, lineHeight:1.5,
+                            letterSpacing:"0.14px",
+                            background:view==="admin"?"#F8FAFC":"transparent",
+                            color:"#111",
+                            display:"flex", alignItems:"center", gap:8,
+                            border:"none", cursor:"pointer",
+                          }}
                           onMouseEnter={e=>e.currentTarget.style.background="#F8FAFC"}
                           onMouseLeave={e=>e.currentTarget.style.background=view==="admin"?"#F8FAFC":"transparent"}>
-                          <Settings size={15} strokeWidth={1.8}/> Admin
+                          <LayoutDashboard size={20} strokeWidth={1.5}/>         {/* ← [변경] Settings → LayoutDashboard */}
+                          ADMIN                                                  {/* ← [변경] "Admin" → "ADMIN" */}
                         </button>
                       )}
                     </div>
-                    {/* 하단 구분 */}
-                    <div style={{borderTop:"1px solid #F1F5F9",padding:"4px 0"}}>
+                    {/* Modal Bottom (로그아웃) — Figma 445:552 / 445:430 */}
+                    <div style={{
+                      borderTop:"1px solid #F1F5F9",
+                      padding:"8px 12px",                                        // ← [변경] 4px 0 → 8px 12px (외부 패딩)
+                    }}>
                       <button className="btn" onClick={()=>{logout();setShowDropdown(false);}}
-                        style={{width:"100%",textAlign:"left",padding:"10px 16px",fontSize:13,
-                          color:"#EF4444",display:"flex",alignItems:"center",gap:8}}>
-                        <LogOut size={15} strokeWidth={1.8}/> 로그아웃
+                        style={{
+                          width:"100%", textAlign:"left",
+                          padding:"4px 0",                                       // ← [변경] 10/16 → 4/0 (Figma 내부 row py-4)
+                          fontSize:14, fontWeight:500, lineHeight:1.5,           // ← [변경] 13 → 14 + Medium
+                          color:"#99A1AF",                                       // ← [변경] #EF4444(빨강) → #99A1AF(Figma 회색)
+                          background:"transparent",
+                          display:"flex", alignItems:"center", gap:8,
+                          border:"none", cursor:"pointer",
+                        }}>
+                        <LogOut size={20} strokeWidth={1.5}/>                    {/* ← [변경] size 15 → 20 */}
+                        로그아웃
                       </button>
                     </div>
                   </div>
