@@ -359,6 +359,8 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
           {/* 숫자 (오른쪽 정렬, 32 Medium) */}
           <div style={{display:'flex', alignItems:'center', justifyContent:'flex-end'}}>
             <span style={{
+              // ← [2026-05-04 핫픽스 v7] fontWeight:500 유지 (이미 적용됨, 사용자 요청 600→500 확인)
+              //   색상은 검정 #111 유지 (노쇼 카운트만 컬러)
               fontSize:32, fontWeight:500, color:'#111',
               lineHeight:1.5, textAlign:'right',
             }}>{allLoading ? '—' : thisMonthCount}</span>
@@ -399,7 +401,9 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
           </div>
           <div style={{display:'flex', alignItems:'center', justifyContent:'flex-end'}}>
             <span style={{
-              fontSize:32, fontWeight:500, color:'#111',
+              // ← [2026-05-04 핫픽스 v7] 노쇼 카운트 색상 검정 → rgb(252,126,126) (사용자 요청)
+              //   fontWeight:500 유지 (이미 적용됨, 사용자 요청 600→500 확인)
+              fontSize:32, fontWeight:500, color:'rgb(252, 126, 126)',
               lineHeight:1.5, textAlign:'right',
             }}>{allLoading ? '—' : noshowCount}</span>
           </div>
