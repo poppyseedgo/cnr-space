@@ -2,6 +2,13 @@
  * MyBookingTable — MY PAGE 전용 기간별 예약 조회 테이블
  *
  * ✅ 변경 이력
+ *  - [2026-05-04 핫픽스] STEP 5 후속 정리 (Figma node 454:3905, 454:3951)
+ *    · 세그먼트 탭 버튼: line-height '16px' 명시 추가 (Figma leading-[16px])
+ *    · 본문 영역을 flex:1 wrapper로 묶음 — 데이터 행 적을 때 페이지네이션이 위로 떠있는 문제 해결
+ *      (행이 적으면 wrapper가 남은 공간 흡수 → 페이지네이션 항상 컨테이너 하단 고정)
+ *    · 헤더/페이지네이션에 명시적 borderRadius 적용 (부모 overflow:hidden 의존하지 않는 안전장치)
+ *    · 행에 flexShrink:0 추가 (wrapper 내부에서 행 압축 방지)
+ *
  *  - [2026-05-04 STEP 3] 신규 생성 — Figma node 446:418 1:1 반영
  *
  * 📌 BookingListTable과 분리한 이유 (근본 원인 해결)
@@ -241,6 +248,7 @@ export function MyBookingTable({
                   border:'none',
                   fontFamily:'inherit',
                   fontSize:14,                                // ← Figma: 14
+                  lineHeight:'16px',                          // ← [2026-05-04 핫픽스] Figma leading-[16px] 명시 반영
                   cursor:'pointer',
                   whiteSpace:'nowrap',
                   background:    active ? '#111'     : '#fff',  // ← Figma: 활성 #111 / 비활성 #fff
@@ -272,9 +280,10 @@ export function MyBookingTable({
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════
-          ↓ 테이블 컨테이너 (Figma node 449:801 / 449:2465)
+          ↓ 테이블 컨테이너 (Figma node 449:801 / 449:2465 / 454:3905·454:3951)
           · border-radius 16, overflow hidden, gap 1px (구분선 효과)
           · min-height 426 (사용자 명시 — 데이터 적어도 높이 유지)
+          · ← [2026-05-04 핫픽스] 본문 영역을 flex:1 wrapper로 묶어 페이지네이션 항상 하단 고정
           ═══════════════════════════════════════════════════════════════════ */}
       <div style={{
         borderRadius:16,                                  // ← Figma: rounded 16
@@ -285,7 +294,11 @@ export function MyBookingTable({
         background:'#F1F5F9',                             // ← gap 1px 사이 노출되는 배경 = 구분선 색상
       }}>
         {/* ── 헤더 ─────────────────────────────────────────────────────── */}
-        <div style={{ display:'flex', height:60, background:'#fff', flexShrink:0 }}>
+        <div style={{
+          display:'flex', height:60, background:'#fff', flexShrink:0,
+          // ← [2026-05-04 핫픽스] 명시적 상단 borderRadius (부모 overflow:hidden 의존하지 않는 안전장치)
+          borderRadius:'16px 16px 0 0',
+        }}>
           <Th width={160} pad="10 16">날짜</Th>
           <Th width={160}                >시간</Th>
           <Th width={240}                >회의</Th>
@@ -294,13 +307,26 @@ export function MyBookingTable({
           <Th flex                       >상태</Th>
         </div>
 
-        {/* ── 본문 (loading / empty / 정상) ─────────────────────────────── */}
-        {loading ? (
+        {/* ── 본문 wrapper (flex:1) ──────────────────────────────────────
+            ← [2026-05-04 핫픽스] 신규 wrapper — 페이지네이션 항상 하단 고정 보장
+            · 행 적을 때 wrapper가 남은 공간 흡수 → 페이지네이션이 위로 떠있는 문제 해결
+            · 행 많을 때 wrapper가 콘텐츠만큼 늘어남 (flex:1은 min-content 우선)
+            · gap 1: wrapper 안의 행 사이 1px 구분선 (기존 컨테이너 gap에서 이전)
+            · background #F1F5F9: 행이 비는 영역(빈 공간)도 컨테이너와 동일 회색
+          ───────────────────────────────────────────────────────────── */}
+        <div style={{
+          flex:1, minHeight:0,                            // ← flex:1 + minHeight:0 (자식 overflow 방지)
+          display:'flex', flexDirection:'column',
+          gap:1,                                          // ← 행 사이 1px (기존과 동일)
+          background:'#F1F5F9',
+        }}>
+          {/* loading / empty / 정상 — 모두 이 wrapper 안에서 렌더 */}
+          {loading ? (
           <div style={emptyContainerStyle}>
             <span style={{ fontSize:14, color:'#CBD5E1' }}>불러오는 중…</span>
           </div>
         ) : pagedList.length === 0 ? (
-          /* Figma node 449:2479 1:1 — •_• 이모티콘 + 안내문 */
+          /* Figma node 449:2479 / 454:3966 1:1 — •_• 이모티콘 + 안내문 */
           <div style={emptyContainerStyle}>
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:5 }}>{/* ← Figma: gap 5 */}
               <EmptyFaceIcon size={82} color="#D9E0EE"/>{/* ← 사용자 SVG (color #D9E0EE) */}
@@ -330,6 +356,7 @@ export function MyBookingTable({
                   display:'flex', height:60,                  // ← Figma: 행 60px 고정
                   background:'#fff',
                   cursor:'pointer',
+                  flexShrink:0,                                 // ← [2026-05-04 핫픽스] wrapper 내부에서 행 압축 방지
                   transition:'background 0.15s',
                 }}
                 onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.background = '#FAFBFD'}
@@ -395,11 +422,13 @@ export function MyBookingTable({
             )
           })
         )}
+        </div>{/* ↑ 본문 wrapper 끝 */}
 
-        {/* ── 페이지네이션 (Figma node 449:1341) ─────────────────────────
+        {/* ── 페이지네이션 (Figma node 449:1341 / 454:3940) ──────────────
             · 중앙 정렬, h 60, gap 4, padding 16
             · 버튼: w 32 h 30 rounded 8 / 활성 bg #000 white / 비활성 bg #F8FAFC #64748B
             · chevron: 동일 사이즈, SVG 아이콘
+            · ← [2026-05-04 핫픽스] 명시적 하단 borderRadius (부모 overflow:hidden 의존하지 않는 안전장치)
           ───────────────────────────────────────────────────────────── */}
         <div style={{
           display:'flex', alignItems:'center', justifyContent:'center',
@@ -408,6 +437,7 @@ export function MyBookingTable({
           height:60,                                        // ← Figma: h 60
           background:'#fff',
           flexShrink:0,
+          borderRadius:'0 0 16px 16px',                     // ← [2026-05-04 핫픽스] 하단 모서리 명시
         }}>
           <PageBtn onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
             <ChevronBackwardIcon size={24}/>
