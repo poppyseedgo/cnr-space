@@ -50,6 +50,13 @@
   --color-approved-bg:     #E6FFB0; --color-approved-text:     #111;
   --color-expired-bg:      #E2E8F0; --color-expired-text:      #64748B;  /* ← [변경] done과 구분, 더 탁한 회색 */
   --color-rejected-bg:     #FEE2E2; --color-rejected-text:     #991B1B;
+  /* ── [2026-05-04 STEP 3] confirmed: "예약확정" 일반 confirmed 살아있는 미래 예약용
+        · 배경: 새 MyPage 테이블에 일반 룸(non-Emerald) 미래 confirmed 예약 표시 칩이 없었음
+        · 색상: Figma 브랜드 블루 액센트 #CBECFF / 텍스트 #111 (Figma node 449:796 1:1)
+        · 의미: "예약 잡혔음, 아직 진행 전" — Emerald 'approved'(라임)와 명시적 분리
+        · 사용처: BookingStatusBadge 'confirmed' BadgeType — adminRoom=false + isFuture
+        · 영향: 기존 사용처 0 (신규 토큰) */
+  --color-confirmed-bg:    #CBECFF; --color-confirmed-text:    #111;
 
   /* ── 참석자 칩 토큰 ── */
   --color-attendee-bg:    #EEF2FF;  /* ← [신규] AttendeeChip 하드코딩 색상 토큰화 */
@@ -85,6 +92,19 @@
 /* ← [피그마 반영] chip--xs: 9px / padding 1px 4px / radius 4 (RoomModal StatusBadge-XS 기준) */
 /* ← [2026-04-29] font-size 9px → 10px */
 .chip--xs { font-size: 10px; padding: 1px 4px; border-radius: 4px; }
+/* ── [2026-05-04 STEP 3] chip--list: MY PAGE 테이블/리스트 전용 사이즈 ──
+      · 배경: 기존 .chip--xs는 캘린더 슬롯 전용(padding 1×4 / radius 4)
+              새 MY PAGE 테이블 디자인의 chip-XS(Figma node 449:1334)는 padding 2×7 / radius pill로 다름
+      · 해결: 새 사이즈 modifier 신설 — 캘린더 슬롯 영향 0 (별도 modifier)
+      · Figma 1:1: font-size 10 / padding 2 7 / radius 24(pill) / line-height 1.5 / font-weight 500
+      · 사용처: BookingStatusBadge size='list' (MyBookingTable의 상태 컬럼) */
+.chip--list {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 24px;
+  font-weight: 500;
+  line-height: 1.5;
+}
 /* ← [피그마 212:322 / 2026-04-24] chip--square: DetailModal 전용 사각형 칩 modifier
       · 사이즈는 :root의 --chip-square-* 토큰으로 일관 관리
       · radius 8 → 10 (2026-04-24 요청)
@@ -137,6 +157,10 @@
 .chip-done          { background: var(--color-done-bg);          color: var(--color-done-text); }
 .chip-noshow        { background: var(--color-noshow-bg);        color: var(--color-noshow-text); }
 .chip-approved      { background: var(--color-approved-bg);      color: var(--color-approved-text); }
+/* ← [2026-05-04 STEP 3] chip-confirmed: 일반 룸 미래 confirmed 예약 (Emerald 'approved'와 분리)
+      · Figma 1:1: bg #CBECFF / text #111
+      · 표시 조건: BookingStatusBadge isConfirmed = isFuture && status='confirmed' && !autoCancelled && !checkedIn && !earlyEnded && !adminRoom && !countdown조건 */
+.chip-confirmed     { background: var(--color-confirmed-bg);     color: var(--color-confirmed-text); }
 /* ← [변경] expired에 opacity 추가로 "버려진" 시각적 인상 강화 */
 .chip-expired       { background: var(--color-expired-bg);       color: var(--color-expired-text); opacity: 0.75; }
 .chip-rejected      { background: var(--color-rejected-bg);      color: var(--color-rejected-text); }

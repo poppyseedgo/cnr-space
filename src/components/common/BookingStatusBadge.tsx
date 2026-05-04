@@ -5,61 +5,20 @@ import { isBooker } from '../../utils/bookingOwnership'  // ← [2026-04-24 P4-B
 /**
  * BookingStatusBadge — 예약 상태 뱃지 묶음
  *
- * 사용 방식:
- * 1) booking 자동 판별 (기본): <BookingStatusBadge booking={b} room={r} currentUser={u} />
- *    - 예약 객체의 상태를 분석해 해당 상태 칩을 자동으로 렌더
- *    - 기존 호출부 전부 이 방식 사용 중 (호환성 유지)
- *
- * 2) 명시적 타입 지정: <BookingStatusBadge booking={b} only={['pending']} />
- *    - `only` prop에 지정한 타입만 노출 (필터)
- *    - 예: "이 위치엔 승인 대기 뱃지만 보이기"
- *
  * ✅ 변경 이력
+ *  - [2026-05-04 STEP 3] MY PAGE 테이블 재설계 — 신규 BadgeType + size 추가
+ *    · BadgeType 'confirmed' 신규 — 일반 룸 미래 confirmed 살아있는 예약 표시 (chip-confirmed / bg #CBECFF)
+ *    · size 'list' 신규 — MyBookingTable 전용 사이즈 (chip--list / 10px / padding 2 7 / radius pill)
+ *    · isConfirmed 판정 변수 신규 — Emerald(approved) / countdown / checkin-wait / past 등과 모두 배타
+ *    · size='list' 시 자동 maxChips=1 — 테이블 행 단일 칩 표시 정책
+ *    · size='list' 시 mine 칩 표시 안 함 (기존 sm과 동일 정책)
+ *    · 기존 판정 함수(isAct/nci/isPast/isApproved/isExpiredPending/isNoshow 등)는 변경 없음
+ *
  *  - [2026-04-30 다이아몬드 hotfix] isExpiredPending에 room_id=3 가드 추가
- *    · 증상: 다이아몬드 룸 예약이 stale state 사고로 cancelledBy='system' 마킹되면
- *            "기한초과 취소" 칩이 오표시됨 (audit_log로 다수 케이스 확인)
- *    · 원인: BookingStatusBadge의 isExpiredPending 공식에 room_id 가드 부재
- *    · 해결: && b.room_id === 3 한 줄 추가 (pending_expired는 Emerald 전용 — 메모리 표준)
- *    · 짝 배포: 없음 (단일 파일 변경)
- *    · 후속 (대기): BookingStatusBadge isExpiredPending 공식을 slotHelpers.ts와 통일
- *                  (단일 진실 원천 — 별도 정책 결정 후 진행 예정)
- *
  *  - [2026-04-24 P7-A] isOwner fallback 제거 — 이름 비교 코드 완전 삭제
- *    · 호출부 4곳 (MyPage/HomeView/BookingListTable/DetailModal 경유 DetailModalStatusBadge)
- *      모두 currentUserId/Email 전달 완료 확인 → fallback 불필요
- *    · 원칙 달성: 판정 로직에서 b.user === currentUser 이름 비교 0건
- *    · currentUser prop은 인터페이스 레벨 @deprecated로 유지 (호출부 호환성)
- *    · 짝 배포: DetailModalStatusBadge + 호출부 4곳 currentUser prop 전달 제거
- *
  *  - [2026-04-24 P4-B] "내 예약" 뱃지 판정 이름 비교 → UUID/email 기반 (isBooker)
- *    · 배경: 팀즈/Azure AD 이름 변경 후 '내 예약' 뱃지 사라지는 버그
- *    · 원인: isOwner = b.user === currentUser (이름 snapshot 비교)
- *    · 해결: isBooker(b, currentUserId, currentUserEmail) — UUID OR email 이중 복원
- *    · 추가 prop: currentUserId?, currentUserEmail? (기존 currentUser prop은 Deprecated)
- *    · 호환성: 기존 currentUser prop 유지 (제거하면 호출부 일괄 수정 필요)
- *              → 새 prop 있으면 isBooker, 없으면 기존 이름 비교 fallback
- *              → P4-B-3로 모든 호출부 전환 완료되면 다음 배포에서 fallback 제거 예정
- *    · 짝 배포: DetailModalStatusBadge 래퍼 + MyPage/HomeView/DetailModal/BookingListTable 호출부
- *
  *  - [2026-04-19 P2 v7] 판별 로직 전면 재설계 — pending_expired 노쇼 오표시 버그 해결
- *     · 증상: 승인 기한 초과로 자동 취소된 예약이 모든 화면에서 "노쇼" 뱃지로 표시됨
- *             (룸 상세 카드, 예약 상세, 캘린더 슬롯, 홈 카드 전부)
- *     · 원인: P2 v6에서 cron이 pending_expired를 처리하며 status='pending' → 'cancelled' 변경
- *             기존 판별 `isExpiredPending = status==='pending' && autoCancelled` 는
- *             status='cancelled'가 되는 순간 false → isNoshow 조건이 true로 뒤집힘
- *     · 추가 발견: 사용자 pending 수동 취소 시 isExpiredPending + isUserCancel 동시 true → 뱃지 중복
- *     · 해결:
- *        (1) 우선순위 엄격화: user_cancel > rejected > admin_cancel > system_cancel
- *        (2) system_cancel을 시간축으로 분리
- *            · 기한초과: status='pending' OR now < start_at + 10분 (시작 전/직후의 시스템 취소)
- *            · 노쇼:    그 외 (시작 후 10분 경과 이후의 시스템 취소)
- *        (3) 상호 배타적 보장 — 한 예약이 동시에 두 뱃지 나오지 않음
- *     · 검증: 판별 시뮬레이션 8가지 케이스 통과 (pending 선점/cron 완료/수동취소/노쇼 등)
- *     · 단일 진실 원천: 이 컴포넌트 수정만으로 5개 사용처(홈/마이페이지/캘린더/룸상세/예약상세) 일괄 수정
- *
- *  - [2026-04-18 스타일 정리]
- *    · only prop 추가 — 특정 상태만 필터링해서 표시 가능
- *    · BadgeType 타입 export — 외부 코드에서 상태 참조 가능
+ *  - 이전 이력은 git log 참조
  */
 
 export type BadgeType =
@@ -70,6 +29,7 @@ export type BadgeType =
   | 'user-cancel'
   | 'pending'
   | 'approved'
+  | 'confirmed'      // ← [2026-05-04 STEP 3] 신규: 일반 룸 미래 confirmed 살아있는 예약 (Emerald 'approved'와 분리)
   | 'mine'
   | 'active'
   | 'checkin-wait'
@@ -89,8 +49,8 @@ interface BookingStatusBadgeProps {
   currentUserId?: string
   /** ← [2026-04-24 P4-B] 현재 로그인 사용자 이메일 (authUser.email) */
   currentUserEmail?: string
-  /** md = DetailModal·ListView / sm = 소형카드 / xs = 캘린더 슬롯 */
-  size?:        'md' | 'sm' | 'xs'
+  /** md = DetailModal·ListView / sm = 소형카드 / xs = 캘린더 슬롯 / list = MyBookingTable 행 (← [2026-05-04 STEP 3] 신규) */
+  size?:        'md' | 'sm' | 'xs' | 'list'
   /** 지정 시 해당 타입의 뱃지만 렌더. 미지정 시 전체 자동 판별. */
   only?:        BadgeType[]
   /** ← [피그마 180:534 신규] 'square' = BookingDetailModal 사각형 칩(radius 8) / 기본 'pill' */
@@ -108,6 +68,7 @@ const SIZE_CLASS = {
   md: '',
   sm: 'chip--sm',
   xs: 'chip--xs',
+  list: 'chip--list',  // ← [2026-05-04 STEP 3] MyBookingTable 행 전용 — padding 2 7 / radius pill / 10 Medium
 } as const
 
 export function BookingStatusBadge({
@@ -206,6 +167,20 @@ export function BookingStatusBadge({
   const isPast    = !isAct && !isFuture && !b.autoCancelled
                     && b.status !== 'pending' && b.status !== 'rejected'
   const tl        = sm - now
+  // ─── [2026-05-04 STEP 3] isConfirmed: 일반 룸 미래 confirmed 살아있는 예약 ───
+  //   · 정의: 미래(또는 오늘 시작 전) + status='confirmed' + 살아있음 + 일반 룸(non-Emerald) + countdown 외
+  //   · 배타성:
+  //     - Emerald 룸은 chip-approved(승인완료, 라임)로 별도 표시 → adminRoom 제외
+  //     - 시작 10분 전 카운트다운 표시 시 양보 → countdown 조건 제외
+  //     - autoCancelled / checkedIn / earlyEnded 시 다른 상태 칩이 표시되므로 자동 배타
+  //   · 적용: chip-confirmed (#CBECFF) — Figma node 449:796 1:1
+  const isConfirmed = isFuture
+                    && b.status === 'confirmed'
+                    && !b.autoCancelled
+                    && !b.checkedIn
+                    && !b.earlyEnded
+                    && !adminRoom                                  // ← Emerald 'approved' 칩과 배타
+                    && !(isToday && tl > 0 && tl <= 10)            // ← countdown 'N분 후' 칩 우선
   // ← [2026-04-24 P7-A] isOwner 판정 fallback 제거 — 이름 비교 0건 원칙 달성
   //   기존(P4-B): (currentUserId || currentUserEmail) ? isBooker(...) : (b.user === currentUser)
   //                ↑ 호환성 위해 이름 비교 fallback 유지
@@ -229,6 +204,11 @@ export function BookingStatusBadge({
     //   isExpiredPending이 status='pending' 상태도 커버하므로 중복 방지
     (show('pending')         && b.status === 'pending' && !b.autoCancelled) ||
     (show('approved')        && isApproved) ||
+    // ← [2026-05-04 STEP 3] confirmed 칩은 size='list'(MyBookingTable)에서만 표시
+    //   배경: 다른 화면(HomeView/DetailModal/BookingListTable 등)에 자동 등장하면
+    //         예상치 못한 디자인 변경 발생. 일단 MyBookingTable 전용으로 제한.
+    //   추후: 다른 화면 디자인 정책 통일 시 가드 제거 가능 (Admin 재설계 채팅에서 검토)
+    (show('confirmed')       && isConfirmed && size === 'list') ||
     (show('mine')            && isOwner && !b.autoCancelled && !isRejected) ||
     (show('active')          && isAct) ||
     (show('checkin-wait')    && nci) ||
@@ -258,8 +238,9 @@ export function BookingStatusBadge({
   //     → early-end → past → countdown
   const chipList: React.ReactNode[] = []
 
-  // ← [피그마 180:534] 내 예약은 항상 맨 앞. sm 소형카드 제외, 노쇼(생성자 박제)도 표시
-  if (show('mine') && isOwner && (!b.autoCancelled || isNoshow) && !isRejected && size !== 'sm')
+  // ← [피그마 180:534] 내 예약은 항상 맨 앞. sm 소형카드 + list 테이블행 제외, 노쇼(생성자 박제)도 표시
+  //   ← [2026-05-04 STEP 3] size='list' 추가 — MyBookingTable은 단일 상태 칩만 표시 (mine 별도 칩 X)
+  if (show('mine') && isOwner && (!b.autoCancelled || isNoshow) && !isRejected && size !== 'sm' && size !== 'list')
     chipList.push(<C key="mine" cls="chip-mine">내 예약</C>)
   // ① 거절됨 — 최우선, 단독 표시
   if (show('rejected') && isRejected)
@@ -279,9 +260,14 @@ export function BookingStatusBadge({
   // ⑥ 승인 대기
   if (show('pending') && b.status === 'pending' && !b.autoCancelled)
     chipList.push(<C key="pending" cls="chip-pending">승인 대기</C>)
-  // ⑦ 승인완료
+  // ⑦ 승인완료 (Emerald 룸 전용)
   if (show('approved') && isApproved)
     chipList.push(<C key="approved" cls="chip-approved">승인완료</C>)
+  // ⑦-2 ← [2026-05-04 STEP 3] 예약확정 — size='list'(MyBookingTable) 전용 표시
+  //   · Emerald는 위 approved로 처리되므로 배타
+  //   · 다른 화면 영향 0을 위해 size 가드 적용 (hasAny와 동일)
+  if (show('confirmed') && isConfirmed && size === 'list')
+    chipList.push(<C key="confirmed" cls="chip-confirmed">예약확정</C>)
   // ⑧ 진행 중 (room color 동적 적용)
   if (show('active') && isAct && !b.autoCancelled)
     chipList.push(
@@ -307,7 +293,14 @@ export function BookingStatusBadge({
     chipList.push(<C key="countdown" cls="chip-countdown">{tl}분 후</C>)
 
   // ← [Figma UI갱신] maxChips 미지정 시 전체 표시, 지정 시 상위 N개만
-  const visibleChips = maxChips !== undefined ? chipList.slice(0, maxChips) : chipList
+  // ← [2026-05-04 STEP 3] size='list'(MyBookingTable)는 단일 칩 표시 정책 — 자동 maxChips=1
+  //   · 사용자 명시 maxChips가 있으면 그 값 우선
+  //   · size='list' + maxChips 미지정 → 1개만
+  //   · 그 외 → 전체 표시 (기존 동일)
+  const effectiveMax = maxChips !== undefined
+    ? maxChips
+    : (size === 'list' ? 1 : undefined)
+  const visibleChips = effectiveMax !== undefined ? chipList.slice(0, effectiveMax) : chipList
 
   return (
     <div style={{ display: 'inline-flex', gap, flexWrap: 'wrap', alignItems: 'center' }}>
