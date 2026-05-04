@@ -937,7 +937,11 @@ function AppContent() {
     setBookings(prev => prev.map(b => b.id===id ? {...b, autoCancelled:true} : b));
     setModal(null);
     try {
-      await apiCancelBooking(id)
+      // ← [2026-05-04 옵션 B] apiCancelBooking에 authUser.user_id 전달 (필수 파라미터)
+      //   · DB cancelled_by_user_id에 누가 취소했는지 저장
+      //   · BookingStatusBadge가 b.cancelledByUserId === b.user_id 비교로
+      //     "예약자 취소" / "참석자 취소" 라벨 분기에 사용
+      await apiCancelBooking(id, authUser?.user_id ?? '')
     insertAuditLog({ action: 'BOOKING_CANCELLED', entityType: 'booking', entityId: id, actorName: currentUser }).catch(()=>{});
     // ← [2026-04-18 P2] 예약자 인앱 알림 제거 — send-notification('cancelled')이 담당
       showToast("예약이 취소되었습니다.", "info");
@@ -955,7 +959,7 @@ function AppContent() {
       setBookings(prev => prev.map(b => b.id===id ? {...b, autoCancelled:false} : b));
       showToast(err.message ?? "취소에 실패했습니다.", "error");
     }
-  }, [bookings, showToast, sendNotification]);
+  }, [bookings, showToast, sendNotification, authUser?.user_id]);  // ← [옵션 B] authUser?.user_id 의존성 추가
 
   // ── [2026-04-19 P2 v8] 예약 취소 확인 다이얼로그 경유 헬퍼 ─────────────────
   //   용도: DetailModal, HomeView, MyPage의 "예약 취소" 버튼에서 호출
@@ -1039,10 +1043,20 @@ function AppContent() {
     // ← [2026-04-23 HOTFIX] 실패 롤백용 원본 status 저장
     const originalStatus = targetB?.status
     try {
-      await adminForceCancel(id)
+      // ← [2026-05-04 옵션 B] adminForceCancel에 authUser.user_id 전달 (필수 파라미터)
+      //   · DB cancelled_by_user_id에 어느 관리자가 취소했는지 저장
+      //   · 향후 감사 로그 / 알림 메시지에 활용 가능
+      await adminForceCancel(id, authUser?.user_id ?? '')
       // 낙관적 UI 업데이트
       // ← [2026-04-23 HOTFIX] status:'cancelled' 추가 (api.ts adminForceCancel과 동기화)
-      setBookings(prev => prev.map(b => b.id === id ? { ...b, status: 'cancelled', autoCancelled: true, cancelledBy: 'admin' } : b))
+      // ← [2026-05-04 옵션 B] cancelledByUserId도 낙관적 업데이트에 포함
+      setBookings(prev => prev.map(b => b.id === id ? {
+        ...b,
+        status: 'cancelled',
+        autoCancelled: true,
+        cancelledBy: 'admin',
+        cancelledByUserId: authUser?.user_id ?? null,
+      } : b))
       setModal(null)  // ← [2026-04-29] 다이얼로그 경유 구조 (confirmAndAdminForceCancel) — earlyEnd 패턴 동일
 
       // Audit log
@@ -1075,7 +1089,7 @@ function AppContent() {
       setBookings(prev => prev.map(b => b.id === id ? { ...b, status: originalStatus, autoCancelled: false, cancelledBy: null } : b))
       showToast(err.message ?? '취소 중 오류가 발생했습니다.', 'error')
     }
-  }, [bookings, rooms, users, currentUser, showToast, sendNotification])
+  }, [bookings, rooms, users, currentUser, showToast, sendNotification, authUser?.user_id])  // ← [옵션 B] authUser?.user_id 의존성 추가
 
   // ── [2026-04-29] 조기반납 확인 다이얼로그 경유 헬퍼 ─────────────────────
   //   용도: HomeView 소형카드 "조기반납" 버튼

@@ -159,6 +159,10 @@ function rowToBooking(row: Record<string, any>): Booking {
     checkedIn:     row.checked_in,
     autoCancelled: row.auto_cancelled,
     cancelledBy:   row.cancelled_by ?? null,
+    // ← [2026-05-04 옵션 B] cancelled_by_user_id 매핑 (snake → camel)
+    //   · DB 칼럼: cancelled_by_user_id UUID FK to profiles
+    //   · 라벨 분기에 사용 (예약자/참석자 취소 구분)
+    cancelledByUserId: row.cancelled_by_user_id ?? null,
     status:        row.status ?? 'confirmed',
     reject_reason: row.reject_reason ?? null,
     processedByName:   row.processed_by_name ?? null,
@@ -460,6 +464,8 @@ export async function updateBooking(
   if (changes.checkedIn     !== undefined) dbChanges.checked_in     = changes.checkedIn
   if (changes.autoCancelled !== undefined) dbChanges.auto_cancelled = changes.autoCancelled
   if (changes.cancelledBy    !== undefined) dbChanges.cancelled_by   = changes.cancelledBy
+  // ← [2026-05-04 옵션 B] cancelledByUserId 매핑 — '예약자/참석자/관리자' 취소 라벨 분기용
+  if (changes.cancelledByUserId !== undefined) dbChanges.cancelled_by_user_id = changes.cancelledByUserId
   if (changes.status         !== undefined) dbChanges.status          = changes.status
   if (changes.earlyEnded    !== undefined) dbChanges.early_ended    = changes.earlyEnded
   if (changes.originalEndAt !== undefined) dbChanges.original_end_at = changes.originalEndAt
@@ -496,8 +502,18 @@ export async function updateBooking(
 //   원인: status='confirmed' 유지된 채 auto_cancelled=true만 저장 → 활성 예약으로 오인
 //   해결: status='cancelled' 명시 저장으로 isShownInCalendar의 status 기반 필터가 정확히 작동
 //   주의: auto_cancelled=true는 유지 (isAdminCancel 판정 플래그 그대로 사용)
-export async function adminForceCancel(id: string): Promise<void> {
-  await updateBooking(id, { status: 'cancelled', autoCancelled: true, cancelledBy: 'admin' })
+//
+// ← [2026-05-04 옵션 B] adminUserId 파라미터 추가 (필수)
+//   · 어느 관리자가 강제 취소했는지 cancelled_by_user_id에 저장
+//   · 호출부: App.tsx의 adminForceCancelBooking 함수에서 authUser?.user_id 전달
+//   · 향후 활용 가능 (감사 로그 / 알림 메시지 등)
+export async function adminForceCancel(id: string, adminUserId: string): Promise<void> {
+  await updateBooking(id, {
+    status: 'cancelled',
+    autoCancelled: true,
+    cancelledBy: 'admin',
+    cancelledByUserId: adminUserId,                    // ← [옵션 B] 관리자 user_id
+  })
 }
 
 // ── 취소 ─────────────────────────────────────────────────────────────────────
@@ -519,17 +535,32 @@ export async function adminForceCancel(id: string): Promise<void> {
 //          ② status IN ('confirmed','pending') — 정상 활성 예약만 (rejected/cancelled 차단)
 //          UPDATE 0 rows 반환 = 이미 처리된 예약 → throw로 호출 측에 알림
 //   짝 배포: App.tsx Layer 2 (DetailModal에 fresh booking 전달 — 사용자가 애초에 못 누르게 함)
-export async function cancelBooking(id: string): Promise<void> {
+//
+// ← [2026-05-04 옵션 B] cancelledByUserId 파라미터 추가 (필수)
+//   · 호출자(예약자 또는 참석자)의 user_id 저장
+//   · BookingStatusBadge가 b.cancelledByUserId === b.user_id 비교로 예약자/참석자 라벨 분기
+//   · 호출부: App.tsx의 cancelBooking 함수에서 authUser?.user_id 전달
+export async function cancelBooking(id: string, cancelledByUserId: string): Promise<void> {
   // localStorage fallback (Supabase 미사용 환경) — 가드 불필요, 단일 사용자 환경
   if (!isSupabaseEnabled) {
-    await updateBooking(id, { status: 'cancelled', autoCancelled: true, cancelledBy: 'user' })
+    await updateBooking(id, {
+      status: 'cancelled',
+      autoCancelled: true,
+      cancelledBy: 'user',
+      cancelledByUserId,                               // ← [옵션 B] 호출자 user_id
+    })
     return
   }
 
   // 원자적 조건부 UPDATE — DB 단에서 race/오염 차단 (진실의 원천)
   const { data, error } = await supabase
     .from('bookings')
-    .update({ status: 'cancelled', auto_cancelled: true, cancelled_by: 'user' })
+    .update({
+      status: 'cancelled',
+      auto_cancelled: true,
+      cancelled_by: 'user',
+      cancelled_by_user_id: cancelledByUserId,         // ← [2026-05-04 옵션 B] 누가 취소했는지 저장
+    })
     .eq('id', id)
     .is('cancelled_by', null)                       // ← 가드 ①
     .in('status', ['confirmed', 'pending'])         // ← 가드 ②

@@ -97,6 +97,12 @@ export interface Booking {
   checkedIn:         boolean
   autoCancelled:  boolean
   cancelledBy?:   'user' | 'system' | 'admin' | null  // 직접취소 | 노쇼/기한초과자동취소 | 관리자강제취소
+  // ← [2026-05-04] 누가 취소했는지 user_id 저장 (예약자/참석자/관리자 구분)
+  //   · 'user' 취소: 취소한 본인의 UUID (예약자 또는 참석자)
+  //   · 'admin' 취소: 강제취소한 관리자 UUID
+  //   · 'system' 취소: NULL (시스템이라 user 없음)
+  //   · NULL fallback: 기존 데이터 (backfill 안 함) → BookingStatusBadge에서 "예약자 취소"로 안전 표시
+  cancelledByUserId?: string | null
   status?:        'confirmed' | 'pending' | 'rejected' | 'cancelled'  // 에메랄드 승인 상태
   reject_reason?: string | null  // 거절 사유
   processedByName?:   string | null  // 승인/거절 처리한 관리자 이름

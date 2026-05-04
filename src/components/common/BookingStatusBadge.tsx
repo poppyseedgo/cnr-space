@@ -6,6 +6,15 @@ import { isBooker } from '../../utils/bookingOwnership'  // ← [2026-04-24 P4-B
  * BookingStatusBadge — 예약 상태 뱃지 묶음
  *
  * ✅ 변경 이력
+ *  - [2026-05-04 옵션 B] '예약자 취소' / '참석자 취소' 라벨 분기 + isOwner 버그 수정
+ *    · 메인 버그: user-cancel 칩에 `&& isOwner` 가드가 있어서 본인이 예약자가 아니면 칩 안 보임
+ *      (MyPage 참석자 시점, AdminPage 등) → 가드 제거
+ *    · DB 신규 칼럼 cancelled_by_user_id 활용해 라벨 동적 분기:
+ *        b.cancelledByUserId === b.user_id ? '예약자 취소' : '참석자 취소'
+ *    · NULL fallback: 기존 데이터(backfill 안 함)는 cancelledByUserId NULL → '예약자 취소' 기본 표시
+ *    · 칩 디자인 그대로 (chip-user-cancel 클래스 동일, 신규 BadgeType 추가 X)
+ *    · only=['user-cancel'] 호출부(HomeView) 영향 0 — BadgeType 그대로
+ *
  *  - [2026-05-04 STEP 3] MY PAGE 테이블 재설계 — 신규 BadgeType + size 추가
  *    · BadgeType 'confirmed' 신규 — 일반 룸 미래 confirmed 살아있는 예약 표시 (chip-confirmed / bg #CBECFF)
  *    · size 'list' 신규 — MyBookingTable 전용 사이즈 (chip--list / 10px / padding 2 7 / radius pill)
@@ -122,6 +131,17 @@ export function BookingStatusBadge({
   const isRejected    = b.status === 'rejected'
   // ① 사용자 취소가 최우선 (사용자 의도가 가장 명확)
   const isUserCancel  = b.autoCancelled && b.cancelledBy === 'user'
+
+  // ─── [2026-05-04 옵션 B] 예약자/참석자 취소 분기 (신규) ───────────────────
+  //   확정 공식 isUserCancel은 변경 없음 — 라벨 분기용 boolean만 추가
+  //   · cancelledByUserId === user_id  → 예약자 본인 취소 → "예약자 취소"
+  //   · cancelledByUserId !== user_id  → 참석자 취소     → "참석자 취소"
+  //   · cancelledByUserId === null     → 백필 안된 기존 데이터 → "예약자 취소" (안전 fallback)
+  //   userMemories #13 정책: 예약자뿐 아니라 참석자도 예약 취소 가능 (2026-04-08~)
+  const isAttendeeCancel = isUserCancel
+                         && !!b.cancelledByUserId
+                         && b.cancelledByUserId !== b.user_id
+
   // ② 관리자 강제 취소 (거절과 구분)
   const isAdminCancel = b.autoCancelled && b.cancelledBy === 'admin'
                         && !isRejected && !isUserCancel
@@ -199,7 +219,11 @@ export function BookingStatusBadge({
     (show('expired-pending') && isExpiredPending) ||
     (show('admin-cancel')    && isAdminCancel) ||
     (show('noshow')          && isNoshow) ||
-    (show('user-cancel')     && isUserCancel && isOwner) ||
+    // ← [2026-05-04 옵션 B 메인 버그 수정] isOwner 가드 제거
+    //   기존: (show('user-cancel') && isUserCancel && isOwner)
+    //   문제: 본인이 예약자가 아닌 경우(참석자/관리자 시점) user-cancel 칩이 안 보임
+    //   해결: isOwner 가드 제거 — 모든 시점에서 일관되게 표시 (라벨은 isAttendeeCancel로 분기)
+    (show('user-cancel')     && isUserCancel) ||
     // ← [P2 v7] pending 뱃지는 '자동취소되지 않은 진짜 승인 대기'만
     //   isExpiredPending이 status='pending' 상태도 커버하므로 중복 방지
     (show('pending')         && b.status === 'pending' && !b.autoCancelled) ||
@@ -254,9 +278,17 @@ export function BookingStatusBadge({
   // ④ 노쇼 (system 자동취소)
   if (show('noshow') && isNoshow)
     chipList.push(<C key="noshow" cls="chip-noshow">노쇼</C>)
-  // ⑤ 사용자 직접 취소 — 본인 컨텍스트(MyPage)에서만
-  if (show('user-cancel') && isUserCancel && isOwner)
-    chipList.push(<C key="usercancel" cls="chip-neutral">취소됨</C>)
+  // ⑤ 사용자 직접 취소 — 모든 시점에서 표시
+  // ← [2026-05-04 옵션 B] isOwner 가드 제거 + 라벨 분기 (예약자 취소 / 참석자 취소)
+  //   기존: chipList.push(<C cls="chip-neutral">취소됨</C>) — isOwner=true에서만
+  //   변경: 모든 시점에서 표시 + isAttendeeCancel로 라벨 분기
+  //   칩 클래스(chip-neutral)는 그대로 유지 — 사용자 결정: "user-cancel 칩 디자인 그대로, 라벨만 분기"
+  if (show('user-cancel') && isUserCancel)
+    chipList.push(
+      <C key="usercancel" cls="chip-neutral">
+        {isAttendeeCancel ? '참석자 취소' : '예약자 취소'}
+      </C>
+    )
   // ⑥ 승인 대기
   if (show('pending') && b.status === 'pending' && !b.autoCancelled)
     chipList.push(<C key="pending" cls="chip-pending">승인 대기</C>)
