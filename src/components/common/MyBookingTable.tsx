@@ -302,7 +302,7 @@ export function MyBookingTable({
           borderRadius:'16px 16px 0 0',
         }}>
           <Th width={160} pad="10 16">날짜</Th>
-          <Th width={160}                >시간</Th>
+          <Th width={164}                >시간</Th>{/* ← [2026-05-04] 160 → 164 (사용자 요청) */}
           <Th width={240}                >회의</Th>
           <Th width={162}                >회의실</Th>
           <Th width={120}                >예약자</Th>
@@ -371,7 +371,7 @@ export function MyBookingTable({
                   </span>
                 </Td>
                 {/* 시간 */}
-                <Td width={160}>
+                <Td width={164}>{/* ← [2026-05-04] 160 → 164 (사용자 요청, 헤더와 일치) */}
                   <div style={{
                     display:'flex', alignItems:'center', gap:4,
                     fontSize:14, fontWeight:400, color:'#64748B', lineHeight:1.5,
