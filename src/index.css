@@ -219,9 +219,12 @@
   /* ── 칩 (상태 뱃지) ── */
   /* base 클래스만 여기에. 색상·사이즈 modifier는 tokens.css 단일 관리 */
   /* ← [2026-04-22 피그마 공통 업데이트] font-size 11→12, font-weight 600→500(Medium), letter-spacing 0.2px→0 */
+  /* ← [2026-05-04 핫픽스 v12] padding 3px 10px → 4px 12px (사용자 요청 — room card 칩 기준)
+        영향 범위: size modifier(--xs/--sm/--list/--square)가 없는 일반 칩만 padding 변화
+                   modifier 적용 칩(DetailModal/MyBookingTable/캘린더 슬롯/소형카드)은 자기 padding 명시 → 영향 0 */
   .chip {
     display: inline-flex; align-items: center; gap: 4px;
-    padding: 3px 10px; border-radius: var(--radius-full);
+    padding: 4px 12px; border-radius: var(--radius-full);
     font-size: 12px; font-weight: 500; letter-spacing: -0.2;
     white-space: nowrap;
   }
