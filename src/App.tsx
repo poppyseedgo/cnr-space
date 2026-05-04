@@ -2,6 +2,13 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-05-04] LazyErrorBoundary 분리 (Phase 1+2 Step 1)
+ *      · 대상: L220~290 (interface ErrorBoundaryState + class LazyErrorBoundary)
+ *      · 신규: src/components/common/LazyErrorBoundary.tsx
+ *      · App.tsx 변경: import 추가 / 클래스 코드 제거 / Component·ErrorInfo·ReactNode import 제거
+ *      · 사용처(L1956, L1958)는 변경 없음 (named import로 동일하게 동작)
+ *      · 동작 로직 무수정 — 단순 cut & paste
+ *
  *  - [2026-05-04] 헤더 프로필 드롭다운 메뉴 Figma 정확 반영
  *      · 대상: 1746~1880 영역 중 드롭다운 메뉴 부분 (1796~)
  *      · Figma: 445:535 (일반사용자) / 445:377 (관리자)
@@ -181,7 +188,7 @@
  *      · Realtime 구독(subscribeNotifications)이 INSERT 이벤트를 <100ms로 푸시하여 UX 지연 없음
  */
 
-import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, lazy, Suspense, Component, type ErrorInfo, type ReactNode } from 'react'
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react'  // ← [2026-05-04] Component/ErrorInfo/ReactNode 제거 (LazyErrorBoundary 분리)
 import { Bell, Calendar, Home, LayoutDashboard, LogOut, UserCircle } from 'lucide-react'  // ← [2026-05-04] 헤더 드롭다운 Figma 반영: User→UserCircle, Settings→LayoutDashboard, 미사용 제거
 // ← [2026-04-30] 헤더 상단 공지 영역 (NoticeBar) 도입 — Figma node 410:6745 반영
 import { NoticeBar, type AnnouncementConfig } from './components/layout/NoticeBar'
@@ -207,6 +214,7 @@ import { ConfirmForceCancelModal } from './components/booking/ConfirmForceCancel
 import { BookingModal } from './components/booking/BookingModal'
 import { DetailModal } from './components/booking/DetailModal'
 import { UserAvatar } from './components/common/UserAvatar'
+import { LazyErrorBoundary } from './components/common/LazyErrorBoundary'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 1)
 import LoginPage from './pages/LoginPage'
 import { useBreakpoint, useVisualViewport } from './hooks/useBreakpoint'
 import { AuthProvider, useAuth } from './hooks/useAuth'
@@ -218,76 +226,8 @@ const MyPageView = lazy(() => import('./pages/MyPage').then(m => ({ default: m.M
 const AdminView  = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminView })))
 
 // ─── ErrorBoundary ────────────────────────────────────────────────────────────
-// ← [2026-04-18 P0 fix] lazy chunk 로드 실패 시 흰 화면 방지용 안전망
-//    ChunkLoadError 감지 시 자동 1회 리로드 (구버전 청크 참조 문제 자동 복구)
-//    기타 렌더 에러는 사용자에게 에러 UI 표시 + 새로고침 유도
-interface ErrorBoundaryState {
-  hasError: boolean
-  error: Error | null
-  hasReloaded: boolean
-}
-class LazyErrorBoundary extends Component<{ children: ReactNode, fallback?: ReactNode }, ErrorBoundaryState> {
-  constructor(props: { children: ReactNode, fallback?: ReactNode }) {
-    super(props)
-    // 세션 스토리지로 무한 리로드 루프 방지
-    const hasReloaded = typeof window !== 'undefined' &&
-      window.sessionStorage.getItem('__chunk_reload__') === '1'
-    this.state = { hasError: false, error: null, hasReloaded }
-  }
-  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
-    return { hasError: true, error }
-  }
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    const msg = error?.message || ''
-    const name = error?.name || ''
-    const isChunkError =
-      name === 'ChunkLoadError' ||
-      /Loading chunk [\d]+ failed/i.test(msg) ||
-      /Failed to fetch dynamically imported module/i.test(msg) ||
-      /Importing a module script failed/i.test(msg)
-
-    console.error('[LazyErrorBoundary]', error, info)
-
-    // 청크 로드 실패면 자동 1회 리로드 (무한 루프 방지용 세션 플래그)
-    if (isChunkError && !this.state.hasReloaded) {
-      try { window.sessionStorage.setItem('__chunk_reload__', '1') } catch {}
-      window.location.reload()
-    }
-  }
-  handleManualReload = () => {
-    try { window.sessionStorage.removeItem('__chunk_reload__') } catch {}
-    window.location.reload()
-  }
-  render() {
-    if (this.state.hasError) {
-      return this.props.fallback ?? (
-        <div style={{
-          display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-          minHeight:'60vh', padding:'24px', gap:'16px', textAlign:'center'
-        }}>
-          <div style={{ fontSize:'18px', fontWeight:600 }}>페이지를 불러오지 못했어요</div>
-          <div style={{ fontSize:'14px', color:'#666' }}>
-            잠시 후 다시 시도해주세요.
-          </div>
-          <button
-            onClick={this.handleManualReload}
-            style={{
-              padding:'10px 20px', borderRadius:'8px', border:'none',
-              background:'#111', color:'#fff', fontSize:'14px', cursor:'pointer'
-            }}
-          >
-            새로고침
-          </button>
-        </div>
-      )
-    }
-    // 정상 렌더에 도달하면 세션 플래그 해제 (다음 배포 시 재발 대응 가능)
-    if (typeof window !== 'undefined' && window.sessionStorage.getItem('__chunk_reload__') === '1') {
-      try { window.sessionStorage.removeItem('__chunk_reload__') } catch {}
-    }
-    return this.props.children
-  }
-}
+// [2026-05-04] LazyErrorBoundary는 src/components/common/LazyErrorBoundary.tsx로 분리됨 (Phase 1+2 Step 1)
+//              로직 무수정, 사용처(view==="mypage"/"admin")는 그대로 유지
 
 // ─── 공지 영역 mock 데이터 ────────────────────────────────────────────────
 // ← [2026-04-30] Figma node 410:6876 공지 배너 영역 신규 도입
