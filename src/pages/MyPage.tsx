@@ -2,6 +2,15 @@
  * MyPage.tsx — 내 마이페이지 (MyPageView) + 주간 뷰 (MyBookingWeeklyView)
  *
  * ✅ 변경 이력
+ *  - [2026-05-04 STEP 4] MY PAGE 재설계 통합 — 모든 영역 새 디자인 적용 완료
+ *    · BookingListTable → MyBookingTable로 교체 (Admin은 BookingListTable 그대로 유지)
+ *    · 월별 이용 통계 섹션 완전 제거 (statYear/statMonth/monthStats useMemo + UI 통째 제거)
+ *    · 외곽 wrapper 추가: 페이지 배경 #F3F4F7 (App.tsx의 #F5F7F9를 부분 덮어씀, 다른 페이지 영향 0)
+ *    · 기간별 예약 조회 섹션: 흰 카드 wrapper 제거 + 헤더 19 SemiBold + ClipboardList 아이콘 제거
+ *    · CSV 버튼 클릭 시 showToast 안내 (CSV 기능은 추후 단계)
+ *    · dead code 정리: cancelBooking 함수 / tab/upcoming/completed/cancelled/tabData state
+ *    · lucide 미사용 import 제거: BarChart2 / ClipboardList / Inbox
+ *
  *  - [2026-05-04 STEP 1] MY PAGE 재설계 (Figma node 445:576) — 상단 카드 영역 + 데이터 보강
  *    · mapRow에 user_id, user_email 추가 (userMemories 룰: UUID OR email dual-recovery 준수)
  *    · 통계 계산 로직 변경
@@ -11,20 +20,25 @@
  *    · 상단 1-통합카드 → 3-분리카드 (프로필 / 이번 달 예약 / 노쇼 횟수)
  *    · UserAvatar borderRadius prop 활용 (64×64 rounded-24, 원형 아님)
  *    · Icons.tsx에서 MailIcon import (Figma 추출 SVG)
- *    · 미수행 (다음 STEP): 기간별 예약 조회 영역, 월별 통계 섹션 제거
  *
  *  - [2026-04-27 KST FIX] mapRow에서 utcToKST 변환 적용
  *  - 이전 이력은 git log 참조
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { BarChart2, ClipboardList, Inbox } from 'lucide-react'
+// ← [2026-05-04 STEP 4] lucide 미사용 import 제거: BarChart2/ClipboardList/Inbox 모두 새 디자인에서 사용 안 함
+//   · BarChart2: 월별 통계 섹션 헤더 → 섹션 자체 제거
+//   · ClipboardList: 기간별 예약 조회 헤더 → Figma 새 디자인은 아이콘 없음 ("기간별 예약 조회" 19 SemiBold)
+//   · Inbox: 코드상 사용 0건 (dead import)
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtRangeFull, fmtTSFull, fmtTimeFull, fmtTSRangeFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../utils/time'
 
-import { cancelBooking as apiCancelBooking, upsertBookingAttendees, utcToKST } from '../lib/api'
+// ← [2026-05-04 STEP 4] api import 정리: cancelBooking/upsertBookingAttendees 미사용
+//   · cancelBooking: STEP 4에서 함수 제거 (취소는 부모 onCancel prop 경유)
+//   · upsertBookingAttendees: 본 파일 내 사용처 0건
+import { utcToKST } from '../lib/api'
 import { WeeklyView } from '../components/layout/CalendarShell'
 import { BookingStatusBadge } from '../components/common/BookingStatusBadge'
 import { supabase } from '../lib/supabase'
@@ -33,13 +47,15 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, B
 
 import { UserAvatar } from '../components/common/UserAvatar'
 import { MailIcon } from '../components/common/Icons'   // ← [2026-05-04 STEP 1] Figma 추출 SVG 아이콘 (프로필 카드 이메일 옆)
-import { BookingListTable } from '../components/common/BookingListTable'
+// ← [2026-05-04 STEP 4] BookingListTable → MyBookingTable로 교체 (Admin은 BookingListTable 그대로 유지)
+import { MyBookingTable } from '../components/common/MyBookingTable'
 import { Button } from '../components/common/Button' 
 
 export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail, onCheckIn, onEarlyEnd, onCancel, rooms:rp=[], users:up=[], authUserId='', currentUserEmail='', avatarUrl=null}) {
-  const [tab, setTab] = useState("upcoming");
-  const [statYear, setStatYear] = useState(()=>new Date().getFullYear());
-  const [statMonth, setStatMonth] = useState(()=>new Date().getMonth());
+  // ← [2026-05-04 STEP 4] dead state 제거:
+  //   · const [tab, setTab]             — 탭 관리는 MyBookingTable 내부로 이전됨 (외부 탭 미존재)
+  //   · const [statYear/statMonth]      — 월별 통계 섹션 자체 제거
+  //   영향: 아래 upcoming/completed/cancelled/tabData/monthStats 사용 코드도 동시 제거
   const today = todayStr();
   const now = nowMinutes();
   const allUsers = up;
@@ -144,45 +160,18 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
 
   }, [authUserId, currentUserEmail]);
 
-  const cancelBooking = async (id) => {
-    // 낙관적 UI 업데이트 (즉시 반영)
-    setBookings(prev => prev.map(b => b.id===id ? {...b, autoCancelled:true} : b));
-    showToast("예약이 취소되었습니다.", "info");
-    try {
-      // DB 반영
-      await apiCancelBooking(id);
-    } catch (err: any) {
-      // 실패 시 롤백
-      setBookings(prev => prev.map(b => b.id===id ? {...b, autoCancelled:false} : b));
-      showToast(err.message ?? "취소 중 오류가 발생했습니다.", "error");
-    }
-  };
-
-  // user_id 기반 필터 (정확) → fallback: name 기반 (SSO 연동 전)
+  // ← [2026-05-04 STEP 4] dead code 일괄 제거:
+  //   · cancelBooking 함수: 사용처 0건 (취소는 부모의 onCancel prop으로 처리)
+  //   · upcoming/completed/cancelled/tabData: 외부 탭 UI 제거됨 (MyBookingTable이 자체 탭 관리)
+  //   · monthStats: 월별 통계 섹션 자체 제거됨
+  //   영향 범위 검증: grep 결과 위 변수들 사용 코드는 모두 삭제 대상 영역에만 존재
+  //
   // ─────────────────────────────────────────────────────────────────────────
   // ⚠️  참석자 정책 (절대 변경 금지)
   //   "내 예약" = 내가 예약자(user_id)이거나 참석자(booking_attendees.email)인 예약
   //   allMyBookings 가 이 두 조건을 모두 포함해서 fetch함 (위 useEffect 참고)
-  //   아래 모든 통계·목록은 allMyBookings 단일 소스 사용 — fallback/분기 없음
+  //   아래 통계는 allMyBookings 단일 소스 사용 — fallback/분기 없음
   // ─────────────────────────────────────────────────────────────────────────
-
-  // 실시간 탭 뷰 (예정/완료/취소)
-  const upcoming  = useMemo(()=>allMyBookings.filter(b=>!b.autoCancelled&&(tsDate(b.start_at)>today||(tsDate(b.start_at)===today&&tsMin(b.end_at)>now))).sort((a,b)=>a.start_at.localeCompare(b.start_at)),[allMyBookings,today,now]);
-  const completed = useMemo(()=>allMyBookings.filter(b=>!b.autoCancelled&&b.checkedIn&&(tsDate(b.start_at)<today||(tsDate(b.start_at)===today&&tsMin(b.end_at)<=now))).sort((a,b)=>b.start_at.localeCompare(a.start_at)),[allMyBookings,today,now]);
-  const cancelled = useMemo(()=>allMyBookings.filter(b=>b.autoCancelled).sort((a,b)=>b.start_at.localeCompare(a.start_at)),[allMyBookings]);
-  const tabData = tab==="upcoming"?upcoming:tab==="completed"?completed:cancelled;
-
-  // 월별 통계
-  const monthStats = useMemo(()=>{
-    const prefix=`${statYear}-${fmt2(statMonth+1)}`;
-    const mb=allMyBookings.filter(b=>tsDate(b.start_at).startsWith(prefix));
-    const total=mb.length, ci=mb.filter(b=>(b.checkedIn||b.earlyEnded)&&!b.autoCancelled).length, can=mb.filter(b=>b.autoCancelled).length;
-    const rate=total>0?Math.round((ci/total)*100):0;
-    const rc: Record<number,number>={};mb.filter(b=>!b.autoCancelled).forEach(b=>{rc[b.room_id]=(rc[b.room_id]||0)+1;});
-    const top=Object.entries(rc).sort((a,b)=>(b[1] as number)-(a[1] as number))[0];
-    const topRoom=top?(allRooms.find(r=>r.room_id===Number(top[0]))??null):null;
-    return{total,checkedIn:ci,cancelled:can,rate,topRoom,topCount:top?top[1]:0};
-  },[allMyBookings,statYear,statMonth]);
 
   // 이번달 요약
   const thisPrefix  = `${new Date().getFullYear()}-${fmt2(new Date().getMonth()+1)}`;
@@ -222,7 +211,17 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   const thisMonthLabel = `${new Date().getMonth() + 1}월 예약 수`;
 
   return(
-    <div style={{maxWidth:960,margin:"0 auto",padding:isMobile?"16px 12px":"28px 24px"}}>
+    /* ═══════════════════════════════════════════════════════════════════
+       ↓ [2026-05-04 STEP 4] 외곽 wrapper — 페이지 전체 #F3F4F7 배경
+       · Figma node 449:2333 1:1 (bg #F3F4F7)
+       · App.tsx의 #F5F7F9 전역 배경을 부분 덮어씀 (다른 페이지 영향 0)
+       · width 100% / minHeight 미지정 (콘텐츠가 충분히 길어서 viewport 자연 채움)
+       ═══════════════════════════════════════════════════════════════════ */
+    <div style={{
+      background:'#F3F4F7',                              // ← Figma: 페이지 배경
+      width:'100%',
+    }}>
+      <div style={{maxWidth:960,margin:"0 auto",padding:isMobile?"16px 12px":"28px 24px"}}>{/* ← 기존 콘텐츠 wrapper 그대로 유지 */}
 
       {/* ═══════════════════════════════════════════════════════════════════
           ↓ [2026-05-04 STEP 1] 상단 카드 영역 — Figma node 445:702 1:1 반영
@@ -387,65 +386,60 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
           ↑ [2026-05-04 STEP 1] 상단 3-카드 영역 끝
           ═══════════════════════════════════════════════════════════════════ */}
 
-      {/* ── 기간별 예약 조회 ── */}
-      <div className="anm" style={{background:"#fff",borderRadius:16,padding:isMobile?"16px 16px 20px":"20px 28px 24px",marginTop:20,animationDelay:"150ms"}}>
-        <div style={{fontSize:15,fontWeight:600,color:"#111",marginBottom:16,display:"flex",alignItems:"center",gap:6}}>
-          <ClipboardList size={15} strokeWidth={1.8}/>기간별 예약 조회
-        </div>
-        <BookingListTable
+      {/* ═══════════════════════════════════════════════════════════════════
+          ↓ [2026-05-04 STEP 4] 기간별 예약 조회 — Figma node 446:418 1:1
+          ─────────────────────────────────────────────────────────────────
+          · 기존: 흰색 카드 wrapper + ClipboardList 아이콘 + BookingListTable
+          · 변경:
+            - wrapper 카드 제거 (Figma 새 디자인은 페이지 배경 위 직접 배치)
+            - 헤더: "기간별 예약 조회" 19px SemiBold #111, 좌우 패딩 0
+            - 본체: MyBookingTable 신규 컴포넌트 (DateDisplay/세그먼트탭/CSV/h60행)
+          · padding: 24 0 (영역 자체 상하 24, 좌우 0 — Figma 449:2382)
+          ═══════════════════════════════════════════════════════════════════ */}
+      <div className="anm" style={{
+        padding:'24px 0',                                  // ← Figma: py 24
+        display:'flex', flexDirection:'column', gap:24,    // ← Figma: gap 24 (헤더 ↔ 필터 Row1 ↔ Row2 ↔ 테이블)
+        animationDelay:'150ms',
+      }}>
+        {/* 섹션 헤더 (Figma node 449:2383: 19 SemiBold #111 leading 1.5) */}
+        <div style={{
+          fontSize:19,                                     // ← Figma: 19
+          fontWeight:600,                                  // ← Figma: SemiBold
+          color:'#111',                                    // ← Figma: #111
+          lineHeight:1.5,                                  // ← Figma: leading 1.5
+          whiteSpace:'nowrap',
+        }}>기간별 예약 조회</div>
+
+        {/* MyBookingTable — 모든 필터/탭/테이블/페이지네이션 자체 관리 */}
+        <MyBookingTable
           bookings={allMyBookings}
           rooms={allRooms}
           users={allUsers}
-          currentUser={currentUser}
-          currentUserId={authUserId}
-          currentUserEmail={currentUserEmail}
+          currentUserId={authUserId}                       // ← BookingStatusBadge isBooker 판정용
+          currentUserEmail={currentUserEmail}              // ← 이중 복원 fallback
           onDetail={onDetail}
           loading={allLoading}
+          onCsvClick={() => {
+            // ← [2026-05-04 STEP 4] CSV 다운로드는 추후 단계 (사용자 결정 2026-05-04)
+            //   현재는 toast로 안내만, 다음 채팅에서 실제 export 구현 예정
+            showToast('CSV 다운로드는 곧 지원될 예정입니다.', 'info');
+          }}
         />
-        {/* ← [2026-04-24 P4-B] currentUserId={authUserId} 추가 — BookingListTable 내부 BookingStatusBadge가 isBooker 판정에 사용 */}
       </div>
 
-      {/* 월별 통계 */}
-      <div className="anm" style={{background:"#fff",borderRadius:16,padding:isMobile?"20px":"24px 28px",animationDelay:"100ms",marginTop:32}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-          <div style={{fontSize:15,fontWeight:600,color:"#111"}}><span style={{display:"inline-flex",alignItems:"center",gap:6}}><BarChart2 size={15} strokeWidth={1.8}/>월별 이용 통계</span></div>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <button className="btn" onClick={()=>{if(statMonth===0){setStatYear(y=>y-1);setStatMonth(11);}else setStatMonth(m=>m-1);}}
-              style={{background:"#F1F5F9",color:"#64748B",padding:"4px 10px",fontSize:14,borderRadius:8}}>‹</button>
-            <span style={{fontSize:13,fontWeight:600,color:"#111",minWidth:100,textAlign:"center"}}>{statYear}년 {MONTH_NAMES[statMonth]}</span>
-            <button className="btn" onClick={()=>{if(statMonth===11){setStatYear(y=>y+1);setStatMonth(0);}else setStatMonth(m=>m+1);}}
-              style={{background:"#F1F5F9",color:"#64748B",padding:"4px 10px",fontSize:14,borderRadius:8}}>›</button>
-          </div>
-        </div>
-        {monthStats.total===0?(
-          <div style={{textAlign:"center",padding:"32px",color:"#CBD5E1",fontSize:13}}>이 달의 예약 데이터가 없습니다</div>
-        ):(
-          <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            {[{label:"예약",value:monthStats.total,color:"#3B82F6"},{label:"체크인",value:monthStats.checkedIn,color:"#16A34A"},{label:"취소/노쇼",value:monthStats.cancelled,color:"#F59E0B"}].map(bar=>(
-              <div key={bar.label}>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
-                  <span style={{color:"#64748B",fontWeight:600}}>{bar.label}</span><span style={{color:"#111",fontWeight:600}}>{bar.value}건</span>
-                </div>
-                <div style={{height:8,background:"#F1F5F9",borderRadius:4,overflow:"hidden"}}>
-                  <div style={{height:"100%",width:`${monthStats.total>0?(bar.value/monthStats.total)*100:0}%`,background:bar.color,borderRadius:4,transition:"width 0.4s"}}/>
-                </div>
-              </div>
-            ))}
-            <div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:4}}>
-              <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",flex:1,minWidth:120}}>
-                <div style={{fontSize:11,color:"#94A3B8",fontWeight:600}}>체크인율</div>
-                <div style={{fontSize:18,fontWeight:600,color:monthStats.rate>=70?"#16A34A":"#D97706",marginTop:2}}>{monthStats.rate}%</div>
-              </div>
-              {monthStats.topRoom&&(
-                <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",flex:1,minWidth:120}}>
-                  <div style={{fontSize:11,color:"#94A3B8",fontWeight:600}}>가장 많이 이용</div>
-                  <div style={{fontSize:13,fontWeight:600,color:"#111",marginTop:2}}>{(monthStats.topRoom as any).room_name} ({monthStats.topCount}회)</div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+      {/* ═══════════════════════════════════════════════════════════════════
+          ↓ [2026-05-04 STEP 4] 월별 이용 통계 섹션 완전 제거
+          ─────────────────────────────────────────────────────────────────
+          · 기존: monthStats 막대그래프 + 체크인율 + 가장 많이 이용 + 월 네비게이션
+          · 제거 사유: 새 디자인에 통계 섹션 자체 없음. 통계 UI는 상단 노쇼 횟수
+                      카드(STEP 1)로 부분 대체. 추후 별도 통계 페이지로 분리 가능.
+          · 영향: monthStats useMemo / statYear/statMonth state 모두 제거 (작업 4-2/4-3 완료)
+          · BarChart2 lucide 아이콘 import도 제거 (작업 4-1 완료)
+          ═══════════════════════════════════════════════════════════════════ */}
+
       </div>
+      {/* ↑ 콘텐츠 wrapper 닫기 (max-width 960) */}
+      {/* ↑ [2026-05-04 STEP 4] 외곽 wrapper 닫기는 다음 라인 (#F3F4F7 배경) */}
     </div>
   );
 }
