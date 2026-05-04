@@ -291,7 +291,9 @@ export function MyBookingTable({
         display:'flex', flexDirection:'column',
         gap:1,                                            // ← Figma: gap-px (행 사이 1px 구분선)
         minHeight:426,                                    // ← Figma: min-h 426 (참고 링크 #2)
-        background:'#F1F5F9',                             // ← gap 1px 사이 노출되는 배경 = 구분선 색상
+        // ← [2026-05-04 핫픽스 v2] background #F1F5F9 → #FAFCFF (사용자 요청)
+        //   gap 1px 사이 노출되는 구분선 색상 (행 사이 배경)
+        background:'#FAFCFF',                             // ← rgb(250, 252, 255)
       }}>
         {/* ── 헤더 ─────────────────────────────────────────────────────── */}
         <div style={{
@@ -318,7 +320,7 @@ export function MyBookingTable({
           flex:1, minHeight:0,                            // ← flex:1 + minHeight:0 (자식 overflow 방지)
           display:'flex', flexDirection:'column',
           gap:1,                                          // ← 행 사이 1px (기존과 동일)
-          background:'#F1F5F9',
+          background:'#FAFCFF',                           // ← [2026-05-04 핫픽스 v2] #F1F5F9 → #FAFCFF (외곽 컨테이너와 일관성)
         }}>
           {/* loading / empty / 정상 — 모두 이 wrapper 안에서 렌더 */}
           {loading ? (

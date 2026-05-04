@@ -58,9 +58,9 @@ export function DateDisplay({
           // ─── Figma 1:1 ───────────────────────────────────
           background:     '#fff',                       // ← Figma: bg white
           borderRadius:   12,                           // ← Figma: rounded 12
-          // ← [2026-05-04 핫픽스] padding 좌측 12 → 16 (사용자 요청)
-          //   Figma 좌우 패딩 통일 (이전: 14 16 14 12)
-          padding:        '14px 16px',                  // ← 통일된 14×16 (상/하 14, 좌/우 16)
+          // ← [2026-05-04 핫픽스 v2] padding 14×16 → 14 24 14 20 (사용자 요청)
+          //   상/하 14, 좌 20, 우 24 (비대칭 — 우측 chevron 영역 더 여유)
+          padding:        '14px 24px 14px 20px',        // ← 좌 20, 우 24
           height:         52,                           // ← Figma: h 52
           gap:            6,                            // ← Figma: gap 6
           // ─── 버튼 reset ──────────────────────────────────
