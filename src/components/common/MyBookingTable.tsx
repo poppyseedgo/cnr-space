@@ -330,7 +330,8 @@ export function MyBookingTable({
         ) : pagedList.length === 0 ? (
           /* Figma node 449:2479 / 454:3966 1:1 — •_• 이모티콘 + 안내문 */
           <div style={emptyContainerStyle}>
-            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:5 }}>{/* ← Figma: gap 5 */}
+            {/* ← [2026-05-04 핫픽스 v3] gap 5 → 16 (사용자 요청 — 아이콘/문구 겹침 방지) */}
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:16 }}>
               <EmptyFaceIcon size={82} color="#D9E0EE"/>{/* ← 사용자 SVG (color #D9E0EE) */}
               <span style={{
                 fontSize:14, fontWeight:500, color:'#D9E0EE',     // ← Figma: 14 Medium #D9E0EE
