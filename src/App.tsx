@@ -225,6 +225,7 @@
  */
 
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react'  // ← [2026-05-04] Component/ErrorInfo/ReactNode 제거 (LazyErrorBoundary 분리)
+import { createPortal } from 'react-dom'  // ← [2026-05-05 핫픽스 v17] 헤더 wrap을 document.body에 직접 mount — 부모 체인 transform/filter/contain 등 영향 차단
 // ← [2026-05-04] lucide-react import 제거 — Calendar/Home은 HeaderNav 내부로 이동 (Phase 1+2 Step 4)
 //                Phase 1+2 분리 후 App.tsx에서 직접 사용하는 lucide 아이콘 없음
 // ← [2026-04-30] 헤더 상단 공지 영역 (NoticeBar) 도입 — Figma node 410:6745 반영
@@ -1504,9 +1505,21 @@ function AppContent() {
      · fixed로 viewport 기준 고정 + 본문에 동적 padding-top으로 가림 방지
      · NoticeBar: 헤더 위 공지 영역 (Admin 활성화 시 표시, X 닫기 = 세션 한정)
      · Header  : Pretendard 폰트 + Figma 정확한 색상/패딩 반영 (데스크톱)
-     · Gradient: Header 하단 24px 페이드 (Claude UI 스타일, blur 8px) */}
+     · Gradient: Header 하단 24px 페이드 (Claude UI 스타일, blur 8px)
+     ─────────────────────────────────────────────────────────────
+     [2026-05-05 핫픽스 v17] createPortal로 document.body 직접 mount
+     · 증상: position:fixed가 inline style에 적용됐는데도 스크롤 시 헤더가 함께 올라감
+     · 원인: 부모 체인(body / #root / .dark / .min-h-screen) 어딘가에 fixed의 컨테이닝 블록을
+             가로채는 CSS 속성(transform/filter/will-change/contain/perspective/backdrop-filter)이 있음
+             → fixed가 viewport 기준이 아닌 그 부모 기준이 되어 함께 스크롤됨
+     · 해결: createPortal로 body 직접 mount → 부모 체인 우회 → 어떤 CSS 속성에도 영향 0
+     · 미래: 부모 컴포넌트가 어떤 CSS 추가해도 헤더는 영향 받지 않음 (구조적 격리)
+     · 동작: ResizeObserver는 headerWrapRef로 그대로 추적 (DOM 위치만 다를 뿐 ref 동일)
+             paddingTop 보정도 그대로 / React Context 정상 전파 / dark mode 등 props 전달 OK */}
+      {createPortal(
       <div
         ref={headerWrapRef}
+        className={dark ? "dark" : ""} /* ← [핫픽스 v17] body 직접 mount 후에도 dark 모드 적용 보장 */
         style={{
           position: "fixed",
           top: 0,
@@ -1625,6 +1638,7 @@ function AppContent() {
         />
       </header>
       </div>
+      , document.body)/* ← [핫픽스 v17] createPortal 닫기 — 헤더 wrap을 body에 직접 mount */}
 {/* ── 고정 영역 끝 ── */}
 
       {/* ── Views ── */}
