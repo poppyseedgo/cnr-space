@@ -58,10 +58,11 @@ export function DateDisplay({
           // ─── Figma 1:1 ───────────────────────────────────
           background:     '#fff',                       // ← Figma: bg white
           borderRadius:   12,                           // ← Figma: rounded 12
-          // ← [2026-05-04 핫픽스 v2] padding 14×16 → 14 24 14 20 (사용자 요청)
-          //   상/하 14, 좌 20, 우 24 (비대칭 — 우측 chevron 영역 더 여유)
-          padding:        '14px 24px 14px 20px',        // ← 좌 20, 우 24
-          height:         52,                           // ← Figma: h 52
+          // ← [2026-05-04 핫픽스 v2] padding 14×16 → 14 24 14 20 (좌 20, 우 24 비대칭)
+          // ← [2026-05-06 Admin Phase C] padding 14 24 14 20 → 12 24 12 20 (상하 14→12)
+          //    + height 52 → 48 (Figma node 468:1323)
+          padding:        '12px 24px 12px 20px',        // ← 상하 12, 좌 20, 우 24
+          height:         48,                           // ← Figma: h 48 (이전 52)
           gap:            6,                            // ← Figma: gap 6
           // ─── 버튼 reset ──────────────────────────────────
           border:         'none',
@@ -77,7 +78,7 @@ export function DateDisplay({
           boxShadow:      open ? '0 0 0 1.5px #111' : 'none',  // ← 열려있을 때 outline 표시
         }}>
         {/* 캘린더 아이콘 */}
-        <CalendarTodayIcon size={24}/>{/* ← Figma 추출 SVG (Icons.tsx) */}
+        <CalendarTodayIcon size={24}/>{/* ← Figma 추출 SVG (Icons.tsx) — 기본 fill #566277 */}
         {/* 날짜 텍스트 */}
         <span style={{
           fontSize:   16,                               // ← Figma: 16
@@ -91,7 +92,8 @@ export function DateDisplay({
           <span style={{
             fontSize:   16,                             // ← Figma: 16
             fontWeight: 500,                            // ← Figma: Medium
-            color:      '#99A1AF',                      // ← Figma: #99A1AF
+            // ← [2026-05-06 Admin Phase C] 색상 #99A1AF → #A9B9D5 (Figma node 468:1328)
+            color:      '#A9B9D5',
             lineHeight: 'normal',
             whiteSpace: 'nowrap',
           }}>{displayDay}</span>

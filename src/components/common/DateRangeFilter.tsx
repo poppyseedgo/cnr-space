@@ -64,7 +64,8 @@ export function DateRangeFilter<TQuickId extends string = string>({
           max={to}
         />
         <span style={{
-          fontSize: 16, fontWeight: 500, color: '#111',
+          // ← [2026-05-06 Admin Phase C] fontSize 16 → 12 (Figma node 468:1329)
+          fontSize: 12, fontWeight: 500, color: '#111',
           lineHeight: 1, whiteSpace: 'nowrap',
         }}>⎯</span>
         <DateDisplay
@@ -97,17 +98,19 @@ function QuickBtn({ active, onClick, children }:
       type="button"
       onClick={onClick}
       style={{
-        // Figma node 449:1877 / 451:3019:
-        // h 47, padding px 24 py 14, rounded 12
-        // 활성: bg #111 / text #fff / SemiBold
-        // 비활성: bg #fff / text #64748B / Medium
-        height: 47, padding: '14px 24px', borderRadius: 12,
+        // Figma node 468:1337~1341 (사용자 갱신):
+        // h 42, padding px 20 py 12, rounded 12
+        // 활성: bg #111 / text #fff / 14 Medium
+        // 비활성: bg #fff / text #64748B / 14 Medium
+        // ← [2026-05-06 Admin Phase C] height 47 → 42, padding 14×24 → 12×20
+        height: 42, padding: '12px 20px', borderRadius: 12,
         border: 'none', cursor: 'pointer',
         fontFamily: 'inherit', fontSize: 14, lineHeight: 'normal',
         whiteSpace: 'nowrap',
         background: active ? '#111' : '#fff',
         color:      active ? '#fff' : '#64748B',
-        fontWeight: active ? 600   : 500,
+        // ← [2026-05-06 Admin Phase C] Figma 통일: 활성/비활성 모두 Medium 500 (이전 활성 SemiBold 600)
+        fontWeight: 500,
         transition: 'background 0.15s, color 0.15s',
       }}>
       {children}
