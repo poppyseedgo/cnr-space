@@ -43,12 +43,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       name:        meta.full_name ?? meta.name ?? sessionUser.email?.split('@')[0] ?? '사용자',
       dept:        meta.department ?? meta.custom_claims?.department ?? '',
       role:        'USER',
-      email:       sessionUser.email ?? '',
+      email:       sessionUser.email?.toLowerCase() ?? '',  // ← [2026-05-06] 대소문자 중복 프로필 방지
     }
   }
 
   // DB에서 풀 프로필 조회
   async function loadProfile(userId: string, email: string): Promise<AppUser | null> {
+    email = email.toLowerCase()  // ← [2026-05-06] Azure AD 대소문자 불일치 방지
     try {
       const { data, error } = await supabase
         .from('profiles').select('*').eq('id', userId).single()
@@ -110,7 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           if (session?.user) {
             const uid   = session.user.id
-            const email = session.user.email ?? ''
+            const email = (session.user.email ?? '').toLowerCase()  // ← [2026-05-06] 소문자 정규화
 
             if (!email.endsWith(ALLOWED_DOMAIN)) {
               await supabase.auth.signOut()
@@ -148,7 +149,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           if (provider && provider !== 'email') {
             const uid   = session.user.id
-            const email = session.user.email ?? ''
+            const email = (session.user.email ?? '').toLowerCase()  // ← [2026-05-06] 소문자 정규화
 
             if (!email.endsWith(ALLOWED_DOMAIN)) {
               await supabase.auth.signOut()
@@ -174,7 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           } else if (!emailLoginHandled.current) {
             const uid   = session.user.id
-            const email = session.user.email ?? ''
+            const email = (session.user.email ?? '').toLowerCase()  // ← [2026-05-06] 소문자 정규화
             const user  = await loadProfile(uid, email)
             setCurrentUser(user)
             setLoading(false)
@@ -207,7 +208,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     if (data.user) {
       emailLoginHandled.current = true
-      const user = await loadProfile(data.user.id, data.user.email ?? '')
+      const user = await loadProfile(data.user.id, data.user.email?.toLowerCase() ?? '')  // ← [2026-05-06] 소문자 정규화
       setCurrentUser(user)
     }
   }, [])
