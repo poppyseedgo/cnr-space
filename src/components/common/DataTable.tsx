@@ -108,9 +108,13 @@ export function DataTable<T>({
       gap: 1,                                            // ← 행 사이 1px 구분선 (gap 노출)
       minHeight,
       background: '#FAFCFF',                              // ← 구분선 색상 = 배경
-      // ← [2026-05-06 Phase 4] minWidth 지정 시: width = minWidth (부모 초과 → 부모 overflowX:auto 작동)
-      //    미지정 시: width 100% (기존 동작)
-      ...(minWidth ? { width: minWidth, minWidth } : { width: '100%' }),
+      // ← [2026-05-06 Phase 4 사용자 보고 fix] width 정책 변경
+      //    이전: width = minWidth → 컬럼 합계까지만 차지 → 부모 컨테이너가 더 넓으면 우측 빈 공간
+      //    변경: width: 100% + minWidth만 별도
+      //    · 부모 ≥ minWidth: width 100%로 채움 (우측 빈 공간 제거)
+      //    · 부모 < minWidth:  minWidth가 부모 초과 → 외부 wrapper의 overflowX:auto 작동
+      width: '100%',
+      ...(minWidth ? { minWidth } : {}),
     }}>
       {/* ── 헤더 ─────────────────────────────────────────────────────── */}
       <div style={{
@@ -262,7 +266,10 @@ function Td({ width, flex, pad = '10 14', children }:
   const [py, px] = pad.split(' ').map(Number)
   return (
     <div style={{
-      ...(flex ? { flex: 1, minWidth: 0 } : { width, flexShrink: 0 }),
+      // ← [2026-05-06 Phase 4 사용자 보고 fix] flex 컬럼도 width를 minWidth로 활용
+      //    이전: flex 시 minWidth: 0 → 부모 좁을 때 컬럼이 너무 작아짐 (텍스트 가독성 저하)
+      //    변경: flex 시 minWidth: width ?? 0 → 최소 폭 보장 + 남은 공간 차지
+      ...(flex ? { flex: 1, minWidth: width ?? 0 } : { width, flexShrink: 0 }),
       height: 60,
       padding: `${py}px ${px}px`,
       display: 'flex', alignItems: 'center',
