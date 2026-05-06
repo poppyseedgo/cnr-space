@@ -27,7 +27,10 @@
   --color-approval-required-bg: #E6FFB0;  --color-approval-required-text: #111;
   --color-busy-bg:        #FCE7F3;  --color-busy-text:      #BE185D;
   --color-soon-bg:        #FFF7ED;  --color-soon-text:      #C2410C;
-  --color-pending-bg:     #FEF3C7;  --color-pending-text:   #92400E;
+  /* ← [2026-05-06 사용자 요청] Figma 468:2122 칩 디자인 변경:
+        bg #FEF3C7 → #f4ffaa (라임-연두)
+        text #92400E → #111 */
+  --color-pending-bg:     #f4ffaa;  --color-pending-text:   #111;
   --color-success-bg:     #DCFCE7;  --color-success-text:   #16A34A;
   --color-danger-bg:      #FEE2E2;  --color-danger-text:    #DC2626;
 
@@ -47,7 +50,8 @@
         · 영향: BookingStatusBadge 'approved' 뱃지가 쓰이는 모든 화면 일괄 반영
           (홈 / 마이페이지 / 캘린더 Daily·Weekly·Monthly / 룸 상세 / 예약 상세 등)
         · 미영향: AdminPage 탭 필터 UI(1789)는 칩이 아니라 탭 버튼이므로 별개 유지 */
-  --color-approved-bg:     #E6FFB0; --color-approved-text:     #111;
+  /* ← [2026-05-06 사용자 요청] Figma 468:2122: bg #E6FFB0 → #e5ffab (미세 변경) */
+  --color-approved-bg:     #e5ffab; --color-approved-text:     #111;
   --color-expired-bg:      #E2E8F0; --color-expired-text:      #64748B;  /* ← [변경] done과 구분, 더 탁한 회색 */
   --color-rejected-bg:     #FEE2E2; --color-rejected-text:     #991B1B;
   /* ── [2026-05-04 STEP 3] confirmed: "예약확정" 일반 confirmed 살아있는 미래 예약용

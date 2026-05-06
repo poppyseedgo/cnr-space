@@ -54,17 +54,23 @@ const PAGE_SIZE = 15
 
 // ─── 도메인 분류 함수 (기존 AdminApprovals.classify와 동일) ─────────────────
 //   사용자 룰: 확정 공식은 변경 금지. classify는 기존 AdminApprovals에서 사용된 동일 로직
-function classify(b: Booking): 'pending' | 'confirmed' | 'rejected' | 'expired' | 'other' {
+// ← [2026-05-06 사용자 요청] 'cancelled' 분기 추가
+//    정의: cancelled_by='user' (사용자 직접 취소). 노쇼/기한초과/관리자 취소는 별개
+function classify(b: Booking): 'pending' | 'confirmed' | 'rejected' | 'expired' | 'cancelled' | 'other' {
   if (b.status === 'pending' && b.autoCancelled)  return 'expired'   // 기한 초과 (Emerald 자동 만료)
   if (b.status === 'pending' && !b.autoCancelled) return 'pending'   // 승인 대기
   if (b.status === 'confirmed')                   return 'confirmed' // 승인 완료
   if (b.status === 'rejected')                    return 'rejected'  // 거절
+  // ← [2026-05-06] '취소' = 사용자가 직접 취소한 케이스 (cancelledBy='user')
+  if (b.status === 'cancelled' && b.cancelledBy === 'user') return 'cancelled'
   return 'other'
 }
 
 // ─── 탭/퀵버튼 ID 타입 ───────────────────────────────────────────────────────
-type TabId   = 'all' | 'pending' | 'confirmed' | 'rejected' | 'expired'
+type TabId   = 'all' | 'pending' | 'confirmed' | 'rejected' | 'expired' | 'cancelled'
 type QuickId = 'today' | '15days' | '3months'
+// ← [2026-05-06 사용자 요청 Q1-C] 날짜 조회 토글 — 신청일 vs 시작일
+type DateFilterMode = 'createdAt' | 'startAt'
 
 // ─── 퀵버튼 정의 (Figma 451:3552) ────────────────────────────────────────────
 const QUICK_BUTTONS: QuickButtonDef<QuickId>[] = [
@@ -101,6 +107,10 @@ export function AdminApprovalTable({
   const [from, setFrom] = useState<string>(todayStr())
   const [to,   setTo]   = useState<string>(todayStr())
   const [activeQuick, setActiveQuick] = useState<QuickId | null>('today')
+  // ← [2026-05-06 사용자 요청 Q1-C] 날짜 조회 기준 토글 — 신청일(createdAt) vs 시작일(startAt)
+  //    근거: 컬럼이 "승인 요청 날짜" + "날짜(예약 시작일)" 2개로 늘어남 → 어느 기준 조회인지 명시 필요
+  //    기본: 신청일(createdAt) — 승인 관리는 "들어온 신청 처리"가 목적
+  const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>('createdAt')
   // ── 활성 탭 (기본: 승인 대기)
   const [tab, setTab] = useState<TabId>('pending')
   // ── 페이지
@@ -150,17 +160,30 @@ export function AdminApprovalTable({
   }, [bookings, rangeData, adminRoomIds])
 
   // ── 통계 (탭 카운트)
+  // ← [2026-05-06] 'cancelled' 카운트 추가 (사용자 직접 취소)
   const counts = useMemo(() => ({
     all:       mergedData.length,
     pending:   mergedData.filter(b => classify(b) === 'pending').length,
     confirmed: mergedData.filter(b => classify(b) === 'confirmed').length,
     rejected:  mergedData.filter(b => classify(b) === 'rejected').length,
     expired:   mergedData.filter(b => classify(b) === 'expired').length,
+    cancelled: mergedData.filter(b => classify(b) === 'cancelled').length,  // ← 신규
   }), [mergedData])
 
   // ── 탭 + 검색 필터 → 표시 리스트
+  // ← [2026-05-06 사용자 요청 Q1-C] 날짜 토글 반영
+  //    · 'createdAt' 모드: createdAt이 from~to 범위 안인 booking만 (승인 요청 날짜 기준 조회)
+  //    · 'startAt' 모드: 백엔드(loadBookingsByRange)가 이미 start_at 기준으로 fetch 완료
+  //    클라이언트 측 필터로 처리 — 라이브 bookings에는 모든 admin 룸 데이터 있음
   const displayList = useMemo(() => {
     let list = mergedData
+    // 날짜 토글 — createdAt 모드에서 client-side 추가 필터
+    if (dateFilterMode === 'createdAt') {
+      const fromTs = +new Date(from + 'T00:00:00')
+      const toTs   = +new Date(to   + 'T23:59:59')
+      list = list.filter(b => b.createdAt && b.createdAt >= fromTs && b.createdAt <= toTs)
+    }
+    // (startAt 모드는 백엔드 + mergedData가 이미 start_at 기준이므로 추가 필터 없음)
     if (tab !== 'all') list = list.filter(b => classify(b) === tab)
     if (searchQ.trim()) {
       const q = searchQ.toLowerCase().trim()
@@ -170,7 +193,7 @@ export function AdminApprovalTable({
       )
     }
     return list
-  }, [mergedData, tab, searchQ])
+  }, [mergedData, tab, searchQ, dateFilterMode, from, to])
 
   // ── 페이징
   const totalPages = Math.max(1, Math.ceil(displayList.length / PAGE_SIZE))
@@ -211,39 +234,69 @@ export function AdminApprovalTable({
   // ── canApprove (시작 시각 1분 전 제한)
   const canApprove = (b: Booking) => nowMs < new Date(b.start_at).getTime() - 60_000
 
-  // ── 탭 정의 (Figma 451:3562 — 5개)
+  // ── 탭 정의 (Figma 451:3562 — 5개) + [2026-05-06 사용자 요청] 6번째 '취소' 추가
   const TABS: TabDef<TabId>[] = [
     { id: 'all',       label: '전체',       count: counts.all       },
     { id: 'pending',   label: '승인 대기',   count: counts.pending   },
     { id: 'confirmed', label: '승인 완료',   count: counts.confirmed },
     { id: 'rejected',  label: '거절',       count: counts.rejected  },
     { id: 'expired',   label: '기한 초과',   count: counts.expired   },
+    { id: 'cancelled', label: '취소',       count: counts.cancelled },  // ← 신규 (cancelled_by='user')
   ]
 
-  // ─── DataTable 컬럼 정의 (Figma 7개 컬럼) ──────────────────────────────
-  //   ← [2026-05-06 핫픽스 v4] 상태 126 → 110 (-16) / 처리 124 → 140 (+16, 사용자 요청)
-  //     근거: 상태 칩(승인완료/승인대기/거절/노쇼 3-4자)는 ~70px라 110이면 충분
-  //           처리 컬럼은 우측 여백 부족 → +16으로 처리자 이름 우측 padding 확보
-  //   날짜 164 / 시간 200 / 회의 280 / 회의실 162 / 예약자 124 / 상태 110 / 처리 140
-  //   합계 1180 = Figma 콘텐츠 영역 1180 정확 일치 (변동 없음)
+  // ─── DataTable 컬럼 정의 (Figma 468:2122 — 8개 컬럼) ──────────────────────
+  //   ← [2026-05-06 사용자 요청] Figma 새 디자인 1:1 적용
+  //     · 신규: '승인 요청 날짜' 컬럼 (createdAt 표시) — 첫 번째
+  //     · 순서: 승인 요청 날짜 → 회의 → 날짜 → 시간 → 회의실 → 예약자 → 상태 → 처리
+  //     · fw 변경: 회의 Medium / 날짜 Regular (기존 반대)
+  //     · width: 시간 200→160 / 회의실 162→100 / 처리 140→124
+  //   합계: 164+280+164+160+100+124+110(상태)+124 = 1226
+  //   콘텐츠 영역 가용 ≈ 1132 → 약 94 초과 → 사용자 결정 Q3-A: overflow-x:auto 적용 (가로 스크롤)
   const columns: Column<Booking>[] = [
+    // ── 1. 승인 요청 날짜 (신규, Figma node 468:2124) ────────────────
+    //    Medium 14 #64748b / w 164 / pad '10 16'
+    {
+      key: 'createdAt', label: '승인 요청 날짜', width: 164, pad: '10 16',
+      render: (b) => (
+        <span style={{
+          fontSize: 14, fontWeight: 500, color: '#64748B', lineHeight: 1.5,
+          whiteSpace: 'nowrap',
+        }}>
+          {b.createdAt ? fmtDateFullWithDay(tsDate(new Date(b.createdAt).toISOString())) : '—'}
+        </span>
+      ),
+    },
+    // ── 2. 회의 (Figma node 468:2126) ───────────────────────────────
+    //    Medium 14 #111 / w 280 / pad '10 14' / gap 5 (recurring 칩 포함)
+    {
+      key: 'title', label: '회의', width: 280,
+      render: (b) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          {b.recurGroupId && <MetaBadge type="recurring" size="sm"/>}
+          <span style={{
+            fontSize: 14, fontWeight: 500, color: '#111', lineHeight: 1.5,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{b.title}</span>
+        </div>
+      ),
+    },
+    // ── 3. 날짜 (Figma node 468:2128) — fw Medium → Regular ────────
+    //    Regular 14 #64748b / w 164 / pad '10 16'
     {
       key: 'date', label: '날짜', width: 164, pad: '10 16',
       render: (b) => (
         <span style={{
-          fontSize: 14, fontWeight: 500, color: '#64748B', lineHeight: 1.5,
+          fontSize: 14, fontWeight: 400, color: '#64748B', lineHeight: 1.5,
           whiteSpace: 'nowrap',
         }}>
           {fmtDateFullWithDay(tsDate(b.start_at))}
         </span>
       ),
     },
+    // ── 4. 시간 (Figma node 468:2130) — width 200 → 160 ────────────
+    //    Regular 14 #64748b / w 160 / gap 4
     {
-      // ← [2026-05-06 핫픽스 v3] width 160 → 200 (사용자 요청 — 시간 ellipsis 제거)
-      //   근본 원인: 가용 영역 132px(160-14*2)으로는 "오전 9:00 – 오후 12:30" 표시 불가
-      //   해결: width +40 (200), 회의 컬럼 -40으로 보전 (합계 1180 유지)
-      //   span의 overflow/textOverflow도 제거 — width 충분하면 잘릴 일 없음
-      key: 'time', label: '시간', width: 200,
+      key: 'time', label: '시간', width: 160,
       render: (b) => (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 4,
@@ -256,22 +309,10 @@ export function AdminApprovalTable({
         </div>
       ),
     },
+    // ── 5. 회의실 (Figma node 468:2132) — width 162 → 100 ──────────
+    //    Regular 14 #111 / w 100
     {
-      // ← [2026-05-06 핫픽스 v3] width 320 → 280 (시간 컬럼 +40 보전)
-      //   회의 제목은 이미 ellipsis 처리되어 있어 width 축소 영향 최소
-      key: 'title', label: '회의', width: 280,
-      render: (b) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          {b.recurGroupId && <MetaBadge type="recurring" size="sm"/>}
-          <span style={{
-            fontSize: 14, fontWeight: 500, color: '#111', lineHeight: 1.5,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{b.title}</span>
-        </div>
-      ),
-    },
-    {
-      key: 'room', label: '회의실', width: 162,
+      key: 'room', label: '회의실', width: 100,
       render: (b) => {
         const room = rooms.find(r => r.room_id === b.room_id)
         return (
@@ -282,6 +323,8 @@ export function AdminApprovalTable({
         )
       },
     },
+    // ── 6. 예약자 (Figma node 468:2134) — Regular #111 ─────────────
+    //    UserAvatar 20 + span 14 fw 400 #111 gap 6
     {
       key: 'owner', label: '예약자', width: 124,
       render: (b) => {
@@ -290,18 +333,21 @@ export function AdminApprovalTable({
         const ownerName   = owner?.name ?? b.user ?? '?'
         const ownerAvatar = (owner as any)?.avatar_url ?? null
         return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
             <UserAvatar name={ownerName} avatarUrl={ownerAvatar} size={20}/>
             <span style={{
               fontSize: 14, fontWeight: 400, color: '#111', lineHeight: 1.3,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              minWidth: 0,                                               // ← flex item ellipsis 강제
             }}>{ownerName}</span>
           </div>
         )
       },
     },
+    // ── 7. 상태 (Figma node 468:2136) — w 110 (Figma는 auto, 110로 fixed) ─
+    //    BookingStatusBadge size='list' (chip-pending #f4ffaa / chip-approved #e5ffab — tokens.css)
     {
-      key: 'status', label: '상태', width: 110,                  // ← [핫픽스 v4] 126 → 110
+      key: 'status', label: '상태', width: 110,
       render: (b) => {
         const room = rooms.find(r => r.room_id === b.room_id)
         return (
@@ -317,7 +363,8 @@ export function AdminApprovalTable({
       },
     },
     {
-      key: 'action', label: '처리', width: 140,                  // ← [핫픽스 v4] 124 → 140 (사용자 요청)
+      // ── 8. 처리 (Figma node 468:2138) — width 140 → 124 ─────────
+      key: 'action', label: '처리', width: 124,
       render: (b) => {
         // ─── 처리 컬럼 분기 (사용자 Q4 결정 — C안) ──────────────────────
         const c = classify(b)
@@ -408,6 +455,53 @@ export function AdminApprovalTable({
       }}>승인 관리</h1>
 
       {/* ═══════════════════════════════════════════════════════════════════
+          ↓ [2026-05-06 사용자 요청 Q1-C] 날짜 조회 기준 토글 — 신청일 vs 시작일
+          ─────────────────────────────────────────────────────────────────
+          · 컬럼이 "승인 요청 날짜" + "날짜(예약 시작일)" 2개로 늘어나면서
+            상단 from~to 필터가 어느 기준 조회인지 명시 필요
+          · 신청일(createdAt): 승인 관리는 "들어온 신청 처리"가 목적 (기본)
+          · 시작일(startAt): "이 기간에 진행되는 예약" 조회
+          · 토글 변경 시 page 1로 리셋
+          ═══════════════════════════════════════════════════════════════════ */}
+      <div style={{
+        marginBottom: 16,
+        display: 'flex', alignItems: 'center', gap: 12,
+      }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: '#64748B' }}>조회 기준</span>
+        <div style={{
+          display: 'flex', gap: 4, padding: 4,
+          background: '#F1F5F9', borderRadius: 9999,
+        }}>
+          {([
+            { id: 'createdAt' as const, label: '신청일' },
+            { id: 'startAt'   as const, label: '시작일' },
+          ]).map(opt => {
+            const active = dateFilterMode === opt.id
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => { setDateFilterMode(opt.id); resetPage() }}
+                style={{
+                  padding: '6px 16px', borderRadius: 9999, border: 'none',
+                  background: active ? '#fff' : 'transparent',
+                  color:      active ? '#111' : '#64748B',
+                  fontSize:   13,
+                  fontWeight: active ? 500 : 400,
+                  fontFamily: 'inherit',
+                  cursor:     'pointer',
+                  boxShadow:  active ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+                  transition: 'background 0.15s, color 0.15s',
+                  whiteSpace: 'nowrap',
+                }}>
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════
           ↓ Filter Row 1: 날짜 범위 + 퀵버튼 (DateRangeFilter)
           ═══════════════════════════════════════════════════════════════════ */}
       <div style={{ marginBottom: 24 }}>
@@ -440,18 +534,23 @@ export function AdminApprovalTable({
 
       {/* ═══════════════════════════════════════════════════════════════════
           ↓ 테이블 (DataTable)
+          ─────────────────────────────────────────────────────────────────
+          [2026-05-06 사용자 결정 Q3-A] 컬럼 합계 1226 > 콘텐츠 영역 1132
+          → wrapper에 overflow-x:auto 적용 (가로 스크롤 허용)
           ═══════════════════════════════════════════════════════════════════ */}
-      <DataTable
-        data={pagedList}
-        columns={columns}
-        getRowKey={(b) => b.id}
-        onRowClick={onDetail}
-        loading={loadingRange}
-        emptyMessage="해당 기간에 승인 관리 내역이 없습니다."
-        page={page}
-        totalPages={totalPages}
-        onPageChange={setPage}
-      />
+      <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
+        <DataTable
+          data={pagedList}
+          columns={columns}
+          getRowKey={(b) => b.id}
+          onRowClick={onDetail}
+          loading={loadingRange}
+          emptyMessage="해당 기간에 승인 관리 내역이 없습니다."
+          page={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+        />
+      </div>
     </div>
   )
 }
