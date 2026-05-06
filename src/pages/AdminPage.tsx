@@ -24,6 +24,8 @@ import { ModalPortal } from '../components/common/ModalPortal'
 import { UserAvatar } from '../components/common/UserAvatar'
 import { UserChip } from '../components/common/UserChip'
 import { BookingListTable } from '../components/common/BookingListTable'
+// ← [2026-05-06 Admin Phase A] 좌측 사이드 네비게이션 컴포넌트 신설 (Figma node 451:3522)
+import { AdminSideNav, type AdminTabId } from '../components/layout/AdminSideNav'
 
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
 function addDaysStr(base: string, days: number): string {
@@ -476,46 +478,59 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
     }
   }, [bookings])
   const PER_PAGE = 15
-  const tabs = [
-    { id:'dashboard', icon:<BarChart2 size={14} strokeWidth={1.8}/>,  label:'대시보드' },
-    { id:'approvals', icon:<Inbox size={14} strokeWidth={1.8}/>,      label:'승인 관리', badge: bookings.filter(b => b.status === 'pending' && !b.autoCancelled).length },
-    { id:'bookings',  icon:<Calendar size={14} strokeWidth={1.8}/>,   label:'예약 관리' },
-    { id:'users',     icon:<Users size={14} strokeWidth={1.8}/>,      label:'사용자 관리' },
-    { id:'rooms',     icon:<Building2 size={14} strokeWidth={1.8}/>,  label:'회의실 관리' },
-  ]
+  // ← [2026-05-06 Admin Phase A] 가로 탭바 제거 — 좌측 사이드 네비 (AdminSideNav)로 이동
+  //   기존: tabs 배열 + 가로 button 그룹 (lucide 아이콘 + 라벨)
+  //   변경: AdminSideNav 컴포넌트가 5개 메뉴를 수직 표시 (Figma node 451:3522)
+  //   영향: lucide BarChart2/Inbox/Calendar/Users/Building2 imports는 다른 곳에서도
+  //         사용 중이라 일단 보존 (Phase B/C에서 정리)
+
+  // 승인 대기 건수 — 사이드 네비 dot 표시용
+  const pendingCount = useMemo(
+    () => bookings.filter((b: any) => b.status === 'pending' && !b.autoCancelled).length,
+    [bookings]
+  )
+
   return (
-    <div className="max-w-[1200px] mx-auto px-3 py-4 sm:px-6 sm:py-7">
-      <div className="anm flex gap-1 mb-5 overflow-x-auto" style={{ scrollbarWidth:'none' }}>
-        {tabs.map(t=>(
-          <button key={t.id} className="btn" onClick={()=>setTab(t.id)}
-            style={{
-              flex: 1,
-              maxWidth: 140,
-              padding: isMobile ? '8px 6px' : '10px 12px',
-              fontSize: isMobile ? 11 : 13,
-              borderRadius: 999,
-              fontWeight: activeTab===t.id ? 600 : 400,
-              background: activeTab===t.id ? '#111' : '#fff',
-              color: activeTab===t.id ? '#fff' : '#64748B',
-              border: 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              gap: 5, whiteSpace: 'nowrap', minWidth: 0,
-            }}>
-            {isMobile && <span style={{ display:'flex', alignItems:'center' }}>{t.icon}</span>}
-            {!isMobile && t.label}
-            {(t as any).badge > 0 && (
-              <span style={{ fontSize: 12, fontWeight: 600, color: activeTab===t.id ? 'rgba(255,255,255,0.6)' : '#E85D04' }}>
-                {(t as any).badge}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+    /* ═══════════════════════════════════════════════════════════════════
+       ↓ Admin 외곽 wrapper — Figma node 451:3521 1:1
+       · max-width 1400 (사이드 160 + gap 60 + 콘텐츠 1180)
+       · 좌측 사이드 네비 / 우측 콘텐츠 영역
+       · gap 60 (Figma: 220 - 160 = 60 — 사이드와 콘텐츠 사이 여백)
+       · padding-top 32 (Figma: 200 viewport - 헤더 ~80 - 여유 ~88)
+       ═══════════════════════════════════════════════════════════════════ */
+    <div style={{
+      maxWidth: 1400,
+      margin:   '0 auto',
+      padding:  isMobile ? '16px 12px' : '32px 24px',
+      display:  'flex',
+      gap:      isMobile ? 16 : 60,                 // ← Figma: 사이드와 콘텐츠 사이 60
+      alignItems: 'flex-start',                       // ← 사이드는 자기 콘텐츠 만큼만 (콘텐츠는 자유)
+    }}>
+      {/* ── 좌측 사이드 네비 (160px) ──────────────────────────────────
+          · 모바일에서는 가로 스크롤 가능한 탭처럼 동작 (추후 Phase A-2에서 처리)
+          · sticky로 스크롤 시에도 따라옴 (top은 헤더 높이 만큼) */}
+      <aside style={{
+        width:    isMobile ? '100%' : 160,            // ← Figma: 160
+        flexShrink: 0,
+        position: isMobile ? 'static' : 'sticky',
+        top:      isMobile ? undefined : 32,          // ← 헤더 padding 외 여유
+        // ← 모바일은 sticky 비활성, 콘텐츠 위에 자연 흐름 (사용자 룰: 모바일 영향 최소)
+      }}>
+        <AdminSideNav
+          activeTab={activeTab as AdminTabId}
+          onTabChange={(id) => setTab(id)}
+          pendingCount={pendingCount}
+        />
+      </aside>
+
+      {/* ── 우측 콘텐츠 영역 ────────────────────────────────────────── */}
+      <div style={{ flex: 1, minWidth: 0 /* ← grid item overflow 안전장치 */ }}>
       {activeTab==='dashboard' && <AdminDashboard bookings={bookings} rooms={rooms} users={users} isMobile={isMobile} onDetail={onDetail}/>}
       {activeTab==='bookings'  && <AdminBookings  bookings={bookings} setBookings={setBookings} rooms={rooms} users={users} onForceCancel={onForceCancel} showToast={showToast} isMobile={isMobile} PER_PAGE={PER_PAGE} onDetail={onDetail}/>}{/* ← [2026-04-24 P6-B] users 추가 — 예약자 이름 live */}
       {activeTab==='approvals' && <AdminApprovals bookings={bookings} rooms={rooms} users={users} onApprove={onApprove} onReject={onReject} showToast={showToast} isMobile={isMobile} onDetail={onDetail}/>}
       {activeTab==='rooms'     && <AdminRooms     showToast={showToast} isMobile={isMobile}/>}
       {activeTab==='users'     && <AdminUsers     users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile}/>}
+      </div>
     </div>
   )
 }
