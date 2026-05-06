@@ -374,21 +374,10 @@ export function AdminApprovalTable({
         </div>
       ),
     },
-    // ── 5. 회의실 (Figma node 468:2132) — width 162 → 100 ──────────
-    //    Regular 14 #111 / w 100
-    {
-      key: 'room', label: '회의실', width: 100,
-      render: (b) => {
-        const room = rooms.find(r => r.room_id === b.room_id)
-        return (
-          <span style={{
-            fontSize: 14, fontWeight: 400, color: '#111', lineHeight: 1.5,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{room?.room_name ?? '—'}</span>
-        )
-      },
-    },
-    // ── 6. 예약자 (Figma node 468:2134) — Regular #111 ─────────────
+    // ── [2026-05-06 사용자 요청] '회의실' 컬럼 삭제 ─────────────────────
+    //   근거: Admin 승인 대상은 Emerald(room_id=3) 단일 룸 → 모든 행이 '2F Emerald' → 정보 가치 0
+    //   영향: 컬럼 합계 1146 → 1046 (-100), 가로 스크롤 자동 반영 (minWidth 자동 계산)
+    // ── 5. 예약자 (Figma node 468:2134) — Regular #111 ─────────────
     //    UserAvatar 20 + span 14 fw 400 #111 gap 6
     {
       key: 'owner', label: '예약자', width: 124,

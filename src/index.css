@@ -95,9 +95,35 @@
 
   input, select, textarea, button { font-family: inherit; }
 
-  /* 스크롤바 */
-  ::-webkit-scrollbar { width: 5px; height: 5px; }
-  ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+  /* ── 스크롤바 (전역 커스텀 디자인) ──────────────────────────────────────
+     [2026-05-06 사용자 요청] 토큰 기반 + hover/active 인터랙션 + Firefox 대응
+     · 색상/사이즈 조정 시 styles/tokens.css의 --scrollbar-* 토큰만 수정
+     · Webkit (Chrome/Safari/Edge) + Firefox 양쪽 일관 적용
+  */
+  ::-webkit-scrollbar {
+    width:  var(--scrollbar-width);
+    height: var(--scrollbar-width);                       /* ← 가로 스크롤바도 동일 */
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);                   /* ← transparent (배경 자연스럽게) */
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: var(--scrollbar-radius);
+    transition: background 0.15s;                         /* ← 호버 부드럽게 */
+  }
+  ::-webkit-scrollbar-thumb:hover  { background: var(--scrollbar-thumb-hover); }
+  ::-webkit-scrollbar-thumb:active { background: var(--scrollbar-thumb-active); }
+  ::-webkit-scrollbar-corner {
+    background: var(--scrollbar-track);                   /* ← 가로/세로 교차 코너도 transparent */
+  }
+
+  /* Firefox — Webkit과 동일 톤으로 통일 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
+
   .dark ::-webkit-scrollbar-thumb { background: #475569; }
 
   /* 포커스 링 */

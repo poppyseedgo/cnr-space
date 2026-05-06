@@ -83,6 +83,20 @@
   --shadow-card-lg:  0 8px 32px rgba(0,0,0,0.10);
   --radius-full: 9999px;
   --sab: env(safe-area-inset-bottom, 0px);
+
+  /* ── [2026-05-06 사용자 요청] 전역 스크롤바 디자인 토큰 ────────────────────
+     앱 전역에서 일관된 스크롤바 표시 — 사용자가 톤 조정 시 이 토큰만 변경하면 됨
+     · width:           세로 스크롤바 너비 (가로 스크롤바 height도 동일)
+     · thumb:           스크롤 핸들 색상 (default/hover/active 3단계)
+     · track:           트랙 색상 (transparent로 배경에 자연스럽게)
+     · radius:          핸들 모서리 둥글기
+  ─────────────────────────────────────────────────────────────────────────── */
+  --scrollbar-width:        3px;          /* ← 8px → 3px (사용자 요청 더 얇게, macOS 스타일) */
+  --scrollbar-track:        transparent;  /* ← 배경에 자연스럽게 */
+  --scrollbar-thumb:        #CBD5E1;      /* ← slate-300 (기존 유지) */
+  --scrollbar-thumb-hover:  #94A3B8;      /* ← slate-400 (호버 시 진해짐) */
+  --scrollbar-thumb-active: #64748B;      /* ← slate-500 (드래그 중 가장 진함) */
+  --scrollbar-radius:       4px;
 }
 
 /* ── 칩 사이즈 modifier ─────────────────────────────────────────────────────
