@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react'
+import { createPortal } from 'react-dom'  // ← [2026-05-06 사이드 sticky 핫픽스] 사이드 네비를 body 직접 mount하기 위함
 import { AlertCircle, AlertTriangle, ArrowUpDown, Ban, BarChart2, Building2, Calendar, CheckCircle2, ChevronDown, Clock, Download, ImagePlus, Inbox, RefreshCw, RotateCw, Search, Trash2, Upload, Users, X } from 'lucide-react'
 import { Button } from '../components/common/Button'
 import { ModalCloseButton } from '../components/common/ModalCloseButton' // ← [2026-04-22] 모달 X 버튼 공통화
@@ -448,7 +449,8 @@ function AggTable({ rows, cols, onExport, onRowClick }: {
 
 // ─── AdminView ─────────────────────────────────────────────────────────────────
 // ← [2026-05-06 Admin Phase C] currentUserId/currentUserEmail 추가 — AdminApprovalTable 내 BookingStatusBadge 판정용
-export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject, onForceCancel, onDetail, currentUserId = '', currentUserEmail = '' }) {
+// ← [2026-05-06 사이드 sticky 핫픽스] headerHeight 추가 — 사이드 네비 fixed top 위치 계산용
+export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject, onForceCancel, onDetail, currentUserId = '', currentUserEmail = '', headerHeight = 0 }) {
   const TABS = ['dashboard','bookings','approvals','rooms','users']
   const getTabFromHash = () => {
     const hash = window.location.hash.replace('#', '')
@@ -497,37 +499,61 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
     /* ═══════════════════════════════════════════════════════════════════
        ↓ Admin 외곽 wrapper — Figma node 451:3521 1:1
        · max-width 1400 (사이드 160 + gap 60 + 콘텐츠 1180)
-       · 좌측 사이드 네비 / 우측 콘텐츠 영역
-       · gap 60 (Figma: 220 - 160 = 60 — 사이드와 콘텐츠 사이 여백)
-       · padding-top 32 (Figma: 200 viewport - 헤더 ~80 - 여유 ~88)
+       · 데스크톱: 사이드는 createPortal로 body에 fixed mount (sticky 우회)
+       · 모바일: 사이드가 콘텐츠 위에 일반 흐름으로 표시
+       ─────────────────────────────────────────────────────────────────
+       [2026-05-06 사이드 sticky 핫픽스] sticky → fixed (createPortal 패턴)
+       · 증상: 사이드 네비가 스크롤 시 같이 딸려 올라가는 문제
+       · 근본 원인: html/body의 overflow-x:hidden이 sticky의 컨테이닝 블록을
+                  가로채어 sticky 작동 안 함 (userMemories 명시 룰)
+       · 해결: 헤더와 동일한 패턴 사용 — createPortal로 body 직접 mount + fixed
+                · 부모 체인의 어떤 css(overflow/transform/filter 등)도 영향 0
+                · top: headerHeight + 32 (헤더 아래 + 여유)
+                · left: viewport 너비 기반 동적 계산 (1400 wrapper 좌측 padding과 정렬)
+                · 콘텐츠 영역은 paddingLeft로 사이드 자리 확보 (244 = 24+160+60)
        ═══════════════════════════════════════════════════════════════════ */
-    <div style={{
-      maxWidth: 1400,
-      margin:   '0 auto',
-      padding:  isMobile ? '16px 12px' : '32px 24px',
-      display:  'flex',
-      gap:      isMobile ? 16 : 60,                 // ← Figma: 사이드와 콘텐츠 사이 60
-      alignItems: 'flex-start',                       // ← 사이드는 자기 콘텐츠 만큼만 (콘텐츠는 자유)
-    }}>
-      {/* ── 좌측 사이드 네비 (160px) ──────────────────────────────────
-          · 모바일에서는 가로 스크롤 가능한 탭처럼 동작 (추후 Phase A-2에서 처리)
-          · sticky로 스크롤 시에도 따라옴 (top은 헤더 높이 만큼) */}
-      <aside style={{
-        width:    isMobile ? '100%' : 160,            // ← Figma: 160
-        flexShrink: 0,
-        position: isMobile ? 'static' : 'sticky',
-        top:      isMobile ? undefined : 32,          // ← 헤더 padding 외 여유
-        // ← 모바일은 sticky 비활성, 콘텐츠 위에 자연 흐름 (사용자 룰: 모바일 영향 최소)
-      }}>
-        <AdminSideNav
-          activeTab={activeTab as AdminTabId}
-          onTabChange={(id) => setTab(id)}
-          pendingCount={pendingCount}
-        />
-      </aside>
+    <>
+      {/* ── 데스크톱: 사이드 네비를 body에 portal mount + fixed 위치 ──── */}
+      {!isMobile && createPortal(
+        <aside style={{
+          position: 'fixed',
+          top:      headerHeight + 32,                    // ← 헤더 높이 + 여유 32
+          // viewport 1400 이상: (vw - 1400)/2 + 24 padding / 1400 미만: 24
+          // → max((100vw - 1400px) / 2, 0px) + 24px (CSS calc + max)
+          left:     'calc(max((100vw - 1400px) / 2, 0px) + 24px)',
+          width:    160,                                   // ← Figma: 160
+          zIndex:   50,                                    // ← 콘텐츠 위에 표시 (헤더 100보다 낮게)
+        }}>
+          <AdminSideNav
+            activeTab={activeTab as AdminTabId}
+            onTabChange={(id) => setTab(id)}
+            pendingCount={pendingCount}
+          />
+        </aside>,
+        document.body
+      )}
 
-      {/* ── 우측 콘텐츠 영역 ────────────────────────────────────────── */}
-      <div style={{ flex: 1, minWidth: 0 /* ← grid item overflow 안전장치 */ }}>
+      {/* ── 본문 wrapper ─────────────────────────────────────────────
+          · 데스크톱: paddingLeft 244 = 24(좌) + 160(사이드) + 60(gap) — 사이드 자리 확보
+          · 모바일: 일반 padding 12, 사이드는 콘텐츠 위 인라인 */}
+      <div style={{
+        maxWidth: 1400,
+        margin:   '0 auto',
+        padding:  isMobile ? '16px 12px' : '32px 24px 32px 244px',
+      }}>
+        {/* 모바일: 사이드 인라인 표시 (자연 흐름) */}
+        {isMobile && (
+          <div style={{ marginBottom: 16 }}>
+            <AdminSideNav
+              activeTab={activeTab as AdminTabId}
+              onTabChange={(id) => setTab(id)}
+              pendingCount={pendingCount}
+            />
+          </div>
+        )}
+
+        {/* ── 콘텐츠 영역 ──────────────────────────────────────────── */}
+        <div style={{ minWidth: 0 /* ← overflow 안전장치 */ }}>
       {activeTab==='dashboard' && <AdminDashboard bookings={bookings} rooms={rooms} users={users} isMobile={isMobile} onDetail={onDetail}/>}
       {activeTab==='bookings'  && <AdminBookings  bookings={bookings} setBookings={setBookings} rooms={rooms} users={users} onForceCancel={onForceCancel} showToast={showToast} isMobile={isMobile} PER_PAGE={PER_PAGE} onDetail={onDetail}/>}{/* ← [2026-04-24 P6-B] users 추가 — 예약자 이름 live */}
       {/* ← [2026-05-06 Admin Phase C] AdminApprovals → AdminApprovalTable 교체
@@ -539,8 +565,9 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
       {activeTab==='approvals' && <AdminApprovalTable bookings={bookings} rooms={rooms} users={users} currentUserId={currentUserId} currentUserEmail={currentUserEmail} onApprove={onApprove} onReject={onReject} onDetail={onDetail} onCsvClick={() => showToast('CSV 다운로드 기능은 추후 구현 예정입니다.', 'info')}/>}
       {activeTab==='rooms'     && <AdminRooms     showToast={showToast} isMobile={isMobile}/>}
       {activeTab==='users'     && <AdminUsers     users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile}/>}
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
