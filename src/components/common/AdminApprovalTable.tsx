@@ -68,16 +68,29 @@ function classify(b: Booking): 'pending' | 'confirmed' | 'rejected' | 'expired' 
 
 // ─── 탭/퀵버튼 ID 타입 ───────────────────────────────────────────────────────
 type TabId   = 'all' | 'pending' | 'confirmed' | 'rejected' | 'expired' | 'cancelled'
-type QuickId = 'today' | '15days' | '3months'
+// QuickId는 아래 buildQuickButtons 위에서 정의 (퀵버튼 재구성 ← [Phase 3] 2026-05-06)
 // ← [2026-05-06 사용자 요청 Q1-C] 날짜 조회 토글 — 신청일 vs 시작일
 type DateFilterMode = 'createdAt' | 'startAt'
 
-// ─── 퀵버튼 정의 (Figma 451:3552) ────────────────────────────────────────────
-const QUICK_BUTTONS: QuickButtonDef<QuickId>[] = [
-  { id: 'today',    label: '오늘' },
-  { id: '15days',   label: '지난 15일' },
-  { id: '3months',  label: '지난 3개월' },
-]
+// ─── 퀵버튼 ID 타입 ──────────────────────────────────────────────────────────
+// ← [2026-05-06 사용자 결정 Q1-A] '오늘' 삭제 + '이번 달'/'전체' 추가
+//   재구성: 이번 달 / 지난 3개월 / 전체 (3개)
+//   기본값: 이번 달 (가장 자연스러운 진입점)
+type QuickId = 'month' | '3months' | 'all'
+
+// ─── 퀵버튼 라벨 동적 생성 (모드별) ─────────────────────────────────────────
+// ← [2026-05-06 사용자 결정 Q4-B] 모드에 따라 라벨 다름
+//   · createdAt 모드: '이번 달 신청' / '지난 3개월 신청' / '전체'
+//   · startAt   모드: '이번 달 진행' / '지난 3개월 진행' / '전체'
+//   '전체'는 모드 무관 (의미 동일)
+function buildQuickButtons(mode: 'createdAt' | 'startAt'): QuickButtonDef<QuickId>[] {
+  const verb = mode === 'createdAt' ? '신청' : '진행'
+  return [
+    { id: 'month',    label: `이번 달 ${verb}` },
+    { id: '3months',  label: `지난 3개월 ${verb}` },
+    { id: 'all',      label: '전체' },                  // ← 모드 무관
+  ]
+}
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 interface AdminApprovalTableProps {
@@ -103,10 +116,37 @@ export function AdminApprovalTable({
   currentUserId, currentUserEmail,
   onDetail, onApprove, onReject, onCsvClick,
 }: AdminApprovalTableProps) {
-  // ── 날짜 범위 (기본: 오늘 ~ 오늘 — Figma의 '오늘' 퀵버튼 활성 상태)
-  const [from, setFrom] = useState<string>(todayStr())
-  const [to,   setTo]   = useState<string>(todayStr())
-  const [activeQuick, setActiveQuick] = useState<QuickId | null>('today')
+  // ── 날짜 범위 헬퍼 (퀵버튼별 from/to 계산) ─────────────────────────────────
+  // ← [2026-05-06 Phase 3] 퀵버튼 재구성에 따른 헬퍼
+  //   · month: 이번 달 1일 ~ 말일
+  //   · 3months: 오늘 -90일 ~ 오늘 (롤링)
+  //   · all: '2020-01-01' ~ 오늘 (사용자 결정 Q2-A: 실용적 무한대)
+  function getQuickRange(quickId: QuickId): [string, string] {
+    const today = new Date()
+    if (quickId === 'month') {
+      const first = new Date(today.getFullYear(), today.getMonth(), 1)
+      const last  = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+      return [objToStr(first), objToStr(last)]
+    }
+    if (quickId === '3months') {
+      const f = new Date(); f.setDate(f.getDate() - 90)
+      return [objToStr(f), objToStr(today)]
+    }
+    // 'all' — 2020-01-01 ~ today (실용적 무한대)
+    return ['2020-01-01', objToStr(today)]
+  }
+
+  // ── 날짜 범위 (기본: 이번 달 — 사용자 결정 Q1-A)
+  // ← [2026-05-06 Phase 3] '오늘' → '이번 달' 기본값 변경
+  const initialMonthRange = (() => {
+    const today = new Date()
+    const first = new Date(today.getFullYear(), today.getMonth(), 1)
+    const last  = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+    return [objToStr(first), objToStr(last)] as [string, string]
+  })()
+  const [from, setFrom] = useState<string>(initialMonthRange[0])
+  const [to,   setTo]   = useState<string>(initialMonthRange[1])
+  const [activeQuick, setActiveQuick] = useState<QuickId | null>('month')
   // ← [2026-05-06 사용자 요청 Q1-C] 날짜 조회 기준 토글 — 신청일(createdAt) vs 시작일(startAt)
   //    근거: 컬럼이 "승인 요청 날짜" + "날짜(예약 시작일)" 2개로 늘어남 → 어느 기준 조회인지 명시 필요
   //    기본: 신청일(createdAt) — 승인 관리는 "들어온 신청 처리"가 목적
@@ -133,17 +173,21 @@ export function AdminApprovalTable({
   )
 
   // ── 백엔드 데이터 (날짜 범위 — 과거 포함, Admin 룸 필터)
-  //   기존 AdminApprovals의 fetchRange와 동일 로직
+  // ← [2026-05-06 Phase 3 사용자 결정 Q3-A] dateFilterMode 반영
+  //    · 'createdAt' 모드 → loadBookingsByRange(from, to, 'created_at')
+  //    · 'startAt'   모드 → loadBookingsByRange(from, to, 'start_at')   [기존 동작]
+  //    deps에 dateFilterMode 추가 → 모드 변경 시 자동 refetch
   const [rangeData, setRangeData] = useState<Booking[]>([])
   const [loadingRange, setLoadingRange] = useState(false)
   const fetchRange = useCallback(async () => {
     setLoadingRange(true)
     try {
-      const data = await loadBookingsByRange(from, to)
+      const dateField = dateFilterMode === 'createdAt' ? 'created_at' : 'start_at'
+      const data = await loadBookingsByRange(from, to, dateField)
       setRangeData(data.filter(b => adminRoomIds.has(b.room_id)))
     } catch (e) { console.error(e) }
     finally { setLoadingRange(false) }
-  }, [from, to, adminRoomIds])
+  }, [from, to, adminRoomIds, dateFilterMode])
   useEffect(() => { fetchRange() }, [fetchRange])
 
   // ── 라이브 + 백엔드 머지 (라이브 우선)
@@ -159,31 +203,42 @@ export function AdminApprovalTable({
     return [...liveAll, ...historical].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
   }, [bookings, rangeData, adminRoomIds])
 
-  // ── 통계 (탭 카운트)
-  // ← [2026-05-06] 'cancelled' 카운트 추가 (사용자 직접 취소)
-  const counts = useMemo(() => ({
-    all:       mergedData.length,
-    pending:   mergedData.filter(b => classify(b) === 'pending').length,
-    confirmed: mergedData.filter(b => classify(b) === 'confirmed').length,
-    rejected:  mergedData.filter(b => classify(b) === 'rejected').length,
-    expired:   mergedData.filter(b => classify(b) === 'expired').length,
-    cancelled: mergedData.filter(b => classify(b) === 'cancelled').length,  // ← 신규
-  }), [mergedData])
+  // ── 날짜 범위 + 토글 적용된 데이터 (단일 진실 원천)
+  // ← [2026-05-06 Phase 3 사용자 결정 Q5-A] 카운트와 표시 데이터 통합 기준
+  //    근거: counts와 displayList가 다른 데이터 기준으로 계산되면 사용자 혼란
+  //    해결: 날짜 토글 + from~to 적용 후의 단일 데이터(filteredByDate) → counts/displayList 모두 이로부터 파생
+  //    백엔드(loadBookingsByRange)도 dateField 동일 기준으로 fetch하므로 클라이언트 필터는
+  //    라이브 bookings (날짜 무관 전체 admin 데이터) 정리용
+  const filteredByDate = useMemo(() => {
+    const fromTs = +new Date(from + 'T00:00:00+09:00')
+    const toTs   = +new Date(to   + 'T23:59:59+09:00')
+    return mergedData.filter(b => {
+      if (dateFilterMode === 'createdAt') {
+        return b.createdAt && b.createdAt >= fromTs && b.createdAt <= toTs
+      }
+      // startAt 모드: start_at 문자열을 timestamp로 변환해 비교
+      const startTs = +new Date(b.start_at)
+      return startTs >= fromTs && startTs <= toTs
+    })
+  }, [mergedData, dateFilterMode, from, to])
 
-  // ── 탭 + 검색 필터 → 표시 리스트
-  // ← [2026-05-06 사용자 요청 Q1-C] 날짜 토글 반영
-  //    · 'createdAt' 모드: createdAt이 from~to 범위 안인 booking만 (승인 요청 날짜 기준 조회)
-  //    · 'startAt' 모드: 백엔드(loadBookingsByRange)가 이미 start_at 기준으로 fetch 완료
-  //    클라이언트 측 필터로 처리 — 라이브 bookings에는 모든 admin 룸 데이터 있음
+  // ── 통계 (탭 카운트) — filteredByDate 기준으로 변경 (사용자 결정 Q5-A)
+  // ← [2026-05-06 Phase 3] mergedData → filteredByDate
+  //    탭 카운트와 표시 데이터가 동일한 데이터 풀에서 파생 → 일관성 보장
+  const counts = useMemo(() => ({
+    all:       filteredByDate.length,
+    pending:   filteredByDate.filter(b => classify(b) === 'pending').length,
+    confirmed: filteredByDate.filter(b => classify(b) === 'confirmed').length,
+    rejected:  filteredByDate.filter(b => classify(b) === 'rejected').length,
+    expired:   filteredByDate.filter(b => classify(b) === 'expired').length,
+    cancelled: filteredByDate.filter(b => classify(b) === 'cancelled').length,
+  }), [filteredByDate])
+
+  // ── 탭 + 검색 필터 → 표시 리스트 (filteredByDate 기준으로 정리)
+  // ← [2026-05-06 Phase 3] 백엔드가 dateField 기준 fetch하지만 라이브 bookings는 무관
+  //    → filteredByDate에서 탭/검색 추가 필터 (이중 안전망)
   const displayList = useMemo(() => {
-    let list = mergedData
-    // 날짜 토글 — createdAt 모드에서 client-side 추가 필터
-    if (dateFilterMode === 'createdAt') {
-      const fromTs = +new Date(from + 'T00:00:00')
-      const toTs   = +new Date(to   + 'T23:59:59')
-      list = list.filter(b => b.createdAt && b.createdAt >= fromTs && b.createdAt <= toTs)
-    }
-    // (startAt 모드는 백엔드 + mergedData가 이미 start_at 기준이므로 추가 필터 없음)
+    let list = filteredByDate
     if (tab !== 'all') list = list.filter(b => classify(b) === tab)
     if (searchQ.trim()) {
       const q = searchQ.toLowerCase().trim()
@@ -193,24 +248,17 @@ export function AdminApprovalTable({
       )
     }
     return list
-  }, [mergedData, tab, searchQ, dateFilterMode, from, to])
+  }, [filteredByDate, tab, searchQ])
 
   // ── 페이징
   const totalPages = Math.max(1, Math.ceil(displayList.length / PAGE_SIZE))
   const pagedList  = displayList.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  // ── 퀵버튼 적용
+  // ── 퀵버튼 적용 (Phase 3: getQuickRange 헬퍼 사용)
+  // ← [2026-05-06 Phase 3] 'today'/'15days' 제거, 'month'/'3months'/'all' 추가
   const applyQuick = (type: QuickId) => {
-    const today = new Date()
-    if (type === 'today') {
-      setFrom(objToStr(today)); setTo(objToStr(today))
-    } else if (type === '15days') {
-      const f = new Date(); f.setDate(f.getDate() - 14)  // -14일 ~ 오늘 = 15일치
-      setFrom(objToStr(f));     setTo(objToStr(today))
-    } else {
-      const f = new Date(); f.setDate(f.getDate() - 90)  // 지난 3개월 (-90일 ~ 오늘)
-      setFrom(objToStr(f));     setTo(objToStr(today))
-    }
+    const [f, t] = getQuickRange(type)
+    setFrom(f); setTo(t)
     setActiveQuick(type)
     resetPage()
   }
@@ -481,7 +529,15 @@ export function AdminApprovalTable({
               <button
                 key={opt.id}
                 type="button"
-                onClick={() => { setDateFilterMode(opt.id); resetPage() }}
+                onClick={() => {
+                  setDateFilterMode(opt.id)
+                  // ← [2026-05-06 Phase 3] 모드 변경 시 퀵버튼/날짜 범위 '이번 달'로 자동 리셋
+                  //    근거: 모드가 바뀌면 데이터 의미도 달라짐 → 일관된 시작점 제공
+                  const [f, t] = getQuickRange('month')
+                  setFrom(f); setTo(t)
+                  setActiveQuick('month')
+                  resetPage()
+                }}
                 style={{
                   padding: '6px 16px', borderRadius: 9999, border: 'none',
                   background: active ? '#fff' : 'transparent',
@@ -511,7 +567,7 @@ export function AdminApprovalTable({
           onToChange={d   => { setTo(d);   setActiveQuick(null); resetPage() }}
           activeQuick={activeQuick}
           onQuickClick={applyQuick}
-          quickButtons={QUICK_BUTTONS}
+          quickButtons={buildQuickButtons(dateFilterMode) /* ← Q4-B: 모드별 동적 라벨 */}
         />
       </div>
 

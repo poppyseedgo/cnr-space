@@ -248,7 +248,14 @@ export async function loadBookings(): Promise<Booking[]> {
 
 // ── 기간별 예약 조회 (Admin Dashboard 전용) ───────────────────────────────────
 // Supabase Pro PITR 기준 전체 기간 조회 가능, 날짜 범위는 KST 기준
-export async function loadBookingsByRange(from: string, to: string): Promise<Booking[]> {
+// ← [2026-05-06 사용자 결정 Q3-A] dateField 파라미터 추가 — 'start_at'(default) | 'created_at'
+//    근거: 승인 관리 테이블에 신청일/시작일 토글이 추가되어 백엔드 fetch 기준도 통일 필요
+//    default 'start_at'으로 기존 호출처(AdminPage 등)는 영향 없음
+export async function loadBookingsByRange(
+  from: string,
+  to: string,
+  dateField: 'start_at' | 'created_at' = 'start_at'
+): Promise<Booking[]> {
   if (!isSupabaseEnabled) return []
   try {
     const fromISO = new Date(from + 'T00:00:00+09:00').toISOString()
@@ -256,9 +263,9 @@ export async function loadBookingsByRange(from: string, to: string): Promise<Boo
     const { data, error } = await supabase
       .from('bookings')
       .select('*, booking_attendees(email, name)')
-      .gte('start_at', fromISO)
-      .lte('start_at', toISO)
-      .order('start_at', { ascending: false })
+      .gte(dateField, fromISO)                          // ← dateField 동적 ('start_at' 또는 'created_at')
+      .lte(dateField, toISO)
+      .order(dateField, { ascending: false })           // ← 정렬도 동일 기준
     if (error) throw error
     return (data ?? []).map(row => {
       const b = rowToBooking(row)
