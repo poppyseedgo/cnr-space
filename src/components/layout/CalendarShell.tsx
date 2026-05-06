@@ -596,11 +596,11 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
   //   · CW 160 → 200 (예약 슬롯 가로 공간 확보, 제목 더 길게 노출)
   //   · RH 80 → 92 (슬롯 세로 공간 확대, 제목/시간/예약자 3줄 + 칩 row 여유)
   //   · LW 224 (좌측 회의실명 컬럼 너비는 유지)
-  // ← [2026-05-06 핫픽스 v18] RH 92 → 82 (사용자 요청, 셀 컴팩트화)
+  // ← [2026-05-06 핫픽스 v18] RH 92 → 86 (사용자 요청, 셀 컴팩트화)
   //   · 단일 진실 원천: 외곽 row(L735) + 내부 셀(L779) 모두 자동 동기화
   //   · 이벤트 박스(L878 positionStyle): top:3 bottom:4 절대값 사용 → RH 변경 자동 적응 ✅
-  //   · 시간 인디케이터/헤더 등 92 raw 사용처 0건 → 부작용 없음
-  const CW = 200, RH = 82, LW = 224
+  //   · 시간 인디케이터/헤더 등 raw magic number 사용처 0건 → 부작용 없음
+  const CW = 200, RH = 86, LW = 224
   const rooms = (dvRooms as any[]).filter(r => r.is_active)
   const totalW = CW * HOURS.length
   // ← [2026-04-23] 예약 가능 기간 정책: 시간 슬롯 단위 판정 (아래 map 내부에서)
