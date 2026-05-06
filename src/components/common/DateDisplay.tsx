@@ -83,7 +83,8 @@ export function DateDisplay({
         {/* 날짜 텍스트 */}
         <span style={{
           fontSize:   16,                               // ← Figma: 16
-          fontWeight: 500,                              // ← Figma: Medium
+          // ← [2026-05-06 Phase 4] Figma 468:3244 'Pretendard:Regular' — fw 500 → 400
+          fontWeight: 400,                              // ← Figma: Regular (이전 Medium 500)
           color:      hasValue ? '#111' : '#99A1AF',    // ← 빈 값일 땐 placeholder 회색
           lineHeight: 'normal',                         // ← Figma: leading normal
           whiteSpace: 'nowrap',
@@ -92,7 +93,8 @@ export function DateDisplay({
         {displayDay && (
           <span style={{
             fontSize:   16,                             // ← Figma: 16
-            fontWeight: 500,                            // ← Figma: Medium
+            // ← [2026-05-06 Phase 4] Figma 468:3244 'Pretendard:Regular' — fw 500 → 400
+            fontWeight: 400,                            // ← Figma: Regular (이전 Medium 500)
             // ← [2026-05-06 Admin Phase C] 색상 #99A1AF → #A9B9D5 (Figma node 468:1328)
             color:      '#A9B9D5',
             lineHeight: 'normal',

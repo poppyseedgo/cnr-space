@@ -98,8 +98,9 @@ export function DateRangeFilter<
             onModeChange={modeToggle.onModeChange}
           />
         )}
-        {/* DateDisplay×2 + ⎯ — 자체 gap 12 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* DateDisplay×2 + ⎯ — 자체 gap 8 (Figma 468:3244 1:1) */}
+        {/* ← [2026-05-06 Phase 4] gap 12 → 8 (Figma `gap-[8px]` 정확) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <DateDisplay
             value={from}
             onChange={d => onFromChange(d)}
