@@ -80,11 +80,12 @@ type QuickId = 'month' | '3months' | 'all'
 
 // ─── 퀵버튼 라벨 동적 생성 (모드별) ─────────────────────────────────────────
 // ← [2026-05-06 사용자 결정 Q4-B] 모드에 따라 라벨 다름
-//   · createdAt 모드: '이번 달 신청' / '지난 3개월 신청' / '전체'
-//   · startAt   모드: '이번 달 진행' / '지난 3개월 진행' / '전체'
+//   · createdAt 모드: '이번 달 요청' / '지난 3개월 요청' / '전체'   ← Figma 451:3205
+//   · startAt   모드: '이번 달 회의' / '지난 3개월 회의' / '전체'   ← Figma 468:2589
 //   '전체'는 모드 무관 (의미 동일)
+// ← [2026-05-06 Phase 4 사용자 요청] '신청'→'요청', '진행'→'회의' (Figma 정확 라벨)
 function buildQuickButtons(mode: 'createdAt' | 'startAt'): QuickButtonDef<QuickId>[] {
-  const verb = mode === 'createdAt' ? '신청' : '진행'
+  const verb = mode === 'createdAt' ? '요청' : '회의'  // ← '신청'/'진행' → '요청'/'회의'
   return [
     { id: 'month',    label: `이번 달 ${verb}` },
     { id: '3months',  label: `지난 3개월 ${verb}` },
