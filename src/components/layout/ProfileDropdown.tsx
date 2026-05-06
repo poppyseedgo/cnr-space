@@ -155,9 +155,9 @@ export function ProfileDropdown({
             <button className="btn" onClick={()=>{onSetView("mypage");setShowDropdown(false);}}
               style={{
                 width:"100%", textAlign:"left",
-                padding:"8px 12px",
-                fontSize:14, fontWeight:500, lineHeight:1.5,
-                letterSpacing:"0.14px",
+                padding:"12px",  // ← [2026-05-06] 8px 12px → 12px
+                fontSize:14, fontWeight:400, lineHeight:1.5,  // ← [2026-05-06] 500 → 400
+                letterSpacing:"0.5px",  // ← [2026-05-06] 0.14px → 0.5px
                 background:view==="mypage"?"#F8FAFC":"transparent",
                 color:"#111",
                 display:"flex", alignItems:"center", gap:8,
@@ -172,9 +172,9 @@ export function ProfileDropdown({
               <button className="btn" onClick={()=>{onSetView("admin");setShowDropdown(false);}}
                 style={{
                   width:"100%", textAlign:"left",
-                  padding:"8px 12px",
-                  fontSize:14, fontWeight:500, lineHeight:1.5,
-                  letterSpacing:"0.14px",
+                  padding:"12px",  // ← [2026-05-06] 8px 12px → 12px
+                  fontSize:14, fontWeight:400, lineHeight:1.5,  // ← [2026-05-06] 500 → 400
+                  letterSpacing:"0.5px",  // ← [2026-05-06] 0.14px → 0.5px
                   background:view==="admin"?"#F8FAFC":"transparent",
                   color:"#111",
                   display:"flex", alignItems:"center", gap:8,
@@ -196,7 +196,7 @@ export function ProfileDropdown({
               style={{
                 width:"100%", textAlign:"left",
                 padding:"4px 0",
-                fontSize:14, fontWeight:500, lineHeight:1.5,
+                fontSize:14, fontWeight:400, lineHeight:1.5,  // ← [2026-05-06] 500 → 400
                 color:"#99A1AF",
                 background:"transparent",
                 display:"flex", alignItems:"center", gap:8,
