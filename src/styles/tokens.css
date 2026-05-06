@@ -74,7 +74,7 @@
         · 모든 square 칩(내 예약/사용완료/승인완료 등)에 일관 적용
         · 개별 상태 클래스에서 padding·radius 오버라이드 방지 */
   --chip-square-radius:       10px;
-  --chip-square-padding:      8px 14px;
+  --chip-square-padding:      8px 12px;
   --chip-square-font-size:    12px;
   --chip-square-font-weight:  500;
   --chip-square-line-height:  14px;
