@@ -601,7 +601,8 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
   //   · 이벤트 박스(L878 positionStyle): top:3 bottom:4 절대값 사용 → RH 변경 자동 적응 ✅
   //   · 시간 인디케이터/헤더 등 raw magic number 사용처 0건 → 부작용 없음
   // ← [2026-05-06 v19] RH 86 → 92 (사용자 재요청, 다시 확대 — 86이 너무 컴팩트)
-  const CW = 200, RH = 92, LW = 224
+  // ← [2026-05-06 v20] RH 92 → 88 (92와 86 중간값으로 미세 조정)
+  const CW = 200, RH = 88, LW = 224
   const rooms = (dvRooms as any[]).filter(r => r.is_active)
   const totalW = CW * HOURS.length
   // ← [2026-04-23] 예약 가능 기간 정책: 시간 슬롯 단위 판정 (아래 map 내부에서)
