@@ -39,12 +39,13 @@ export function DateDisplay({
   const triggerRef = useRef<HTMLButtonElement>(null)
 
   // ── 표시값 계산
-  //   value 있음:   "2026년 4월 12일" + "수요일"
+  //   value 있음:   "2026년 4월 12일" + "수"
   //   value 없음:   placeholder만 표시, 요일 숨김
+  // ← [2026-05-06 Phase 4 사용자 요청] 요일 "수요일" 풀네임 → "수" 단축 (Figma 468:3244 1:1)
   const hasValue   = !!value
   const displayDate = hasValue ? fmtDateFull(value) : placeholder
   const displayDay  = hasValue
-    ? `${DAY_NAMES[dateToObj(value).getDay()]}요일`     // ← Figma: "수요일" 풀네임
+    ? DAY_NAMES[dateToObj(value).getDay()]              // ← "수" (이전 "수요일")
     : ''
 
   return (

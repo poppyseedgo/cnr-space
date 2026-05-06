@@ -310,9 +310,17 @@ export function AdminApprovalTable({
     {
       key: 'title', label: '회의', width: 200,
       render: (b) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        // ← [2026-05-06 Phase 4 사용자 요청] '회의' 제목 ellipsis 작동 fix
+        //    근본 원인: flex 자식 default min-width:auto → 자식이 컨텐츠 너비 강제 확장 → ellipsis 미작동
+        //    해결: 부모 div에 width:100% + minWidth:0 (Td 안에서 shrink 허용)
+        //          자식 span에 flex:1 + minWidth:0 (recurring 칩 옆 영역 다 차지하면서 shrink)
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 5,
+          width: '100%', minWidth: 0,                 // ← 부모 Td 안에서 100% + shrink 허용
+        }}>
           {b.recurGroupId && <MetaBadge type="recurring" size="sm"/>}
           <span style={{
+            flex: 1, minWidth: 0,                     // ← ★ 핵심: flex 자식 shrink 허용 → ellipsis 활성
             fontSize: 14, fontWeight: 500, color: '#111', lineHeight: 1.5,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{b.title}</span>
