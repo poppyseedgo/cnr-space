@@ -302,23 +302,13 @@ export function AdminApprovalTable({
   //   합계: 164+280+164+160+100+124+110(상태)+124 = 1226
   //   콘텐츠 영역 가용 ≈ 1132 → 약 94 초과 → 사용자 결정 Q3-A: overflow-x:auto 적용 (가로 스크롤)
   const columns: Column<Booking>[] = [
-    // ── 1. 승인 요청 날짜 (신규, Figma node 468:2124) ────────────────
-    //    Medium 14 #64748b / w 164 / pad '10 16'
-    {
-      key: 'createdAt', label: '승인 요청 날짜', width: 164, pad: '10 16',
-      render: (b) => (
-        <span style={{
-          fontSize: 14, fontWeight: 500, color: '#64748B', lineHeight: 1.5,
-          whiteSpace: 'nowrap',
-        }}>
-          {b.createdAt ? fmtDateFullWithDay(tsDate(new Date(b.createdAt).toISOString())) : '—'}
-        </span>
-      ),
-    },
-    // ── 2. 회의 (Figma node 468:2126) ───────────────────────────────
+    // ── 1. 회의 (Figma node 468:2126) ───────────────────────────────
     //    Medium 14 #111 / w 280 / pad '10 14' / gap 5 (recurring 칩 포함)
+    // ← [2026-05-06 Phase 4 사용자 요청] Figma 468:2122 1:1
+    //    · 위치: 2번째 → 1번째 (테이블 첫 컬럼)
+    //    · width: 320 → 280 (Figma 468:2122 w-[280px])
     {
-      key: 'title', label: '회의', width: 320,                  // ← [2026-05-06 Phase 4] 280 → 320 (Figma 451:3205 w-[320px])
+      key: 'title', label: '회의', width: 280,
       render: (b) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           {b.recurGroupId && <MetaBadge type="recurring" size="sm"/>}
@@ -329,10 +319,27 @@ export function AdminApprovalTable({
         </div>
       ),
     },
-    // ── 3. 날짜 (Figma node 468:2128) — fw Medium → Regular ────────
+    // ── 2. 승인 요청 날짜 (Figma node 468:2124) ─────────────────────
+    //    ← [2026-05-06 Phase 4 사용자 요청] Figma 468:2122 1:1
+    //    · 위치: 1번째 → 2번째
+    //    · body fw: Medium 500 → Regular 400 (Figma `Pretendard:Regular`)
     //    Regular 14 #64748b / w 164 / pad '10 16'
     {
-      key: 'date', label: '날짜', width: 164, pad: '10 16',
+      key: 'createdAt', label: '승인 요청 날짜', width: 164, pad: '10 16',
+      render: (b) => (
+        <span style={{
+          fontSize: 14, fontWeight: 400, color: '#64748B', lineHeight: 1.5,  // ← fw 500 → 400
+          whiteSpace: 'nowrap',
+        }}>
+          {b.createdAt ? fmtDateFullWithDay(tsDate(new Date(b.createdAt).toISOString())) : '—'}
+        </span>
+      ),
+    },
+    // ── 3. 회의 날짜 (Figma node 468:2128) ─────────────────────────
+    //    ← [2026-05-06 Phase 4 사용자 요청] 라벨 '날짜' → '회의 날짜' (Figma 468:2122)
+    //    Regular 14 #64748b / w 164 / pad '10 16'
+    {
+      key: 'date', label: '회의 날짜', width: 164, pad: '10 16',
       render: (b) => (
         <span style={{
           fontSize: 14, fontWeight: 400, color: '#64748B', lineHeight: 1.5,
@@ -342,10 +349,11 @@ export function AdminApprovalTable({
         </span>
       ),
     },
-    // ── 4. 시간 (Figma node 468:2130) — width 200 → 160 ────────────
+    // ── 4. 회의 시간 (Figma node 468:2130) ─────────────────────────
+    //    ← [2026-05-06 Phase 4 사용자 요청] 라벨 '시간' → '회의 시간' (Figma 468:2122)
     //    Regular 14 #64748b / w 160 / gap 4
     {
-      key: 'time', label: '시간', width: 160,
+      key: 'time', label: '회의 시간', width: 160,
       render: (b) => (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 4,
