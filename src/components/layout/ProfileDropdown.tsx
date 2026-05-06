@@ -146,7 +146,7 @@ export function ProfileDropdown({
               whiteSpace:"nowrap",
             }}>{currentUser}</div>
             <div style={{
-              fontSize:14, fontWeight:400, lineHeight:1.5, color:"#96A0B3",
+              fontSize:12, fontWeight:400, lineHeight:1.5, color:"#96A0B3",  // ← [2026-05-06] 14 → 12
               overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
             }}>{currentDept}</div>
           </div>
