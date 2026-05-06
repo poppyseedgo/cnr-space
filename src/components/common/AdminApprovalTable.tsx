@@ -141,8 +141,12 @@ export function AdminApprovalTable({
     const liveAll    = bookings.filter(b => adminRoomIds.has(b.room_id))
     const liveIds    = new Set(liveAll.map(b => b.id))
     const historical = rangeData.filter(b => !liveIds.has(b.id))
-    // 시작일 내림차순 (최신 예약이 위)
-    return [...liveAll, ...historical].sort((a, b) => b.start_at.localeCompare(a.start_at))
+    // ← [2026-05-06 사용자 요청] 정렬 기준: start_at → createdAt (생성순, 최신 생성이 위)
+    //   근거: 승인 관리는 "방금 들어온 새 예약을 빠르게 확인"이 목적이라
+    //         시작일보다 생성일이 더 자연스러운 정렬 키.
+    //   MyBookingTable의 displayList 정렬과 동일 패턴 (createdAt 내림차순) → 일관성 확보
+    //   createdAt이 없는 (예전) 데이터는 0 fallback → 가장 마지막에 배치됨
+    return [...liveAll, ...historical].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
   }, [bookings, rangeData, adminRoomIds])
 
   // ── 통계 (탭 카운트)
