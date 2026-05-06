@@ -26,6 +26,8 @@ import { UserChip } from '../components/common/UserChip'
 import { BookingListTable } from '../components/common/BookingListTable'
 // ← [2026-05-06 Admin Phase A] 좌측 사이드 네비게이션 컴포넌트 신설 (Figma node 451:3522)
 import { AdminSideNav, type AdminTabId } from '../components/layout/AdminSideNav'
+// ← [2026-05-06 Admin Phase C] 승인 관리 테이블 컴포넌트 신설 (Figma node 451:3534, Phase B 공통 컴포넌트 사용)
+import { AdminApprovalTable } from '../components/common/AdminApprovalTable'
 
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
 function addDaysStr(base: string, days: number): string {
@@ -445,7 +447,8 @@ function AggTable({ rows, cols, onExport, onRowClick }: {
 
 
 // ─── AdminView ─────────────────────────────────────────────────────────────────
-export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject, onForceCancel, onDetail }) {
+// ← [2026-05-06 Admin Phase C] currentUserId/currentUserEmail 추가 — AdminApprovalTable 내 BookingStatusBadge 판정용
+export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject, onForceCancel, onDetail, currentUserId = '', currentUserEmail = '' }) {
   const TABS = ['dashboard','bookings','approvals','rooms','users']
   const getTabFromHash = () => {
     const hash = window.location.hash.replace('#', '')
@@ -527,7 +530,13 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
       <div style={{ flex: 1, minWidth: 0 /* ← grid item overflow 안전장치 */ }}>
       {activeTab==='dashboard' && <AdminDashboard bookings={bookings} rooms={rooms} users={users} isMobile={isMobile} onDetail={onDetail}/>}
       {activeTab==='bookings'  && <AdminBookings  bookings={bookings} setBookings={setBookings} rooms={rooms} users={users} onForceCancel={onForceCancel} showToast={showToast} isMobile={isMobile} PER_PAGE={PER_PAGE} onDetail={onDetail}/>}{/* ← [2026-04-24 P6-B] users 추가 — 예약자 이름 live */}
-      {activeTab==='approvals' && <AdminApprovals bookings={bookings} rooms={rooms} users={users} onApprove={onApprove} onReject={onReject} showToast={showToast} isMobile={isMobile} onDetail={onDetail}/>}
+      {/* ← [2026-05-06 Admin Phase C] AdminApprovals → AdminApprovalTable 교체
+            · Phase B 공통 컴포넌트(DateRangeFilter / SegmentTabBar / DataTable) 사용
+            · Figma node 451:3534 1:1 — 7개 컬럼 / 5개 탭 / 3개 퀵버튼 / 검색 활성화
+            · 처리 컬럼 분기 — 승인대기=버튼 / 처리완료=처리자
+            · 기존 AdminApprovals 데이터 로직(classify/loadBookingsByRange/canApprove) 그대로 보존
+            · 기존 AdminApprovals 함수 자체는 보존 (혹시 다른 곳에서 import 시 안전) */}
+      {activeTab==='approvals' && <AdminApprovalTable bookings={bookings} rooms={rooms} users={users} currentUserId={currentUserId} currentUserEmail={currentUserEmail} onApprove={onApprove} onReject={onReject} onDetail={onDetail} onCsvClick={() => showToast('CSV 다운로드 기능은 추후 구현 예정입니다.', 'info')}/>}
       {activeTab==='rooms'     && <AdminRooms     showToast={showToast} isMobile={isMobile}/>}
       {activeTab==='users'     && <AdminUsers     users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile}/>}
       </div>
