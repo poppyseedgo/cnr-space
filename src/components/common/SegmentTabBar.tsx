@@ -63,7 +63,7 @@ export function SegmentTabBar<TTabId extends string = string>({
       {/* 세그먼트 탭 컨테이너 (Figma node 451:3562) */}
       <div style={{
         display: 'flex', alignItems: 'flex-start', gap: 4,  // ← Figma: gap 4
-        background: '#F3F4F8',                              // ← Figma: bg #F3F4F8
+        background: 'transparent',                          // ← [2026-05-06 사용자 요청] #F3F4F8 → transparent (배경 컬러 삭제)
         borderRadius: 9999,                                  // ← Figma: rounded full
         overflow: 'hidden',
       }}>

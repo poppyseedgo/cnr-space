@@ -5,7 +5,8 @@
  *  - [2026-05-06 Admin Phase A] 신규 생성 — Figma node 451:3522 1:1 반영
  *
  * 📌 Figma 사양 (node 451:3522 / 451:3523~451:3533)
- *  · 컨테이너: bg #F3F4F8 / flex column / gap 8 / width 160 (외부 지정)
+ *  · 컨테이너: bg transparent / flex column / gap 8 / width 160 (외부 지정)
+ *    ← [2026-05-06 사용자 요청] bg #F3F4F8 → transparent
  *  · 메뉴 항목 5개:
  *    - 대시보드 / 승인 관리 / 예약 관리 / 사용자 관리 / 회의실 관리
  *  · 항목 스타일:
@@ -54,7 +55,7 @@ export function AdminSideNav({ activeTab, onTabChange, pendingCount }: AdminSide
       aria-label="Admin 메뉴"
       style={{
         // ─── Figma 컨테이너 ───────────────────────────────────────
-        background:   '#F3F4F8',                      // ← Figma: bg #F3F4F8
+        background:   'transparent',                  // ← [2026-05-06 사용자 요청] #F3F4F8 → transparent (배경 컬러 삭제)
         display:      'flex',
         flexDirection:'column',
         alignItems:   'flex-start',

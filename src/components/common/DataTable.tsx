@@ -68,16 +68,26 @@ export function DataTable<T>({
   page, totalPages, onPageChange,
   minHeight = 426,
 }: DataTableProps<T>) {
-  // ─── 페이지 번호 배열 (… 처리 — 1, last, page±2 가시) ───────────────────
+  // ─── 페이지 번호 배열 (7-slot 고정 패턴 — 위치 흔들림 제거) ─────────────
+  // ← [2026-05-06 사용자 보고] 페이지 이동 시 숫자 위치가 변동되는 문제
+  //   기존: filter(n === 1 || n === totalPages || Math.abs(n - page) <= 2)
+  //         → page=1: [1,2,3,...,last] (5 slots) / page=5+: 7 slots / 변동 심함
+  //   해결: 항상 7개 슬롯 고정 패턴 — 활성 페이지 위치만 슬롯 내에서 이동
+  //         · totalPages <= 7: 모든 페이지 그대로 표시 (변동 없음)
+  //         · page <= 4:        [1, 2, 3, 4, 5, …, last]      ← 활성 좌측 1~4
+  //         · page >= last-3:   [1, …, last-4, …, last]       ← 활성 우측 1~4
+  //         · 가운데:           [1, …, page-1, page, page+1, …, last]  ← 활성 가운데
   const pageNumbers = useMemo<(number | '...')[]>(() => {
-    const arr = Array.from({ length: totalPages }, (_, i) => i + 1)
-      .filter(n => n === 1 || n === totalPages || Math.abs(n - page) <= 2)
-    const result: (number | '...')[] = []
-    arr.forEach((n, i) => {
-      if (i > 0 && n - (arr[i-1] as number) > 1) result.push('...')
-      result.push(n)
-    })
-    return result
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1)
+    }
+    if (page <= 4) {
+      return [1, 2, 3, 4, 5, '...', totalPages]
+    }
+    if (page >= totalPages - 3) {
+      return [1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages]
+    }
+    return [1, '...', page - 1, page, page + 1, '...', totalPages]
   }, [totalPages, page])
 
   return (
