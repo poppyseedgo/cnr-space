@@ -151,7 +151,7 @@ export function ProfileDropdown({
             }}>{currentDept}</div>
           </div>
           {/* Dropdown contents (메뉴 항목) — Figma 445:539 / 445:378 */}
-          <div style={{padding:"4px 0", background:"#fff"}}>
+          <div style={{padding:0, background:"#fff"}}>  {/* ← [2026-05-06] 4px 0 → 0 */}
             <button className="btn" onClick={()=>{onSetView("mypage");setShowDropdown(false);}}
               style={{
                 width:"100%", textAlign:"left",
