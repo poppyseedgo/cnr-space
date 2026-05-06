@@ -196,8 +196,20 @@ export function BookingStatusBadge({
   //   결과: earlyEnded 예약은 "조기반납" 칩 + "사용완료" 칩 세트로 표시
   //   안전: isPast = !isAct && !isFuture 조건이 '시작 시간 지남'을 이미 보장
   //         미래 예약이 earlyEnded=true인 경우는 데이터 오염 — 방어 불필요
+  // ← [2026-05-06 사용자 명시 승인 Option 1] !isUserCancel 가드 추가 — 배타성 통일
+  //   배경: 사용자가 직접 취소한 예약(autoCancelled=false 케이스 23건)이 isPast=true로
+  //         평가되어 DetailModal/HomeView 등 maxChips 제한 없는 화면에서
+  //         '예약자 취소' + '사용완료' 칩 동시 표시되는 문제
+  //   원인: 다른 모든 cancel 분기(rejected/expired-pending/admin-cancel/noshow)는
+  //         이미 isPast와 자동 배타 보장됨:
+  //         · isRejected: status !== 'rejected' 조건으로 차단
+  //         · isExpiredPending/isAdminCancel/isNoshow: !autoCancelled 조건으로 차단
+  //         · isUserCancel만 autoCancelled=false 케이스에서 배타 보호 누락
+  //   해결: 다른 분기와 동일한 배타 패턴 적용 → isUserCancel=true면 isPast=false
+  //   의미: '사용완료'는 정상 사용 후 종료. 사용자가 취소한 건 '사용된 적 없음'.
   const isPast    = !isAct && !isFuture && !b.autoCancelled
                     && b.status !== 'pending' && b.status !== 'rejected'
+                    && !isUserCancel                  // ← 신규: 다른 cancel 분기와 배타성 통일
   const tl        = sm - now
   // ─── [2026-05-04 STEP 3] isConfirmed: 일반 룸 미래 confirmed 살아있는 예약 ───
   //   · 정의: 미래(또는 오늘 시작 전) + status='confirmed' + 살아있음 + 일반 룸(non-Emerald) + countdown 외
