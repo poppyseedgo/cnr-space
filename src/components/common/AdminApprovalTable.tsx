@@ -26,7 +26,7 @@
  *
  * 📌 처리 컬럼 (사용자 결정 Q4 — C안: 상태별 분기)
  *  · 승인대기 (pending && canApprove): [승인][거절] 버튼 2개
- *  · 처리완료 (confirmed/rejected): 처리자 아바타 + 이름 (UserChip sm)
+ *  · 처리완료 (confirmed/rejected): 처리자 아바타 + 이름 (예약자 컬럼과 동일 패턴 — UserAvatar 20 + 이름 14)
  *  · 기한초과 (expired): 표시 없음 (자동 만료라 처리자 없음)
  *
  * 📌 canApprove (1분 전 제한)
@@ -41,7 +41,7 @@ import {
 } from '../../utils/time'
 import { BookingStatusBadge } from './BookingStatusBadge'
 import { UserAvatar } from './UserAvatar'
-import { UserChip } from './UserChip'
+// ← [2026-05-06 핫픽스 v3] UserChip 제거 — 처리자도 예약자와 동일하게 UserAvatar+이름 직접 구성
 import { MetaBadge } from './MetaBadge'
 import { DateRangeFilter, type QuickButtonDef } from './DateRangeFilter'
 import { SegmentTabBar, type TabDef } from './SegmentTabBar'
@@ -232,21 +232,27 @@ export function AdminApprovalTable({
       ),
     },
     {
-      key: 'time', label: '시간', width: 160,
+      // ← [2026-05-06 핫픽스 v3] width 160 → 200 (사용자 요청 — 시간 ellipsis 제거)
+      //   근본 원인: 가용 영역 132px(160-14*2)으로는 "오전 9:00 – 오후 12:30" 표시 불가
+      //   해결: width +40 (200), 회의 컬럼 -40으로 보전 (합계 1180 유지)
+      //   span의 overflow/textOverflow도 제거 — width 충분하면 잘릴 일 없음
+      key: 'time', label: '시간', width: 200,
       render: (b) => (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 4,
           fontSize: 14, fontWeight: 400, color: '#64748B', lineHeight: 1.5,
-          whiteSpace: 'nowrap', overflow: 'hidden',
+          whiteSpace: 'nowrap',
         }}>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{fmtTime(tsTime(b.start_at))}</span>
+          <span>{fmtTime(tsTime(b.start_at))}</span>
           <span>–</span>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{fmtTime(tsTime(b.end_at))}</span>
+          <span>{fmtTime(tsTime(b.end_at))}</span>
         </div>
       ),
     },
     {
-      key: 'title', label: '회의', width: 320,
+      // ← [2026-05-06 핫픽스 v3] width 320 → 280 (시간 컬럼 +40 보전)
+      //   회의 제목은 이미 ellipsis 처리되어 있어 width 축소 영향 최소
+      key: 'title', label: '회의', width: 280,
       render: (b) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           {b.recurGroupId && <MetaBadge type="recurring" size="sm"/>}
@@ -350,18 +356,24 @@ export function AdminApprovalTable({
             </div>
           )
         }
-        // ── 처리 완료 (confirmed/rejected): 처리자 표시 (UserChip sm)
+        // ── 처리 완료 (confirmed/rejected): 처리자 표시 (예약자 컬럼과 동일 패턴)
+        // ← [2026-05-06 핫픽스 v3] UserChip → UserAvatar+이름 직접 구성 (사용자 요청)
+        //   근본 원인: UserChip variant="sm"의 아바타/폰트 사이즈가 예약자 컬럼(UserAvatar 20+이름 14)과 다름
+        //   해결: 예약자 컬럼과 동일 패턴 (UserAvatar size 20 + 이름 14)으로 시각 일관성 확보
         if (c === 'confirmed' || c === 'rejected') {
           if (!b.processedByName) return <span style={{ fontSize: 12, color: '#CBD5E1' }}>—</span>
+          // 처리자 user_id 역조회: 이름 매칭 (snapshot 호환)
+          //   ← Booking 타입에 processedByUserId 필드 없음 → 이름 매칭만 사용 (기존 동작과 동일)
           const processedByUser = users.find((u: any) => u.name === b.processedByName)
+          const processedAvatar = (processedByUser as any)?.avatar_url ?? b.processedByAvatar ?? null
           return (
-            <UserChip
-              name={b.processedByName}
-              avatarUrl={b.processedByAvatar ?? null}
-              variant="sm"
-              isAdmin
-              userInfo={processedByUser as any}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <UserAvatar name={b.processedByName} avatarUrl={processedAvatar} size={20}/>
+              <span style={{
+                fontSize: 14, fontWeight: 400, color: '#111', lineHeight: 1.3,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{b.processedByName}</span>
+            </div>
           )
         }
         // ── 기한 초과 (expired): 자동 만료라 처리자 없음 (—)
