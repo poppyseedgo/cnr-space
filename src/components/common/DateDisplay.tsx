@@ -61,7 +61,8 @@ export function DateDisplay({
           // ← [2026-05-04 핫픽스 v2] padding 14×16 → 14 24 14 20 (좌 20, 우 24 비대칭)
           // ← [2026-05-06 Admin Phase C] padding 14 24 14 20 → 12 24 12 20 (상하 14→12)
           //    + height 52 → 48 (Figma node 468:1323)
-          padding:        '12px 24px 12px 20px',        // ← 상하 12, 좌 20, 우 24
+          // ← [2026-05-06 핫픽스 v3] padding 12 24 12 20 → 12 20 12 16 (좌우 각 -4, 사용자 요청)
+          padding:        '12px 20px 12px 16px',        // ← 상하 12, 좌 16, 우 20
           height:         48,                           // ← Figma: h 48 (이전 52)
           gap:            6,                            // ← Figma: gap 6
           // ─── 버튼 reset ──────────────────────────────────
