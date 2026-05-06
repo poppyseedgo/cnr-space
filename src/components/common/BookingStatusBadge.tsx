@@ -347,9 +347,18 @@ export function BookingStatusBadge({
   //   · 사용자 명시 maxChips가 있으면 그 값 우선
   //   · size='list' + maxChips 미지정 → 1개만
   //   · 그 외 → 전체 표시 (기존 동일)
+  // ← [2026-05-06 핫픽스] AdminApprovalTable 사용자 보고: '승인완료' 칩만 보이고 라이프사이클 칩(사용완료/진행중) 안 보임
+  //   근본 원인: chipList에 [approved, active/past/...] 다중 push되는데 maxChips=1로 첫 항목(approved)만 표시됨
+  //   해결: size='list' + isApproved 시 maxChips 1 → 2 (승인완료 + 라이프사이클 1개 동시 표시)
+  //   안전성: isApproved=true이면 ①~⑥ 칩 모두와 배타라 chipList[0]이 항상 'approved'
+  //          → slice(0, 2)는 자연스럽게 [approved, lifecycle] 슬라이스
+  //   영향: size!=='list'는 분기 자체가 아님 → 다른 화면(HomeView/DetailModal 등) 영향 0
+  //         일반 룸(non-Emerald)은 isApproved=false → maxChips=1 유지 (기존 동일)
   const effectiveMax = maxChips !== undefined
     ? maxChips
-    : (size === 'list' ? 1 : undefined)
+    : (size === 'list'
+        ? (isApproved ? 2 : 1)                // ← 핫픽스: 승인완료 룸은 라이프사이클 칩까지 2개 표시
+        : undefined)
   const visibleChips = effectiveMax !== undefined ? chipList.slice(0, effectiveMax) : chipList
 
   return (
