@@ -130,7 +130,19 @@ export function BookingStatusBadge({
 
   const isRejected    = b.status === 'rejected'
   // ① 사용자 취소가 최우선 (사용자 의도가 가장 명확)
-  const isUserCancel  = b.autoCancelled && b.cancelledBy === 'user'
+  // ← [2026-05-06 사용자 명시 승인 Option A] autoCancelled 가드 제거
+  //   배경: classify()와 비대칭 발견 — 23건의 비정상 데이터가 '취소' 탭에 들어오는데
+  //         isUserCancel=false로 평가되어 '예약자 취소' 칩 대신 '사용완료' 칩 표시됨
+  //   진단 데이터: status='cancelled' + cancelledBy='user' + auto_cancelled=FALSE 23건
+  //              (2026-04-20~22 사이 사용자 직접 취소 건들)
+  //   원인: insert 경로가 사용자 취소 시 auto_cancelled=false로 저장 (정상 동작)
+  //         BookingStatusBadge의 isUserCancel 공식이 잘못된 전제(autoCancelled=true)를 요구
+  //   해결: classify()와 동일 조건으로 통일 → 두 분류 로직 일관성 보장
+  //   영향 분석:
+  //     · isAdminCancel/isSystemCancel: cancelledBy='admin/system' 배타 → 영향 0
+  //     · isAttendeeCancel: 의도된 라벨 분기 동작 그대로
+  //     · isPast: 영향받지만 size='list' maxChips=1로 user-cancel이 우선순위 차단
+  const isUserCancel  = b.status === 'cancelled' && b.cancelledBy === 'user'
 
   // ─── [2026-05-04 옵션 B] 예약자/참석자 취소 분기 (신규) ───────────────────
   //   확정 공식 isUserCancel은 변경 없음 — 라벨 분기용 boolean만 추가
