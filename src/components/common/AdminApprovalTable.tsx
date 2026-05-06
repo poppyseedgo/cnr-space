@@ -303,12 +303,12 @@ export function AdminApprovalTable({
   //   콘텐츠 영역 가용 ≈ 1132 → 약 94 초과 → 사용자 결정 Q3-A: overflow-x:auto 적용 (가로 스크롤)
   const columns: Column<Booking>[] = [
     // ── 1. 회의 (Figma node 468:2126) ───────────────────────────────
-    //    Medium 14 #111 / w 280 / pad '10 14' / gap 5 (recurring 칩 포함)
+    //    Medium 14 #111 / w 200 / pad '10 14' / gap 5 (recurring 칩 포함)
     // ← [2026-05-06 Phase 4 사용자 요청] Figma 468:2122 1:1
     //    · 위치: 2번째 → 1번째 (테이블 첫 컬럼)
-    //    · width: 320 → 280 (Figma 468:2122 w-[280px])
+    //    · width: 320 → 280 → 200 (사용자 캡쳐 화면 기준 v3)
     {
-      key: 'title', label: '회의', width: 280,
+      key: 'title', label: '회의', width: 200,
       render: (b) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           {b.recurGroupId && <MetaBadge type="recurring" size="sm"/>}
