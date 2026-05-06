@@ -175,23 +175,35 @@ export function MyBookingTable({
     { id: 'cancelled', label: '취소',         count: stats.cancelled  },
   ]
 
-  // ─── DataTable 컬럼 정의 (Figma 사양 그대로) ────────────────────────────
-  //   날짜 184 / 시간 164 / 회의 240 / 회의실 150 / 예약자 108 / 상태 flex
+  // ─── DataTable 컬럼 정의 (Figma 445:576 — 회의/날짜/시간/회의실/예약자/상태) ──
+  //   [2026-05-06] 컬럼 순서 변경: 날짜→시간→회의 → 회의→날짜→시간
+  //   너비: 날짜 184→160, 시간 164→160, 회의실 150→162, 예약자 108→120
   const columns: Column<Booking>[] = [
     {
-      key: 'date', label: '날짜', width: 184, pad: '10 16',
+      key: 'title', label: '회의', width: 240, pad: '10 14',  // ← [2026-05-06] 첫 번째로 이동, Figma px 14
+      render: (b) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          {b.recurGroupId && <MetaBadge type="recurring" size="sm"/>}
+          <span style={{
+            fontSize: 14, fontWeight: 500, color: '#111', lineHeight: 1.5,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{b.title}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'date', label: '날짜', width: 160, pad: '10 16',  // ← [2026-05-06] 184→160, Figma px 16
       render: (b) => (
         <span style={{
-          fontSize: 14, fontWeight: 500, color: '#64748B', lineHeight: 1.5,
+          fontSize: 14, fontWeight: 400, color: '#64748B', lineHeight: 1.5,  // ← [2026-05-06] 500→400
           whiteSpace: 'nowrap',
-          // overflow/textOverflow 미적용 — 풀 표시 (사용자 요청 v10)
         }}>
           {fmtDateFullWithDay(tsDate(b.start_at))}
         </span>
       ),
     },
     {
-      key: 'time', label: '시간', width: 164,
+      key: 'time', label: '시간', width: 160,  // ← [2026-05-06] 164→160
       render: (b) => (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 4,
@@ -205,19 +217,7 @@ export function MyBookingTable({
       ),
     },
     {
-      key: 'title', label: '회의', width: 240,
-      render: (b) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          {b.recurGroupId && <MetaBadge type="recurring" size="sm"/>}
-          <span style={{
-            fontSize: 14, fontWeight: 500, color: '#111', lineHeight: 1.5,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{b.title}</span>
-        </div>
-      ),
-    },
-    {
-      key: 'room', label: '회의실', width: 150,
+      key: 'room', label: '회의실', width: 162,  // ← [2026-05-06] 150→162
       render: (b) => {
         const room = rooms.find(r => r.room_id === b.room_id)
         return (
@@ -229,7 +229,7 @@ export function MyBookingTable({
       },
     },
     {
-      key: 'owner', label: '예약자', width: 108,
+      key: 'owner', label: '예약자', width: 120,  // ← [2026-05-06] 108→120
       render: (b) => {
         // ← [user profile live 표시 정책 — userMemories 확정 룰]
         //   1순위: profiles.name live (users 배열에서 user_id 역조회)
