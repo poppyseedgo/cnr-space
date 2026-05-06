@@ -59,6 +59,15 @@ interface DataTableProps<T> {
 
   /** 컨테이너 minHeight (기본 426 — Figma 사양) */
   minHeight?:     number
+  /**
+   * 테이블 최소 너비 (px). 컬럼 width 합계가 부모를 초과할 때 가로 스크롤 발생.
+   * ← [2026-05-06 Phase 4] 사용자 보고 "table width 가 잘려서 컨텐츠가 안보이는데 스크롤이 안됨"
+   *    근본 원인: DataTable 외곽 `overflow:hidden`이 자식 row의 가로 확장을 막아
+   *               부모 wrapper의 `overflowX:auto`가 작동 안 함
+   *    해결: minWidth로 자식 row가 부모를 명시적으로 초과하도록 강제 → 부모 wrapper 스크롤 활성화
+   *    미지정 시 width:100% (기존 동작 보존)
+   */
+  minWidth?:      number
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -67,6 +76,7 @@ export function DataTable<T>({
   loading = false, emptyMessage = '내역이 없습니다.',
   page, totalPages, onPageChange,
   minHeight = 426,
+  minWidth,                                    // ← [Phase 4] 신규 prop
 }: DataTableProps<T>) {
   // ─── 페이지 번호 배열 (7-slot 고정 패턴 — 위치 흔들림 제거) ─────────────
   // ← [2026-05-06 사용자 보고] 페이지 이동 시 숫자 위치가 변동되는 문제
@@ -98,6 +108,9 @@ export function DataTable<T>({
       gap: 1,                                            // ← 행 사이 1px 구분선 (gap 노출)
       minHeight,
       background: '#FAFCFF',                              // ← 구분선 색상 = 배경
+      // ← [2026-05-06 Phase 4] minWidth 지정 시: width = minWidth (부모 초과 → 부모 overflowX:auto 작동)
+      //    미지정 시: width 100% (기존 동작)
+      ...(minWidth ? { width: minWidth, minWidth } : { width: '100%' }),
     }}>
       {/* ── 헤더 ─────────────────────────────────────────────────────── */}
       <div style={{

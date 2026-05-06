@@ -317,7 +317,7 @@ export function AdminApprovalTable({
     // ── 2. 회의 (Figma node 468:2126) ───────────────────────────────
     //    Medium 14 #111 / w 280 / pad '10 14' / gap 5 (recurring 칩 포함)
     {
-      key: 'title', label: '회의', width: 280,
+      key: 'title', label: '회의', width: 320,                  // ← [2026-05-06 Phase 4] 280 → 320 (Figma 451:3205 w-[320px])
       render: (b) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           {b.recurGroupId && <MetaBadge type="recurring" size="sm"/>}
@@ -503,62 +503,11 @@ export function AdminApprovalTable({
       }}>승인 관리</h1>
 
       {/* ═══════════════════════════════════════════════════════════════════
-          ↓ [2026-05-06 사용자 요청 Q1-C] 날짜 조회 기준 토글 — 신청일 vs 시작일
+          ↓ Filter Row 1: 조회 기준 토글 + 날짜 범위 + 퀵버튼 (DateRangeFilter 통합)
           ─────────────────────────────────────────────────────────────────
-          · 컬럼이 "승인 요청 날짜" + "날짜(예약 시작일)" 2개로 늘어나면서
-            상단 from~to 필터가 어느 기준 조회인지 명시 필요
-          · 신청일(createdAt): 승인 관리는 "들어온 신청 처리"가 목적 (기본)
-          · 시작일(startAt): "이 기간에 진행되는 예약" 조회
-          · 토글 변경 시 page 1로 리셋
-          ═══════════════════════════════════════════════════════════════════ */}
-      <div style={{
-        marginBottom: 16,
-        display: 'flex', alignItems: 'center', gap: 12,
-      }}>
-        <span style={{ fontSize: 13, fontWeight: 500, color: '#64748B' }}>조회 기준</span>
-        <div style={{
-          display: 'flex', gap: 4, padding: 4,
-          background: '#F1F5F9', borderRadius: 9999,
-        }}>
-          {([
-            { id: 'createdAt' as const, label: '신청일' },
-            { id: 'startAt'   as const, label: '시작일' },
-          ]).map(opt => {
-            const active = dateFilterMode === opt.id
-            return (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => {
-                  setDateFilterMode(opt.id)
-                  // ← [2026-05-06 Phase 3] 모드 변경 시 퀵버튼/날짜 범위 '이번 달'로 자동 리셋
-                  //    근거: 모드가 바뀌면 데이터 의미도 달라짐 → 일관된 시작점 제공
-                  const [f, t] = getQuickRange('month')
-                  setFrom(f); setTo(t)
-                  setActiveQuick('month')
-                  resetPage()
-                }}
-                style={{
-                  padding: '6px 16px', borderRadius: 9999, border: 'none',
-                  background: active ? '#fff' : 'transparent',
-                  color:      active ? '#111' : '#64748B',
-                  fontSize:   13,
-                  fontWeight: active ? 500 : 400,
-                  fontFamily: 'inherit',
-                  cursor:     'pointer',
-                  boxShadow:  active ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-                  transition: 'background 0.15s, color 0.15s',
-                  whiteSpace: 'nowrap',
-                }}>
-                {opt.label}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          ↓ Filter Row 1: 날짜 범위 + 퀵버튼 (DateRangeFilter)
+          · [2026-05-06 Phase 4] Figma 451:3205 / 468:2589 — 토글이 DateRangeFilter 내부 좌측에 들어감
+          · 토글 라벨: '요청 날짜' / '회의 날짜' (이전 '신청일'/'시작일'에서 변경)
+          · 토글 변경 시 자동으로 '이번 달'로 리셋 (UX 일관성)
           ═══════════════════════════════════════════════════════════════════ */}
       <div style={{ marginBottom: 24 }}>
         <DateRangeFilter
@@ -568,6 +517,22 @@ export function AdminApprovalTable({
           activeQuick={activeQuick}
           onQuickClick={applyQuick}
           quickButtons={buildQuickButtons(dateFilterMode) /* ← Q4-B: 모드별 동적 라벨 */}
+          modeToggle={{
+            options: [
+              { id: 'createdAt' as const, label: '요청 날짜' },  // ← Figma: '신청일' → '요청 날짜'
+              { id: 'startAt'   as const, label: '회의 날짜' },  // ← Figma: '시작일' → '회의 날짜'
+            ],
+            activeMode: dateFilterMode,
+            onModeChange: (id) => {
+              setDateFilterMode(id)
+              // ← [2026-05-06 Phase 3] 모드 변경 시 퀵버튼/날짜 범위 '이번 달'로 자동 리셋
+              //    근거: 모드가 바뀌면 데이터 의미도 달라짐 → 일관된 시작점 제공
+              const [f, t] = getQuickRange('month')
+              setFrom(f); setTo(t)
+              setActiveQuick('month')
+              resetPage()
+            },
+          }}
         />
       </div>
 
@@ -591,8 +556,11 @@ export function AdminApprovalTable({
       {/* ═══════════════════════════════════════════════════════════════════
           ↓ 테이블 (DataTable)
           ─────────────────────────────────────────────────────────────────
-          [2026-05-06 사용자 결정 Q3-A] 컬럼 합계 1226 > 콘텐츠 영역 1132
-          → wrapper에 overflow-x:auto 적용 (가로 스크롤 허용)
+          [2026-05-06 Phase 4] 가로 스크롤 근본 해결
+          · 이전: 외부 wrapper에 overflowX:auto 적용했으나 동작 안 함
+          · 원인: DataTable 외곽 `overflow:hidden`(borderRadius)이 자식 row 가로 확장 차단
+          · 해결: DataTable에 minWidth prop 전달 → 자식이 부모 초과 → wrapper의 overflowX:auto 작동
+          · 컬럼 합계 자동 계산 (수동 하드코딩 X — 컬럼 변경 시 자동 반영)
           ═══════════════════════════════════════════════════════════════════ */}
       <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
         <DataTable
@@ -605,6 +573,8 @@ export function AdminApprovalTable({
           page={page}
           totalPages={totalPages}
           onPageChange={setPage}
+          /* ← [Phase 4] 컬럼 width 합계 자동 계산 → 부모 wrapper의 overflowX:auto 작동 보장 */
+          minWidth={columns.reduce((sum, c) => sum + (c.width ?? 0), 0)}
         />
       </div>
     </div>
