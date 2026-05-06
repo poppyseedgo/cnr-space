@@ -251,7 +251,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
           ═══════════════════════════════════════════════════════════════════ */}
       <div className="anm" style={{
         display:'flex',
-        gap:16,                                                  // ← Figma: gap 16
+        gap:8,                                                   // ← [2026-05-06] Figma: gap 8
         alignItems:'stretch',                                    // ← 카드 높이 균일
         flexDirection: isMobile ? 'column' : 'row',              // ← 모바일은 세로 스택
         marginBottom:24,                                         // ← Figma: 영역 간 24
@@ -345,13 +345,15 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
           <div style={{display:'flex', flexDirection:'column', gap:2}}>{/* ← Figma: gap 2 */}
             <div style={{
               fontSize:16,                                         // ← Figma: 16
-              fontWeight:700,                                      // ← Figma: Bold
-              color:'#9ED2FF',                                     // ← Figma: #9ED2FF (브랜드 블루 액센트)
-              lineHeight:1.5,
-            }}>이번 달 예약</div>
+              fontWeight:500,                                      // ← [2026-05-06] 700→500 Medium
+              color:'#111',                                        // ← [2026-05-06] #9ED2FF→#111
+              lineHeight:1.4,                                      // ← [2026-05-06] Figma: 1.4
+              height:48,                                           // ← [2026-05-06] Figma: 2줄 고정 h-48
+              overflow:'hidden',
+            }}>이번 달<br/>나의 예약</div>{/* ← [2026-05-06] "이번 달 예약" → 2줄 */}
             <div style={{
               fontSize:12,                                         // ← Figma: 12
-              fontWeight:500,                                      // ← Figma: Medium
+              fontWeight:400,                                      // ← [2026-05-06] 500→400 Regular
               color:'#AEB5C4',
               lineHeight:1.5,
             }}>{thisMonthLabel}</div>{/* ← 동적: "5월 예약 수" 등 */}
@@ -382,15 +384,15 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
           <div style={{display:'flex', flexDirection:'column', gap:2}}>
             <div style={{
               fontSize:16,                                         // ← Figma: 16
-              fontWeight:700,                                      // ← Figma: Bold
-              color:'#FF6969',                                     // ← Figma: #FF6969 (브랜드 레드 액센트)
-              lineHeight:1.5,
+              fontWeight:500,                                      // ← [2026-05-06] 700→500 Medium
+              color:'#FF6969',                                     // ← Figma: #FF6969
+              lineHeight:1.4,                                      // ← [2026-05-06] Figma: 1.4
             }}>노쇼 횟수</div>
             {/* ← [STEP 5] Figma node 454:3902 1:1: 명시적 3줄 분리
                 기존 STEP 1에서는 자연 줄바꿈으로 2줄 표시. 새 디자인은 3줄로 끊음. */}
             <div style={{
               fontSize:12,                                         // ← Figma: 12
-              fontWeight:500,                                      // ← Figma: Medium
+              fontWeight:400,                                      // ← [2026-05-06] 500→400 Regular
               color:'#AEB5C4',
               lineHeight:1.5,
             }}>
@@ -403,7 +405,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
             <span style={{
               // ← [2026-05-04 핫픽스 v7] 노쇼 카운트 색상 검정 → rgb(252,126,126) (사용자 요청)
               //   fontWeight:500 유지 (이미 적용됨, 사용자 요청 600→500 확인)
-              fontSize:32, fontWeight:500, color:'rgb(252, 126, 126)',
+              fontSize:32, fontWeight:500, color:'#FF6969',  // ← [2026-05-06] rgb(252,126,126)→#FF6969
               lineHeight:1.5, textAlign:'right',
             }}>{allLoading ? '—' : noshowCount}</span>
           </div>
@@ -429,14 +431,14 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
         display:'flex', flexDirection:'column', gap:24,    // ← Figma: gap 24 (헤더 ↔ 필터 Row1 ↔ Row2 ↔ 테이블)
         animationDelay:'150ms',
       }}>
-        {/* 섹션 헤더 (Figma node 449:2383: 19 SemiBold #111 leading 1.5) */}
+        {/* 섹션 헤더 (Figma node 449:2383: 19 Medium #111 leading 1.5) */}
         <div style={{
           fontSize:19,                                     // ← Figma: 19
-          fontWeight:600,                                  // ← Figma: SemiBold
+          fontWeight:500,                                  // ← [2026-05-06] 600→500 Medium
           color:'#111',                                    // ← Figma: #111
           lineHeight:1.5,                                  // ← Figma: leading 1.5
           whiteSpace:'nowrap',
-        }}>기간별 예약 조회</div>
+        }}>나의 예약 조회</div>{/* ← [2026-05-06] "기간별 예약 조회" → "나의 예약 조회" */}
 
         {/* MyBookingTable — 모든 필터/탭/테이블/페이지네이션 자체 관리 */}
         <MyBookingTable
