@@ -221,8 +221,11 @@ export function AdminApprovalTable({
   ]
 
   // ─── DataTable 컬럼 정의 (Figma 7개 컬럼) ──────────────────────────────
-  //   날짜 164 / 시간 160 / 회의 320 / 회의실 162 / 예약자 124 / 상태 126 / 처리 124
-  //   합계 1180 = Figma 콘텐츠 영역 1180 정확 일치
+  //   ← [2026-05-06 핫픽스 v4] 상태 126 → 110 (-16) / 처리 124 → 140 (+16, 사용자 요청)
+  //     근거: 상태 칩(승인완료/승인대기/거절/노쇼 3-4자)는 ~70px라 110이면 충분
+  //           처리 컬럼은 우측 여백 부족 → +16으로 처리자 이름 우측 padding 확보
+  //   날짜 164 / 시간 200 / 회의 280 / 회의실 162 / 예약자 124 / 상태 110 / 처리 140
+  //   합계 1180 = Figma 콘텐츠 영역 1180 정확 일치 (변동 없음)
   const columns: Column<Booking>[] = [
     {
       key: 'date', label: '날짜', width: 164, pad: '10 16',
@@ -298,7 +301,7 @@ export function AdminApprovalTable({
       },
     },
     {
-      key: 'status', label: '상태', width: 126,
+      key: 'status', label: '상태', width: 110,                  // ← [핫픽스 v4] 126 → 110
       render: (b) => {
         const room = rooms.find(r => r.room_id === b.room_id)
         return (
@@ -314,7 +317,7 @@ export function AdminApprovalTable({
       },
     },
     {
-      key: 'action', label: '처리', width: 124,
+      key: 'action', label: '처리', width: 140,                  // ← [핫픽스 v4] 124 → 140 (사용자 요청)
       render: (b) => {
         // ─── 처리 컬럼 분기 (사용자 Q4 결정 — C안) ──────────────────────
         const c = classify(b)
