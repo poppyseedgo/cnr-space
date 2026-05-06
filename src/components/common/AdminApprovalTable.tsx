@@ -373,17 +373,19 @@ export function AdminApprovalTable({
   return (
     <div>
       {/* ═══════════════════════════════════════════════════════════════════
-          ↓ 페이지 제목 (Figma node 451:3535) — "승인 관리" 38px H1
-          · letter-spacing 0 / leading 1 / fw 700 (Pretendard SemiBold/Bold)
+          ↓ 페이지 제목 (Figma node 451:3535) — "승인 관리" H1
+          · ← [2026-05-06 사용자 요청 v2] 스타일 변경:
+              fontSize 38 → 28, fontWeight 700 → 500, margin-bottom 24 → 52
+          · letter-spacing 0 / leading 1 / color #111 (rgb 17,17,17) 유지
           ═══════════════════════════════════════════════════════════════════ */}
       <h1 style={{
         fontFamily: "'Pretendard', -apple-system, sans-serif",
-        fontSize:   38,                                  // ← Figma: 38
-        fontWeight: 700,
-        color:      '#111',
+        fontSize:   28,                                  // ← 38 → 28 (사용자 요청 v2)
+        fontWeight: 500,                                 // ← 700 → 500 (사용자 요청 v2)
+        color:      '#111',                              // ← rgb(17, 17, 17)
         lineHeight: 1,
         letterSpacing: 0,
-        margin:     '0 0 24px 0',                        // ← Figma: 페이지 제목과 필터 사이 24
+        margin:     '0 0 52px 0',                        // ← 24 → 52 (사용자 요청 v2)
       }}>승인 관리</h1>
 
       {/* ═══════════════════════════════════════════════════════════════════
