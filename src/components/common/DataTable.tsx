@@ -1,0 +1,256 @@
+/**
+ * DataTable — 헤더 + 행 + Empty State + 페이지네이션 (제네릭 controlled)
+ *
+ * ✅ 변경 이력
+ *  - [2026-05-06 Admin Phase B] 신규 — MyBookingTable에서 추출
+ *
+ * 📌 사용 정책
+ *  · controlled: page는 부모가 관리, totalPages는 외부에서 계산해서 주입
+ *  · 컬럼 정의는 columns prop (제네릭 T), 행 렌더는 각 column.render(item)
+ *  · loading / empty 상태 자동 처리
+ *  · 행 클릭 콜백 (옵션)
+ *
+ * 📌 Figma 사양 (node 449:801 / 451:3562 etc.)
+ *  · 컨테이너: rounded 16 / overflow hidden / gap 1px (구분선) / bg #FAFCFF
+ *  · 헤더: h 60 / 14 SemiBold #92A0BC / padding 10·14 (첫 셀 10·16)
+ *  · 행: h 60 / hover bg #FAFBFD
+ *  · Empty State: •_• EmptyFaceIcon 82 + 안내문 14 Medium #D9E0EE / gap 16
+ *  · 페이지네이션: 중앙 정렬 / h 60 / 32×30 버튼 / 활성 #000 / 비활성 #F8FAFC
+ */
+
+import { useMemo, type ReactNode } from 'react'
+import { ChevronBackwardIcon, ChevronForwardIcon, EmptyFaceIcon } from './Icons'
+
+// ─── Column 정의 ─────────────────────────────────────────────────────────────
+export interface Column<T> {
+  /** key (React key 용) */
+  key:      string
+  /** 헤더 라벨 */
+  label:    string
+  /** 고정 width (flex와 배타) */
+  width?:   number
+  /** flex:1 (가용 공간 모두 차지) */
+  flex?:    boolean
+  /** padding "y x" 형식 (기본 '10 14', 첫 셀은 보통 '10 16') */
+  pad?:     string
+  /** 행 셀 렌더 함수 */
+  render:   (item: T) => ReactNode
+}
+
+// ─── Props ───────────────────────────────────────────────────────────────────
+interface DataTableProps<T> {
+  /** 표시할 데이터 (이미 정렬·필터된 — 페이징도 처리됨) */
+  data:           T[]
+  columns:        Column<T>[]
+  /** 행 key 추출 함수 */
+  getRowKey:      (item: T) => string | number
+  /** 행 클릭 콜백 (옵션) */
+  onRowClick?:    (item: T) => void
+
+  /** 로딩 중 여부 */
+  loading?:       boolean
+  /** Empty State 메시지 (기본 '내역이 없습니다.') */
+  emptyMessage?:  string
+
+  // ─── 페이지네이션 ──────────────────────────────────────────────────────────
+  page:           number       // 1-indexed
+  totalPages:     number
+  onPageChange:   (p: number) => void
+
+  /** 컨테이너 minHeight (기본 426 — Figma 사양) */
+  minHeight?:     number
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
+export function DataTable<T>({
+  data, columns, getRowKey, onRowClick,
+  loading = false, emptyMessage = '내역이 없습니다.',
+  page, totalPages, onPageChange,
+  minHeight = 426,
+}: DataTableProps<T>) {
+  // ─── 페이지 번호 배열 (… 처리 — 1, last, page±2 가시) ───────────────────
+  const pageNumbers = useMemo<(number | '...')[]>(() => {
+    const arr = Array.from({ length: totalPages }, (_, i) => i + 1)
+      .filter(n => n === 1 || n === totalPages || Math.abs(n - page) <= 2)
+    const result: (number | '...')[] = []
+    arr.forEach((n, i) => {
+      if (i > 0 && n - (arr[i-1] as number) > 1) result.push('...')
+      result.push(n)
+    })
+    return result
+  }, [totalPages, page])
+
+  return (
+    <div style={{
+      borderRadius: 16,
+      overflow: 'hidden',
+      display: 'flex', flexDirection: 'column',
+      gap: 1,                                            // ← 행 사이 1px 구분선 (gap 노출)
+      minHeight,
+      background: '#FAFCFF',                              // ← 구분선 색상 = 배경
+    }}>
+      {/* ── 헤더 ─────────────────────────────────────────────────────── */}
+      <div style={{
+        display: 'flex', height: 60, background: '#fff', flexShrink: 0,
+        borderRadius: '16px 16px 0 0',
+      }}>
+        {columns.map((c, i) => (
+          <Th key={c.key} width={c.width} flex={c.flex} pad={c.pad ?? (i === 0 ? '10 16' : '10 14')}>
+            {c.label}
+          </Th>
+        ))}
+      </div>
+
+      {/* ── 본문 wrapper (flex:1) — 페이지네이션 항상 하단 고정 보장 ──── */}
+      <div style={{
+        flex: 1, minHeight: 0,
+        display: 'flex', flexDirection: 'column',
+        gap: 1,
+        background: '#FAFCFF',
+      }}>
+        {loading ? (
+          <div style={emptyContainerStyle}>
+            <span style={{ fontSize: 14, color: '#CBD5E1' }}>불러오는 중…</span>
+          </div>
+        ) : data.length === 0 ? (
+          <div style={emptyContainerStyle}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+              <EmptyFaceIcon size={82} color="#D9E0EE"/>
+              <span style={{
+                fontSize: 14, fontWeight: 500, color: '#D9E0EE',
+                lineHeight: 1.5,
+              }}>{emptyMessage}</span>
+            </div>
+          </div>
+        ) : (
+          data.map(item => (
+            <div
+              key={getRowKey(item)}
+              onClick={onRowClick ? () => onRowClick(item) : undefined}
+              style={{
+                display: 'flex', height: 60,
+                background: '#fff',
+                cursor: onRowClick ? 'pointer' : 'default',
+                flexShrink: 0,
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={onRowClick ? (e) => (e.currentTarget as HTMLDivElement).style.background = '#FAFBFD' : undefined}
+              onMouseLeave={onRowClick ? (e) => (e.currentTarget as HTMLDivElement).style.background = '#fff' : undefined}>
+              {columns.map((c, i) => (
+                <Td key={c.key} width={c.width} flex={c.flex} pad={c.pad ?? (i === 0 ? '10 16' : '10 14')}>
+                  {c.render(item)}
+                </Td>
+              ))}
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* ── 페이지네이션 (Figma node 449:1341 / 466:1001) ──────────────── */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        gap: 4,
+        padding: 16,
+        height: 60,
+        background: '#fff',
+        flexShrink: 0,
+        borderRadius: '0 0 16px 16px',
+      }}>
+        <PageBtn onClick={() => onPageChange(Math.max(1, page - 1))} disabled={page === 1}>
+          <ChevronBackwardIcon size={24}/>
+        </PageBtn>
+        {pageNumbers.map((n, i) =>
+          n === '...' ? (
+            <span key={`d${i}`} style={{
+              width: 32, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 12, color: '#CBD5E1',
+            }}>…</span>
+          ) : (
+            <PageBtn key={n} onClick={() => onPageChange(n as number)} active={page === n}>
+              {n}
+            </PageBtn>
+          )
+        )}
+        <PageBtn onClick={() => onPageChange(Math.min(totalPages, page + 1))} disabled={page === totalPages}>
+          <ChevronForwardIcon size={24}/>
+        </PageBtn>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ─── 내부 헬퍼 ───────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── 페이지네이션 버튼 ──────────────────────────────────────────────────
+function PageBtn({ onClick, disabled, active, children }:
+  { onClick: () => void; disabled?: boolean; active?: boolean; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        // Figma node 449:1362(active) / 449:1363(inactive) / 449:1375(chevron):
+        // w 32 h 30, rounded 8, padding px 10 py 6
+        // 활성: bg #000 white 12 Medium / 비활성: bg #F8FAFC #64748B 12 Regular
+        width: 32, height: 30, borderRadius: 8,
+        padding: '6px 10px',
+        border: 'none',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: disabled ? 'default' : 'pointer',
+        background: active ? '#000' : '#F8FAFC',
+        color:      active ? '#fff' : disabled ? '#CBD5E1' : '#64748B',
+        opacity:    disabled ? 0.5 : 1,
+        fontSize: 12, fontWeight: active ? 500 : 400,
+        fontFamily: 'inherit',
+        transition: 'background 0.15s, color 0.15s',
+      }}>
+      {children}
+    </button>
+  )
+}
+
+// ─── 테이블 헤더 셀 ─────────────────────────────────────────────────────
+function Th({ width, flex, pad = '10 14', children }:
+  { width?: number; flex?: boolean; pad?: string; children: ReactNode }) {
+  // Figma node 449:764 등: padding 10 16(첫셀) / 10 14(나머지), 14 SemiBold #92A0BC
+  const [py, px] = pad.split(' ').map(Number)
+  return (
+    <div style={{
+      ...(flex ? { flex: 1, minWidth: 0 } : { width, flexShrink: 0 }),
+      height: 60,
+      padding: `${py}px ${px}px`,
+      display: 'flex', alignItems: 'center',
+    }}>
+      <span style={{
+        fontSize: 14, fontWeight: 600, color: '#92A0BC',
+        lineHeight: 1.5,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>{children}</span>
+    </div>
+  )
+}
+
+// ─── 테이블 본문 셀 ─────────────────────────────────────────────────────
+function Td({ width, flex, pad = '10 14', children }:
+  { width?: number; flex?: boolean; pad?: string; children: ReactNode }) {
+  const [py, px] = pad.split(' ').map(Number)
+  return (
+    <div style={{
+      ...(flex ? { flex: 1, minWidth: 0 } : { width, flexShrink: 0 }),
+      height: 60,
+      padding: `${py}px ${px}px`,
+      display: 'flex', alignItems: 'center',
+      overflow: 'hidden',
+    }}>{children}</div>
+  )
+}
+
+// ─── 빈 상태 / 로딩 컨테이너 공통 스타일 ─────────────────────────────────
+const emptyContainerStyle: React.CSSProperties = {
+  flex: 1, minHeight: 306,                    // ← 426(전체) - 60(헤더) - 60(페이지네이션) = 306
+  background: '#fff',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+}
