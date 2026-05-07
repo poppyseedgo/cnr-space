@@ -2,11 +2,6 @@
  * SegmentTabBar — 세그먼트 탭 + (옵션) 검색 + (옵션) CSV
  *
  * ✅ 변경 이력
- *  - [2026-05-07] 슬라이드 pill indicator 적용
- *    · 절대 포지션 pill이 탭 간 이동 시 left + width transition으로 슬라이딩
- *    · useRef로 각 버튼 실제 크기 측정 → 탭 라벨 길이 달라도 정확히 동작
- *    · ResizeObserver로 화면 크기 변경 시 indicator 위치 재계산
- *    · ready 플래그로 첫 측정 완료 전 pill 깜빡임 방지
  *  - [2026-05-07] roomFilterProps 옵션 추가 — MyPage 회의실 필터용 (Figma 488:363 우측 dropdown)
  *  - [2026-05-06 Admin Phase B] 신규 — MyBookingTable에서 추출, Admin 검색 input 옵션 추가
  *
@@ -26,7 +21,7 @@
  *    - CSV: bg #fff / rounded full / padding 12×16 / 14 Medium #A5B3C4
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react'  // ← [2026-05-07] useCallback 추가
+import { useState, useRef, useEffect } from 'react'
 import { SearchIcon } from './Icons'
 
 // ─── Tab 정의 ────────────────────────────────────────────────────────────────
@@ -93,35 +88,6 @@ export function SegmentTabBar<TTabId extends string = string>({
         : (roomFilterProps.rooms.find(r => r.room_id === roomFilterProps.selectedRoomId)?.room_name ?? '전체 회의실'))
     : ''
 
-  // ── [2026-05-07] Sliding pill state ───────────────────────────────────────
-  const tabRefs      = useRef<(HTMLButtonElement | null)[]>([])   // ← [2026-05-07] 각 버튼 DOM ref
-  const containerRef = useRef<HTMLDivElement | null>(null)         // ← [2026-05-07] 탭 컨테이너 ref
-  const [pill, setPill]   = useState({ left: 0, width: 0 })       // ← [2026-05-07] pill 위치/크기
-  const [ready, setReady] = useState(false)                        // ← [2026-05-07] 첫 측정 완료 여부 (깜빡임 방지)
-
-  /** 활성 탭 버튼 위치/크기 측정 → pill state 업데이트 */
-  const measurePill = useCallback(() => {
-    const activeIndex = tabs.findIndex(t => t.id === activeTab)
-    const btn = tabRefs.current[activeIndex]
-    if (!btn) return
-    setPill({ left: btn.offsetLeft, width: btn.offsetWidth })      // ← [2026-05-07] 컨테이너 기준 offsetLeft
-    setReady(true)
-  }, [activeTab, tabs])
-
-  // activeTab 변경 시 pill 이동
-  useEffect(() => {
-    measurePill()
-  }, [measurePill])
-
-  // 컨테이너 크기 변경 시 pill 재계산 (반응형 대응)
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const ro = new ResizeObserver(measurePill)                     // ← [2026-05-07] ResizeObserver 재측정
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [measurePill])
-
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -130,54 +96,32 @@ export function SegmentTabBar<TTabId extends string = string>({
       flexWrap: 'wrap',                                  // ← 좁은 폭에서 줄바꿈
     }}>
       {/* 세그먼트 탭 컨테이너 (Figma node 451:3562) */}
-      <div
-        ref={containerRef}                               // ← [2026-05-07] ResizeObserver 대상
-        style={{
-          position: 'relative',                         // ← [2026-05-07] pill absolute 기준점
-          display: 'flex', alignItems: 'flex-start', gap: 4,  // ← Figma: gap 4
-          background: 'transparent',                    // ← [2026-05-06 사용자 요청] #F3F4F8 → transparent
-          borderRadius: 9999,                            // ← Figma: rounded full
-          overflow: 'hidden',
-        }}>
-
-        {/* Sliding pill indicator */}
-        {ready && (                                      // ← [2026-05-07] 첫 측정 후 표시 (깜빡임 방지)
-          <div style={{
-            position: 'absolute',
-            top: 0, bottom: 0,
-            left: pill.left,                            // ← [2026-05-07] 측정된 left
-            width: pill.width,                          // ← [2026-05-07] 측정된 width
-            background: '#111',
-            borderRadius: 9999,
-            transition: 'left 0.22s cubic-bezier(0.4, 0, 0.2, 1), width 0.22s cubic-bezier(0.4, 0, 0.2, 1)',  // ← [2026-05-07] 슬라이드 easing
-            zIndex: 0,
-            pointerEvents: 'none',
-          }} />
-        )}
-
-        {tabs.map((t, i) => {
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', gap: 4,  // ← Figma: gap 4
+        background: 'transparent',                          // ← [2026-05-06 사용자 요청] #F3F4F8 → transparent (배경 컬러 삭제)
+        borderRadius: 9999,                                  // ← Figma: rounded full
+        overflow: 'hidden',
+      }}>
+        {tabs.map(t => {
           const active = activeTab === t.id
           return (
             <button
               key={t.id}
-              ref={el => { tabRefs.current[i] = el }}  // ← [2026-05-07] 버튼별 ref 등록
               type="button"
               onClick={() => onTabChange(t.id)}
               style={{
-                position: 'relative',                   // ← [2026-05-07] zIndex 적용
-                zIndex: 1,                              // ← [2026-05-07] pill 위에 텍스트
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                padding: '12px 16px',                   // ← Figma: py 12 px 16
-                borderRadius: 9999,                     // ← Figma: rounded full
+                padding: '12px 16px',                          // ← Figma: py 12 px 16
+                borderRadius: 9999,                             // ← Figma: rounded full
                 border: 'none',
                 fontFamily: 'inherit',
-                fontSize: 14,                           // ← Figma: 14
-                lineHeight: '16px',                     // ← Figma: leading 16
+                fontSize: 14,                                   // ← Figma: 14
+                lineHeight: '16px',                             // ← Figma: leading 16
                 cursor: 'pointer',
                 whiteSpace: 'nowrap',
-                background: 'transparent',              // ← [2026-05-07] pill이 배경 담당
-                color: active ? '#fff' : '#657487',     // ← Figma: 활성 white / 비활성 #657487
-                transition: 'color 0.22s cubic-bezier(0.4, 0, 0.2, 1)',  // ← [2026-05-07] 색상 전환도 부드럽게
+                background: active ? '#111'   : '#fff',         // ← Figma: 활성 #111 / 비활성 #fff
+                color:      active ? '#fff'   : '#657487',      // ← Figma: 활성 white / 비활성 #657487
+                transition: 'background 0.15s, color 0.15s',
               }}>
               <span style={{ fontWeight: 500 }}>{t.label}</span>
               <span style={{ fontWeight: 400 }}>{t.count}</span>
