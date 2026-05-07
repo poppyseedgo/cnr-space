@@ -450,9 +450,10 @@ export function CalendarShell({
                 background: '#111', color: '#fff', cursor: 'pointer', height: 32,
               }}>
               {currentRoomLabel}
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"
+              {/* ← [2026-05-07 v2] Figma 1:1 새 arrow SVG (fill #D0D0D0) */}
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"
                 style={{ transform: showRoomDrop ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
-                <path d="M5 7.5L10 12.5L15 7.5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M10.25 12.5625L6 8.3125L6.3125 8L10.25 11.9375L14.1875 8L14.5 8.3125L10.25 12.5625Z" fill="#D0D0D0"/>
               </svg>
             </button>
             {showRoomDrop && (
