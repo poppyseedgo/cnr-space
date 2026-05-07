@@ -20,7 +20,7 @@
  *      · 영향: BookingModal의 onSubmit/onUpdate 등 검증 로직 무영향 (prefill 값만 변경)
  *      · 동기화 완료 후: BookingModal 5곳 + CalendarShell 2곳 = 총 7곳 모두 +15 통일
  */
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react'  // ← [2026-05-07] sliding pill 훅
 import { CalendarSlotCard } from '../calendar/CalendarSlotCard'  // ← [2026-04-23] Daily 뷰 슬롯 전용 카드 (구 SlotContent 대체)
 import { CalendarCompactCard } from '../calendar/CalendarCompactCard'  // ← [2026-04-24] Weekly/Monthly 공용 컴팩트 카드
 import { getSlotState, isShownInDailyView, isShownInCalendar } from '../calendar/slotHelpers'
@@ -159,6 +159,27 @@ export function CalendarShell({
   const { getHandlers: getDpTooltipHandlers, tooltipNode: dpTooltipNode } = useBlockedTooltip()
   const VIEWS = [{ id: 'daily', label: '일' }, { id: 'weekly', label: '주' }, { id: 'monthly', label: '월' }]
 
+  // ── [2026-05-07] VIEWS toggle sliding pill ───────────────────────────────
+  const viewBtnRefs      = useRef<(HTMLButtonElement | null)[]>([])
+  const viewContainerRef = useRef<HTMLDivElement | null>(null)
+  const [viewPill, setViewPill]   = useState({ left: 0, width: 0 })
+  const [viewReady, setViewReady] = useState(false)
+  const measureViewPill = useCallback(() => {
+    const i = VIEWS.findIndex(v => v.id === calView)
+    const btn = viewBtnRefs.current[i]
+    if (!btn) return
+    setViewPill({ left: btn.offsetLeft, width: btn.offsetWidth })
+    setViewReady(true)
+  }, [calView])  // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => { measureViewPill() }, [measureViewPill])
+  useEffect(() => {
+    const el = viewContainerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(measureViewPill)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [measureViewPill])
+
   const navigate = (dir: number) => {
     if (calView === 'monthly') {
       const d = dateToObj(selectedDate); d.setMonth(d.getMonth() + dir); setSelectedDate(objToStr(d))
@@ -227,6 +248,29 @@ export function CalendarShell({
     ? '전체 회의실'
     : (activeRooms.find(r => r.room_id === filterRoomId)?.room_name ?? '전체 회의실')
   const [filterMine, setFilterMine] = useState(false)
+
+  // ── [2026-05-07] filterMine toggle sliding pill ──────────────────────────
+  //    filterMine 선언 직후에 위치 (hoisting)
+  const FILTER_ITEMS = [{ v: false, l: '전체 예약' }, { v: true, l: '내 예약' }] as const
+  const filterBtnRefs      = useRef<(HTMLButtonElement | null)[]>([])
+  const filterContainerRef = useRef<HTMLDivElement | null>(null)
+  const [filterPill, setFilterPill]   = useState({ left: 0, width: 0 })
+  const [filterReady, setFilterReady] = useState(false)
+  const measureFilterPill = useCallback(() => {
+    const i = filterMine ? 1 : 0
+    const btn = filterBtnRefs.current[i]
+    if (!btn) return
+    setFilterPill({ left: btn.offsetLeft, width: btn.offsetWidth })
+    setFilterReady(true)
+  }, [filterMine])
+  useLayoutEffect(() => { measureFilterPill() }, [measureFilterPill])
+  useEffect(() => {
+    const el = filterContainerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(measureFilterPill)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [measureFilterPill])
   // ← [2026-04-24 P5] filterMine 필터 이름 비교 → isBooker(UUID OR email)
   //   기존: floorFilteredBks.filter(b => b.user === currentUser) — 이름 변경 시 매칭 실패
   //   변경: isBooker 헬퍼 — 이름 변경에도 본인 예약 정확히 필터링
@@ -282,17 +326,38 @@ export function CalendarShell({
         {/* ── 좌: 뷰탭 (Figma 396:3727) ──
              bg #f3f4f8 / p 2 / gap 2 / rounded 1000 / 각 tab px 20 py 10 / 14 Medium */}
         <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-          <div style={{ display: 'flex', background: '#F3F4F8', borderRadius: 1000,
-            padding: 2, gap: 2, flexShrink: 0, height: 40, alignItems: 'center' }}>
-            {VIEWS.map(v => (
-              <button key={v.id} className="btn" onClick={() => setCalView(v.id)}
+          <div
+            ref={viewContainerRef}
+            style={{
+              position: 'relative',
+              display: 'flex', background: '#F3F4F8', borderRadius: 1000,
+              padding: 2, gap: 2, flexShrink: 0, height: 40, alignItems: 'center',
+              overflow: 'hidden',
+            }}>
+            {viewReady && (
+              <div style={{
+                position: 'absolute', top: 2, bottom: 2,
+                left: viewPill.left, width: viewPill.width,
+                background: '#111111', borderRadius: 1000,
+                transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)',
+                zIndex: 0, pointerEvents: 'none',
+              }} />
+            )}
+            {VIEWS.map((v, i) => (
+              <button
+                key={v.id}
+                ref={el => { viewBtnRefs.current[i] = el }}
+                className="btn"
+                onClick={() => setCalView(v.id)}
                 style={{
-                  background: calView===v.id ? '#111111' : 'transparent',
-                  color:      calView===v.id ? '#fff'    : '#657487',
+                  position: 'relative', zIndex: 1,
+                  background: 'transparent',
+                  color: calView===v.id ? '#fff' : '#657487',
                   padding: '10px 20px', borderRadius: 1000,
                   fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap',
                   fontFamily: "'Pretendard', -apple-system, sans-serif",
                   border: 'none', cursor: 'pointer', lineHeight: 1,
+                  transition: 'color 0.22s cubic-bezier(0.4,0,0.2,1)',
                 }}>{v.label}</button>
             ))}
           </div>
@@ -527,13 +592,33 @@ export function CalendarShell({
           </div>
 
           {/* 전체예약/내예약 필터 — Figma 396:3740: bg-#f3f4f8 / p 2 / gap 2 / h 32 */}
-          <div style={{ display: 'flex', background: '#F3F4F8', borderRadius: 1000,
-            padding: 2, gap: 2, flexShrink: 0, height: 32, alignItems: 'center' }}>
-            {([{ v: false, l: '전체 예약' }, { v: true, l: '내 예약' }] as const).map(({ v, l }) => (
-              <button key={l} className="btn" onClick={() => setFilterMine(v)}
+          <div
+            ref={filterContainerRef}
+            style={{
+              position: 'relative',
+              display: 'flex', background: '#F3F4F8', borderRadius: 1000,
+              padding: 2, gap: 2, flexShrink: 0, height: 32, alignItems: 'center',
+              overflow: 'hidden',
+            }}>
+            {filterReady && (
+              <div style={{
+                position: 'absolute', top: 2, bottom: 2,
+                left: filterPill.left, width: filterPill.width,
+                background: '#111111', borderRadius: 10000,
+                transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)',
+                zIndex: 0, pointerEvents: 'none',
+              }} />
+            )}
+            {FILTER_ITEMS.map(({ v, l }, i) => (
+              <button
+                key={l}
+                ref={el => { filterBtnRefs.current[i] = el }}
+                className="btn"
+                onClick={() => setFilterMine(v)}
                 style={{
-                  background: filterMine===v ? '#111111' : 'transparent',
-                  color:      filterMine===v ? '#fff'    : '#657487',
+                  position: 'relative', zIndex: 1,
+                  background: 'transparent',
+                  color: filterMine===v ? '#fff' : '#657487',
                   padding: '8px 16px', borderRadius: 10000, border: 'none',
                   fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap',
                   fontFamily: "'Pretendard', -apple-system, sans-serif",
