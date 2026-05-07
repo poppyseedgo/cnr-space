@@ -410,19 +410,20 @@ export function CalendarShell({
           </button>
 
           {/* ── [2026-05-07] Today 버튼 — Date Nav 내부 absolute (Figma 487:976) ──
-               left=358.5 / top=3 / border 1px black / px 10 py 6 / rounded 24 / 12 Medium black
+               left=358.5 / top=6 / padding 4 10 / border 1px black / rounded 24 / 12 Medium black
                desktop에서만 절대 위치로 띄워서 Date Display 위치 불변
-               mobile에서는 inline으로 표시 (마진만 부여) */}
+               mobile에서는 inline으로 표시 (마진만 부여)
+               [2026-05-07 v3] top 3→6, padding 6×10→4×10 (사용자 요청) */}
           {selectedDate !== today && (
             <button className="btn"
               onClick={() => setSelectedDate(today)}
               style={{
                 ...(isMobile
                   ? { marginLeft: 10 }
-                  : { position: 'absolute', left: 358.5, top: 3 }
+                  : { position: 'absolute', left: 358.5, top: 6 }
                 ),
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                padding: '6px 10px',
+                padding: '4px 10px',
                 background: 'transparent',
                 border: '1px solid #000',
                 borderRadius: 24,
