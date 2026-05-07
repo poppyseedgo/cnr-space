@@ -70,26 +70,29 @@ export function ProfileDropdown({
 
   return (
     <div ref={dropdownRef} style={{position:"relative"}}>
-      {/* [2026-05-07] desktop도 mobile처럼 Avatar만 표시 (이름/부서 제거)
-          Figma 410:6871: bg #F6F9FF / padding 4px 4px / gap 8px / border-radius 1000 / border 없음
-          아바타: desktop 32×32 / mobile 28×28 / #CBECFF */}
+      {/* [2026-05-07 v2] desktop 프로필 버튼 스타일 변경
+          desktop: 36×36 검은 원 + 흰 글자 16px (button bg transparent — avatar 자체가 버튼)
+          mobile : 기존 28×28 #CBECFF #1E1E1E 유지 */}
       <button className="btn flex items-center flex-shrink-0"
         onClick={()=>setShowDropdown(v=>!v)}
         style={{
-          padding: "4px 4px",
+          padding: isMobile ? "4px 4px" : 0,
           gap: 8,
           borderRadius: 1000,
-          background: dark ? "rgba(255,255,255,0.05)" : "#F6F9FF",
+          background: isMobile
+            ? (dark ? "rgba(255,255,255,0.05)" : "#F6F9FF")
+            : "transparent",
           border: "none",
           cursor:"pointer",
         }}>
         <UserAvatar
           name={currentUser}
           avatarUrl={avatarUrl}
-          size={isMobile ? 28 : 32}
-          bgColor="#CBECFF"
-          textColor="#1E1E1E"
-          fontWeight={400}    // ← [2026-04-30] 헤더 프로필 아바타만 400 (기본 500 override)
+          size={isMobile ? 28 : 36}
+          bgColor={isMobile ? "#CBECFF" : "#000"}
+          textColor={isMobile ? "#1E1E1E" : "#fff"}
+          fontSize={isMobile ? undefined : 16}      // ← [2026-05-07 v2] desktop 16px (mobile은 size×0.5 자동)
+          fontWeight={400}
         />
         {/* ← [2026-05-07] 이름/부서 텍스트 제거 — desktop도 mobile처럼 avatar만 */}
       </button>
