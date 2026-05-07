@@ -127,7 +127,7 @@
 //   - 변경: <MetaBadge type="recurring" size="xs" /> / <MetaBadge type="guest" size="xs" /> 사용
 //   - 효과: BookingListTable의 반복 뱃지(민트)와 색상 통일, tokens.css 단일 소스
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react'  // ← [2026-05-07 v2] useLayoutEffect 추가 (pill 깜빡임 방지)
 import { Layers, Search, UsersRound, X, LayoutGrid, Grid3x3 } from 'lucide-react' // ← [그리드 토글 아이콘 추가]
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
@@ -171,6 +171,27 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
   useEffect(() => {
     try { window.localStorage.setItem('cnr-grid-density', gridDensity); } catch {}
   }, [gridDensity]);
+
+  // ── [2026-05-07] grid density toggle sliding pill ─────────────────────────
+  const gridBtnRefs      = useRef<(HTMLButtonElement | null)[]>([])    // ← [2026-05-07] 버튼 ref
+  const gridContainerRef = useRef<HTMLDivElement | null>(null)          // ← [2026-05-07] 컨테이너 ref
+  const [gridPill, setGridPill]   = useState({ left: 0, width: 0 })    // ← [2026-05-07] pill 위치/크기
+  const [gridReady, setGridReady] = useState(false)                     // ← [2026-05-07] 첫 측정 완료 여부
+  const measureGridPill = useCallback(() => {
+    const i = gridDensity === 'comfortable' ? 0 : 1
+    const btn = gridBtnRefs.current[i]
+    if (!btn) return
+    setGridPill({ left: btn.offsetLeft, width: btn.offsetWidth })       // ← [2026-05-07] offsetLeft 기준
+    setGridReady(true)
+  }, [gridDensity])
+  useLayoutEffect(() => { measureGridPill() }, [measureGridPill])  // ← [2026-05-07 v2] useEffect→useLayoutEffect: 깜빡임 제거
+  useEffect(() => {
+    const el = gridContainerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(measureGridPill)                      // ← [2026-05-07] 반응형 재측정
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [measureGridPill])
 
   const activeRooms = roomsData.filter(r => r.is_active);
 
@@ -527,31 +548,56 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
         </div>
 
         {/* ← [그리드 토글 버튼] 데스크탑(1024px+)에서만 표시. 모바일/태블릿은 1열/2열 고정이므로 숨김 */}
-        <div className="hidden lg:flex items-center flex-shrink-0 gap-1 p-1 rounded-full"
-          style={{background: dark?"#334155":"#fff"}}>
+        <div
+          ref={gridContainerRef}                                         // ← [2026-05-07] ResizeObserver 대상
+          className="hidden lg:flex items-center flex-shrink-0"
+          style={{
+            position: 'relative',                                        // ← [2026-05-07] pill absolute 기준점
+            background: dark?"#334155":"#fff",
+            borderRadius: 9999,
+            padding: 4,
+            gap: 0,
+            overflow: 'hidden',
+          }}>
+          {/* Sliding pill */}
+          {gridReady && (
+            <div style={{
+              position: 'absolute', top: 4, bottom: 4,                  // ← [2026-05-07 v2] 컨테이너 padding 4와 일치 (외곽 띠 보존)
+              left: gridPill.left, width: gridPill.width,
+              background: '#111', borderRadius: 9999,
+              transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)',
+              zIndex: 0, pointerEvents: 'none',
+            }} />
+          )}
           <button
-            className="btn flex items-center justify-center rounded-full transition-colors"
+            ref={el => { gridBtnRefs.current[0] = el }}                // ← [2026-05-07] 버튼 ref 등록 (comfortable)
+            className="btn flex items-center justify-center rounded-full"
             onClick={()=>setGridDensity('comfortable')}
             aria-label="3열 보기"
             title="3열 보기"
             style={{
+              position: 'relative', zIndex: 1,                         // ← [2026-05-07] pill 위에 아이콘
               width:30, height:30,
-              background: gridDensity==='comfortable' ? "#111" : "transparent",
-              color:      gridDensity==='comfortable' ? "#fff" : "#94A3B8",
+              background: 'transparent',                                // ← [2026-05-07] pill이 배경 담당
+              color: gridDensity==='comfortable' ? "#fff" : "#94A3B8",
               border:"none",
+              transition: 'color 0.22s cubic-bezier(0.4,0,0.2,1)',
             }}>
             <LayoutGrid size={15} strokeWidth={2}/>
           </button>
           <button
-            className="btn flex items-center justify-center rounded-full transition-colors"
+            ref={el => { gridBtnRefs.current[1] = el }}                // ← [2026-05-07] 버튼 ref 등록 (compact)
+            className="btn flex items-center justify-center rounded-full"
             onClick={()=>setGridDensity('compact')}
             aria-label="조밀하게 보기"
             title="조밀하게 보기"
             style={{
+              position: 'relative', zIndex: 1,                         // ← [2026-05-07] pill 위에 아이콘
               width:30, height:30,
-              background: gridDensity==='compact' ? "#111" : "transparent",
-              color:      gridDensity==='compact' ? "#fff" : "#94A3B8",
+              background: 'transparent',                                // ← [2026-05-07] pill이 배경 담당
+              color: gridDensity==='compact' ? "#fff" : "#94A3B8",
               border:"none",
+              transition: 'color 0.22s cubic-bezier(0.4,0,0.2,1)',
             }}>
             <Grid3x3 size={15} strokeWidth={2}/>
           </button>

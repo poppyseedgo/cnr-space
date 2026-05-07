@@ -29,6 +29,7 @@
  *    - 비활성: bg #fff / text #64748B
  */
 
+import { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react'  // ← [2026-05-07 v2] useLayoutEffect 추가
 import { DateDisplay } from './DateDisplay'
 
 // ─── Quick Button 정의 ───────────────────────────────────────────────────────
@@ -146,36 +147,70 @@ function ModeToggle<TModeId extends string>({
   activeMode: TModeId
   onModeChange: (id: TModeId) => void
 }) {
+  // ── [2026-05-07] Sliding pill ─────────────────────────────────────────────
+  const btnRefs      = useRef<(HTMLButtonElement | null)[]>([])  // ← [2026-05-07] 각 버튼 ref
+  const containerRef = useRef<HTMLDivElement | null>(null)        // ← [2026-05-07] 컨테이너 ref
+  const [pill, setPill]   = useState({ left: 0, width: 0 })      // ← [2026-05-07] pill 위치/크기
+  const [ready, setReady] = useState(false)                       // ← [2026-05-07] 첫 측정 완료 여부
+  const measure = useCallback(() => {
+    const i = options.findIndex(o => o.id === activeMode)
+    const btn = btnRefs.current[i]
+    if (!btn) return
+    setPill({ left: btn.offsetLeft, width: btn.offsetWidth })     // ← [2026-05-07] offsetLeft 기준
+    setReady(true)
+  }, [activeMode])  // eslint-disable-line react-hooks/exhaustive-deps  ← [2026-05-07 v2] options 제외: 매 렌더 새 배열이지만 내용 stable → 매번 ResizeObserver 재attach 방지
+  useLayoutEffect(() => { measure() }, [measure])  // ← [2026-05-07 v2] useEffect→useLayoutEffect: 깜빡임 제거
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(measure)                        // ← [2026-05-07] 반응형 재측정
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [measure])
+
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 0,    // ← Figma: 내부 옵션 사이 gap 0
-      background: '#fff',
-      padding: 2,                                        // ← 외곽 padding 2 (활성 옵션이 도드라지도록)
-      borderRadius: 1000,                                // ← pill 모양
-      flexShrink: 0,
-    }}>
-      {options.map(opt => {
-        const active = activeMode === opt.id
-        return (
-          <button
-            key={opt.id}
-            type="button"
-            onClick={() => onModeChange(opt.id)}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              height: 42, padding: '12px 16px',         // ← Figma: h 42 px 16 py 12
-              borderRadius: 1000, border: 'none', cursor: 'pointer',
-              background: active ? '#111' : 'transparent',  // ← 활성: 검정 / 비활성: 투명 (외곽 흰색 노출)
-              color:      active ? '#fff' : '#657487',
-              fontFamily: 'inherit',
-              fontSize: 14, fontWeight: 500, lineHeight: 'normal',
-              whiteSpace: 'nowrap',
-              transition: 'background 0.15s, color 0.15s',
-            }}>
-            {opt.label}
-          </button>
-        )
-      })}
+    <div
+      ref={containerRef}                                           // ← [2026-05-07] ResizeObserver 대상
+      style={{
+        position: 'relative',                                      // ← [2026-05-07] pill absolute 기준점
+        display: 'flex', alignItems: 'center', gap: 0,
+        background: '#fff',
+        padding: 2,
+        borderRadius: 1000,
+        flexShrink: 0,
+        overflow: 'hidden',
+      }}>
+      {/* Sliding pill */}
+      {ready && (
+        <div style={{
+          position: 'absolute', top: 2, bottom: 2,                // ← [2026-05-07 v2] 컨테이너 padding 2와 일치 (외곽 흰색 띠 보존)
+          left: pill.left, width: pill.width,
+          background: '#111', borderRadius: 1000,
+          transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)',
+          zIndex: 0, pointerEvents: 'none',
+        }} />
+      )}
+      {options.map((opt, i) => (
+        <button
+          key={opt.id}
+          ref={el => { btnRefs.current[i] = el }}                 // ← [2026-05-07] 버튼 ref 등록
+          type="button"
+          onClick={() => onModeChange(opt.id)}
+          style={{
+            position: 'relative', zIndex: 1,                      // ← [2026-05-07] pill 위에 텍스트
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            height: 42, padding: '12px 16px',
+            borderRadius: 1000, border: 'none', cursor: 'pointer',
+            background: 'transparent',                             // ← [2026-05-07] pill이 배경 담당
+            color: activeMode === opt.id ? '#fff' : '#657487',
+            fontFamily: 'inherit',
+            fontSize: 14, fontWeight: 500, lineHeight: 'normal',
+            whiteSpace: 'nowrap',
+            transition: 'color 0.22s cubic-bezier(0.4,0,0.2,1)', // ← [2026-05-07] 색상도 부드럽게
+          }}>
+          {opt.label}
+        </button>
+      ))}
     </div>
   )
 }

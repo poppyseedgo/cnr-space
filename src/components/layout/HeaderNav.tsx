@@ -23,7 +23,7 @@
  *  - dark       : 다크 모드
  */
 
-import React from 'react'
+import React, { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react'  // ← [2026-05-07] pill용 훅 추가 (useLayoutEffect: 첫 페인트 깜빡임 방지)
 import { Calendar, Home } from 'lucide-react'
 
 interface HeaderNavProps {
@@ -35,33 +35,74 @@ interface HeaderNavProps {
 
 export function HeaderNav({ view, onSetView, isMobile, dark }: HeaderNavProps) {
   // home/calendar 모드: Nav pills (2개 탭)
+  // ── [2026-05-07] Sliding pill ───────────────────────────────────────────────
+  const NAV_ITEMS = [
+    { v: "home",     icon: <Home size={14} strokeWidth={1.8}/>,     label: "실시간 현황", mLabel: "현황"   },
+    { v: "calendar", icon: <Calendar size={14} strokeWidth={1.8}/>, label: "캘린더 뷰",  mLabel: "캘린더" },
+  ]
+  const btnRefs      = useRef<(HTMLButtonElement | null)[]>([])       // ← [2026-05-07] 버튼 ref
+  const containerRef = useRef<HTMLDivElement | null>(null)             // ← [2026-05-07] 컨테이너 ref
+  const [pill, setPill]   = useState({ left: 0, width: 0 })           // ← [2026-05-07] pill 위치/크기
+  const [ready, setReady] = useState(false)                            // ← [2026-05-07] 첫 측정 완료 여부
+  const measure = useCallback(() => {
+    const i = NAV_ITEMS.findIndex(it => it.v === view)
+    const btn = btnRefs.current[i]
+    if (!btn) return
+    setPill({ left: btn.offsetLeft, width: btn.offsetWidth })          // ← [2026-05-07] offsetLeft 기준
+    setReady(true)
+  }, [view])  // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => { measure() }, [measure])  // ← [2026-05-07 v2] useEffect→useLayoutEffect: 첫 페인트 전 동기 측정으로 깜빡임 제거
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(measure)                             // ← [2026-05-07] 반응형 재측정
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [measure])
+
   if (view === "home" || view === "calendar") {
     return (
-      <div className="flex dark:bg-slate-700"
+      <div
+        ref={containerRef}                                              // ← [2026-05-07] ResizeObserver 대상
+        className="flex dark:bg-slate-700"
         style={{
+          position: 'relative',                                         // ← [2026-05-07] pill absolute 기준점
           background: dark ? undefined : "#F5F9FF",
           borderRadius: 1000,
           padding: 0,
           gap: 0,
+          overflow: 'hidden',
         }}>
-        {([
-          ["home",       <Home size={14} strokeWidth={1.8}/>,     "실시간 현황", "현황"]    as const,
-          ["calendar",   <Calendar size={14} strokeWidth={1.8}/>,  "캘린더 뷰",  "캘린더"]  as const,
-        ] as [string, React.ReactElement, string, string][]).map(([v,icon,label,mLabel])=>(
-          <button key={v} onClick={()=>onSetView(v)}
-            className="btn flex items-center gap-1.5 transition-all whitespace-nowrap"
+        {/* Sliding pill */}
+        {ready && (
+          <div style={{
+            position: 'absolute', top: 0, bottom: 0,
+            left: pill.left, width: pill.width,                        // ← [2026-05-07] 측정값 적용
+            background: dark ? "#F1F5F9" : "#000000",
+            borderRadius: 1000,
+            transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)',
+            zIndex: 0, pointerEvents: 'none',
+            boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+          }} />
+        )}
+        {NAV_ITEMS.map(({ v, icon, label, mLabel }, i) => (
+          <button
+            key={v}
+            ref={el => { btnRefs.current[i] = el }}                    // ← [2026-05-07] 버튼 ref 등록
+            onClick={() => onSetView(v)}
+            className="btn flex items-center gap-1.5 whitespace-nowrap"
             style={{
-              // ── [2026-04-30 사용자 요청] padding 활성/비활성 통일 14px 24px
+              position: 'relative', zIndex: 1,                         // ← [2026-05-07] pill 위에 텍스트
               padding: isMobile ? "7px 10px" : "14px 24px",
               fontSize: isMobile ? 11 : 15,
-              // ── [이전] 활성/비활성 모두 500으로 통일
               fontWeight: 500,
               borderRadius: 1000,
-              background: view===v ? (dark?"#F1F5F9":"#000000") : "transparent",
+              background: 'transparent',                                // ← [2026-05-07] pill이 배경 담당
               color: view===v
                 ? (dark?"#111111":"#fff")
-                : (dark?"#94A3B8":"#2F394A"),     // ← [2026-04-30] 비활성 색 #808899 → #2F394A (rgb 47 57 74) 더 진하게
-              boxShadow: view===v ? "0 2px 8px rgba(0,0,0,0.18)" : "none",
+                : (dark?"#94A3B8":"#2F394A"),
+              transition: 'color 0.22s cubic-bezier(0.4,0,0.2,1)',    // ← [2026-05-07] 색상도 부드럽게
+              boxShadow: 'none',
             }}>
             <span style={{fontSize: isMobile?13:14}}>{icon}</span>
             {!isMobile && label}
