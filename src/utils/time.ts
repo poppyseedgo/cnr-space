@@ -3,6 +3,12 @@ import type { Booking, ConflictResult, RoomStatus } from '../types'
 /**
  * time.ts
  * ✅ 변경 이력
+ *  - [2026-05-07 HOTFIX] tsDate / tsTime / tsMin — 문자열 슬라이싱 → Date 파싱으로 교체
+ *    · 원인: DB timestamptz가 UTC(+00:00) 형식일 때 slice()가 UTC 시간을 추출.
+ *            nowMinutes()는 KST 기준이라 9시간 어긋남 → 미래 예약을 현재로 오인식.
+ *    · 증상: 마이그레이션 예약(+00:00 형식)이 useEffect 노쇼 판정에서 미래인데 노쇼 처리됨.
+ *            일반 예약(+09:00 형식)은 slice가 KST 시간을 그대로 추출해 영향 없었음.
+ *    · 해결: new Date(ts) + KST offset(+9h)으로 파싱 → 어떤 offset 형식이든 KST 정규화.
  *  - [2026-04-29] HOURS 배열 length 13 → 12 (범위 7~18, 오후7시 열 제거)
  *    · 증상: 캘린더 데일리/위클리뷰에서 오후 7시 이후 슬롯 클릭 시
  *            startMin=19:15+, endMin=Math.min(+15, 19*60)=19:00 → start>end 역전
@@ -27,18 +33,25 @@ export function makeTZ(dateStr, timeStr) {
   return `${dateStr}T${timeStr}:00${KST}`;
 }
 // timestamptz → "YYYY-MM-DD" (KST 기준)
+// ← [2026-05-07 HOTFIX] slice(0,10) → Date 파싱으로 교체
+//   이유: DB에서 오는 값이 "+00:00"(UTC) 형식이면 slice가 UTC 날짜를 추출.
+//         new Date(ts) + 9h offset으로 offset 형식 무관하게 KST 날짜 보장.
 export function tsDate(ts) {
   if (!ts) return "";
-  // "+09:00" 오프셋 포함된 ISO 문자열에서 날짜만 추출
-  return ts.slice(0, 10);
+  const kst = new Date(new Date(ts).getTime() + 9 * 60 * 60 * 1000); // ← [HOTFIX] UTC→KST
+  return `${kst.getUTCFullYear()}-${fmt2(kst.getUTCMonth()+1)}-${fmt2(kst.getUTCDate())}`;
 }
 // timestamptz → "HH:MM" (KST 기준)
+// ← [2026-05-07 HOTFIX] slice(11,16) → Date 파싱으로 교체
+//   이유: "+00:00" 형식이면 slice가 UTC 시간을 추출 → tsMin이 KST 기준 nowMinutes()와 9시간 어긋남.
 export function tsTime(ts) {
   if (!ts) return "";
-  return ts.slice(11, 16);
+  const kst = new Date(new Date(ts).getTime() + 9 * 60 * 60 * 1000); // ← [HOTFIX] UTC→KST
+  return `${fmt2(kst.getUTCHours())}:${fmt2(kst.getUTCMinutes())}`;
 }
 // timestamptz → 분 단위 (자정 기준, KST)
 export function tsMin(ts) {
+  if (!ts) return 0; // ← [HOTFIX] null/undefined 방어
   const [h, m] = tsTime(ts).split(":").map(Number);
   return h * 60 + m;
 }
