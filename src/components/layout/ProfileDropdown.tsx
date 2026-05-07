@@ -70,13 +70,13 @@ export function ProfileDropdown({
 
   return (
     <div ref={dropdownRef} style={{position:"relative"}}>
-      {/* Figma 410:6871: bg #F6F9FF / padding 2px 10px 2px 2px / gap 8px / border-radius 1000 / border 없음
-          아바타: 32×32 #CBECFF / 이름 14 SemiBold #1E1E1E / 부서 13 Regular #A4B2BF max-w 100 ellipsis
-          모바일은 기존 4px 패딩 유지 (텍스트 미표시) */}
+      {/* [2026-05-07] desktop도 mobile처럼 Avatar만 표시 (이름/부서 제거)
+          Figma 410:6871: bg #F6F9FF / padding 4px 4px / gap 8px / border-radius 1000 / border 없음
+          아바타: desktop 32×32 / mobile 28×28 / #CBECFF */}
       <button className="btn flex items-center flex-shrink-0"
         onClick={()=>setShowDropdown(v=>!v)}
         style={{
-          padding: isMobile ? "4px 4px" : "2px 10px 2px 2px",
+          padding: "4px 4px",
           gap: 8,
           borderRadius: 1000,
           background: dark ? "rgba(255,255,255,0.05)" : "#F6F9FF",
@@ -91,31 +91,7 @@ export function ProfileDropdown({
           textColor="#1E1E1E"
           fontWeight={400}    // ← [2026-04-30] 헤더 프로필 아바타만 400 (기본 500 override)
         />
-        {!isMobile && (
-          <>
-            <span style={{
-              fontSize: 15,
-              fontWeight: 500,        // ← [2026-04-30] 600 → 500 (Pretendard Medium)
-              lineHeight: 1.5,
-              color: dark ? "#fff" : "#1E1E1E",
-              whiteSpace: "nowrap",
-            }}>
-              {currentUser}
-            </span>
-            <span style={{
-              fontSize: 13,
-              fontWeight: 400,        // Pretendard Regular
-              lineHeight: 1.5,
-              color: dark ? "#94A3B8" : "#A4B2BF",
-              maxWidth: 100,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}>
-              {currentDept}
-            </span>
-          </>
-        )}
+        {/* ← [2026-05-07] 이름/부서 텍스트 제거 — desktop도 mobile처럼 avatar만 */}
       </button>
 
       {/* 드롭다운 메뉴
