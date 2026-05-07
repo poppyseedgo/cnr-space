@@ -299,12 +299,15 @@ export function CalendarShell({
         </div>
 
         {/* ── 중앙: Date Nav (Figma 487:968) ──
-             w 420 고정 / justify-center / position relative (Today absolute 기준)
-             핵심: 고정폭 + absolute Today → Today 추가/제거 시 Date Display 위치 불변 */}
+             [2026-05-07 v4] desktop: position absolute + left 50% / translateX(-50%)
+               → 좌/우 영역 폭과 무관하게 wrapper 정중앙(=화면 정중앙=헤더 중앙) 고정
+               → Today 버튼은 Date Nav 내부 absolute이므로 그대로 작동
+             mobile: 기존처럼 inline (column 레이아웃) */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           width: isMobile ? 'auto' : 420,
-          position: 'relative',
+          position: isMobile ? 'relative' : 'absolute',
+          ...(isMobile ? {} : { left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }),
           flexShrink: 0,
         }}>
           <button className="btn" onClick={() => navigate(-1)}
