@@ -336,7 +336,7 @@ function AppContent() {
     window.scrollTo({ top: 0, behavior: 'instant' })
     // 탭 전환 시 해당 화면 필터 초기화
     if (v === 'home')     setHomeFilterFloor('ALL')
-    if (v === 'calendar') { setCalFilterFloor('ALL'); setSelectedDate(todayStr()); setCalView('daily') } // ← [2026-04-29] 캘린더 탭 재진입 시 오늘 일 뷰로 리셋
+    if (v === 'calendar') { setCalFilterRoomId('ALL'); setSelectedDate(todayStr()); setCalView('daily') } // ← [2026-04-29] 캘린더 탭 재진입 시 오늘 일 뷰로 리셋  ← [2026-05-07] setCalFilterFloor → setCalFilterRoomId
   }
   const [calView, setCalView]     = useState("daily");
   const [selectedDate, setSelectedDate] = useState(todayStr());
@@ -367,7 +367,8 @@ function AppContent() {
       console.warn('[App] 이미지 로딩 실패:', e)
     }
   }, [])  // 홈화면 전용
-  const [calFilterFloor,  setCalFilterFloor]  = useState("ALL");  // 캘린더 전용
+  // ← [2026-05-07] 캘린더 필터 단위 변경: floor → room (CalendarShell 시그니처와 동기화)
+  const [calFilterRoomId, setCalFilterRoomId] = useState<'ALL' | number>('ALL');
   const [tick, setTick]           = useState(0);
   const [loading, setLoading]       = useState(true);
   const [showSkeleton, setShowSkeleton] = useState(false);
@@ -1669,7 +1670,7 @@ function AppContent() {
           {/* ← [2026-04-24 P5] CalendarShell에 currentUserId/currentUserEmail/users 추가
                 · Daily 슬롯의 이름 live 표시 + filterMine/isOwner UUID/email 판정
                 · 원칙: 이름이 바뀌어도 부서가 바뀌어도 본인 예약으로 인식 */}
-          {view==="calendar" && <CalendarShell bookings={bookings} rooms={rooms} selectedDate={selectedDate} setSelectedDate={setSelectedDate} calView={calView} setCalView={setCalView} onBookingClick={b=>setModal({type:"detail",data:b})} onNewBooking={(d, rid, startMin, endMin) => setModal({type:"new", prefill:{room_id:rid, start: startMin!=null?`${fmt2(Math.floor(startMin/60))}:${fmt2(startMin%60)}`:undefined, end: endMin!=null?`${fmt2(Math.floor(endMin/60))}:${fmt2(endMin%60)}`:undefined}, date:d})} onCheckIn={checkIn} filterFloor={calFilterFloor} setFilterFloor={setCalFilterFloor} currentUser={currentUser} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} users={users} isAdmin={isAdmin} /> /* ← [2026-04-24] onNewBooking 시그니처 변경: (date, hour, rid) → (date, rid, startMin, endMin) — Daily 뷰 15분 단위 클릭 지원 */}
+          {view==="calendar" && <CalendarShell bookings={bookings} rooms={rooms} selectedDate={selectedDate} setSelectedDate={setSelectedDate} calView={calView} setCalView={setCalView} onBookingClick={b=>setModal({type:"detail",data:b})} onNewBooking={(d, rid, startMin, endMin) => setModal({type:"new", prefill:{room_id:rid, start: startMin!=null?`${fmt2(Math.floor(startMin/60))}:${fmt2(startMin%60)}`:undefined, end: endMin!=null?`${fmt2(Math.floor(endMin/60))}:${fmt2(endMin%60)}`:undefined}, date:d})} onCheckIn={checkIn} filterRoomId={calFilterRoomId} setFilterRoomId={setCalFilterRoomId} currentUser={currentUser} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} users={users} isAdmin={isAdmin} /> /* ← [2026-04-24] onNewBooking 시그니처 변경: (date, hour, rid) → (date, rid, startMin, endMin) — Daily 뷰 15분 단위 클릭 지원 */}
         </div>
       )}
 

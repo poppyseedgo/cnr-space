@@ -2,6 +2,11 @@
  * MyBookingTable — MY PAGE 전용 기간별 예약 조회 테이블
  *
  * ✅ 변경 이력
+ *  - [2026-05-07] 회의실 필터 추가 + CSV 버튼 제거 (Figma 488:363)
+ *    · selectedRoomId state 신설 — 'ALL' | room_id
+ *    · dateFiltered → roomFiltered → tab 필터 순서 (1차: 날짜 → 2차: 회의실 → 3차: 탭)
+ *    · onCsvClick prop 제거 (사용자 결정 2026-05-07)
+ *    · SegmentTabBar에 roomFilterProps 전달
  *  - [2026-05-06 Admin Phase B] 공통 컴포넌트 추출 — DateRangeFilter / SegmentTabBar / DataTable 사용
  *    · 583줄 → 약 280줄로 축소
  *    · 도메인 로직(isNoshow/isCompleted/isCancelled/isUpcoming + PAGE_SIZE)은 그대로 유지
@@ -88,16 +93,16 @@ interface MyBookingTableProps {
   currentUserEmail: string                                 // ← email (이중 복원 fallback)
   onDetail:         (b: Booking) => void
   loading?:         boolean
-  /** CSV 버튼 클릭 콜백 (현재는 toast — 추후 CSV 다운로드 구현) */
-  onCsvClick?:      () => void
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 export function MyBookingTable({
   bookings, rooms, users = [],
   currentUserId, currentUserEmail,
-  onDetail, loading = false, onCsvClick,
+  onDetail, loading = false,
 }: MyBookingTableProps) {
+  // ── [2026-05-07] 회의실 필터 state ('ALL' | room_id) ────────────────────
+  const [selectedRoomId, setSelectedRoomId] = useState<'ALL' | number>('ALL')
   const today = todayStr()
   const now   = nowMinutes()
 
@@ -143,24 +148,32 @@ export function MyBookingTable({
     })
   , [bookings, from, to])
 
-  // ── 통계 (탭 카운트)
-  const stats = useMemo(() => ({
-    all:       dateFiltered.length,
-    upcoming:  dateFiltered.filter(b => isUpcoming(b, today, now)).length,
-    completed: dateFiltered.filter(isCompleted).length,
-    noshow:    dateFiltered.filter(isNoshow).length,
-    cancelled: dateFiltered.filter(isCancelled).length,
-  }), [dateFiltered, today, now])
+  // ── 2차 필터: 회의실 [2026-05-07] ───────────────────────────────────────
+  //   탭 카운트와 displayList 모두 이 단계 결과를 기준으로 함
+  const roomFiltered = useMemo(() =>
+    selectedRoomId === 'ALL'
+      ? dateFiltered
+      : dateFiltered.filter(b => b.room_id === selectedRoomId)
+  , [dateFiltered, selectedRoomId])
 
-  // ── 2차 필터: 탭 + 정렬 (최신순 = createdAt 내림차순)
+  // ── 통계 (탭 카운트) — 회의실 필터 적용된 결과 기준
+  const stats = useMemo(() => ({
+    all:       roomFiltered.length,
+    upcoming:  roomFiltered.filter(b => isUpcoming(b, today, now)).length,
+    completed: roomFiltered.filter(isCompleted).length,
+    noshow:    roomFiltered.filter(isNoshow).length,
+    cancelled: roomFiltered.filter(isCancelled).length,
+  }), [roomFiltered, today, now])
+
+  // ── 3차 필터: 탭 + 정렬 (최신순 = createdAt 내림차순)
   const displayList = useMemo(() => {
-    let list = dateFiltered
+    let list = roomFiltered
     if (tab === 'upcoming')  list = list.filter(b => isUpcoming(b, today, now))
     if (tab === 'completed') list = list.filter(isCompleted)
     if (tab === 'noshow')    list = list.filter(isNoshow)
     if (tab === 'cancelled') list = list.filter(isCancelled)
     return [...list].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
-  }, [dateFiltered, tab, today, now])
+  }, [roomFiltered, tab, today, now])
 
   // ── 페이징
   const totalPages = Math.max(1, Math.ceil(displayList.length / PAGE_SIZE))
@@ -284,14 +297,18 @@ export function MyBookingTable({
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════
-          ↓ Filter Row 2: 세그먼트 탭 + CSV 버튼 (SegmentTabBar) — 검색 없음
+          ↓ Filter Row 2: 세그먼트 탭 + 회의실 필터 (SegmentTabBar) [2026-05-07]
           ═══════════════════════════════════════════════════════════════════ */}
       <div style={{ marginBottom: 24 }}>
         <SegmentTabBar
           tabs={TABS}
           activeTab={tab}
           onTabChange={(id) => { setTab(id); resetPage() }}
-          onCsvClick={onCsvClick}
+          roomFilterProps={{
+            rooms: rooms.filter(r => r.is_active).map(r => ({ room_id: r.room_id, room_name: r.room_name })),
+            selectedRoomId,
+            onRoomChange: (id) => { setSelectedRoomId(id); resetPage() },
+          }}
         />
       </div>
 

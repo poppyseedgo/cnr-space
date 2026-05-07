@@ -2,6 +2,13 @@
  * CalendarShell.tsx — 캘린더 뷰 (Daily / Weekly / Monthly)
  *
  * ✅ 변경 이력
+ *  - [2026-05-07] 툴바 재설계 + 회의실 필터로 교체 (Figma 396:3716)
+ *    · props: filterFloor → filterRoomId (값 'ALL' | room_id로 의미 변경)
+ *    · 좌/중/우 3구역 flex justify-between 구조 (외부 wrapper flex-1 + 내부 justify-between)
+ *    · 중앙 Date Nav를 w=420px 고정폭 박스로 — Today 버튼 추가/제거 시 Date Display 위치 불변
+ *    · Today 버튼: Date Nav 내부 absolute (left=358.5, top=3) — Figma 487:976 1:1
+ *    · 우측: 층 dropdown 제거 → 회의실 dropdown으로 교체 (Figma 487:859 1:1)
+ *    · filteredRooms 로직: floor_id 매칭 → room_id 직접 매칭으로 변경
  *  - [2026-04-27] 캘린더 슬롯 클릭 기본 시간 1시간 → 15분 (BookingModal과 동기화)
  *      · 사용자 보고: "캘린더 뷰의 슬롯 클릭해서 예약모달 진입할 때 1시간으로 설정됨, 15분이어야"
  *      · 원인: CalendarShell.tsx 2곳에서 +60 잔존 (BookingModal은 5곳 모두 +15 동기화 완료된 상태)
@@ -25,7 +32,8 @@ import {
   fmt2, DAY_NAMES, MONTH_NAMES, HOURS,
   dateToObj, objToStr, addDays, getWeekStart,
 } from '../../utils/time'
-import { FLOORS, getFloor } from '../../data/floors'
+// ← [2026-05-07] 회의실 필터로 교체되며 FLOORS 미사용. getFloor만 DailyView에서 사용.
+import { getFloor } from '../../data/floors'
 import type { Booking, Room } from '../../types'
 
 // ── 툴바 아이콘 SVG (Figma 기준) ──────────────────────────────────────────────
@@ -139,7 +147,8 @@ function isQuarterBookable(
 export function CalendarShell({
   bookings, rooms: roomsProp = [], selectedDate, setSelectedDate,
   calView, setCalView, onBookingClick, onNewBooking, onCheckIn,
-  filterFloor, setFilterFloor, currentUser = '',
+  // ← [2026-05-07] filterFloor → filterRoomId 변경 (값: 'ALL' | room_id)
+  filterRoomId, setFilterRoomId, currentUser = '',
   currentUserId = '',       // ← [2026-04-24 P5]
   currentUserEmail = '',    // ← [2026-04-24 P5]
   users = [],               // ← [2026-04-24 P5] 예약자 이름 live 조회용 (CalendarSlotCard로 전달)
@@ -174,12 +183,15 @@ export function CalendarShell({
   }
 
   const allRooms = roomsProp
-  const filteredRooms = filterFloor === 'ALL'
+  // ── [2026-05-07] 회의실 필터로 교체 — filterRoomId === 'ALL' | room_id
+  //   filteredRooms: 'ALL'이면 활성 전부, 아니면 해당 회의실 1개만
+  //   roomFilteredBks: 'ALL'이면 전부, 아니면 room_id 일치만
+  const filteredRooms = filterRoomId === 'ALL'
     ? allRooms.filter(r => r.is_active)
-    : allRooms.filter(r => r.is_active && r.floor_id === parseInt(filterFloor))
-  const floorFilteredBks = filterFloor === 'ALL'
+    : allRooms.filter(r => r.is_active && r.room_id === filterRoomId)
+  const roomFilteredBks = filterRoomId === 'ALL'
     ? bookings
-    : bookings.filter(b => filteredRooms.some(r => r.room_id === b.room_id))
+    : bookings.filter(b => b.room_id === filterRoomId)
 
   // ── DatePicker ──
   const [showDatePicker, setShowDatePicker] = useState(false)
@@ -202,24 +214,25 @@ export function CalendarShell({
   for (let i = 1; i <= dpDaysInMonth; i++) dpCells.push(i)
   while (dpCells.length % 7 !== 0) dpCells.push(null)
 
-  // ── 층 드롭다운 ──
-  const [showFloorDrop, setShowFloorDrop] = useState(false)
-  const floorDropRef = useRef<HTMLDivElement>(null)
+  // ── [2026-05-07] 회의실 드롭다운 (구 층 드롭다운 교체) ──
+  const [showRoomDrop, setShowRoomDrop] = useState(false)
+  const roomDropRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (floorDropRef.current && !floorDropRef.current.contains(e.target as Node)) setShowFloorDrop(false) }
+    const h = (e: MouseEvent) => { if (roomDropRef.current && !roomDropRef.current.contains(e.target as Node)) setShowRoomDrop(false) }
     document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h)
   }, [])
 
-  const currentFloorLabel = filterFloor === 'ALL'
-    ? '전체 층'
-    : (FLOORS.find(f => f.floor_id === parseInt(filterFloor))?.floor_name ?? '전체 층')
+  const activeRooms = allRooms.filter(r => r.is_active)
+  const currentRoomLabel = filterRoomId === 'ALL'
+    ? '전체 회의실'
+    : (activeRooms.find(r => r.room_id === filterRoomId)?.room_name ?? '전체 회의실')
   const [filterMine, setFilterMine] = useState(false)
   // ← [2026-04-24 P5] filterMine 필터 이름 비교 → isBooker(UUID OR email)
   //   기존: floorFilteredBks.filter(b => b.user === currentUser) — 이름 변경 시 매칭 실패
   //   변경: isBooker 헬퍼 — 이름 변경에도 본인 예약 정확히 필터링
   const filteredBks = filterMine
-    ? floorFilteredBks.filter(b => isBooker(b, currentUserId, currentUserEmail))
-    : floorFilteredBks
+    ? roomFilteredBks.filter(b => isBooker(b, currentUserId, currentUserEmail))
+    : roomFilteredBks
 
   // ── 뷰별 데이터 ──
   const weekStart = getWeekStart(selectedDate)
@@ -251,16 +264,24 @@ export function CalendarShell({
 
   return (
     <div>
-      {/* ── 툴바 ── */}
+      {/* ── 툴바 ── [2026-05-07] Figma 396:3716 1:1 재설계
+           외부: padding 12 18 / rounded 16 / h 64 / flex items-center
+           내부 wrapper(데스크탑): flex-1 + flex justify-between
+             → 좌/중/우 3개 자식이 양 끝 + 중앙에 자동 분배
+             → 중앙 Date Nav가 w=420 고정폭이라 좌/우 무엇이 바뀌어도 위치 불변 */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl mb-4"
         style={{
           padding: '12px 18px', position: 'relative', zIndex: 50,
           display: 'flex', flexDirection: isMobile ? 'column' : 'row',
-          gap: 10, alignItems: 'center', height: isMobile ? 'auto' : 64,
+          gap: 10,
+          alignItems: 'center',
+          justifyContent: isMobile ? 'flex-start' : 'space-between',
+          height: isMobile ? 'auto' : 64,
         }}>
 
-        {/* ── 좌: 뷰탭 ── */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 8 }}>
+        {/* ── 좌: 뷰탭 (Figma 396:3727) ──
+             bg #f3f4f8 / p 2 / gap 2 / rounded 1000 / 각 tab px 20 py 10 / 14 Medium */}
+        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
           <div style={{ display: 'flex', background: '#F3F4F8', borderRadius: 1000,
             padding: 2, gap: 2, flexShrink: 0, height: 40, alignItems: 'center' }}>
             {VIEWS.map(v => (
@@ -277,25 +298,33 @@ export function CalendarShell({
           </div>
         </div>
 
-        {/* ── 중앙: 날짜 네비 ── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        {/* ── 중앙: Date Nav (Figma 487:968) ──
+             w 420 고정 / justify-center / position relative (Today absolute 기준)
+             핵심: 고정폭 + absolute Today → Today 추가/제거 시 Date Display 위치 불변 */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: isMobile ? 'auto' : 420,
+          position: 'relative',
+          flexShrink: 0,
+        }}>
           <button className="btn" onClick={() => navigate(-1)}
             style={{ width: 20, height: 20, padding: 0, background: 'none', border: 'none',
               display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
             <IcoBack />
           </button>
 
-          {/* 날짜 버튼 — 모든 뷰 공통, 항상 데이트피커 열림 */}
+          {/* 날짜 버튼 (Figma 487:971) — 모든 뷰 공통, 항상 데이트피커 열림
+               px 14 py 5 / rounded 8 / 20 Medium #111 / bg-white */}
           <div ref={dpRef} style={{ position: 'relative', minWidth: 0 }}>
             <button className="btn"
               onClick={() => setShowDatePicker(v => !v)}
               style={{
-                padding: '5px 14px', background: 'transparent', whiteSpace: 'nowrap',
+                padding: '5px 14px', background: '#fff', whiteSpace: 'nowrap',
                 border: 'none',
-                borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-                height: 33, userSelect: 'none', WebkitUserSelect: 'none',
+                borderRadius: 8, display: 'flex', alignItems: 'center', cursor: 'pointer',
+                userSelect: 'none', WebkitUserSelect: 'none',
               }}>
-              <span style={{ fontSize: 19, fontWeight: 500, color: '#111111',
+              <span style={{ fontSize: 20, fontWeight: 500, color: '#111',
                 fontFamily: "'Pretendard', -apple-system, sans-serif",
                 userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'none' }}>
                 {calView === 'daily'
@@ -379,64 +408,122 @@ export function CalendarShell({
               display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
             <IcoForward />
           </button>
-          {/* 오늘 버튼 — datepicker 10px 옆에 위치 */}
+
+          {/* ── [2026-05-07] Today 버튼 — Date Nav 내부 absolute (Figma 487:976) ──
+               left=358.5 / top=3 / border 1px black / px 10 py 6 / rounded 24 / 12 Medium black
+               desktop에서만 절대 위치로 띄워서 Date Display 위치 불변
+               mobile에서는 inline으로 표시 (마진만 부여) */}
           {selectedDate !== today && (
             <button className="btn"
-              style={{ marginLeft: 10, padding: '4px 10px', fontSize: 11, fontWeight: 500,
-                background: '#111111', color: '#fff', borderRadius: 999, border: 'none',
-                cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}
-              onClick={() => setSelectedDate(today)}>오늘</button>
+              onClick={() => setSelectedDate(today)}
+              style={{
+                ...(isMobile
+                  ? { marginLeft: 10 }
+                  : { position: 'absolute', left: 358.5, top: 3 }
+                ),
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '6px 10px',
+                background: 'transparent',
+                border: '1px solid #000',
+                borderRadius: 24,
+                fontSize: 12, fontWeight: 500, lineHeight: '16px',
+                color: '#000',
+                fontFamily: "'Pretendard', -apple-system, sans-serif",
+                cursor: 'pointer', whiteSpace: 'nowrap',
+              }}>Today</button>
           )}
         </div>
 
-        {/* ── 우: 오늘버튼(조건) + 층 드롭다운 + 필터탭 ── */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10 }}>
-          {/* 층 드롭다운 */}
-          <div ref={floorDropRef} style={{ position: 'relative', flexShrink: 0 }}>
-            <button className="btn" onClick={() => setShowFloorDrop(v => !v)}
+        {/* ── 우: 회의실 dropdown + 전체예약/내예약 (Figma 396:3734) ──
+             gap 10 / 회의실 dropdown bg-#111 h=32 + View Tabs h=32 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          {/* 회의실 dropdown (Figma 479:3302 + 487:859) [2026-05-07 — 층 dropdown 교체] */}
+          <div ref={roomDropRef} style={{ position: 'relative', flexShrink: 0 }}>
+            <button className="btn" onClick={() => setShowRoomDrop(v => !v)}
               style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '7px 14px', borderRadius: 999, border: 'none',
-                fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                paddingLeft: 14, paddingRight: 7, paddingTop: 7, paddingBottom: 7,
+                borderRadius: 999, border: 'none',
+                fontSize: 13, fontWeight: 400,
+                letterSpacing: 0.13, lineHeight: '16px', whiteSpace: 'nowrap',
                 fontFamily: "'Pretendard', -apple-system, sans-serif",
-                background: '#111111', color: '#fff', cursor: 'pointer', height: 32,
+                background: '#111', color: '#fff', cursor: 'pointer', height: 32,
               }}>
-              {currentFloorLabel}
-              <svg width="9" height="5" viewBox="0 0 9 5" fill="none" xmlns="http://www.w3.org/2000/svg"
-                style={{transform: showFloorDrop ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s'}}>
-                <path d="M4.25 4.5625L0 0.3125L0.3125 0L4.25 3.9375L8.1875 0L8.5 0.3125L4.25 4.5625Z" fill="#d0d0d0"/>
+              {currentRoomLabel}
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"
+                style={{ transform: showRoomDrop ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                <path d="M5 7.5L10 12.5L15 7.5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
-          {showFloorDrop && (
-            <div style={{
-              position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 9999,
-              background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.10)', padding: 6, minWidth: 110,
-            }}>
-              {([{ id: 'ALL', label: '전체 층' }, ...FLOORS.map(f => ({ id: f.floor_id, label: f.floor_name }))] as { id: any; label: string }[]).map(f => {
-                const isActive = filterFloor === (f.id === 'ALL' ? 'ALL' : f.id)
-                return (
-                  <button key={f.id} className="btn"
-                    onClick={() => { setFilterFloor(f.id === 'ALL' ? 'ALL' : f.id); setShowFloorDrop(false) }}
-                    style={{
-                      display: 'block', width: '100%', textAlign: 'left',
-                      padding: '8px 12px', fontSize: 12, borderRadius: 8,
-                      background: isActive ? '#111111' : 'transparent',
-                      color:      isActive ? '#fff'    : '#374151',
-                    }}
-                    onMouseEnter={e => { if (!isActive) (e.target as HTMLElement).style.background = '#F3F4F8' }}
-                    onMouseLeave={e => { if (!isActive) (e.target as HTMLElement).style.background = 'transparent' }}>
-                    {f.label}
-                  </button>
-                )
-              })}
-            </div>
-          )}
+            {showRoomDrop && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 9999,
+                background: '#fff', borderRadius: 16,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+                minWidth: 180, overflow: 'hidden',
+                display: 'flex', flexDirection: 'column',
+              }}>
+                {/* MENU 1: 전체 회의실 (Figma 487:861) — pt 8 pb 4 px 8 */}
+                <div style={{ paddingTop: 8, paddingBottom: 4, paddingLeft: 8, paddingRight: 8 }}>
+                  {(() => {
+                    const isActive = filterRoomId === 'ALL'
+                    return (
+                      <button className="btn"
+                        onClick={() => { setFilterRoomId('ALL'); setShowRoomDrop(false) }}
+                        style={{
+                          display: 'flex', alignItems: 'center', width: '100%',
+                          paddingLeft: 12, paddingRight: 12, paddingTop: 8, paddingBottom: 8,
+                          borderRadius: 24, border: 'none', cursor: 'pointer',
+                          background: isActive ? '#000' : 'transparent',
+                          color:      isActive ? '#fff' : '#111',
+                          fontFamily: "'Pretendard', -apple-system, sans-serif",
+                          fontSize: 12, fontWeight: 400,
+                          letterSpacing: 0.12, lineHeight: 1.5, textAlign: 'left',
+                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        }}
+                        onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = '#F3F4F8' }}
+                        onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
+                        전체 회의실
+                      </button>
+                    )
+                  })()}
+                </div>
+                {/* MENU 2~N: 회의실 목록 (Figma 487:867~) — px 8, 마지막은 pb 12 */}
+                {activeRooms.map((r, i) => {
+                  const isActive = filterRoomId === r.room_id
+                  const isLast   = i === activeRooms.length - 1
+                  return (
+                    <div key={r.room_id} style={{
+                      paddingLeft: 8, paddingRight: 8,
+                      paddingBottom: isLast ? 12 : 0,
+                    }}>
+                      <button className="btn"
+                        onClick={() => { setFilterRoomId(r.room_id); setShowRoomDrop(false) }}
+                        style={{
+                          display: 'flex', alignItems: 'center', width: '100%',
+                          paddingLeft: 12, paddingRight: 12, paddingTop: 8, paddingBottom: 8,
+                          borderRadius: 24, border: 'none', cursor: 'pointer',
+                          background: isActive ? '#000' : 'transparent',
+                          color:      isActive ? '#fff' : '#111',
+                          fontFamily: "'Pretendard', -apple-system, sans-serif",
+                          fontSize: 12, fontWeight: 400,
+                          letterSpacing: 0.12, lineHeight: 1.5, textAlign: 'left',
+                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        }}
+                        onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = '#F3F4F8' }}
+                        onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
+                        {r.room_name}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
-          {/* ④ 전체예약/내예약 필터 — Figma: padding=0, h=32, gap=2 */}
+          {/* 전체예약/내예약 필터 — Figma 396:3740: bg-#f3f4f8 / p 2 / gap 2 / h 32 */}
           <div style={{ display: 'flex', background: '#F3F4F8', borderRadius: 1000,
-            padding: 0, gap: 2, flexShrink: 0, height: 32, alignItems: 'center' }}>
+            padding: 2, gap: 2, flexShrink: 0, height: 32, alignItems: 'center' }}>
             {([{ v: false, l: '전체 예약' }, { v: true, l: '내 예약' }] as const).map(({ v, l }) => (
               <button key={l} className="btn" onClick={() => setFilterMine(v)}
                 style={{

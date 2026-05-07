@@ -21,7 +21,7 @@
  *    · 월별 이용 통계 섹션 완전 제거 (statYear/statMonth/monthStats useMemo + UI 통째 제거)
  *    · 외곽 wrapper 추가: 페이지 배경 #F3F4F7 (App.tsx의 #F5F7F9를 부분 덮어씀, 다른 페이지 영향 0)
  *    · 기간별 예약 조회 섹션: 흰 카드 wrapper 제거 + 헤더 19 SemiBold + ClipboardList 아이콘 제거
- *    · CSV 버튼 클릭 시 showToast 안내 (CSV 기능은 추후 단계)
+ *    · CSV 버튼 클릭 시 showToast 안내 (CSV 기능은 추후 단계)  ← [2026-05-07] 버튼 자체 제거
  *    · dead code 정리: cancelBooking 함수 / tab/upcoming/completed/cancelled/tabData state
  *    · lucide 미사용 import 제거: BarChart2 / ClipboardList / Inbox
  *
@@ -423,7 +423,8 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
           · 변경:
             - wrapper 카드 제거 (Figma 새 디자인은 페이지 배경 위 직접 배치)
             - 헤더: "기간별 예약 조회" 19px SemiBold #111, 좌우 패딩 0
-            - 본체: MyBookingTable 신규 컴포넌트 (DateDisplay/세그먼트탭/CSV/h60행)
+            - 본체: MyBookingTable 신규 컴포넌트 (DateDisplay/세그먼트탭/회의실필터/h60행)
+                                                  ↑ [2026-05-07] CSV 제거 / 회의실 필터 추가
           · padding: 24 0 (영역 자체 상하 24, 좌우 0 — Figma 449:2382)
           ═══════════════════════════════════════════════════════════════════ */}
       <div className="anm" style={{
@@ -441,6 +442,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
         }}>나의 예약 조회</div>{/* ← [2026-05-06] "기간별 예약 조회" → "나의 예약 조회" */}
 
         {/* MyBookingTable — 모든 필터/탭/테이블/페이지네이션 자체 관리 */}
+        {/* ← [2026-05-07] CSV 버튼 제거 + 회의실 필터 추가 (MyBookingTable 내부에서 처리) */}
         <MyBookingTable
           bookings={allMyBookings}
           rooms={allRooms}
@@ -449,11 +451,6 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
           currentUserEmail={currentUserEmail}              // ← 이중 복원 fallback
           onDetail={onDetail}
           loading={allLoading}
-          onCsvClick={() => {
-            // ← [2026-05-04 STEP 4] CSV 다운로드는 추후 단계 (사용자 결정 2026-05-04)
-            //   현재는 toast로 안내만, 다음 채팅에서 실제 export 구현 예정
-            showToast('CSV 다운로드는 곧 지원될 예정입니다.', 'info');
-          }}
         />
       </div>
 
