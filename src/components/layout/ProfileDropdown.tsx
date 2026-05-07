@@ -109,10 +109,10 @@ export function ProfileDropdown({
         <div className="anm" style={{
           position:"absolute", top:"calc(100% + 6px)", right:0, zIndex:200,
           background:"#fff",
-          borderRadius:16,
+          borderRadius:20,                                  // ← [2026-05-07 v2] 16 → 20
           boxShadow:"0 8px 32px rgba(0,0,0,0.12)",
           overflow:"hidden",
-          width:200,
+          width:240,                                        // ← [2026-05-07 v2] 200 → 240
         }}>
           {/* ModalHeader (사용자 정보) — Figma 445:536 / 445:423 */}
           <div style={{
@@ -121,7 +121,7 @@ export function ProfileDropdown({
             display:"flex", flexDirection:"column", gap:2,
           }}>
             <div style={{
-              fontSize:14, fontWeight:500, lineHeight:1.5, color:"#111",
+              fontSize:16, fontWeight:400, lineHeight:1.5, color:"#111",  // ← [2026-05-07 v2] 14/500 → 16/400
               whiteSpace:"nowrap",
             }}>{currentUser}</div>
             <div style={{
