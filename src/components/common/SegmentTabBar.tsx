@@ -143,7 +143,7 @@ export function SegmentTabBar<TTabId extends string = string>({
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
                 background: '#111', color: '#fff',
-                paddingLeft: 16, paddingRight: 12, paddingTop: 12, paddingBottom: 12,
+                paddingLeft: 16, paddingRight: 12, paddingTop: 10, paddingBottom: 10,  // ← [2026-05-07 v3] py 12→10 (사용자 요청)
                 borderRadius: 999, border: 'none', cursor: 'pointer',
                 fontFamily: 'inherit', fontSize: 14, fontWeight: 400,
                 letterSpacing: 0.14, lineHeight: '16px', whiteSpace: 'nowrap',
