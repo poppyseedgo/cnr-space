@@ -562,10 +562,13 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
           {/* Sliding pill */}
           {gridReady && (
             <div style={{
-              position: 'absolute', top: 4, bottom: 4,                  // ← [2026-05-07 v2] 컨테이너 padding 4와 일치 (외곽 띠 보존)
-              left: gridPill.left, width: gridPill.width,
+              position: 'absolute', top: 4, bottom: 4,                  // ← [2026-05-07 v2] padding 4와 일치
+              left: 0,                                                    // ← [2026-05-07 v3] translate3d 사용
+              width: gridPill.width,
+              transform: `translate3d(${gridPill.left}px, 0, 0)`,        // ← [2026-05-07 v3] GPU 가속
               background: '#111', borderRadius: 9999,
-              transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)',
+              transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)',
+              willChange: 'transform, width',                             // ← [2026-05-07 v3] composite layer 힌트
               zIndex: 0, pointerEvents: 'none',
             }} />
           )}
@@ -582,6 +585,9 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
               color: gridDensity==='comfortable' ? "#fff" : "#94A3B8",
               border:"none",
               transition: 'color 0.22s cubic-bezier(0.4,0,0.2,1)',
+              WebkitTapHighlightColor: 'transparent',                    // ← [2026-05-07 v3] iOS 회색 박스 제거
+              touchAction: 'manipulation',                                // ← [2026-05-07 v3] 300ms tap delay 제거
+              userSelect: 'none',                                          // ← [2026-05-07 v3] 텍스트 선택 차단
             }}>
             <LayoutGrid size={15} strokeWidth={2}/>
           </button>
@@ -598,6 +604,9 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
               color: gridDensity==='compact' ? "#fff" : "#94A3B8",
               border:"none",
               transition: 'color 0.22s cubic-bezier(0.4,0,0.2,1)',
+              WebkitTapHighlightColor: 'transparent',                    // ← [2026-05-07 v3] iOS 회색 박스 제거
+              touchAction: 'manipulation',                                // ← [2026-05-07 v3] 300ms tap delay 제거
+              userSelect: 'none',                                          // ← [2026-05-07 v3] 텍스트 선택 차단
             }}>
             <Grid3x3 size={15} strokeWidth={2}/>
           </button>

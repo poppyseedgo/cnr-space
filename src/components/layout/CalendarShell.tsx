@@ -337,9 +337,12 @@ export function CalendarShell({
             {viewReady && (
               <div style={{
                 position: 'absolute', top: 2, bottom: 2,
-                left: viewPill.left, width: viewPill.width,
+                left: 0,                                              // ← [2026-05-07 v3] translate3d 사용
+                width: viewPill.width,
+                transform: `translate3d(${viewPill.left}px, 0, 0)`,   // ← [2026-05-07 v3] GPU 가속
                 background: '#111111', borderRadius: 1000,
-                transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)',
+                transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)',
+                willChange: 'transform, width',                       // ← [2026-05-07 v3] composite layer 힌트
                 zIndex: 0, pointerEvents: 'none',
               }} />
             )}
@@ -358,6 +361,9 @@ export function CalendarShell({
                   fontFamily: "'Pretendard', -apple-system, sans-serif",
                   border: 'none', cursor: 'pointer', lineHeight: 1,
                   transition: 'color 0.22s cubic-bezier(0.4,0,0.2,1)',
+                  WebkitTapHighlightColor: 'transparent',              // ← [2026-05-07 v3] iOS 회색 박스 제거
+                  touchAction: 'manipulation',                          // ← [2026-05-07 v3] 300ms tap delay 제거
+                  userSelect: 'none',                                    // ← [2026-05-07 v3] 텍스트 선택 차단
                 }}>{v.label}</button>
             ))}
           </div>
@@ -603,9 +609,12 @@ export function CalendarShell({
             {filterReady && (
               <div style={{
                 position: 'absolute', top: 2, bottom: 2,
-                left: filterPill.left, width: filterPill.width,
+                left: 0,                                              // ← [2026-05-07 v3] translate3d 사용
+                width: filterPill.width,
+                transform: `translate3d(${filterPill.left}px, 0, 0)`, // ← [2026-05-07 v3] GPU 가속
                 background: '#111111', borderRadius: 10000,
-                transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)',
+                transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)',
+                willChange: 'transform, width',                       // ← [2026-05-07 v3] composite layer 힌트
                 zIndex: 0, pointerEvents: 'none',
               }} />
             )}
@@ -623,6 +632,9 @@ export function CalendarShell({
                   fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap',
                   fontFamily: "'Pretendard', -apple-system, sans-serif",
                   cursor: 'pointer', lineHeight: 1, height: 32,
+                  WebkitTapHighlightColor: 'transparent',              // ← [2026-05-07 v3] iOS 회색 박스 제거
+                  touchAction: 'manipulation',                          // ← [2026-05-07 v3] 300ms tap delay 제거
+                  userSelect: 'none',                                    // ← [2026-05-07 v3] 텍스트 선택 차단
                 }}>{l}</button>
             ))}
           </div>

@@ -77,10 +77,13 @@ export function HeaderNav({ view, onSetView, isMobile, dark }: HeaderNavProps) {
         {ready && (
           <div style={{
             position: 'absolute', top: 0, bottom: 0,
-            left: pill.left, width: pill.width,                        // ← [2026-05-07] 측정값 적용
+            left: 0,                                                    // ← [2026-05-07 v3] left → translate3d (GPU 가속)
+            width: pill.width,
+            transform: `translate3d(${pill.left}px, 0, 0)`,             // ← [2026-05-07 v3] GPU composite layer
             background: dark ? "#F1F5F9" : "#000000",
             borderRadius: 1000,
-            transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)',
+            transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)',
+            willChange: 'transform, width',                             // ← [2026-05-07 v3] composite layer 힌트
             zIndex: 0, pointerEvents: 'none',
             boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
           }} />
@@ -101,8 +104,11 @@ export function HeaderNav({ view, onSetView, isMobile, dark }: HeaderNavProps) {
               color: view===v
                 ? (dark?"#111111":"#fff")
                 : (dark?"#94A3B8":"#2F394A"),
-              transition: 'color 0.22s cubic-bezier(0.4,0,0.2,1)',    // ← [2026-05-07] 색상도 부드럽게
+              transition: 'color 0.22s cubic-bezier(0.4,0,0.2,1)',
               boxShadow: 'none',
+              WebkitTapHighlightColor: 'transparent',                    // ← [2026-05-07 v3] iOS 회색 박스 제거
+              touchAction: 'manipulation',                                // ← [2026-05-07 v3] 300ms tap delay 제거
+              userSelect: 'none',                                          // ← [2026-05-07 v3] 빠른 탭 시 텍스트 선택 차단
             }}>
             <span style={{fontSize: isMobile?13:14}}>{icon}</span>
             {!isMobile && label}

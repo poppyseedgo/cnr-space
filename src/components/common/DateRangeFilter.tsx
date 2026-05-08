@@ -183,10 +183,13 @@ function ModeToggle<TModeId extends string>({
       {/* Sliding pill */}
       {ready && (
         <div style={{
-          position: 'absolute', top: 2, bottom: 2,                // ← [2026-05-07 v2] 컨테이너 padding 2와 일치 (외곽 흰색 띠 보존)
-          left: pill.left, width: pill.width,
+          position: 'absolute', top: 2, bottom: 2,                // ← [2026-05-07 v2] padding 2와 일치
+          left: 0,                                                  // ← [2026-05-07 v3] translate3d 사용
+          width: pill.width,
+          transform: `translate3d(${pill.left}px, 0, 0)`,           // ← [2026-05-07 v3] GPU 가속
           background: '#111', borderRadius: 1000,
-          transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)',
+          transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)',
+          willChange: 'transform, width',                           // ← [2026-05-07 v3] composite layer 힌트
           zIndex: 0, pointerEvents: 'none',
         }} />
       )}
@@ -206,7 +209,10 @@ function ModeToggle<TModeId extends string>({
             fontFamily: 'inherit',
             fontSize: 14, fontWeight: 500, lineHeight: 'normal',
             whiteSpace: 'nowrap',
-            transition: 'color 0.22s cubic-bezier(0.4,0,0.2,1)', // ← [2026-05-07] 색상도 부드럽게
+            transition: 'color 0.22s cubic-bezier(0.4,0,0.2,1)',
+            WebkitTapHighlightColor: 'transparent',                  // ← [2026-05-07 v3] iOS 회색 박스 제거
+            touchAction: 'manipulation',                              // ← [2026-05-07 v3] 300ms tap delay 제거
+            userSelect: 'none',                                        // ← [2026-05-07 v3] 텍스트 선택 차단
           }}>
           {opt.label}
         </button>
