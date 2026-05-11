@@ -931,10 +931,11 @@ function NoshowChartCard() {
   const { data: bookings, loading } = useBookingsByRange(dateFrom, dateTo)
 
   // ── 3. 일자별 stats (총예약 + 노쇼 + 비율) ──────────────────────────
-  //   Q4 결정: 총예약 = status === 'confirmed' 만 (autoCancelled 무관)
-  //   isNoshow는 status='confirmed' 필수이므로 노쇼 ⊆ 총예약 → rate는 항상 [0,1] 안전
-  //   외곽 봉 = 총예약 100% 기준 (모두 동일 111px) — Q1 결정
-  //   내부 봉 = 111 × (노쇼/총예약) 만큼 채움 — Q3 결정
+  //   ← [2026-05-11 Phase 4 v5] total = 그 날 등록된 모든 예약 (사용자 정정)
+  //      · 사유: 사용자/관리자/시스템 취소 등 status 무관 — "등록된 모든 예약"이 분모
+  //      · 노쇼 ⊆ total (그 날 booking) 보장 → rate ∈ [0, 1] 안전
+  //      · 이전 v4 (옵션 A: confirmed + system cancelled): 일부 케이스 여전히 100% → 폐기
+  //   isNoshow는 Phase 2 SSOT 그대로 (status='confirmed' + cancelledBy='system' + !checkedIn)
   const dailyStats = useMemo(() => {
     const diffDays = Math.round(
       (new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000
@@ -943,9 +944,9 @@ function NoshowChartCard() {
     return Array.from({ length: diffDays }, (_, i) => {
       const date        = addDaysStr(dateFrom, i)
       const dayBookings = bookings.filter(b => tsDate(b.start_at) === date)
-      const total       = dayBookings.filter(b => b.status === 'confirmed').length
-      const noshow      = dayBookings.filter(isNoshow).length      // ← Phase 2 SSOT
-      const rate        = total > 0 ? noshow / total : 0           // ← 0~1 (안전)
+      const total       = dayBookings.length                  // ← 그 날의 모든 booking row
+      const noshow      = dayBookings.filter(isNoshow).length // ← Phase 2 SSOT
+      const rate        = total > 0 ? noshow / total : 0      // ← 0~1 (안전)
       return { date, total, noshow, rate }
     })
   }, [bookings, dateFrom, dateTo])
