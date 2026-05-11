@@ -2,6 +2,12 @@
  * MyBookingTable — MY PAGE 전용 기간별 예약 조회 테이블
  *
  * ✅ 변경 이력
+ *  - [2026-05-11] 퀵버튼 '오늘' 추가 (Figma node 542:2390)
+ *    · 순서: 오늘 / 이번 달(기본) / 지난 3개월
+ *    · '오늘' = todayStr() ~ todayStr() (single day, KST 기준)
+ *    · 기본 활성: 'month' 그대로 유지 (사용자 기본 진입점 동일)
+ *    · QuickId 타입 확장: 'month' | '3months' → 'today' | 'month' | '3months'
+ *    · DateRangeFilter는 generic — 컴포넌트 수정 없음
  *  - [2026-05-07] 회의실 필터 추가 + CSV 버튼 제거 (Figma 488:363)
  *    · selectedRoomId state 신설 — 'ALL' | room_id
  *    · dateFiltered → roomFiltered → tab 필터 순서 (1차: 날짜 → 2차: 회의실 → 3차: 탭)
@@ -28,7 +34,8 @@
  *  · 취소: autoCancelled && !isNoshow (사용자 취소 + 관리자 강제취소 + 기한초과 등)
  *
  * 📌 퀵버튼 (사용자 정의)
- *  · 이번 달: 1일 ~ 말일
+ *  · 오늘: todayStr() ~ todayStr() (single day, KST 기준) ← [2026-05-11 신규]
+ *  · 이번 달: 1일 ~ 말일 (기본 활성)
  *  · 지난 3개월: 오늘 -90일 ~ 오늘 (롤링)
  */
 
@@ -76,11 +83,12 @@ function isUpcoming(b: Booking, today: string, now: number): boolean {
 
 // ─── 탭/퀵버튼 ID 타입 ───────────────────────────────────────────────────────
 type TabId   = 'ALL' | 'upcoming' | 'completed' | 'noshow' | 'cancelled'
-type QuickId = 'month' | '3months'
+type QuickId = 'today' | 'month' | '3months'  // ← [2026-05-11] 'today' 추가 (Figma 542:2390)
 
 // ─── 퀵버튼 정의 (MyPage 전용) ───────────────────────────────────────────────
 const QUICK_BUTTONS: QuickButtonDef<QuickId>[] = [
-  { id: 'month',    label: '이번 달' },
+  { id: 'today',    label: '오늘' },      // ← [2026-05-11 신규] Figma 542:2412 - 비활성 #64748b/Regular
+  { id: 'month',    label: '이번 달' },   // ← 기본 활성 (Figma 542:2414 - 활성 #fff/#111/Medium)
   { id: '3months',  label: '지난 3개월' },
 ]
 
@@ -125,7 +133,13 @@ export function MyBookingTable({
 
   // ── 퀵버튼 적용
   const applyQuick = (type: QuickId) => {
-    if (type === 'month') {
+    if (type === 'today') {
+      // ← [2026-05-11 신규] 오늘: todayStr() ~ todayStr() (single day, KST 기준)
+      //   · from·to 둘 다 동일하게 KST 오늘 — dateFiltered의 `d >= from && d <= to`에서 당일 예약만 매칭
+      //   · todayStr() = nowKST() 기반 → DST/UTC 어긋남 없음 (utils/time.ts:121)
+      const todayKst = todayStr()
+      setFrom(todayKst); setTo(todayKst)
+    } else if (type === 'month') {
       // 이번 달: 1일 ~ 말일
       const f = new Date(); f.setDate(1)
       const t = new Date(f); t.setMonth(t.getMonth() + 1, 0)
