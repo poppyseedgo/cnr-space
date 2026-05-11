@@ -64,6 +64,7 @@ import { UserAvatar } from '../components/common/UserAvatar'
 // ← [2026-05-04 STEP 4] BookingListTable → MyBookingTable로 교체 (Admin은 BookingListTable 그대로 유지)
 import { MyBookingTable } from '../components/common/MyBookingTable'
 import { Button } from '../components/common/Button' 
+import { isNoshow } from '../utils/noshow'  // ← [2026-05-11 Phase 2] isNoshow SSOT 통일 (기존 isNoshowBooking 별칭 사용)
 
 export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail, onCheckIn, onEarlyEnd, onCancel, rooms:rp=[], users:up=[], authUserId='', currentUserEmail='', avatarUrl=null}) {
   // ← [2026-05-04 STEP 4] dead state 제거:
@@ -197,10 +198,11 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   //   · 해석: "이번 달에 살아있는 일정 + 정상적으로 끝난 일정" — 노쇼/취소/거절은 이번 달 예약으로 카운트하지 않음
   //   · 데이터 소스: allMyBookings (예약자+참석자 모두) — 사용자 정의 "공통의 책임" 원칙 적용
   // ─────────────────────────────────────────────────────────────────────────
-  const isNoshowBooking = (b: Booking) =>
-    // ← userMemories 확정 룰 (절대 변경 금지): isNoshow = status==='confirmed' && cancelledBy==='system' && !checkedIn
-    //   · auto_cancelled는 노쇼 판정에 사용 금지 (룰 명시)
-    b.status === 'confirmed' && b.cancelledBy === 'system' && !b.checkedIn;
+  // ─── 노쇼 판별 ───────────────────────────────────────────────────────────
+  // ← [2026-05-11 Phase 2] 로컬 isNoshowBooking 제거 — utils/noshow.ts SSOT 사용
+  //   확정 룰 동일 (status==='confirmed' && cancelledBy==='system' && !checkedIn)
+  //   기존 변수명 isNoshowBooking 유지 위해 isNoshow를 별칭으로 사용 (호출처 변경 0)
+  const isNoshowBooking = isNoshow;
 
   const thisMonthCount = useMemo(() =>                  // ← [2026-05-04 STEP 1] 신규 — 상단 카드 "이번 달 예약" 값
     allMyBookings.filter(b => {

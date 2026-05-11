@@ -29,6 +29,11 @@ import { BookingListTable } from '../components/common/BookingListTable'
 import { AdminSideNav, type AdminTabId } from '../components/layout/AdminSideNav'
 // ← [2026-05-06 Admin Phase C] 승인 관리 테이블 컴포넌트 신설 (Figma node 451:3534, Phase B 공통 컴포넌트 사용)
 import { AdminApprovalTable } from '../components/common/AdminApprovalTable'
+// ← [2026-05-11 Phase 2] isNoshow 통일 — utils/noshow.ts SSOT 사용
+//   기존 분산: L186 / L783 / L1073 (모두 옛 autoCancelled 룰)
+//   변경 사유: cron ②③ 비활성화 후 markNoshow API가 status='confirmed' 유지 → 확정 룰이 더 정확
+//   영향: contaminated 데이터(status='cancelled' 시절) 제외 + 강제취소 자동 분리
+import { isNoshow } from '../utils/noshow'
 
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
 function addDaysStr(base: string, days: number): string {
@@ -183,7 +188,8 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  const isNoshow = (b: Booking) => b.autoCancelled && !b.checkedIn && !b.earlyEnded
+  // ← [2026-05-11 Phase 2] 로컬 isNoshow 정의 제거 — utils/noshow.ts SSOT 사용
+  //   옛 룰: autoCancelled && !checkedIn && !earlyEnded → 통일 룰: status==='confirmed' && cancelledBy==='system' && !checkedIn
 
   // 타입별 필터
   const filtered = useMemo(() => {
@@ -780,7 +786,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
   const td = todayStr()
   const filtered  = useMemo(() => rangeData, [rangeData])
   const past      = useMemo(() => filtered.filter(b => tsDate(b.start_at) < td && b.status !== 'pending'), [filtered, td])
-  const isNoshow  = (b: Booking) => b.autoCancelled && !b.checkedIn && !b.earlyEnded
+  // ← [2026-05-11 Phase 2] 로컬 isNoshow 정의 제거 — utils/noshow.ts SSOT 사용 (옛 autoCancelled 룰 → 확정 룰)
   const confirmed = useMemo(() => filtered.filter(b => !b.autoCancelled && b.status !== 'rejected'), [filtered])
   const noshowRate   = past.length > 0 ? Math.round(past.filter(isNoshow).length / past.length * 100) : 0
   const pendingCount = bookings.filter(b => b.status === 'pending' && !b.autoCancelled).length
@@ -1069,8 +1075,12 @@ export function AdminBookings({ bookings, setBookings, rooms, users = [], onForc
   //   · 공통 컴포넌트 ConfirmForceCancelModal (App.tsx modal)로 이관
   //   · onForceCancel prop은 이제 App의 confirmAndAdminForceCancel — (id) 단일 인자, 다이얼로그 자동 오픈
   //   · doCancel / cancelReason 입력 / 로딩 상태는 모두 공통 컴포넌트가 담당
-  // 관리자 강제취소는 cancelledBy==='admin', 노쇼는 그 외 autoCancelled
-  const isNoshow=(b:Booking)=>b.autoCancelled&&!b.checkedIn&&!b.earlyEnded&&b.cancelledBy!=='admin'
+  // ← [2026-05-11 Phase 2] 로컬 isNoshow 정의 제거 — utils/noshow.ts SSOT 사용
+  //   · 옛 룰: autoCancelled && !checkedIn && !earlyEnded && cancelledBy!=='admin'
+  //   · 확정 룰: status==='confirmed' && cancelledBy==='system' && !checkedIn
+  //   · cancelledBy!=='admin' 가드 제거 사유: 확정 룰의 status==='confirmed' 조건이
+  //     강제취소(status='cancelled' + cancelledBy='admin')를 자동 분리 — 가드 중복
+  //   · adminCancel 탭 필터(L1089)는 그대로 유지 — 별개 분류 카운트용
   const filtered=useMemo(()=>bookings.filter(b=>{
     const d=tsDate(b.start_at)
     if(d<dateFrom||d>dateTo)return false

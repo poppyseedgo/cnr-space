@@ -51,16 +51,14 @@ import { DateRangeFilter, type QuickButtonDef } from './DateRangeFilter'
 import { SegmentTabBar, type TabDef } from './SegmentTabBar'
 import { DataTable, type Column } from './DataTable'
 import type { Booking, Room, AppUser } from '../../types'
+import { isNoshow } from '../../utils/noshow'  // ← [2026-05-11 Phase 2] isNoshow SSOT 통일
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 const PAGE_SIZE = 15  // ← 사용자 결정 2026-05-04: 기존 BookingListTable과 동일한 15건 유지
 
 // ─── 노쇼/완료/취소/다가오는 판별 (단일 진실 원천) ─────────────────────────
-//   userMemories 확정 룰: isNoshow = status==='confirmed' && cancelledBy==='system' && !checkedIn
-//   auto_cancelled는 노쇼 판정에 사용 금지 (룰 명시)
-function isNoshow(b: Booking): boolean {
-  return b.status === 'confirmed' && b.cancelledBy === 'system' && !b.checkedIn
-}
+//   isNoshow는 utils/noshow.ts SSOT 사용 (2026-05-11 Phase 2 통일)
+//   확정 룰: status==='confirmed' && cancelledBy==='system' && !checkedIn
 function isCompleted(b: Booking): boolean {
   // 완료 = 체크인됐거나 조기반납 + 취소 안 됨
   return (!!b.checkedIn || !!b.earlyEnded) && !b.autoCancelled

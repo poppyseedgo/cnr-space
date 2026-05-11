@@ -30,11 +30,13 @@ import { BookingStatusBadge } from './BookingStatusBadge'
 import { UserChip } from './UserChip'
 import { MetaBadge } from './MetaBadge'  // ← [2026-04-18] 반복 뱃지 공통화
 import type { Booking, Room, AppUser } from '../../types'
+// ← [2026-05-11 Phase 2] isNoshow 통일 — utils/noshow.ts SSOT 사용
+//   기존 로컬 정의 (L35): autoCancelled && cancelledBy==='system' && status!=='pending' && status!=='rejected'
+//   변경 사유: cron ②③ 비활성화 후 markNoshow API가 status='confirmed' 유지 → status 기반 판정이 정확
+//             pending/rejected 가드 불필요 — 확정 룰의 status==='confirmed'가 이미 배타
+import { isNoshow } from '../../utils/noshow'
 
-// ─── 노쇼 판별 ───────────────────────────────────────────────────────────────
-function isNoshow(b: Booking): boolean {
-  return !!b.autoCancelled && b.cancelledBy === 'system' && b.status !== 'pending' && b.status !== 'rejected'
-}
+// ─── 노쇼 판별: utils/noshow.ts로 이관 (2026-05-11) ──────────────────────────
 
 // ─── 스타일 헬퍼 ─────────────────────────────────────────────────────────────
 const filterInputStyle: React.CSSProperties = {

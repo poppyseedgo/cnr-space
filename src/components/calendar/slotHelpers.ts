@@ -1,6 +1,8 @@
 import { tsMin } from '../../utils/time'
 import type { Booking } from '../../types'
 import { isBooker } from '../../utils/bookingOwnership'  // ← [2026-04-24 P5] isMyBooking 판정 UUID/email OR 기반
+// ← [2026-05-11 Phase 2] isNoshow SSOT 통일 — alias 사용 이유: 로컬 변수명/return key 'isNoshow' 유지로 호출처 호환
+import { isNoshow as isNoshowSSOT } from '../../utils/noshow'
 
 /**
  * 캘린더 슬롯 공통 상태 계산
@@ -121,12 +123,11 @@ export function getSlotState(
                          && b.cancelledBy === 'system' // ← [변경] 시스템 취소
 
   // 노쇼(isNoshow):
-  //   · status='confirmed' + cancelledBy='system' + !checkedIn
-  //   · status='confirmed' 추가로 isExpiredPending(status='cancelled')과 자연적 배타
-  //   · !isExpiredPending 가드 불필요 (status 조건이 이미 분리 역할)
-  const isNoshow = b.status === 'confirmed'        // ← [변경] status 명시
-                 && b.cancelledBy === 'system'
-                 && !b.checkedIn
+  //   · utils/noshow.ts SSOT 사용 (2026-05-11 Phase 2 통일)
+  //   · 룰: status='confirmed' + cancelledBy='system' + !checkedIn
+  //   · status='confirmed' 조건이 isExpiredPending(status='cancelled')과 자연적 배타
+  //   · 변수명/return key 'isNoshow' 유지 — 호출처(CalendarSlotCard 등) 호환
+  const isNoshow = isNoshowSSOT(b)
 
   const isEnded     = b.earlyEnded
   const isAct       = isToday && sm <= now && now < em

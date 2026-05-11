@@ -6,6 +6,8 @@ import { getFloor } from '../../data/floors'
 import { Button } from '../common/Button'
 import { RoomStatusBadge } from '../common/RoomStatusBadge'  // ← [신규] 공통 상태 뱃지 사용
 import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22] 모달 X 버튼 공통화
+// ← [2026-05-11 Phase 2] isNoshow SSOT 통일 — alias 사용 (로컬 const isNoshow 변수명 유지)
+import { isNoshow as isNoshowSSOT } from '../../utils/noshow'
 
 /**
  * RoomDetailModal
@@ -267,12 +269,11 @@ export function RoomDetailModal({room:r, bookings, users = [], onClose, onBook, 
                                        && b.status === 'cancelled'  // ← [변경] cron 처리 후 상태
                                        && b.cancelledBy === 'system'
                       // 노쇼(isNoshow):
-                      //   · status='confirmed' + cancelledBy='system' + !checkedIn
+                      //   · utils/noshow.ts SSOT 사용 (2026-05-11 Phase 2 통일)
+                      //   · 룰: status='confirmed' + cancelledBy='system' + !checkedIn
                       //   · status='confirmed' 추가로 isExpired(status='cancelled')과 자연적 배타
                       //   · !isExpired 가드 불필요 (status 조건이 이미 분리 역할)
-                      const isNoshow   = b.status === 'confirmed'        // ← [변경] status 명시
-                                       && b.cancelledBy === 'system'
-                                       && !b.checkedIn
+                      const isNoshow   = isNoshowSSOT(b)
                       const isPending  = !b.autoCancelled && b.status === 'pending';
                       const isEarlyEnd = !b.autoCancelled && b.earlyEnded;
                       const isActive   = !b.autoCancelled && !b.earlyEnded && startMin <= bNow && bNow < endMin;
