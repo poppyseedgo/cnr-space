@@ -758,305 +758,241 @@ const CardShell = memo(function CardShell({ children, type: ct, onClick }: {
   )
 })
 
+// ─── [2026-05-11 Phase 3] Dashboard 카드 컴포넌트 ───────────────────────────
+//   · Figma node 489:393 1:1 — 위젯 ① 승인 대기 + 7개 위젯 placeholder
+//   · 각 카드 공통 스타일: bg #fff / radius 24 / padding pt12 px16 pb16
+//   · 위젯 ②~⑧은 Phase 4~10에서 PlaceholderCard 자리에 진짜 구현 컴포넌트로 교체
+
+// ─── 위젯 ① 승인 대기 (Figma node 489:406) ──────────────────────────────────
+//   사용처: Row 1 Col 1 (356×268, 3-col grid)
+//   데이터: pendingCount (props로 전달)
+//   동작: 정적 카드 (클릭 액션 없음 — Q5 결정: DetailDrawer 제거)
+function ApprovalPendingCard({ count }: { count: number }) {
+  return (
+    <div style={{
+      // ── Figma outer 1:1 ───────────────────────────────
+      background:   '#fff',
+      borderRadius: 24,
+      padding:      '12px 16px 16px 16px',      // ← Figma: pt 12 / px 16 / pb 16
+      display:      'flex',
+      flexDirection:'column',
+      alignItems:   'flex-start',
+      gap:          4,                            // ← Figma: gap 4 (title block ↔ number)
+      height:       268,                          // ← Figma: 카드 높이 명시
+      width:        '100%',                       // ← grid cell 폭 채움 (3-col)
+      // Figma는 box-shadow 없음
+    }}>
+      {/* ── 타이틀 블록 (gap 2) ───────────────────────── */}
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2, width:'100%' }}>
+        <p style={{
+          fontFamily: "'Pretendard', -apple-system, sans-serif",
+          fontWeight: 500,                        // ← Figma: Medium
+          fontSize:   16,                         // ← Figma: 16
+          lineHeight: 1.4,                        // ← Figma: 1.4
+          color:      '#111',                     // ← Figma: #111
+          margin:     0,
+          whiteSpace: 'nowrap',
+          overflow:   'hidden',
+          textOverflow: 'ellipsis',
+        }}>승인 대기</p>
+        <p style={{
+          fontFamily: "'Pretendard', -apple-system, sans-serif",
+          fontWeight: 400,                        // ← Figma: Regular
+          fontSize:   12,                         // ← Figma: 12
+          lineHeight: 1.5,                        // ← Figma: 1.5
+          color:      '#AEB5C4',                  // ← Figma: #AEB5C4
+          margin:     0,
+        }}>즉시 처리 필요</p>
+      </div>
+
+      {/* ── 숫자 블록 ──────────────────────────────────── */}
+      <div style={{ display:'flex', alignItems:'center', width:'100%' }}>
+        <p style={{
+          fontFamily: "'Pretendard', -apple-system, sans-serif",
+          fontWeight: 400,                        // ← Figma: Regular
+          fontSize:   38,                         // ← Figma: 38
+          lineHeight: 1.5,                        // ← Figma: 1.5
+          color:      '#111',                     // ← Figma: #111
+          margin:     0,
+        }}>{count}</p>
+      </div>
+    </div>
+  )
+}
+
+// ─── DashboardPlaceholderCard ───────────────────────────────────────────────
+//   목적: Phase 4~10 위젯 구현 전까지 외곽 레이아웃 유지 + 진척 표시
+//   교체 방식: 각 Phase에서 해당 카드만 진짜 위젯으로 교체
+//   ※ 시각: 동일한 outer 스타일 (bg #fff / radius 24 / pt12 px16 pb16) 유지
+//
+//   ← [2026-05-11 Phase 3.5] dateRange prop optional + default 자동 생성
+//      · 사유: Q1 결정 — 각 위젯이 자체 날짜 필터(DateDisplay × 2 picker) 보유
+//      · placeholder 시점에는 default 30일 텍스트만 표시 (인터랙션 없음)
+//      · 각 위젯이 Phase 4-10에서 구현되면 picker로 교체
+interface PlaceholderProps {
+  height:    number       // ← Figma 카드 높이 (Row 1: 268 / Row 2-3: 504 / Row 4: 205)
+  title:     string       // ← Figma 카드 타이틀
+  subtitle?: string       // ← Figma 카드 서브타이틀 (시간대별 예약 분포만 사용)
+  /** 날짜 범위 표시 (3-state):
+   *  · undefined → default 30일 자동 표시 (지난 30일 ⎯ 오늘)
+   *  · null      → 표시 안 함 (위젯 ③ 최근 생성된 예약, ⑧ 시간대별 예약 분포)
+   *  · string    → 명시한 텍스트 표시 */
+  dateRange?: string | null
+  phaseNote: string       // ← "Phase N에서 구현 예정" 안내
+}
+function DashboardPlaceholderCard({ height, title, subtitle, dateRange, phaseNote }: PlaceholderProps) {
+  // ← [2026-05-11 Phase 3.5] dateRange 미지정 시 default 30일 자동 표시
+  //   default 산출: 각 위젯이 own state로 초기화할 때 동일한 값 사용 예정 (UX 연속성)
+  const effectiveDateRange = dateRange ?? `${addDaysStr(todayStr(), -29)} ⎯ ${todayStr()}`
+  return (
+    <div style={{
+      background:   '#fff',
+      borderRadius: 24,
+      padding:      '12px 16px 16px 16px',
+      display:      'flex',
+      flexDirection:'column',
+      alignItems:   'flex-start',
+      gap:          4,
+      height,
+      width:        '100%',
+    }}>
+      {/* 타이틀 블록 — Figma 동일 스펙 */}
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2, width:'100%' }}>
+        <p style={{
+          fontFamily:"'Pretendard', -apple-system, sans-serif",
+          fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
+          whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+        }}>{title}</p>
+        {subtitle && (
+          <p style={{
+            fontFamily:"'Pretendard', -apple-system, sans-serif",
+            fontWeight:400, fontSize:12, lineHeight:1.5, color:'#AEB5C4', margin:0,
+          }}>{subtitle}</p>
+        )}
+        {dateRange !== null && (
+          <p style={{
+            fontFamily:"'Pretendard', -apple-system, sans-serif",
+            fontWeight:400, fontSize:12, lineHeight:1.5, color:'#AEB5C4', margin:0,
+          }}>{effectiveDateRange}</p>
+        )}
+      </div>
+
+      {/* Phase 진행 안내 — 카드 중앙 */}
+      <div style={{
+        flex:1, width:'100%',
+        display:'flex', alignItems:'center', justifyContent:'center',
+      }}>
+        <span style={{
+          fontFamily:"'Pretendard', -apple-system, sans-serif",
+          fontSize: 12, color:'#CBD5E1', fontWeight:400,
+        }}>🚧 {phaseNote}</span>
+      </div>
+    </div>
+  )
+}
+
 // ─── AdminDashboard ────────────────────────────────────────────────────────────
 export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
-  const [dateFrom,     setDateFrom]     = useState(addDaysStr(todayStr(), -29))
-  const [dateTo,       setDateTo]       = useState(todayStr())
-  const [detail,       setDetail]       = useState<DetailType|null>(null)
-  const [openLog,      setOpenLog]      = useState(false)
-  const [nowMs,        setNowMs]        = useState(Date.now())
-  const [rangeData,    setRangeData]    = useState<Booking[]>([])
-  const [loadingChart, setLoadingChart] = useState(false)
+  // ── [2026-05-11 Phase 3.5] 외곽 정비 — 카드별 독립 날짜 필터로 전환 ──────
+  //   · 사유: Q1 결정 — 위젯 ②~⑧이 각자 dateFrom/dateTo state + own
+  //            loadBookingsByRange fetch + DateDisplay picker 보유
+  //   · 제거된 state: dateFrom/setDateFrom, dateTo/setDateTo, rangeData/setRangeData,
+  //                   loadingChart/setLoadingChart
+  //   · 제거된 effect: fetchRange useCallback + useEffect (각 위젯 own fetch)
+  //   · 제거된 useMemo: filtered / past / confirmed / dayRange / roomStats / deptStats /
+  //                    noshowRank / hourDist / roomChartData / deptChartData
+  //                    (각 위젯 구현 시 자체 state + 계산)
+  //   · 제거된 변수: noshowRate, noswColor (위젯별 own 정의로 이전)
+  //   · 제거된 helper: inputStyle / btnStyle (공통 날짜 필터 UI 전용)
+  //   · 유지: pendingCount — bookings prop에서 직접 (실시간 pending count, 위젯 ①)
+  //   · rooms / users / onDetail props: Phase 4-10 위젯 구현 시 사용 예정 → 시그니처 보존
 
-  useEffect(() => {
-    const iv = setInterval(() => setNowMs(Date.now()), 30_000)
-    return () => clearInterval(iv)
-  }, [])
-
-  // 날짜 범위 변경 시 Supabase에서 직접 fetch (bookings prop은 실시간 상태용)
-  const fetchRange = useCallback(async () => {
-    setLoadingChart(true)
-    try { setRangeData(await loadBookingsByRange(dateFrom, dateTo)) }
-    catch (e) { console.error(e) }
-    finally { setLoadingChart(false) }
-  }, [dateFrom, dateTo])
-
-  useEffect(() => { fetchRange() }, [fetchRange])
-
-  const td = todayStr()
-  const filtered  = useMemo(() => rangeData, [rangeData])
-  const past      = useMemo(() => filtered.filter(b => tsDate(b.start_at) < td && b.status !== 'pending'), [filtered, td])
-  // ← [2026-05-11 Phase 2] 로컬 isNoshow 정의 제거 — utils/noshow.ts SSOT 사용 (옛 autoCancelled 룰 → 확정 룰)
-  const confirmed = useMemo(() => filtered.filter(b => !b.autoCancelled && b.status !== 'rejected'), [filtered])
-  const noshowRate   = past.length > 0 ? Math.round(past.filter(isNoshow).length / past.length * 100) : 0
+  // 위젯 ① 승인 대기용 — bookings prop에서 직접 계산 (날짜 필터 없음)
   const pendingCount = bookings.filter(b => b.status === 'pending' && !b.autoCancelled).length
 
-  // 실시간 사용자: 현재 진행 중인 예약이 있는 사용자
-  const activeBookings = useMemo(() =>
-    bookings.filter(b => {
-      const s = new Date(b.start_at).getTime()
-      const e = new Date(b.end_at).getTime()
-      return !b.autoCancelled && !b.earlyEnded && b.status === 'confirmed'
-        && s <= nowMs && nowMs <= e
-    }).map(b => ({ ...b, roomObj: rooms.find(r => r.room_id === b.room_id) })),
-  [bookings, rooms, nowMs])
-
-  // 차트 데이터
-  const dayRange = useMemo(() => {
-    const days: {date:string;label:string;count:number;isToday:boolean}[] = []
-    const diffDays = Math.round((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000) + 1
-    if (diffDays <= 31) {
-      for (let i = 0; i < diffDays; i++) {
-        const d = addDaysStr(dateFrom, i)
-        const cnt = filtered.filter(b => tsDate(b.start_at)===d && !b.autoCancelled && b.status!=='rejected').length
-        const dt = new Date(d)
-        days.push({ date:d, label:`${fmt2(dt.getMonth()+1)}/${fmt2(dt.getDate())}`, count:cnt, isToday:d===td })
-      }
-    } else {
-      let cur = new Date(dateFrom)
-      while (objToStr(cur) <= dateTo) {
-        const wStart = objToStr(cur)
-        const wEnd   = objToStr(new Date(cur.getTime() + 6*86400000))
-        const cnt = filtered.filter(b => {const d=tsDate(b.start_at);return d>=wStart&&d<=wEnd&&!b.autoCancelled&&b.status!=='rejected'}).length
-        const dt = new Date(wStart)
-        days.push({ date:wStart, label:`${dt.getMonth()+1}/${dt.getDate()}W`, count:cnt, isToday:false })
-        cur.setDate(cur.getDate() + 7)
-      }
-    }
-    return days
-  }, [filtered, dateFrom, dateTo, td])
-
-  const roomStats = useMemo(() => rooms.map(r => {
-    const rb = filtered.filter(b => b.room_id===r.room_id)
-    return { room:r, confirmed:rb.filter(b=>!b.autoCancelled&&b.status!=='rejected').length, noshow:rb.filter(isNoshow).length }
-  }).filter(s=>s.confirmed+s.noshow>0).sort((a,b)=>b.confirmed-a.confirmed), [rooms, filtered])
-
-  const deptStats = useMemo(()=>{
-    const map = new Map<string,number>()
-    confirmed.filter(b=>b.dept).forEach(b=>map.set(b.dept,(map.get(b.dept)??0)+1))
-    return Array.from(map.entries()).map(([dept,count])=>({dept,count})).sort((a,b)=>b.count-a.count).slice(0,8)
-  },[confirmed])
-
-  const noshowRank = useMemo(()=>rooms.map(r=>{
-    const pb=past.filter(b=>b.room_id===r.room_id)
-    const ns=pb.filter(isNoshow).length
-    return {room:r,total:pb.length,noshow:ns,rate:pb.length>0?Math.round(ns/pb.length*100):0}
-  }).filter(r=>r.total>=3).sort((a,b)=>b.rate-a.rate).slice(0,5),[rooms,past])
-
-  const hourDist = useMemo(()=>Array.from({length:13},(_,i)=>{
-    const h=7+i
-    const count=filtered.filter(b=>!b.autoCancelled&&b.status!=='rejected'&&Math.floor(tsMin(b.start_at)/60)===h).length
-    return {hour:h,label:`${h}시`,count}
-  }),[filtered])
-
-  const roomChartData = useMemo(() => roomStats.map(s => ({
-    name: s.room.room_name,   // 영어 이름
-    size: s.confirmed,
-    noshow: s.noshow,
-  })), [roomStats])
-
-  const deptChartData = useMemo(() => deptStats.slice(0,6).map(d => ({
-    name: d.dept, value: d.count,
-  })), [deptStats])
-
-  const noswColor = (rate:number) => rate >= 20 ? '#F43F5E' : rate >= 10 ? '#F59E0B' : '#14B8A6'
-  const openDetail = useCallback((type: DetailType) => setDetail(type), [])
-
-  const KPI = [
-    { type:'pending' as DetailType, label:'승인 대기',    value: pendingCount,                   sub:'즉시 처리 필요',             color:'#D97706', bg:'#FFFBEB', icon:<Inbox        size={18} strokeWidth={1.8}/> },
-    { type:'noshow'  as DetailType, label:'노쇼율',       value: `${noshowRate}%`,                sub:`${past.filter(isNoshow).length}건 / 과거 ${past.length}건`, color:noshowRate>15?'#DC2626':noshowRate>8?'#D97706':'#16A34A', bg:noshowRate>15?'#FEF2F2':noshowRate>8?'#FFFBEB':'#F0FDF4', icon:<AlertCircle size={18} strokeWidth={1.8}/> },
-  ]
-
-  const inputStyle: React.CSSProperties = { height:34, border:'0.5px solid #E2E8F0', borderRadius:8, padding:'0 8px', fontSize:12, background:'#fff', color:'#111', width:112, outline:'none' }
-  const btnStyle: React.CSSProperties  = { height:34, padding:'0 11px', border:'0.5px solid #E2E8F0', borderRadius:8, fontSize:12, background:'#fff', color:'#64748B', cursor:'pointer', whiteSpace:'nowrap' }
-
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4" style={{ maxWidth: 1100, width: '100%' }}>
 
-      {/* ── 날짜 필터 ── */}
-      <div className="bg-white rounded-2xl px-5 py-4 flex items-center justify-between flex-wrap gap-3">
-        <span style={{ fontSize:13, fontWeight:600, color:'#111' }}>📊 통계 대시보드</span>
-        <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={inputStyle}/>
-          <span style={{ fontSize:12, color:'#CBD5E1' }}>~</span>
-          <input type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)}   style={inputStyle}/>
-          {[
-            { label:'7일',    fn:():[string,string]=>[addDaysStr(todayStr(),-6),  todayStr()] },
-            { label:'30일',   fn:():[string,string]=>[addDaysStr(todayStr(),-29), todayStr()] },
-            { label:'이번 달',fn:():[string,string]=>[getMonthStart(0),  todayStr()] },
-            { label:'지난 달',fn:():[string,string]=>[getMonthStart(-1), getMonthEnd(-1)] },
-          ].map(p => (
-            <button key={p.label} className="btn" onClick={() => { const [f,t]=p.fn(); setDateFrom(f); setDateTo(t) }} style={btnStyle}>
-              {p.label}
-            </button>
-          ))}
-        </div>
+      {/* ── [2026-05-11 Phase 3.5] 상단 공통 날짜 필터 + 로딩 인디케이터 제거 ──
+            · 사유: Q1 결정 — 각 위젯이 자체 dateFrom/dateTo state + DateDisplay picker 보유
+            · 공통 필터를 두면 카드별 필터와 충돌하므로 완전 제거 (Q2 결정)
+            · 각 위젯이 own loadBookingsByRange fetch + own loading state 가짐 */}
+
+      {/* ──────────────────────────────────────────────────────────────────
+           [2026-05-11 Phase 3] Dashboard 외곽 4-row grid (Figma node 489:393 1:1)
+           · Row 1 (gap 16): 위젯 ①②③ 각 356×268 (3-col)
+           · Row 2 (gap 16): 위젯 ④⑤   각 542×504 (2-col)
+           · Row 3 (gap 16): 위젯 ⑥⑦   각 542×504 (2-col)
+           · Row 4 (gap 16): 위젯 ⑧     542×205 (좌측만, 우측 빈 칸)
+           · 위젯 ②~⑧는 Phase 4~10에서 PlaceholderCard 자리 1개씩 진짜 구현으로 교체
+         ──────────────────────────────────────────────────────────────── */}
+
+      {/* ── Row 1: 위젯 ① 승인 대기 / ② 노쇼 현황 / ③ 최근 생성된 예약 ── */}
+      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
+        {/* ① 승인 대기 — Phase 3 구현 (Figma 489:406) */}
+        <ApprovalPendingCard count={pendingCount} />
+
+        {/* ② 노쇼 현황 — Phase 4 구현 예정 */}
+        <DashboardPlaceholderCard
+          height={268}
+          title="노쇼 현황"
+          phaseNote="Phase 4에서 구현 예정"
+        />
+
+        {/* ③ 최근 생성된 예약 — Phase 5 구현 예정 */}
+        <DashboardPlaceholderCard
+          height={268}
+          title="최근 생성된 예약"
+          dateRange={null}
+          phaseNote="Phase 5에서 구현 예정"
+        />
       </div>
 
-      {/* 차트 데이터 로딩 인디케이터 */}
-      {loadingChart && (
-        <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 16px', background:'#F5F5FF', borderRadius:10, fontSize:12, color:'#6366F1' }}>
-          <RefreshCw size={13} strokeWidth={1.8} style={{ animation:'spin 1s linear infinite' }}/>
-          통계 데이터를 불러오는 중…
-        </div>
-      )}
-
-      {/* ── KPI 3개 ── */}
-      <div className={`grid gap-3 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
-
-        {/* 승인 대기 + 노쇼율 */}
-        {KPI.map((k,i) => (
-          <CardShell key={i} type={k.type} onClick={openDetail}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
-              <p style={{ fontSize:10, fontWeight:600, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'0.06em' }}>{k.label}</p>
-              <div style={{ width:34, height:34, borderRadius:10, background:k.bg, display:'flex', alignItems:'center', justifyContent:'center', color:k.color }}>{k.icon}</div>
-            </div>
-            <div style={{ fontSize:28, fontWeight:700, color:k.color, lineHeight:1 }}>{k.value}</div>
-            <p style={{ fontSize:11, color:'#94A3B8', marginTop:6 }}>{k.sub}</p>
-          </CardShell>
-        ))}
-
-        {/* 실시간 사용자 — 클릭 시 접속 로그 토글 */}
-        <div onClick={() => setOpenLog(v => !v)} style={{
-          background:'#fff', borderRadius:16, padding:24, cursor:'pointer',
-          boxShadow: openLog ? '0 0 0 2px #16A34A' : 'none',
-          transition:'box-shadow 0.15s',
-        }}
-          onMouseEnter={e => { if(!openLog)(e.currentTarget as HTMLElement).style.boxShadow='0 4px 20px rgba(0,0,0,0.08)' }}
-          onMouseLeave={e => { if(!openLog)(e.currentTarget as HTMLElement).style.boxShadow='none' }}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
-            <p style={{ fontSize:10, fontWeight:600, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'0.06em' }}>실시간 사용자</p>
-            <div style={{ width:34, height:34, borderRadius:10, background:'#F0FDF4', display:'flex', alignItems:'center', justifyContent:'center', color:'#16A34A' }}>
-              <Users size={18} strokeWidth={1.8}/>
-            </div>
-          </div>
-          <div style={{ display:'flex', alignItems:'baseline', gap:8 }}>
-            <div style={{ fontSize:28, fontWeight:700, color:'#16A34A', lineHeight:1 }}>{activeBookings.length}</div>
-            <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:'#16A34A', fontWeight:600 }}>
-              <span style={{ width:7, height:7, borderRadius:'50%', background:'#16A34A', display:'inline-block', animation:'sk-shimmer 1.6s ease-in-out infinite' }}/>
-              접속 중
-            </span>
-          </div>
-          <p style={{ fontSize:11, color:'#94A3B8', marginTop:6 }}>현재 체크인 / 활성 예약</p>
-
-          {/* 접속 로그 테이블 */}
-          {openLog && (
-            <div onClick={e => e.stopPropagation()} style={{ borderTop:'1px solid #F1F5F9', marginTop:16 }}>
-              {activeBookings.length === 0
-                ? <div style={{ textAlign:'center', padding:'20px 0', color:'#CBD5E1', fontSize:12 }}>현재 진행 중인 예약이 없습니다</div>
-                : <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, marginTop:12 }}>
-                    <thead>
-                      <tr style={{ borderBottom:'1px solid #F1F5F9', background:'#FAFBFD' }}>
-                        {['이름','부서','회의실','시간','상태'].map(h => (
-                          <th key={h} style={{ padding:'8px 10px', textAlign:'left', fontSize:10, fontWeight:600, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {activeBookings.map(b => {
-                        // ← [2026-04-24 P6-B] 예약자 이름/부서 live (users prop 활용)
-                        const owner = (users as any[]).find((u:any) => u.user_id === b.user_id)
-                        return (
-                        <tr key={b.id} style={{ borderBottom:'0.5px solid #F8FAFC' }}
-                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='#FAFBFD'}
-                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='transparent'}>
-                          <td style={{ padding:'9px 10px', fontWeight:600 }}>{owner?.name ?? b.user ?? '—'}</td>
-                          <td style={{ padding:'9px 10px', color:'#64748B', fontSize:11 }}>{owner?.dept ?? b.dept ?? '—'}</td>
-                          <td style={{ padding:'9px 10px', color:'#64748B', fontSize:11 }}>{(b as any).roomObj?.room_name ?? '—'}</td>
-                          <td style={{ padding:'9px 10px', color:'#64748B', fontSize:11, whiteSpace:'nowrap' }}>{fmtTime(tsTime(b.start_at))} ~ {fmtTime(tsTime(b.end_at))}</td>
-                          <td style={{ padding:'9px 10px' }}>
-                            <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color: b.checkedIn ? '#16A34A' : '#D97706', fontWeight:500 }}>
-                              <span style={{ width:6, height:6, borderRadius:'50%', background: b.checkedIn ? '#16A34A' : '#D97706', display:'inline-block' }}/>
-                              {b.checkedIn ? '체크인 완료' : '진행 중'}
-                            </span>
-                          </td>
-                        </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-              }
-            </div>
-          )}
-        </div>
+      {/* ── Row 2: 위젯 ④ 예약 많은 회의실 / ⑤ 회의실 노쇼 현황 ── */}
+      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
+        <DashboardPlaceholderCard
+          height={504}
+          title="예약 많은 회의실"
+          phaseNote="Phase 6에서 구현 예정"
+        />
+        <DashboardPlaceholderCard
+          height={504}
+          title="회의실 노쇼 현황"
+          phaseNote="Phase 7에서 구현 예정"
+        />
       </div>
 
-      {/* ── Row 2: 회의실별 | 노쇼율 상위 ── */}
-      <div className={`grid gap-3 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
-
-        <CardShell type="rooms" onClick={openDetail}>
-          <div style={{ marginBottom:12 }}>
-            <p style={{ fontSize:14, fontWeight:600, color:'#111' }}>회의실별 예약 현황</p>
-            <p style={{ fontSize:11, color:'#94A3B8', marginTop:2 }}>{dateFrom} ~ {dateTo}</p>
-          </div>
-          {roomChartData.length === 0
-            ? <div style={{ textAlign:'center', padding:'32px 0', color:'#CBD5E1', fontSize:12 }}>예약 없음</div>
-            : <TreemapSVG data={roomChartData} colors={TREE_COLORS}/>
-          }
-        </CardShell>
-
-        <CardShell type="noshow" onClick={openDetail}>
-          <p style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:4 }}>노쇼율 상위 회의실</p>
-          <p style={{ fontSize:11, color:'#94A3B8', marginBottom:16 }}>과거 예약 기준 · 3건 이상</p>
-          {noshowRank.length === 0
-            ? <div style={{ textAlign:'center', padding:'32px 0', color:'#CBD5E1', fontSize:12 }}>집계 데이터 없음</div>
-            : <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-                {noshowRank.map((r,i) => (
-                  <div key={r.room.room_id}>
-                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:5 }}>
-                      <span style={{ width:20, height:20, borderRadius:6, background:i===0?'#FEF2F2':'#F8FAFC', color:i===0?'#EF4444':'#94A3B8', fontSize:10, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{i+1}</span>
-                      <span style={{ flex:1, fontSize:12, fontWeight:600, color:'#374151', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.room.room_name}</span>
-                      <span style={{ fontSize:14, fontWeight:700, color:noswColor(r.rate), flexShrink:0 }}>{r.rate}%</span>
-                    </div>
-                    <div style={{ height:5, background:'#F1F5F9', borderRadius:999, overflow:'hidden' }}>
-                      <div style={{ height:'100%', width:`${r.rate}%`, background:noswColor(r.rate), borderRadius:999, transition:'width 0.6s ease' }}/>
-                    </div>
-                    <p style={{ fontSize:10, color:'#94A3B8', marginTop:3 }}>{r.noshow}건 노쇼 / {r.total}건</p>
-                  </div>
-                ))}
-              </div>
-          }
-        </CardShell>
+      {/* ── Row 3: 위젯 ⑥ 예약추이 / ⑦ 부서별 예약 현황 ── */}
+      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
+        <DashboardPlaceholderCard
+          height={504}
+          title="예약추이"
+          phaseNote="Phase 8에서 구현 예정"
+        />
+        <DashboardPlaceholderCard
+          height={504}
+          title="부서별 예약 현황"
+          phaseNote="Phase 9에서 구현 예정"
+        />
       </div>
 
-      {/* ── Row 3: 시간대별 | 부서별 ── */}
-      <div className={`grid gap-3 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
-
-        <CardShell type="hours" onClick={openDetail}>
-          <p style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:4 }}>시간대별 예약 분포</p>
-          <p style={{ fontSize:11, color:'#94A3B8', marginBottom:16 }}>운영시간 07:00 ~ 19:00</p>
-          <HourBarChart data={hourDist}/>
-        </CardShell>
-
-        <CardShell type="dept" onClick={openDetail}>
-          <p style={{ fontSize:14, fontWeight:600, color:'#111', marginBottom:4 }}>부서별 예약 현황</p>
-          <p style={{ fontSize:11, color:'#94A3B8', marginBottom:14 }}>{dateFrom} ~ {dateTo}</p>
-          {deptChartData.length === 0
-            ? <div style={{ textAlign:'center', padding:'32px 0', color:'#CBD5E1', fontSize:12 }}>예약 없음</div>
-            : <DonutSVG data={deptChartData} colors={PIE_COLORS}/>
-          }
-        </CardShell>
+      {/* ── Row 4: 위젯 ⑧ 시간대별 예약 분포 (좌측만) ── */}
+      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
+        <DashboardPlaceholderCard
+          height={205}
+          title="시간대별 예약 분포"
+          subtitle="운영시간 오전 7시 부터 오후 7시"
+          dateRange={null}
+          phaseNote="Phase 10에서 구현 예정"
+        />
+        {/* 우측 빈 칸 — Figma 사양 (Row 4는 좌측 카드만) */}
+        {!isMobile && <div />}
       </div>
 
-      {/* ── 예약 추이 (full width, last) ── */}
-      <CardShell type="bookings" onClick={openDetail}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
-          <div>
-            <p style={{ fontSize:14, fontWeight:600, color:'#111' }}>예약 추이</p>
-            <p style={{ fontSize:11, color:'#94A3B8', marginTop:2 }}>{dateFrom} ~ {dateTo} · {dayRange.length > 31 ? '주간 집계' : '일간 집계'}</p>
-          </div>
-          <span style={{ fontSize:13, fontWeight:600, color:'#6366F1' }}>{confirmed.length}건</span>
-        </div>
-        <AreaChartSVG data={dayRange}/>
-      </CardShell>
-
-      {/* Detail Drawer */}
-      {detail && (
-        <DetailDrawer type={detail} rooms={rooms} users={users}
-          initFrom={dateFrom} initTo={dateTo}
-          onDetail={onDetail}
-          onClose={()=>setDetail(null)}/>
-      )}
+      {/* ── [2026-05-11 Phase 3] DetailDrawer 렌더링 제거 (Q5 결정) ──
+            · 기존: 카드 클릭 → setDetail(type) → <DetailDrawer .../> 표시
+            · 변경: 카드 클릭 액션 자체 제거 (정적 카드, Figma 1:1)
+            · 안전: DetailDrawer 컴포넌트 함수 자체는 보존 (L168) — 다른 곳에서 import 시 안전 */}
     </div>
   )
 }
