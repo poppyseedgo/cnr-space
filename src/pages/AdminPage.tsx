@@ -34,6 +34,8 @@ import { AdminApprovalTable } from '../components/common/AdminApprovalTable'
 //   변경 사유: cron ②③ 비활성화 후 markNoshow API가 status='confirmed' 유지 → 확정 룰이 더 정확
 //   영향: contaminated 데이터(status='cancelled' 시절) 제외 + 강제취소 자동 분리
 import { isNoshow } from '../utils/noshow'
+// ← [2026-05-11 Phase 4] 위젯 ② 노쇼 현황 — 카드 헤더 inline date picker용
+import { DatePickerPopup } from '../components/common/DatePickerPopup'
 
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
 function addDaysStr(base: string, days: number): string {
@@ -820,6 +822,279 @@ function ApprovalPendingCard({ count }: { count: number }) {
   )
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+//   [2026-05-11 Phase 4] 카드별 날짜 필터 인프라 + 위젯 ② 노쇼 현황
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Booking range fetch cache (dedupe) ─────────────────────────────────────
+//   목적: 6개 위젯이 동시에 같은 default 30일 range로 fetch 호출 → 1번만 실제 fetch
+//   동작: module-level Map에 in-flight Promise 저장, 동일 key 요청은 같은 Promise 반환
+//   만료: 60초 후 자동 제거 (stale 방지)
+//   주의: 이후 위젯 데이터 mutation 발생 시 invalidate 필요 — 현재는 read-only 대시보드라 안전
+const bookingRangeCache = new Map<string, Promise<Booking[]>>()
+function fetchBookingsRangeCached(from: string, to: string): Promise<Booking[]> {
+  const key = `${from}|${to}`
+  const existing = bookingRangeCache.get(key)
+  if (existing) return existing
+  const promise = loadBookingsByRange(from, to)
+  bookingRangeCache.set(key, promise)
+  // 60초 후 자동 만료 (동일 range 추가 fetch 시 fresh data)
+  setTimeout(() => bookingRangeCache.delete(key), 60_000)
+  return promise
+}
+
+// ─── useBookingsByRange — 위젯 공통 date filter + fetch hook ───────────────
+//   사용: 각 위젯이 자체 dateFrom/dateTo state를 보유, 이 hook으로 데이터 + loading 받음
+//   dedupe: 동일 (from,to) 요청은 fetchBookingsRangeCached에서 자동 dedupe
+function useBookingsByRange(dateFrom: string, dateTo: string) {
+  const [data,    setData]    = useState<Booking[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetchBookingsRangeCached(dateFrom, dateTo)
+      .then(d => { if (!cancelled) setData(d) })
+      .catch(e => console.error('[useBookingsByRange] fetch failed', e))
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [dateFrom, dateTo])
+
+  return { data, loading }
+}
+
+// ─── SmallDateTrigger — 카드 헤더용 inline 날짜 picker trigger ──────────────
+//   Figma 1:1: 단순 텍스트만 표시 (예: "2026-04-11"), 클릭 시 DatePickerPopup 띄움
+//   DateDisplay는 h 48이라 카드 헤더에 너무 큼 → 텍스트만 있는 작은 버전 별도
+//   재사용: Phase 5-10 다른 위젯들도 동일 패턴 사용 예정
+interface SmallDateTriggerProps {
+  value:    string                                    // ← YYYY-MM-DD
+  onChange: (newDate: string) => void
+  min?:     string
+  max?:     string
+}
+function SmallDateTrigger({ value, onChange, min, max }: SmallDateTriggerProps) {
+  const [open, setOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          // ── Figma: 텍스트만 표시, button reset ──
+          background: 'transparent',
+          border:     'none',
+          padding:    0,
+          margin:     0,
+          cursor:     'pointer',
+          // ── Figma: Pretendard Regular 12 / lh 1.5 / #AEB5C4 ──
+          fontFamily: "'Pretendard', -apple-system, sans-serif",
+          fontWeight: 400,
+          fontSize:   12,
+          lineHeight: 1.5,
+          color:      '#AEB5C4',
+          // hover 시 살짝 진한 색 (인터랙션 가능 명시)
+          transition: 'color 0.15s',
+        }}
+        onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = '#697077'}
+        onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = '#AEB5C4'}>
+        {value}
+      </button>
+      {open && (
+        <DatePickerPopup
+          value={value}
+          onChange={d => { onChange(d); setOpen(false) }}
+          onClose={() => setOpen(false)}
+          anchorRef={triggerRef}
+          min={min}
+          max={max}
+        />
+      )}
+    </>
+  )
+}
+
+// ─── 위젯 ② 노쇼 현황 (Figma node 490:704) ──────────────────────────────────
+//   사용처: Row 1 Col 2 (356×268, 3-col grid)
+//   데이터: 일자별 노쇼 카운트 (isNoshow SSOT 사용)
+//   동작: 자체 dateFrom/dateTo + useBookingsByRange + peak label
+//   ※ Figma 1:1 사양 (gap 48 헤더↔차트, bar gradient, peak StatusBadge)
+function NoshowChartCard() {
+  // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
+  const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
+  const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
+
+  // ── 2. 자체 fetch (dedupe cache 통해) ────────────────────────────────
+  const { data: bookings, loading } = useBookingsByRange(dateFrom, dateTo)
+
+  // ── 3. 일자별 노쇼 카운트 ─────────────────────────────────────────────
+  const dailyNoshow = useMemo(() => {
+    const diffDays = Math.round(
+      (new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000
+    ) + 1
+    if (diffDays <= 0 || diffDays > 365) return []   // ← 가드: 비정상 range 차단
+    return Array.from({ length: diffDays }, (_, i) => {
+      const date  = addDaysStr(dateFrom, i)
+      const count = bookings.filter(b => tsDate(b.start_at) === date && isNoshow(b)).length
+      return { date, count }
+    })
+  }, [bookings, dateFrom, dateTo])
+
+  // ── 4. Peak 계산 (최대값 1개, count > 0일 때만) ──────────────────────
+  //   Q7 결정: 위젯 ② = 1개 peak label
+  const peak = useMemo(() => {
+    if (dailyNoshow.length === 0) return null
+    const max = dailyNoshow.reduce((p, c) => c.count > p.count ? c : p, dailyNoshow[0])
+    return max.count > 0 ? max : null
+  }, [dailyNoshow])
+
+  // ── 5. 차트 bar 높이 계산용 max ───────────────────────────────────────
+  const maxCount = useMemo(
+    () => dailyNoshow.reduce((m, d) => d.count > m ? d.count : m, 0),
+    [dailyNoshow]
+  )
+
+  // ── Peak label 포맷: "5월 7일 5건" ────────────────────────────────────
+  const peakLabel = useMemo(() => {
+    if (!peak) return null
+    const dt = new Date(peak.date)
+    return `${dt.getMonth() + 1}월 ${dt.getDate()}일 ${peak.count}건`
+  }, [peak])
+
+  // ── Date 라벨 (차트 아래) — dateFrom 표시 ─────────────────────────────
+  const dateLabel = useMemo(() => {
+    const dt = new Date(dateFrom)
+    return `${dt.getMonth() + 1}월 ${dt.getDate()}일`
+  }, [dateFrom])
+
+  // ── 차트 영역 높이 상수 (Figma) ───────────────────────────────────────
+  const CHART_HEIGHT = 111
+
+  return (
+    <div style={{
+      // ── Figma outer 1:1 ─────────────────────────────────────
+      background:   '#fff',
+      borderRadius: 24,
+      padding:      '12px 16px 16px 16px',
+      display:      'flex',
+      flexDirection:'column',
+      alignItems:   'flex-start',
+      gap:          48,                              // ← Figma: gap 48 (헤더 ↔ 차트)
+      height:       268,
+      width:        '100%',
+      // ← Peak label이 차트 위로 absolute 위치하므로 overflow visible 필요 없음
+      //   (gap 48 안에서 자연스럽게 들어감)
+    }}>
+      {/* ── 헤더 (gap 2) ────────────────────────────────────── */}
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2, width:'100%' }}>
+        <p style={{
+          fontFamily:"'Pretendard', -apple-system, sans-serif",
+          fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
+          whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+        }}>노쇼 현황</p>
+        {/* ── 날짜 범위 (SmallDateTrigger × 2 + ⎯) — Figma 1:1 ── */}
+        <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+          <SmallDateTrigger value={dateFrom} onChange={setDateFrom} max={dateTo} />
+          <span style={{
+            fontFamily:"'Pretendard', -apple-system, sans-serif",
+            fontWeight:400, fontSize:12, lineHeight:1.5, color:'#AEB5C4',
+          }}>⎯</span>
+          <SmallDateTrigger value={dateTo} onChange={setDateTo} min={dateFrom} max={todayStr()} />
+        </div>
+      </div>
+
+      {/* ── 차트 영역 (flex column gap 6) ────────────────────── */}
+      <div style={{ display:'flex', flexDirection:'column', gap:6, width:'100%', position:'relative' }}>
+        {/* ── Bar 컨테이너 (h 111, flex row gap 4, items-end) ── */}
+        <div style={{
+          display:    'flex',
+          alignItems: 'flex-end',
+          gap:        4,                              // ← Figma: gap 4 (bar 간격)
+          height:     CHART_HEIGHT,
+          width:      '100%',
+          position:   'relative',
+        }}>
+          {dailyNoshow.length === 0 ? (
+            <div style={{ flex:1, height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#CBD5E1' }}>
+              {loading ? '로딩 중…' : '데이터 없음'}
+            </div>
+          ) : (
+            dailyNoshow.map((d, i) => {
+              const isPeak = peak !== null && d.date === peak.date
+              // bar height: 노쇼 0이면 작은 회색 bar (10px 정도), 노쇼>0이면 비례
+              const barH   = d.count > 0
+                ? Math.max(8, (d.count / Math.max(maxCount, 1)) * CHART_HEIGHT)
+                : 10                                  // ← Figma: 0건 bar도 약간 보임 (~10px)
+              return (
+                <div
+                  key={d.date}
+                  style={{
+                    flex:1, height:CHART_HEIGHT, position:'relative',
+                    display:'flex', alignItems:'flex-end',
+                    minWidth: 0,                       // ← grid overflow 안전장치
+                  }}>
+                  {/* 실제 데이터 bar */}
+                  <div style={{
+                    width:        '100%',
+                    height:       barH,
+                    borderRadius: 24,
+                    // ── Figma: 노쇼 발생 = 검정 gradient / 노쇼 없음 = 회색 gradient ──
+                    background: d.count > 0
+                      ? 'linear-gradient(to bottom, #000 0%, #7E7F80 100%)'
+                      : 'linear-gradient(to bottom, #DDDEDF 24.207%, #EFF0F1 100%)',
+                    transition: 'height 0.4s ease',
+                  }}/>
+                  {/* ── Peak label (해당 bar 위쪽 absolute) ── */}
+                  {isPeak && peakLabel && (
+                    <div style={{
+                      position:     'absolute',
+                      // bar top 보다 위로 (gap 영역 활용)
+                      bottom:       barH + 6,
+                      left:         '50%',
+                      transform:    'translateX(-50%)',
+                      // ── Figma: bg rgba(255,255,255,0.9), border 1px #000, radius 24, padding 2 8 ──
+                      background:   'rgba(255,255,255,0.9)',
+                      border:       '1px solid #000',
+                      borderRadius: 24,
+                      padding:      '2px 8px',
+                      display:      'flex',
+                      gap:          10,                // ← Figma: gap 10 (날짜-건수)
+                      alignItems:   'center',
+                      justifyContent:'center',
+                      // ── Figma: Pretendard Regular 10 / lh 1.5 / #1E1E1E / tracking 0.1 ──
+                      fontFamily:   "'Pretendard', -apple-system, sans-serif",
+                      fontWeight:   400,
+                      fontSize:     10,
+                      lineHeight:   1.5,
+                      letterSpacing:'0.1px',
+                      color:        '#1E1E1E',
+                      whiteSpace:   'nowrap',
+                      pointerEvents:'none',           // ← 클릭 방해 X
+                    }}>
+                      {peakLabel}
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </div>
+
+        {/* ── Date 라벨 (차트 아래) ──────────────────────────── */}
+        <p style={{
+          fontFamily:"'Pretendard', -apple-system, sans-serif",
+          fontWeight:400, fontSize:10, lineHeight:1.5, color:'#AEB5C4', margin:0,
+          whiteSpace:'nowrap',
+        }}>{dateLabel}</p>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+
 // ─── DashboardPlaceholderCard ───────────────────────────────────────────────
 //   목적: Phase 4~10 위젯 구현 전까지 외곽 레이아웃 유지 + 진척 표시
 //   교체 방식: 각 Phase에서 해당 카드만 진짜 위젯으로 교체
@@ -932,12 +1207,8 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
         {/* ① 승인 대기 — Phase 3 구현 (Figma 489:406) */}
         <ApprovalPendingCard count={pendingCount} />
 
-        {/* ② 노쇼 현황 — Phase 4 구현 예정 */}
-        <DashboardPlaceholderCard
-          height={268}
-          title="노쇼 현황"
-          phaseNote="Phase 4에서 구현 예정"
-        />
+        {/* ② 노쇼 현황 — Phase 4 구현 (Figma 490:704) ✓ */}
+        <NoshowChartCard />
 
         {/* ③ 최근 생성된 예약 — Phase 5 구현 예정 */}
         <DashboardPlaceholderCard
