@@ -17,6 +17,13 @@
      · --color-recurring-bg/text (민트): HomeView 인디고·BookingListTable 민트 2곳 색상 통일
      · --color-guest-bg/text     (연초록): HomeView 기존 색 유지, 토큰화
      · .meta-badge / .meta-badge--xs / .meta-recurring / .meta-guest 클래스 추가
+   - [2026-05-11 chip--xs 스펙 조정 (사용자 요청)]
+     · font-weight: (미지정→base .chip의 500 상속) → 400 명시
+     · padding:     3px 6px → 2px 6px (상하 -1px)
+     · font-size:   11px (그대로)
+     · border-radius: 6px (그대로)
+     · 영향 범위: RoomDetailModal 상태칩 5종, DetailModal 조기반납칩, BookingStatusBadge size='xs'
+     · .chip-mine.chip--xs override는 그대로 유지 (cascade specificity 0,2,0 우위 + .chip-mine 소스 후순위로 font-weight 500 유지)
 ─────────────────────────────────────────────────────────────────────────── */
 
 :root {
@@ -101,9 +108,9 @@
 }
 
 /* ── 칩 사이즈 modifier ─────────────────────────────────────────────────────
-   base .chip        : font-size 12px / padding 3px 10px / fw 500 — index.css 정의
+   base .chip        : font-size 12px / padding 4px 12px / fw 500 — index.css 정의
    .chip--sm         : font-size  9px / padding 2px 7px
-   .chip--xs         : font-size 11px / padding 3px 6px / border-radius 6px  — 캘린더 슬롯/소형카드 XS (2026-05-04 변경)
+   .chip--xs         : font-weight 400 / font-size 11px / padding 2px 6px / border-radius 6px  — (2026-05-11 변경)
    .chip--square     : font-size 12px / padding 8px 14px / border-radius 10px / line-height 14px — DetailModal 전용
                        ※ 사이즈는 :root의 --chip-square-* 토큰으로 통제
 ─────────────────────────────────────────────────────────────────────────── */
@@ -117,7 +124,15 @@
       · 영향 범위: HomeView 소형카드 + RoomDetailModal + DetailModal + CalendarShell 슬롯 (4곳 동시)
       · 단, .chip-mine.chip--xs override는 그대로 유지 (사용자 명시: "내 예약 칩은 유지")
         → padding 1 4 / radius 4 / font-size 9 (캘린더 슬롯 내 예약 컴팩트 유지) */
-.chip--xs { font-size: 11px; padding: 3px 6px; border-radius: 6px; }
+/* ── [2026-05-11 chip--xs 스펙 조정] ────────────────────────────────────────
+      · font-weight: (base .chip의 500 상속) → 400 명시 (Regular)
+      · padding:     3px 6px → 2px 6px (상하 -1px, 칩 높이 좀 더 컴팩트)
+      · font-size:   11px (그대로)
+      · border-radius: 6px (그대로)
+      · cascade 검증: .chip-mine.chip--xs(specificity 0,2,0)는 font-weight 미지정 →
+                     단일 클래스 규칙으로 폴백 → 소스 순서상 .chip-mine(line 158)이 .chip--xs(line 120)보다
+                     뒤에 있어 font-weight 500 유지 (내 예약 칩 시각 강도 보존) */
+.chip--xs { font-weight: 400; font-size: 11px; padding: 2px 6px; border-radius: 6px; } /* ← [2026-05-11] fw 400 신규 / padding 3px 6px → 2px 6px */
 /* ── [2026-05-04 STEP 3] chip--list: MY PAGE 테이블/리스트 전용 사이즈 ──
       · 배경: 기존 .chip--xs는 캘린더 슬롯 전용(padding 1×4 / radius 4)
               새 MY PAGE 테이블 디자인의 chip-XS(Figma node 449:1334)는 padding 2×7 / radius pill로 다름
