@@ -2,46 +2,92 @@
  * AdminSideNav — Admin 페이지 좌측 사이드 네비게이션
  *
  * ✅ 변경 이력
+ *  - [2026-05-11 Phase 1] 아이콘 7종 추가 + 비활성 메뉴 2개 추가 (Figma node 541:3559 1:1)
+ *    · 아이콘: insert_chart / check_circle / schedule / account_circle / dual_screen
+ *              / asterisk / books (Material Symbols, 사용자 제공 SVG 1:1)
+ *    · 비활성 신규 메뉴: 자원 관리 (asterisk) / 도서 관리 (books)
+ *      → AdminTabId에는 미포함, 클릭 시 onTabChange 호출 안 됨, cursor not-allowed
+ *    · 색상 보정 (Figma 1:1):
+ *        - 비활성(클릭 가능) text: #657487 → #697077
+ *        - 비활성(준비중) text:    #cdd3da
+ *        - hover 배경: #FAFBFC → #F5F7F9 (page bg와 1단계 위로, Figma 토큰 정합)
+ *    · padding 조정: '16px 20px' → '12px 20px' (24px 아이콘 + 12+12 = 48 = Figma h_48)
+ *    · height 48 명시 (Figma 사양 보장, 컨텐츠 변화에도 흔들리지 않음)
+ *    · 아이콘 ↔ 라벨 gap: 8 (Figma)
+ *
  *  - [2026-05-06 Admin Phase A] 신규 생성 — Figma node 451:3522 1:1 반영
  *
- * 📌 Figma 사양 (node 451:3522 / 451:3523~451:3533)
- *  · 컨테이너: bg transparent / flex column / gap 8 / width 160 (외부 지정)
- *    ← [2026-05-06 사용자 요청] bg #F3F4F8 → transparent
- *  · 메뉴 항목 5개:
- *    - 대시보드 / 승인 관리 / 예약 관리 / 사용자 관리 / 회의실 관리
+ * 📌 Figma 사양 (node 541:3559)
+ *  · 컨테이너: bg transparent (사용자 요청 유지) / flex column / gap 8 / width 160
+ *  · 메뉴 항목 7개 (5 활성 + 2 비활성):
+ *    - 활성 5: 대시보드 / 승인 관리 / 예약 관리 / 사용자 관리 / 회의실 관리
+ *    - 비활성 2: 자원 관리 / 도서 관리 (text #cdd3da, cursor not-allowed)
  *  · 항목 스타일:
- *    - width 100% / height 48 / padding 16 20 / radius 9999 (pill)
+ *    - width 100% / height 48 / padding 12 20 (※ 아이콘 24 포함하여 정확히 48)
+ *    - radius 9999 (pill) / 아이콘-라벨 gap 8
  *    - font Pretendard Medium 16 / line-height 16
- *    - 비활성: bg #fff / text #657487
- *    - 활성: bg #111 / text #fff
+ *    - 활성: bg #111 / text #fff (아이콘도 currentColor → 흰색)
+ *    - 비활성(클릭): bg #fff / text #697077 (아이콘도 currentColor → #697077)
+ *    - 비활성(준비중): bg #fff / text #cdd3da (아이콘도 currentColor → #cdd3da)
  *  · dot 4×4 (활성과 독립):
  *    - pendingCount > 0일 때 항목 라벨 옆 표시 (label + dot 가로 배치 / gap 2)
- *    - "처리할 항목 있음" 알림 표시 — 현재 승인 관리에서만 사용
+ *    - 현재 승인 관리에서만 사용
+ *
+ * 📌 타입 설계
+ *  · AdminTabId (export, 5개): 실제 라우팅 가능한 탭만 — 외부 import 영향 0
+ *  · MenuId (내부): AdminTabId | 'resources' | 'books' — 메뉴 정의용
+ *  · 비활성 항목 클릭 시 onTabChange 미호출 → 라우팅 안전 (setTab 절대 비활성 id 못 받음)
  *
  * 📌 사용처
  *  - AdminPage 외곽 wrapper (Phase A 통합)
  *  - props로 activeTab, onTabChange, pendingCount 전달 받음
  */
 
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
+import {
+  InsertChartIcon,
+  CheckCircleIcon,
+  ScheduleIcon,
+  AccountCircleIcon,
+  DualScreenIcon,
+  AsteriskIcon,
+  BooksIcon,
+} from '../icons/AdminMenuIcons'
 
-// ─── 메뉴 정의 (Figma 순서) ──────────────────────────────────────────────────
-//   id는 기존 AdminPage activeTab과 동일 ('dashboard'/'approvals'/'bookings'/'users'/'rooms')
+// ─── 활성 탭 ID (외부 export — 라우팅용) ────────────────────────────────────
+//   ※ AdminPage.tsx의 TABS 배열·setTab과 동기화. 비활성 메뉴는 여기 포함 안 됨.
 export type AdminTabId = 'dashboard' | 'approvals' | 'bookings' | 'users' | 'rooms'
 
-const MENU_ITEMS: Array<{ id: AdminTabId; label: string }> = [
-  { id: 'dashboard',  label: '대시보드' },
-  { id: 'approvals',  label: '승인 관리' },
-  { id: 'bookings',   label: '예약 관리' },
-  { id: 'users',      label: '사용자 관리' },
-  { id: 'rooms',      label: '회의실 관리' },
+// ─── 메뉴 ID (내부 전용) ─────────────────────────────────────────────────────
+//   · 활성 5개 + 비활성 2개 = 7개
+//   · 비활성 id ('resources' | 'books')는 onTabChange로 절대 전달 안 됨 (disabled guard)
+type MenuId = AdminTabId | 'resources' | 'books'
+
+// ─── 메뉴 정의 (Figma 순서) ──────────────────────────────────────────────────
+//   disabled: true → 클릭 무효, cursor not-allowed, text #cdd3da
+interface MenuItem {
+  id:        MenuId
+  label:     string
+  icon:      ReactNode
+  disabled?: boolean
+}
+
+const MENU_ITEMS: MenuItem[] = [
+  { id: 'dashboard', label: '대시보드',    icon: <InsertChartIcon  /> },
+  { id: 'approvals', label: '승인 관리',   icon: <CheckCircleIcon  /> },
+  { id: 'bookings',  label: '예약 관리',   icon: <ScheduleIcon     /> },
+  { id: 'users',     label: '사용자 관리', icon: <AccountCircleIcon/> },
+  { id: 'rooms',     label: '회의실 관리', icon: <DualScreenIcon   /> },
+  // ── [2026-05-11 Phase 1 신규] 비활성 메뉴 2개 (Figma 542:2227 / 542:2230) ──
+  { id: 'resources', label: '자원 관리',   icon: <AsteriskIcon     />, disabled: true },
+  { id: 'books',     label: '도서 관리',   icon: <BooksIcon        />, disabled: true },
 ]
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 interface AdminSideNavProps {
   /** 현재 활성 탭 id */
   activeTab:    AdminTabId
-  /** 탭 변경 콜백 */
+  /** 탭 변경 콜백 — 활성 메뉴(AdminTabId)만 전달됨, 비활성은 호출 안 됨 */
   onTabChange:  (id: AdminTabId) => void
   /** 승인 대기 건수 — > 0 시 '승인 관리' 옆 dot 표시 */
   pendingCount: number
@@ -55,60 +101,86 @@ export function AdminSideNav({ activeTab, onTabChange, pendingCount }: AdminSide
       aria-label="Admin 메뉴"
       style={{
         // ─── Figma 컨테이너 ───────────────────────────────────────
-        background:   'transparent',                  // ← [2026-05-06 사용자 요청] #F3F4F8 → transparent (배경 컬러 삭제)
+        background:   'transparent',          // ← [2026-05-06 사용자 요청] #F3F4F8 → transparent (유지)
         display:      'flex',
         flexDirection:'column',
         alignItems:   'flex-start',
-        gap:          8,                               // ← Figma: gap 8
-        // 외부 width는 부모(AdminPage wrapper)에서 160 지정. 자체는 100% 채움
+        gap:          8,                       // ← Figma: gap 8
         width:        '100%',
       }}>
       {MENU_ITEMS.map(item => {
-        const isActive = activeTab === item.id
-        // dot 표시 조건: 승인 관리 항목 + pendingCount > 0
-        //   (Figma 디자인은 승인 관리에만 dot 적용 → 다른 항목은 dot 없음)
-        const showDot  = item.id === 'approvals' && pendingCount > 0
+        const isDisabled = item.disabled === true                          // ← [2026-05-11] 비활성 가드
+        const isActive   = !isDisabled && activeTab === item.id            // ← 비활성은 active 될 수 없음
+        const showDot    = item.id === 'approvals' && pendingCount > 0     // ← 승인 관리만 dot
+
         return (
           <button
             key={item.id}
             type="button"
-            onClick={() => onTabChange(item.id)}
+            // ─── [2026-05-11] 비활성 클릭 차단 ─────────────────────────
+            //   · onClick 콜백 자체 미할당 → onTabChange 절대 호출 안 됨
+            //   · disabled 속성 + aria-disabled — 접근성 + 키보드 포커스 차단
+            onClick={isDisabled ? undefined : () => onTabChange(item.id as AdminTabId)}
+            disabled={isDisabled}
+            aria-disabled={isDisabled || undefined}
             aria-current={isActive ? 'page' : undefined}
-            style={menuBtnStyle(isActive)}
+            style={menuBtnStyle(isActive, isDisabled)}
+            // ─── hover: 비활성/활성 외에만 ────────────────────────────
             onMouseEnter={e => {
-              if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = '#FAFBFC'
+              if (isDisabled || isActive) return
+              ;(e.currentTarget as HTMLButtonElement).style.background = '#F5F7F9'  // ← page bg와 정합
             }}
             onMouseLeave={e => {
-              if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = '#fff'
+              if (isDisabled || isActive) return
+              ;(e.currentTarget as HTMLButtonElement).style.background = '#fff'
             }}>
-            {/* label + dot 가로 배치 (Figma node 466:1234 — gap 2) */}
+            {/* ── icon (24×24) + label container (gap 8 = Figma) ── */}
             <span style={{
               display:    'inline-flex',
-              alignItems: 'flex-start',
-              gap:        2,                            // ← Figma: gap 2
+              alignItems: 'center',
+              gap:        8,                  // ← Figma: 아이콘-라벨 gap 8
+              minWidth:   0,
             }}>
+              {/* 아이콘 — fill="currentColor" 라 button color 그대로 흐름 */}
               <span style={{
-                // ← Figma: Pretendard Medium 16 / leading 1.2 / nowrap
-                fontFamily: "'Pretendard', -apple-system, sans-serif",
-                fontWeight: 500,
-                fontSize:   16,
-                lineHeight: '16px',
-                whiteSpace: 'nowrap',
-                overflow:   'hidden',
-                textOverflow: 'ellipsis',
-              }}>{item.label}</span>
-              {showDot && (
-                // ← Figma: 4×4 ellipse, 위치는 라벨 옆 위쪽 (gap 2 기준)
-                //   알림 dot 색상: 빨강(#FF5C5C) — 처리 대기 = 주의 환기
-                <span aria-label={`${pendingCount}건 처리 대기`} style={{
-                  width:        4,
-                  height:       4,
-                  borderRadius: '50%',
-                  background:   '#FF5C5C',
-                  flexShrink:   0,
-                  marginTop:    2,                      // ← 라벨 baseline에 맞춰 살짝 내림
-                }}/>
-              )}
+                width:      24,
+                height:     24,
+                flexShrink: 0,
+                display:    'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                lineHeight: 0,                // ← SVG line-height 잔여 영역 제거
+              }}>
+                {item.icon}
+              </span>
+
+              {/* label + dot 가로 배치 (Figma node 466:1234 — gap 2) */}
+              <span style={{
+                display:    'inline-flex',
+                alignItems: 'flex-start',
+                gap:        2,                // ← Figma: label-dot gap 2
+                minWidth:   0,
+              }}>
+                <span style={{
+                  fontFamily: "'Pretendard', -apple-system, sans-serif",
+                  fontWeight: 500,
+                  fontSize:   16,
+                  lineHeight: '16px',
+                  whiteSpace: 'nowrap',
+                  overflow:   'hidden',
+                  textOverflow: 'ellipsis',
+                }}>{item.label}</span>
+                {showDot && (
+                  <span aria-label={`${pendingCount}건 처리 대기`} style={{
+                    width:        4,
+                    height:       4,
+                    borderRadius: '50%',
+                    background:   '#FF5C5C',
+                    flexShrink:   0,
+                    marginTop:    2,
+                  }}/>
+                )}
+              </span>
             </span>
           </button>
         )
@@ -117,22 +189,29 @@ export function AdminSideNav({ activeTab, onTabChange, pendingCount }: AdminSide
   )
 }
 
-// ─── 메뉴 버튼 스타일 (활성/비활성) ───────────────────────────────────────
-function menuBtnStyle(isActive: boolean): CSSProperties {
+// ─── 메뉴 버튼 스타일 (활성/비활성/disabled) ─────────────────────────────────
+//   ← [2026-05-11] 변경
+//      · padding-y: 16 → 12 (24 아이콘 + 12+12 = 48 = Figma h_48 정확)
+//      · height: 48 명시 (사양 보장)
+//      · 비활성 text 색상: #657487 → #697077 (Figma 1:1)
+//      · disabled: cursor not-allowed + text #cdd3da
+function menuBtnStyle(isActive: boolean, isDisabled: boolean): CSSProperties {
   return {
-    // ── Figma 1:1 ─────────────────────────────────────────
     width:        '100%',
-    padding:      '16px 20px',                   // ← Figma: py 16 px 20
-    borderRadius: 9999,                          // ← Figma: rounded full
+    height:       48,                        // ← Figma: h_48 명시 (아이콘 24 + py 12 = 48)
+    padding:      '12px 20px',               // ← Figma: py 12 px 20 (※ 24 아이콘 포함)
+    borderRadius: 9999,                      // ← Figma: rounded full
     border:       'none',
-    cursor:       'pointer',
+    cursor:       isDisabled ? 'not-allowed' : 'pointer',
     textAlign:    'left',
     display:      'flex',
     alignItems:   'center',
     overflow:     'hidden',
     transition:   'background 0.15s, color 0.15s',
-    // ── 상태별 ───────────────────────────────────────────
+    // 상태별 색상
     background:   isActive ? '#111' : '#fff',
-    color:        isActive ? '#fff' : '#657487',
+    color:        isActive   ? '#fff'
+                : isDisabled ? '#cdd3da'      // ← Figma: 준비중 #cdd3da
+                :              '#697077',     // ← Figma: 클릭 가능 비활성 #697077 (보정)
   }
 }
