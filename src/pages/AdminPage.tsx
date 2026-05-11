@@ -918,9 +918,10 @@ function SmallDateTrigger({ value, onChange, min, max }: SmallDateTriggerProps) 
 
 // ─── 위젯 ② 노쇼 현황 (Figma node 490:704) ──────────────────────────────────
 //   사용처: Row 1 Col 2 (356×268, 3-col grid)
-//   데이터: 일자별 노쇼 카운트 (isNoshow SSOT 사용)
-//   동작: 자체 dateFrom/dateTo + useBookingsByRange + peak label
-//   ※ Figma 1:1 사양 (gap 48 헤더↔차트, bar gradient, peak StatusBadge)
+//   데이터: 외곽 봉(총예약 100%) + 내부 봉(노쇼/총예약 비율) 이중 구조
+//   동작: 자체 dateFrom/dateTo + useBookingsByRange + 봉 hover/click 시 툴팁
+//   ※ Figma 1:1 사양 (gap 48 헤더↔차트, 외곽/내부 봉 gradient, StatusBadge 툴팁)
+//   ※ [Phase 4 v3] 라벨 표시: peak 자동 → 인터랙티브 툴팁 (사용자 의도)
 function NoshowChartCard() {
   // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
   const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
@@ -929,39 +930,43 @@ function NoshowChartCard() {
   // ── 2. 자체 fetch (dedupe cache 통해) ────────────────────────────────
   const { data: bookings, loading } = useBookingsByRange(dateFrom, dateTo)
 
-  // ── 3. 일자별 노쇼 카운트 ─────────────────────────────────────────────
-  const dailyNoshow = useMemo(() => {
+  // ── 3. 일자별 stats (총예약 + 노쇼 + 비율) ──────────────────────────
+  //   Q4 결정: 총예약 = status === 'confirmed' 만 (autoCancelled 무관)
+  //   isNoshow는 status='confirmed' 필수이므로 노쇼 ⊆ 총예약 → rate는 항상 [0,1] 안전
+  //   외곽 봉 = 총예약 100% 기준 (모두 동일 111px) — Q1 결정
+  //   내부 봉 = 111 × (노쇼/총예약) 만큼 채움 — Q3 결정
+  const dailyStats = useMemo(() => {
     const diffDays = Math.round(
       (new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000
     ) + 1
     if (diffDays <= 0 || diffDays > 365) return []   // ← 가드: 비정상 range 차단
     return Array.from({ length: diffDays }, (_, i) => {
-      const date  = addDaysStr(dateFrom, i)
-      const count = bookings.filter(b => tsDate(b.start_at) === date && isNoshow(b)).length
-      return { date, count }
+      const date        = addDaysStr(dateFrom, i)
+      const dayBookings = bookings.filter(b => tsDate(b.start_at) === date)
+      const total       = dayBookings.filter(b => b.status === 'confirmed').length
+      const noshow      = dayBookings.filter(isNoshow).length      // ← Phase 2 SSOT
+      const rate        = total > 0 ? noshow / total : 0           // ← 0~1 (안전)
+      return { date, total, noshow, rate }
     })
   }, [bookings, dateFrom, dateTo])
 
-  // ── 4. Peak 계산 (최대값 1개, count > 0일 때만) ──────────────────────
-  //   Q7 결정: 위젯 ② = 1개 peak label
-  const peak = useMemo(() => {
-    if (dailyNoshow.length === 0) return null
-    const max = dailyNoshow.reduce((p, c) => c.count > p.count ? c : p, dailyNoshow[0])
-    return max.count > 0 ? max : null
-  }, [dailyNoshow])
+  // ── 4. 활성 봉(hover/click) 상태 ─────────────────────────────────────
+  //   ← [2026-05-11 Phase 4 v3] peak 자동 표시 → hover/click 툴팁으로 변경
+  //   · 사용자 의도: 평소엔 라벨 없음, 사용자 인터랙션 시에만 그 봉 위에 표시
+  //   · activeDate가 set된 봉에만 라벨 렌더링 (각 봉별 그 날 노쇼 건수)
+  //   · 데스크탑: bar onMouseEnter → set, container onMouseLeave → null
+  //   · 모바일/터치: bar onClick → toggle (같은 봉 재클릭 시 해제)
+  const [activeDate, setActiveDate] = useState<string | null>(null)
 
-  // ── 5. 차트 bar 높이 계산용 max ───────────────────────────────────────
-  const maxCount = useMemo(
-    () => dailyNoshow.reduce((m, d) => d.count > m ? d.count : m, 0),
-    [dailyNoshow]
-  )
-
-  // ── Peak label 포맷: "5월 7일 5건" ────────────────────────────────────
-  const peakLabel = useMemo(() => {
-    if (!peak) return null
-    const dt = new Date(peak.date)
-    return `${dt.getMonth() + 1}월 ${dt.getDate()}일 ${peak.count}건`
-  }, [peak])
+  // ── 활성 봉의 라벨 내용 ("5월 7일 5건") ──────────────────────────────
+  //   activeDate 없거나 dailyStats에 없으면 null → 라벨 안 그림
+  const activeLabel = useMemo(() => {
+    if (!activeDate) return null
+    const active = dailyStats.find(d => d.date === activeDate)
+    if (!active) return null
+    const dt = new Date(active.date)
+    return `${dt.getMonth() + 1}월 ${dt.getDate()}일 ${active.noshow}건`
+  }, [activeDate, dailyStats])
 
   // ── Date 라벨 (차트 아래) — dateFrom 표시 ─────────────────────────────
   const dateLabel = useMemo(() => {
@@ -1008,62 +1013,80 @@ function NoshowChartCard() {
       {/* ── 차트 영역 (flex column gap 6) ────────────────────── */}
       <div style={{ display:'flex', flexDirection:'column', gap:6, width:'100%', position:'relative' }}>
         {/* ── Bar 컨테이너 (h 111, flex row gap 4, items-end) ── */}
-        <div style={{
-          display:    'flex',
-          alignItems: 'flex-end',
-          gap:        4,                              // ← Figma: gap 4 (bar 간격)
-          height:     CHART_HEIGHT,
-          width:      '100%',
-          position:   'relative',
-        }}>
-          {dailyNoshow.length === 0 ? (
+        {/*    ← [Phase 4 v3] onMouseLeave로 컨테이너 벗어나면 라벨 해제 (hover 추적) */}
+        <div
+          onMouseLeave={() => setActiveDate(null)}
+          style={{
+            display:    'flex',
+            alignItems: 'flex-end',
+            gap:        4,                              // ← Figma: gap 4 (bar 간격)
+            height:     CHART_HEIGHT,
+            width:      '100%',
+            position:   'relative',
+          }}>
+          {dailyStats.length === 0 ? (
             <div style={{ flex:1, height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#CBD5E1' }}>
               {loading ? '로딩 중…' : '데이터 없음'}
             </div>
           ) : (
-            dailyNoshow.map((d, i) => {
-              const isPeak = peak !== null && d.date === peak.date
-              // bar height: 노쇼 0이면 작은 회색 bar (10px 정도), 노쇼>0이면 비례
-              const barH   = d.count > 0
-                ? Math.max(8, (d.count / Math.max(maxCount, 1)) * CHART_HEIGHT)
-                : 10                                  // ← Figma: 0건 bar도 약간 보임 (~10px)
+            dailyStats.map(d => {
+              const isActive = d.date === activeDate     // ← [Phase 4 v3] peak → activeDate
+              // ── 외곽 봉 + 내부 봉 이중 구조 (사용자 설명 1:1) ──
+              //   · 외곽: 총예약 100% 기준 → 모두 동일 111px (Q1)
+              //   · 내부: 111 × 노쇼율 만큼 하단 채움 (Q3)
+              const innerH = CHART_HEIGHT * d.rate       // ← 0~111 (rate는 0~1 보장)
               return (
                 <div
                   key={d.date}
+                  // ── [Phase 4 v3] 인터랙티브 툴팁 이벤트 ──
+                  //   · 데스크탑: hover로 즉시 표시 (mouseEnter)
+                  //   · 모바일/터치: 탭으로 toggle (같은 봉 재탭 시 해제)
+                  onMouseEnter={() => setActiveDate(d.date)}
+                  onClick={() => setActiveDate(prev => prev === d.date ? null : d.date)}
                   style={{
-                    flex:1, height:CHART_HEIGHT, position:'relative',
-                    display:'flex', alignItems:'flex-end',
-                    minWidth: 0,                       // ← grid overflow 안전장치
+                    flex:     1,
+                    height:   CHART_HEIGHT,
+                    position: 'relative',
+                    minWidth: 0,                         // ← grid overflow 안전장치
+                    cursor:   'pointer',                 // ← 인터랙션 가능 명시
                   }}>
-                  {/* 실제 데이터 bar */}
+                  {/* ── 외곽 봉 (희미, 총예약 100% 기준) ── */}
                   <div style={{
-                    width:        '100%',
-                    height:       barH,
+                    position:     'absolute',
+                    inset:        0,
                     borderRadius: 24,
-                    // ── Figma: 노쇼 발생 = 검정 gradient / 노쇼 없음 = 회색 gradient ──
-                    background: d.count > 0
-                      ? 'linear-gradient(to bottom, #000 0%, #7E7F80 100%)'
-                      : 'linear-gradient(to bottom, #DDDEDF 24.207%, #EFF0F1 100%)',
-                    transition: 'height 0.4s ease',
+                    background:   'linear-gradient(to bottom, #DDDEDF 24.207%, #EFF0F1 100%)',
                   }}/>
-                  {/* ── Peak label (해당 bar 위쪽 absolute) ── */}
-                  {isPeak && peakLabel && (
+                  {/* ── 내부 봉 (진함, 노쇼/총예약 비율) ── */}
+                  {innerH > 0 && (
                     <div style={{
                       position:     'absolute',
-                      // bar top 보다 위로 (gap 영역 활용)
-                      bottom:       barH + 6,
+                      bottom:       0,
+                      left:         0,
+                      right:        0,
+                      height:       innerH,
+                      borderRadius: 24,
+                      background:   'linear-gradient(to bottom, #000 0%, #7E7F80 100%)',
+                      transition:   'height 0.4s ease',
+                    }}/>
+                  )}
+                  {/* ── 툴팁 라벨 (활성 봉에만 표시) ── */}
+                  {/*   Figma StatusBadge-XS 사양 (bg rgba(255,255,255,0.9), border 1px #000) */}
+                  {isActive && activeLabel && (
+                    <div style={{
+                      position:     'absolute',
+                      // 내부 봉 top 위쪽 6px (rate=0이면 봉 바닥 = 차트 바닥 위)
+                      bottom:       innerH + 6,
                       left:         '50%',
                       transform:    'translateX(-50%)',
-                      // ── Figma: bg rgba(255,255,255,0.9), border 1px #000, radius 24, padding 2 8 ──
                       background:   'rgba(255,255,255,0.9)',
                       border:       '1px solid #000',
                       borderRadius: 24,
                       padding:      '2px 8px',
                       display:      'flex',
-                      gap:          10,                // ← Figma: gap 10 (날짜-건수)
+                      gap:          10,
                       alignItems:   'center',
                       justifyContent:'center',
-                      // ── Figma: Pretendard Regular 10 / lh 1.5 / #1E1E1E / tracking 0.1 ──
                       fontFamily:   "'Pretendard', -apple-system, sans-serif",
                       fontWeight:   400,
                       fontSize:     10,
@@ -1071,9 +1094,10 @@ function NoshowChartCard() {
                       letterSpacing:'0.1px',
                       color:        '#1E1E1E',
                       whiteSpace:   'nowrap',
-                      pointerEvents:'none',           // ← 클릭 방해 X
+                      pointerEvents:'none',              // ← 라벨이 hover/click 방해 X
+                      zIndex:       1,                   // ← 인접 봉 위에 표시
                     }}>
-                      {peakLabel}
+                      {activeLabel}
                     </div>
                   )}
                 </div>
