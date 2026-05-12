@@ -1790,13 +1790,20 @@ function BookingTrendsAreaCard() {
         </div>
       </div>
 
-      {/* ── 차트 영역 (남은 공간 자동 채움 - flex:1) ──────────────── */}
+      {/* ── 차트 영역 (카드 padding 상쇄 → 카드 가장자리까지 가득 채움) ───
+            · width: calc(100% + 32px) + marginLeft/Right -16: 카드 좌우 padding 상쇄
+            · marginBottom: -16: 카드 하단 padding 상쇄 → 차트 영역 fill까지 가득
+            · marginTop: 16: 헤더와 차트 사이 여백 유지
+            · 카드 outer `borderRadius: 24` + `overflow: hidden`로 둥근 모서리 자동 clip */}
       <div style={{
-        position: 'relative',
-        width:    '100%',
-        flex:     1,                                    // ← 위젯 ⑦ v4 패턴: 남은 공간 자동
-        minHeight:0,
-        marginTop:16,                                   // ← 헤더와 차트 사이 여백 (Figma justify-between에서 자동 분배 보강)
+        position:    'relative',
+        width:       'calc(100% + 32px)',                // ← 카드 padding 좌우 16+16 상쇄
+        marginLeft:  -16,                                 // ← 카드 좌측 padding 상쇄
+        marginRight: -16,                                 // ← 카드 우측 padding 상쇄
+        marginBottom:-16,                                 // ← 카드 하단 padding 상쇄
+        marginTop:   16,                                  // ← 헤더와 차트 사이 여백
+        flex:        1,                                    // ← 위젯 ⑦ v4 패턴: 남은 공간 자동
+        minHeight:   0,
       }}>
         {dayStats.length === 0 ? (
           <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#CBD5E1' }}>
@@ -1823,14 +1830,16 @@ function BookingTrendsAreaCard() {
               {areaPath && (
                 <path d={areaPath} fill="url(#trend-area-fill)" />
               )}
-              {/* ── Q3: 외곽선 (line stroke) ── */}
+              {/* ── Q3: 외곽선 (line stroke - 영역과 자연스럽게 융합) ── */}
               {linePath && (
                 <path
                   d={linePath}
                   fill="none"
-                  stroke="#5C5C5C"
-                  strokeWidth="1.5"
-                  vectorEffect="non-scaling-stroke"     // ← preserveAspectRatio="none"에도 stroke 균일 유지
+                  stroke="#888"
+                  strokeWidth="1"
+                  strokeLinejoin="round"                  // ← peak 모서리 부드럽게
+                  strokeLinecap="round"                    // ← 양 끝 부드럽게
+                  vectorEffect="non-scaling-stroke"        // ← preserveAspectRatio="none"에도 stroke 균일 유지
                 />
               )}
               {/* ── Q4: Active 데이터 포인트 (Figma 1:1 size 6, 흰 배경 + 검정 외곽선) ── */}
