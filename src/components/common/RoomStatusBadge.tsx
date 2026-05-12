@@ -29,12 +29,27 @@ export function RoomStatusBadge({ status, isAdminRoom = false }: RoomStatusBadge
         <span className="chip chip-available">예약가능</span>
       )}
 
-      {/* ── SOON ── */}
+      {/* ── SOON ──
+          [2026-05-12 사용자 정책]
+          · 시작 10~5분 전: 'chip-soon' (곧 사용) — 기존 그대로
+          · 시작 5분 전 ~ 시작 직전: 'chip-checkin-wait' (체크인 대기 중)
+              · checkinWaiting=true는 getRoomStatus 내부에서 isCheckinable로 판정 (5분 전 윈도우 + 미체크인)
+              · "곧 사용" 칩 자리에 "체크인 대기 중" 칩으로 교체 (양자택일)
+              · 카운트다운 + nextStart 칩은 둘 다 동일 표시 */}
       {type === 'SOON' && (
         <>
-          <span className="chip chip-soon">
-            {minsUntil}분 뒤 사용
-          </span>
+          {checkinWaiting ? (
+            <span className="chip chip-checkin-wait">체크인 대기 중</span>
+          ) : (
+            <span className="chip chip-soon">
+              {minsUntil}분 뒤 사용
+            </span>
+          )}
+          {checkinWaiting && minsUntil !== undefined && (
+            <span className="chip chip-neutral">
+              {minsUntil}분 뒤 사용
+            </span>
+          )}
           {nextStart && (
             <span className="chip chip-neutral">
               {fmtTimeFull(nextStart)} 부터

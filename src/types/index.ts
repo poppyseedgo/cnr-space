@@ -162,7 +162,7 @@ export interface RoomStatus {
   nextBooking?: Booking
   booking?: Booking
   checkedIn?: boolean       // BUSY: 체크인 완료 여부
-  checkinWaiting?: boolean  // BUSY: 체크인 대기 중 (유예기간 10분 이내)
+  checkinWaiting?: boolean  // BUSY: 유예기간 10분 이내 미체크인 / SOON: 시작 5분 전 윈도우 미체크인 (← [2026-05-12] SOON 분기 추가)
 }
 
 // ─── 충돌 검사 결과 ──────────────────────────────────────────────────────────────

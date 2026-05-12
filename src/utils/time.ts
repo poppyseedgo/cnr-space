@@ -246,6 +246,13 @@ export function isCheckinable(b: Booking): boolean {
  * getRoomStatus — 특정 날짜/회의실의 현재 상태 계산
  *
  * ✅ 변경 이력
+ *  - [2026-05-12 SOON 분기에 checkinWaiting 전파]
+ *    · 사용자 정책: 시작 5분 전부터 "체크인 대기 중" 칩 노출 ("곧 사용" 대신)
+ *    · 변경: SOON 반환 객체에 checkinWaiting 필드 추가 (isCheckinable SSOT 활용)
+ *    · 에메랄드 pending은 status='pending'이라 isCheckinable=false → 자연스럽게 배제
+ *    · RoomStatusBadge에서 SOON.checkinWaiting=true면 "체크인 대기 중" 칩 우선 렌더
+ *    · BUSY 분기/판정 로직 무변경
+ *
  *  - [2026-04-18 타입 안전성] 반환 타입 `RoomStatus` 명시 + return 객체 `as const` 처리
  *    · 원인: 반환 타입 미명시로 인해 { type: "BUSY" } 같은 리터럴이 string으로 추론됨
  *    · 증상: RoomStatusBadge 같이 status 객체 전체를 타입 엄격하게 받는 컴포넌트에
@@ -315,7 +322,22 @@ export function getRoomStatus(roomId: number, bookings: Booking[], date: string)
   const next = dayBks.filter(b => tsMin(b.start_at) > now).sort((a,b) => a.start_at.localeCompare(b.start_at))[0];
   if (next && isToday) {
     const minsUntil = tsMin(next.start_at) - now;
-    if (minsUntil <= 15) return { type: "SOON" as const, label: "곧 사용", nextStart: tsTime(next.start_at), minsUntil, booking: next };
+    if (minsUntil <= 15) {
+      // ── [2026-05-12] 5분 전 윈도우의 체크인 대기 상태 감지 ──────────────
+      // 정책: 시작 5분 전부터 시작 직전까지 미체크인 confirmed 예약이 있으면
+      //       RoomStatusBadge에서 "체크인 대기 중" 칩을 노출 ("곧 사용" 대신)
+      // 가드: isCheckinable SSOT 사용 (status='confirmed' + !checkedIn + !autoCancelled + !earlyEnded)
+      //       에메랄드 룸 pending(승인 대기)은 status='pending'이므로 자동 배제
+      const checkinWaiting = isCheckinable(next);
+      return {
+        type:        "SOON" as const,
+        label:       "곧 사용",
+        nextStart:   tsTime(next.start_at),
+        minsUntil,
+        booking:     next,
+        checkinWaiting,   // ← [2026-05-12] SOON 분기에도 checkinWaiting 전파
+      };
+    }
   }
   return { type: "AVAILABLE" as const, label: "예약가능", nextBooking: next };
 }
