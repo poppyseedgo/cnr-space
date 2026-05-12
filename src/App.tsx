@@ -276,14 +276,15 @@ const AdminView  = lazy(() => import('./pages/AdminPage').then(m => ({ default: 
 //    · 추후 단계: Supabase `announcements` 테이블 fetch → useState로 전환
 //      (Admin이 활성화/비활성화/메시지/배경색 관리 → 이 인터페이스 그대로 사용 가능)
 //    · null 또는 active=false면 NoticeBar는 렌더되지 않음 (헤더만 표시)
-// ─── [2026-04-30 사용자 요청] 일시 비활성화 ──────────────────────────────
-//    · active: true → false 로만 변경 (메시지/색상 데이터는 그대로 보존)
-//    · 추후 Admin 연결 시 active만 true로 토글하면 즉시 재활성화 가능
-//    · NoticeBar 컴포넌트 자체는 그대로 유지 (가드 `!announcement.active`로 차단)
+// ─── [2026-05-12] 체크인 활성 5분 전 핫픽스 안내 — 활성화 ──────────────────
+//    · id 갱신: 이전에 X로 닫은 사용자도 새 공지로 자동 재표시
+//    · active: false → true
+//    · message: 5/12 HOTFIX 안내 (브라우저 새로고침 유도)
+//    · 충분히 전파된 후 active: false로 비활성화 권장 (UX상 영구 노출 비추)
 const MOCK_ANNOUNCEMENT: AnnouncementConfig | null = {
-  id: 'notice-2026-04-30-02',
-  active: false,  // ← [2026-04-30] 일시 비활성화 (Admin 연결 후 true 전환 예정)
-  message: '임직원 여러분, 좋은 주말 보내세요.',
+  id: 'notice-2026-05-12-hotfix-checkin-5min-v2',  // ← [2026-05-12 v2] id 갱신 — 이전 dismiss 무효화
+  active: true,
+  message: '✳︎ HOTFIX ✳︎  이제 회의 시작 5분 전부터 ✱체크인✱ 가능합니다. 브라우저를 새로고침 하세요.',
   bgColor: '#E6F2FF',
   textColor: '#1E1E1E',
 }
