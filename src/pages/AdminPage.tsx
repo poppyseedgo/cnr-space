@@ -1867,7 +1867,7 @@ function DepartmentBookingsCard() {
       padding:       16,                                // ← Figma: p16 균등 (위젯 ②④⑤⑥의 pt12 px16 pb16과 다름)
       display:       'flex',
       flexDirection: 'column',
-      gap:           24,                                // ← Figma: flex-col gap 24
+      gap:           24,                                // ← Figma 1:1 (chart flex:1로 남은 공간 자동 채움)
       height:        504,
       width:         '100%',
       overflow:      'hidden',                          // ← Figma: overflow-clip
@@ -1954,13 +1954,15 @@ function DepartmentBookingsCard() {
         style={{
           position: 'relative',                          // ← label absolute 기준점
           width:    '100%',
+          flex:     1,                                    // ← 카드 안 남은 공간 자동 채움
+          minHeight:0,                                    // ← flex item이 min-content 제한 무시 (필수)
         }}>
-        {/* ── Chart container (overflow hidden + radius 16) ── */}
+        {/* ── Chart container (height 100% — wrapper flex 1로 자동 sizing) ── */}
         <div style={{
           display:     'flex',
           alignItems:  'stretch',
           gap:         1,                                // ← Figma: gap 1px
-          height:      212,                              // ← Figma: h 212
+          height:      '100%',                            // ← wrapper height 자동 채움 (Top 5/6/7 변동 무관 자동 조정)
           width:       '100%',
           borderRadius:16,
           overflow:    'hidden',                          // ← Figma: radius 16 + overflow-clip
@@ -2020,7 +2022,11 @@ function DepartmentBookingsCard() {
         </div>
         {/* ── 활성 column label (chart container 외부 - overflow:hidden 영향 안 받음) ──
               · 위치: chart 위쪽 외부 (top: -25)
-              · 형식: "{부서명} {N}건" (위젯 ②⑤⑥ 패턴 일관) */}
+              · 형식: "{부서명} {N}건" (위젯 ②⑤⑥ 패턴 일관)
+              · ← [2026-05-12 v3] clamp 처리: 좌/우 가장자리에서 label 잘림 방지
+                · 정상: translateX(-50%) (column 중앙 정렬)
+                · 좌측 끝: translateX(0)    (label 좌측 = chart 0%)
+                · 우측 끝: translateX(-100%) (label 우측 = chart 100%) */}
         {activeStats && activeLabel && totalCount > 0 && (() => {
           // 활성 column 중앙 위치 계산 (Top 7 누적 width)
           let leftPct = 0
@@ -2030,12 +2036,26 @@ function DepartmentBookingsCard() {
           }
           const activeWidthPct = (activeStats.count / totalCount) * 100
           const centerPct      = leftPct + activeWidthPct / 2
+          // ── clamp 임계값: chart 폭 25% 이하면 좌측 정렬, 75% 이상이면 우측 정렬 ──
+          //   · 부서명 긴 경우(예: 'Clinical Platform Research Institute 51건' ~280px) 안전
+          let leftStr:      string
+          let transformStr: string
+          if (centerPct < 25) {
+            leftStr      = '0'
+            transformStr = 'translateX(0)'              // ← label 좌측 = chart 좌측
+          } else if (centerPct > 75) {
+            leftStr      = '100%'
+            transformStr = 'translateX(-100%)'           // ← label 우측 = chart 우측
+          } else {
+            leftStr      = `${centerPct}%`
+            transformStr = 'translateX(-50%)'            // ← 정상 (column 중앙)
+          }
           return (
             <div style={{
               position:    'absolute',
               top:         -25,                              // ← chart 위쪽 외부 (wrapper 기준)
-              left:        `${centerPct}%`,
-              transform:   'translateX(-50%)',
+              left:        leftStr,
+              transform:   transformStr,
               // ── Figma StatusBadge-XS (위젯 ②⑤⑥와 동일) ──
               background:  'rgba(255,255,255,0.9)',
               border:      '1px solid #000',
@@ -2052,6 +2072,10 @@ function DepartmentBookingsCard() {
               letterSpacing:'0.1px',
               color:       '#1E1E1E',
               whiteSpace:  'nowrap',
+              // ── 안전망: label width 너무 길면 ellipsis ──
+              maxWidth:    'calc(100% - 8px)',             // ← chart 폭 - 양쪽 4px 여백
+              overflow:    'hidden',
+              textOverflow:'ellipsis',
               pointerEvents:'none',
               zIndex:      10,
             }}>
