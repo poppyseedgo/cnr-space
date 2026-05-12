@@ -4,6 +4,16 @@
  * 예약을 테이블 형태(날짜/회의명/회의실/예약자/상태)로 렌더링하는 공통 컴포넌트.
  *
  * ✅ 변경 이력
+ *  - [2026-05-12 모바일 가로 스크롤 활성화]
+ *    · 증상: AdminPage 일반 예약 테이블이 모바일에서 좁은 폭에 압축되어 사용 불가
+ *    · 원인: <table> tableLayout:'fixed' + width:100% → 부모 폭에 강제 맞춤
+ *            회의명 컬럼은 width 없이 자동 분배 → 모바일에서 1~2글자만 보임
+ *    · 해결:
+ *      ① 내부 스크롤 div에 overflowX:'auto' 추가 (기존 overflowY 유지)
+ *      ② <table>에 minWidth 명시 (action 유무에 따라 700/820)
+ *      ③ 회의명 컬럼 thStyle(200) 명시 — 최소 폭 보장
+ *    · 외부 div(borderRadius:12 + overflow:hidden) 그대로 유지 — 둥근 모서리 컷오프 보존
+ *
  *  - [2026-04-24 P4-B] BookingStatusBadge에 currentUserId/currentUserEmail 전파
  *    · 뱃지 내부 isBooker 판정(UUID/email 기반)을 사용하려면 prop 전달 필수
  *    · props 시그니처에 currentUserId? 추가 (currentUserEmail은 기존)
@@ -277,9 +287,14 @@ export function BookingListTable({
       </div>
       )}
 
-      {/* ── 테이블 컨테이너 ── */}
+      {/* ── 테이블 컨테이너 ──
+          [2026-05-12 모바일 가로 스크롤 활성화]
+          · 외부 div: borderRadius 12 + overflow:hidden (둥근 모서리 컷오프, 그대로 유지)
+          · 내부 스크롤 div: overflowY 'auto'(기존) + overflowX 'auto'(신규) → 가로 스크롤 활성
+          · <table> minWidth: 컬럼 합계 + 회의명 최소 폭 → 부모 < minWidth 시 스크롤 발생
+          · 회의명 컬럼은 thStyle(200)으로 최소 폭 명시 (이전: width 없음 → 자동 압축) */}
       <div style={{ marginTop: 12, border: '1px solid #F1F5F9', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
-        <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+        <div style={{ maxHeight: 420, overflowY: 'auto', overflowX: 'auto' }}>
           {loading ? (
             <div style={{ textAlign: 'center', padding: '40px 20px', color: '#CBD5E1', fontSize: 13 }}>불러오는 중…</div>
           ) : displayList.length === 0 ? (
@@ -288,11 +303,18 @@ export function BookingListTable({
               해당 기간에 예약 내역이 없습니다
             </div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 13 }}>
+            <table style={{
+              width: '100%',
+              /* ← [2026-05-12] minWidth = 컬럼 합계 (action 유무에 따라 가변)
+                    · 날짜 160 + 회의명 200 + 회의실 120 + 예약자 110 + 상태 100~110 + (action 120)
+                    · action 있을 때 820, 없을 때 700 — 모바일에서 부모 < minWidth 시 가로 스크롤 활성 */
+              minWidth: actionColumn ? 820 : 700,
+              borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 13
+            }}>
               <thead>
                 <tr style={{ position: 'sticky', top: 0, zIndex: 1 }}>
                   <th style={thStyle(160)}>날짜 / 시간</th>
-                  <th style={thStyle()}>회의명</th>
+                  <th style={thStyle(200)}>회의명</th>{/* ← [2026-05-12] width 200 명시 (이전: 자동 압축) */}
                   <th style={thStyle(120)}>회의실</th>
                   <th style={thStyle(110)}>예약자</th>
                   <th style={thStyle(actionColumn ? 100 : 110)}>상태</th>

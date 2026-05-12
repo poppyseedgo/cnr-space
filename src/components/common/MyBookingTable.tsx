@@ -2,6 +2,11 @@
  * MyBookingTable — MY PAGE 전용 기간별 예약 조회 테이블
  *
  * ✅ 변경 이력
+ *  - [2026-05-12 모바일 가로 스크롤 활성화] AdminApprovalTable Phase 4 패턴 이식
+ *    · 증상: MyPage 테이블이 모바일에서 좁은 폭에 압축되어 사용 불가
+ *    · 원인: DataTable 호출 시 minWidth prop 미전달 + 외부 overflowX wrapper 누락
+ *    · 해결: DataTable 외부에 overflowX:'auto' wrapper + minWidth=columns 합계 전달
+ *    · 컬럼 변경 시 자동 반영 (reduce로 width 합계 산출)
  *  - [2026-05-11] 퀵버튼 '오늘' 추가 (Figma node 542:2390)
  *    · 순서: 오늘 / 이번 달(기본) / 지난 3개월
  *    · '오늘' = todayStr() ~ todayStr() (single day, KST 기준)
@@ -326,18 +331,27 @@ export function MyBookingTable({
 
       {/* ═══════════════════════════════════════════════════════════════════
           ↓ 테이블 (헤더 + 행 + Empty + 페이지네이션) (DataTable)
+          ─────────────────────────────────────────────────────────────────
+          [2026-05-12 모바일 가로 스크롤] AdminApprovalTable Phase 4 패턴 적용
+          · 외부 wrapper: overflowX:'auto' — 부모보다 자식이 넓으면 가로 스크롤
+          · DataTable minWidth: 컬럼 width 합계 자동 계산 → 부모 < minWidth 시 스크롤 활성
+          · 컬럼 변경 시 자동 반영 (하드코딩 X)
           ═══════════════════════════════════════════════════════════════════ */}
-      <DataTable
-        data={pagedList}
-        columns={columns}
-        getRowKey={(b) => b.id}
-        onRowClick={onDetail}
-        loading={loading}
-        emptyMessage="해당 기간에 내역이 없습니다."
-        page={page}
-        totalPages={totalPages}
-        onPageChange={setPage}
-      />
+      <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
+        <DataTable
+          data={pagedList}
+          columns={columns}
+          getRowKey={(b) => b.id}
+          onRowClick={onDetail}
+          loading={loading}
+          emptyMessage="해당 기간에 내역이 없습니다."
+          page={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          /* ← [2026-05-12] 컬럼 width 합계 자동 계산 → 모바일 가로 스크롤 활성화 */
+          minWidth={columns.reduce((sum, c) => sum + (c.width ?? 0), 0)}
+        />
+      </div>
     </div>
   )
 }
