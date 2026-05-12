@@ -1618,25 +1618,66 @@ function RoomNoshowCard({ rooms }: { rooms: Room[] }) {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ─── 위젯 ⑥ 예약추이 (Figma node 565:21710) ────────────────────────────────
+// ─── 위젯 ⑥ 예약추이 (Figma node 565:21848) — Mountain/Spline Area Chart ────
 //   사용처: Row 3 Col 1 (542×504, 2-col grid)
-//   데이터: 자체 dateFrom/dateTo (default 14일 = today - 14 ~ today, 15일 inclusive)
-//   동작: 위젯 ② 그래프 형식 (이중 봉) — 외곽 동일 + 내부 = count/maxCount 비례
-//   ※ Figma 1:1: 외곽 bg #FCFCFC, 내부 gradient #DDDEDF→#EFF0F1 (to bottom, rotate 없음)
-//   ※ 옛 BookingTrendsHeatmapCard (25 cells heatmap) 폐기 — 사용자 정정
+//   데이터: 자체 dateFrom/dateTo (default 30일) + useBookingsByRange
+//   동작: Catmull-Rom 스플라인 보간으로 부드러운 곡선 영역 차트 (Mountain Chart)
+//   ※ Figma 1:1: SVG path + 그라데이션 fill (회색 진함 → 흰색 fade-out) + 외곽선
+//   ※ 옛 BookingTrendsBarCard (이중 봉) 폐기 — 사용자 정정 (추세 표현이 본질)
+//   ※ 결정사항 (사용자 확정):
+//     · Q1 Catmull-Rom 곡선 (자연스러움, 표준 tension=1)
+//     · Q2 Figma 1:1 그라데이션 (회색 진함 → 흰색 fade-out)
+//     · Q3 영역 + 외곽선 (line stroke)
+//     · Q4 Active 데이터 포인트 작은 원 (Figma 1:1, size 6)
+//     · Q5 column별 hit area (위젯 ⑥ 패턴 - hover detection)
 
-// ─── BOOKING_TRENDS — Figma 1:1 차트 사양 상수 ──────────────────────────
-const BOOKING_TRENDS_CHART_H = 396        // ← Figma: 외곽 컨테이너 / 외곽 봉 높이
+// ─── catmullRomPath — Catmull-Rom 스플라인을 SVG cubic Bezier path로 변환 ─
+//   · Q1 결정: Catmull-Rom (peak sharp + 자연스러운 보간)
+//   · tension=1: 표준 Catmull-Rom (Monotone은 단조성 강제로 작위적,
+//     B-spline은 너무 부드러워 peak 손실)
+//   · 알고리즘: N개 점 → N-1개 cubic Bezier segment 생성
+//     각 segment의 control point는 인접한 4개 점 (P[i-1], P[i], P[i+1], P[i+2])로 계산
+//   · 양 끝 점은 인접 점이 없으므로 자기 자신을 복제 (mirror)
+function catmullRomPath(points: { x: number; y: number }[]): string {
+  if (points.length === 0) return ''
+  if (points.length === 1) return `M ${points[0].x.toFixed(2)},${points[0].y.toFixed(2)}`
 
-function BookingTrendsBarCard() {
-  // ── 1. 자체 날짜 state (Q3 B: today - 14 ~ today, 15일 inclusive) ────
+  let path = `M ${points[0].x.toFixed(2)},${points[0].y.toFixed(2)}`
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] ?? points[i]            // ← 첫 segment는 P[i] 복제 (mirror)
+    const p1 = points[i]
+    const p2 = points[i + 1]
+    const p3 = points[i + 2] ?? points[i + 1]        // ← 마지막은 P[i+1] 복제 (mirror)
+
+    // Catmull-Rom → Cubic Bezier 변환 (tension=1 표준)
+    //   CP1 = P[i]   + (P[i+1] - P[i-1]) / 6
+    //   CP2 = P[i+1] - (P[i+2] - P[i])   / 6
+    const cp1x = p1.x + (p2.x - p0.x) / 6
+    const cp1y = p1.y + (p2.y - p0.y) / 6
+    const cp2x = p2.x - (p3.x - p1.x) / 6
+    const cp2y = p2.y - (p3.y - p1.y) / 6
+
+    path += ` C ${cp1x.toFixed(2)},${cp1y.toFixed(2)} ${cp2x.toFixed(2)},${cp2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)}`
+  }
+
+  return path
+}
+
+// ─── BOOKING_TRENDS — Figma 1:1 차트 viewBox 사양 ───────────────────────
+const TREND_VIEWBOX_W = 496       // ← Figma: 차트 영역 width
+const TREND_VIEWBOX_H = 414       // ← Figma: 차트 영역 height
+const TREND_PADDING_TOP = 22      // ← Figma: SVG path가 chart 상단 ~5.2%부터 시작 (peak 잘림 방지)
+
+function BookingTrendsAreaCard() {
+  // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
   const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
   const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
 
-  // ── 2. 자체 fetch (Phase 4 cache 공유, 위젯 ②④⑤와 dedupe) ────────────
+  // ── 2. 자체 fetch (Phase 4 cache 공유, 위젯 ②④⑤⑦⑧와 dedupe) ──────
   const { data: bookings, loading } = useBookingsByRange(dateFrom, dateTo)
 
-  // ── 3. 일자별 count (Q2 A: 모든 booking, status 무관) ─────────────────
+  // ── 3. 일자별 count (모든 booking, 위젯 ②⑦⑧과 일관성) ──────────────
   const dayStats = useMemo(() => {
     const diffDays = Math.round(
       (new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000
@@ -1644,53 +1685,101 @@ function BookingTrendsBarCard() {
     if (diffDays <= 0 || diffDays > 365) return []   // ← 가드: 비정상 range 차단
     return Array.from({ length: diffDays }, (_, i) => {
       const date  = addDaysStr(dateFrom, i)
-      const count = bookings.filter(b => tsDate(b.start_at) === date).length    // Q2: 모든 booking
+      const count = bookings.filter(b => tsDate(b.start_at) === date).length
       return { date, count }
     })
   }, [bookings, dateFrom, dateTo])
 
-  // ── 4. maxCount (Q1 A: 내부 봉 = count/maxCount × 외곽 height) ───────
-  //   maxCount=0 (전체 예약 없음) → 모든 내부 봉 미표시 (외곽만)
+  // ── 4. maxCount (SVG y좌표 비례 계산 기준) ────────────────────────────
   const maxCount = useMemo(
     () => dayStats.reduce((m, d) => Math.max(m, d.count), 0),
     [dayStats]
   )
 
-  // ── 5. 인터랙티브 hover/click state (Q4 A: 위젯 ②⑤ v3 패턴 일관성) ──
+  // ── 5. 인터랙티브 hover/click state (Q5: column별 hit area) ──────────
   const [activeDate, setActiveDate] = useState<string | null>(null)
-  const activeStats  = useMemo(
-    () => dayStats.find(d => d.date === activeDate) ?? null,
+  const activeIdx = useMemo(
+    () => activeDate ? dayStats.findIndex(d => d.date === activeDate) : -1,
     [activeDate, dayStats]
   )
+  const activeStats = activeIdx >= 0 ? dayStats[activeIdx] : null
 
-  // ── 활성 column label 내용 ("5월 1일 16건") ─────────────────────────
+  // ── 활성 column label 내용 ("{월}월 {일}일 {N}건") ──────────────────
   const activeLabel = useMemo(() => {
     if (!activeStats) return null
     const dt = new Date(activeStats.date)
     return `${dt.getMonth() + 1}월 ${dt.getDate()}일 ${activeStats.count}건`
   }, [activeStats])
 
+  // ── 6. SVG 좌표 계산 (viewBox 기준) ──────────────────────────────────
+  //   · x: 0 ~ VIEWBOX_W 균등 분포
+  //   · y: count 0 → VIEWBOX_H 바닥, max → PADDING_TOP (peak 잘림 방지)
+  const points = useMemo(() => {
+    if (dayStats.length === 0) return []
+    const drawableH = TREND_VIEWBOX_H - TREND_PADDING_TOP
+    return dayStats.map((d, i) => {
+      const x = dayStats.length === 1
+        ? TREND_VIEWBOX_W / 2
+        : (i / (dayStats.length - 1)) * TREND_VIEWBOX_W
+      const yRatio = maxCount > 0 ? d.count / maxCount : 0
+      const y = TREND_VIEWBOX_H - drawableH * yRatio
+      return { x, y, date: d.date, count: d.count }
+    })
+  }, [dayStats, maxCount])
+
+  // ── 7. Catmull-Rom path 생성 (line + area) ───────────────────────────
+  const linePath = useMemo(() => catmullRomPath(points), [points])
+  const areaPath = useMemo(() => {
+    if (points.length === 0) return ''
+    // line path + 우측 바닥 + 좌측 바닥 + close = 닫힌 영역
+    return linePath +
+      ` L ${TREND_VIEWBOX_W.toFixed(2)},${TREND_VIEWBOX_H.toFixed(2)}` +
+      ` L 0,${TREND_VIEWBOX_H.toFixed(2)} Z`
+  }, [linePath, points])
+
+  const activePoint = activeIdx >= 0 ? points[activeIdx] : null
+
+  // ── 8. 활성 label 위치 (위젯 ⑦ clamp 패턴 일관) ─────────────────────
+  const labelPosition = useMemo(() => {
+    if (!activePoint) return null
+    const leftPct = (activePoint.x / TREND_VIEWBOX_W) * 100
+    const topPct  = (activePoint.y / TREND_VIEWBOX_H) * 100
+    // ── 좌/우 가장자리 clamp 처리 (label "5월 1일 16건" 정도 ~80px, chart ~510px) ──
+    let leftStr:      string
+    let translateX:   string
+    if (leftPct < 12) {
+      leftStr    = '0'
+      translateX = '0'                                // ← 좌측 끝: label 좌측 정렬
+    } else if (leftPct > 88) {
+      leftStr    = '100%'
+      translateX = '-100%'                             // ← 우측 끝: label 우측 정렬
+    } else {
+      leftStr    = `${leftPct}%`
+      translateX = '-50%'                              // ← 정상: 중앙 정렬
+    }
+    return { leftStr, translateX, topPct }
+  }, [activePoint])
+
   return (
     <div style={{
-      // ── Figma outer 1:1 ─────────────────────────────────────
+      // ── Figma outer 1:1 (위젯 ⑥ 옛과 동일 padding/layout) ──
       background:    '#fff',
       borderRadius:  24,
       padding:       '12px 16px 16px 16px',           // ← Figma: pt12 px16 pb16
       display:       'flex',
       flexDirection: 'column',
-      alignItems:    'flex-start',
-      justifyContent:'space-between',
+      justifyContent:'space-between',                  // ← Figma: 헤더(상) + 차트(하)
       height:        504,
       width:         '100%',
+      overflow:      'hidden',
     }}>
-      {/* ── 헤더 (gap 2, 타이틀 + 날짜 picker) ─────────────── */}
+      {/* ── 헤더 (gap 2, 타이틀 + 날짜 picker - 위젯 ⑥ 옛과 동일) ── */}
       <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2, width:'100%' }}>
         <p style={{
           fontFamily:"'Pretendard', -apple-system, sans-serif",
           fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
           whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
         }}>예약추이</p>
-        {/* ── 날짜 범위 picker (위젯 ②④⑤와 동일) ── */}
         <div style={{ display:'flex', gap:4, alignItems:'center' }}>
           <SmallDateTrigger value={dateFrom} onChange={setDateFrom} max={dateTo} />
           <span style={{
@@ -1701,92 +1790,119 @@ function BookingTrendsBarCard() {
         </div>
       </div>
 
-      {/* ── 차트 (h 396, gap 4, items-end) ──────────────────── */}
-      <div
-        onMouseLeave={() => setActiveDate(null)}
-        style={{
-          display:    'flex',
-          alignItems: 'flex-end',                       // ← Figma: items-end
-          gap:        4,                                 // ← Figma: gap 4
-          height:     BOOKING_TRENDS_CHART_H,
-          width:      '100%',
-          position:   'relative',
-        }}>
+      {/* ── 차트 영역 (남은 공간 자동 채움 - flex:1) ──────────────── */}
+      <div style={{
+        position: 'relative',
+        width:    '100%',
+        flex:     1,                                    // ← 위젯 ⑦ v4 패턴: 남은 공간 자동
+        minHeight:0,
+        marginTop:16,                                   // ← 헤더와 차트 사이 여백 (Figma justify-between에서 자동 분배 보강)
+      }}>
         {dayStats.length === 0 ? (
-          <div style={{ flex:1, height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#CBD5E1' }}>
+          <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#CBD5E1' }}>
             {loading ? '로딩 중…' : '데이터 없음'}
           </div>
         ) : (
-          dayStats.map(d => {
-            const isActive = d.date === activeDate
-            // ── 내부 봉 height: count/maxCount × 외곽 height ──
-            //   · maxCount=0 (전체 0) → 내부 미표시 (외곽만)
-            //   · count > 0 → 비례 height
-            const innerH = maxCount > 0 && d.count > 0
-              ? (d.count / maxCount) * BOOKING_TRENDS_CHART_H
-              : 0
-            return (
-              <div
-                key={d.date}
-                onMouseEnter={() => setActiveDate(d.date)}
-                onClick={() => setActiveDate(prev => prev === d.date ? null : d.date)}
-                style={{
-                  flex:    1,
-                  height:  '100%',
-                  position:'relative',
-                  minWidth:0,
-                  cursor:  'pointer',
-                  // ── 외곽 봉 (Figma: bg #FCFCFC, radius 24, 모두 동일 396 height) ──
-                  background:  '#FCFCFC',
-                  borderRadius:24,
-                }}>
-                {/* ── 내부 봉 (bottom 정렬, gradient #DDDEDF→#EFF0F1 to bottom) ── */}
-                {innerH > 0 && (
-                  <div style={{
-                    position:    'absolute',
-                    bottom:      0,
-                    left:        0,
-                    right:       0,
-                    height:      innerH,
-                    borderRadius:24,
-                    // ── Figma: bg-gradient-to-b from-[#dddedf] from-[24.207%] to-[#eff0f1] ──
-                    //   rotate 없음 → 위 #DDDEDF (진함), 아래 #EFF0F1 (밝음)
-                    background:  'linear-gradient(to bottom, #DDDEDF 24.207%, #EFF0F1 100%)',
-                    transition:  'height 0.4s ease',
-                  }}/>
-                )}
-                {/* ── 활성 column label (내부 봉 위쪽 6px) ── */}
-                {isActive && activeLabel && (
-                  <div style={{
-                    position:    'absolute',
-                    bottom:      innerH + 6,
-                    left:        '50%',
-                    transform:   'translateX(-50%)',
-                    // ── Figma StatusBadge-XS 사양 (위젯 ②⑤와 동일) ──
-                    background:  'rgba(255,255,255,0.9)',
-                    border:      '1px solid #000',
-                    borderRadius:24,
-                    padding:     '2px 8px',
-                    display:     'flex',
-                    gap:         10,
-                    alignItems:  'center',
-                    justifyContent:'center',
-                    fontFamily:  "'Pretendard', -apple-system, sans-serif",
-                    fontWeight:  400,
-                    fontSize:    10,
-                    lineHeight:  1.5,
-                    letterSpacing:'0.1px',
-                    color:       '#1E1E1E',
-                    whiteSpace:  'nowrap',
-                    pointerEvents:'none',
-                    zIndex:      1,
-                  }}>
-                    {activeLabel}
-                  </div>
-                )}
+          <>
+            {/* ── SVG: fill area + outline + active point ── */}
+            <svg
+              width="100%"
+              height="100%"
+              viewBox={`0 0 ${TREND_VIEWBOX_W} ${TREND_VIEWBOX_H}`}
+              preserveAspectRatio="none"               // ← 가로 stretch (column별 비율 유지)
+              style={{ position:'absolute', inset:0, display:'block' }}
+            >
+              <defs>
+                {/* ── Q2: Figma 1:1 그라데이션 (위 진함 → 아래 흰색 fade-out) ── */}
+                <linearGradient id="trend-area-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"   stopColor="#5C5C5C" stopOpacity="0.55" />
+                  <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              {/* ── Q3: Fill area (그라데이션) ── */}
+              {areaPath && (
+                <path d={areaPath} fill="url(#trend-area-fill)" />
+              )}
+              {/* ── Q3: 외곽선 (line stroke) ── */}
+              {linePath && (
+                <path
+                  d={linePath}
+                  fill="none"
+                  stroke="#5C5C5C"
+                  strokeWidth="1.5"
+                  vectorEffect="non-scaling-stroke"     // ← preserveAspectRatio="none"에도 stroke 균일 유지
+                />
+              )}
+              {/* ── Q4: Active 데이터 포인트 (Figma 1:1 size 6, 흰 배경 + 검정 외곽선) ── */}
+              {activePoint && (
+                <circle
+                  cx={activePoint.x}
+                  cy={activePoint.y}
+                  r="4"
+                  fill="#FFFFFF"
+                  stroke="#000000"
+                  strokeWidth="1.5"
+                  vectorEffect="non-scaling-stroke"
+                />
+              )}
+            </svg>
+
+            {/* ── Q5: Column별 hit area (위젯 ⑥ 옛 패턴 유지 - hover detection) ── */}
+            <div
+              onMouseLeave={() => setActiveDate(null)}
+              style={{
+                position: 'absolute',
+                inset:    0,
+                display:  'flex',
+                cursor:   'pointer',
+              }}>
+              {dayStats.map(d => (
+                <div
+                  key={d.date}
+                  onMouseEnter={() => setActiveDate(d.date)}
+                  onClick={() => setActiveDate(prev => prev === d.date ? null : d.date)}
+                  style={{
+                    flex:     1,
+                    height:   '100%',
+                    minWidth: 0,
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* ── 활성 column label (StatusBadge - 데이터 포인트 위쪽 8px) ── */}
+            {activePoint && activeLabel && labelPosition && (
+              <div style={{
+                position:    'absolute',
+                left:        labelPosition.leftStr,
+                top:         `${labelPosition.topPct}%`,
+                transform:   `translate(${labelPosition.translateX}, calc(-100% - 12px))`,
+                // ── Figma StatusBadge-XS (위젯 ②⑤⑦⑧와 동일) ──
+                background:  'rgba(255,255,255,0.9)',
+                border:      '1px solid #000',
+                borderRadius:24,
+                padding:     '2px 8px',
+                display:     'flex',
+                gap:         10,
+                alignItems:  'center',
+                justifyContent:'center',
+                fontFamily:  "'Pretendard', -apple-system, sans-serif",
+                fontWeight:  400,
+                fontSize:    10,
+                lineHeight:  1.5,
+                letterSpacing:'0.1px',
+                color:       '#1E1E1E',
+                whiteSpace:  'nowrap',
+                maxWidth:    'calc(100% - 8px)',
+                overflow:    'hidden',
+                textOverflow:'ellipsis',
+                pointerEvents:'none',
+                zIndex:      10,
+              }}>
+                {activeLabel}
               </div>
-            )
-          })
+            )}
+          </>
         )}
       </div>
     </div>
@@ -2439,8 +2555,8 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
 
       {/* ── Row 3: 위젯 ⑥ 예약추이 / ⑦ 부서별 예약 현황 ── */}
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
-        {/* ⑥ 예약추이 — Phase 8 v2 (Figma 565:21710) ✓ */}
-        <BookingTrendsBarCard />
+        {/* ⑥ 예약추이 — Mountain Chart (Figma 565:21848) ✓ */}
+        <BookingTrendsAreaCard />
         {/* ⑦ 부서별 예약 현황 — Phase 9 (Figma 565:13085) ✓ */}
         <DepartmentBookingsCard />
       </div>
