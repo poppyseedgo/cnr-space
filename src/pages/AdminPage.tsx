@@ -1491,10 +1491,12 @@ function RoomNoshowCard({ rooms }: { rooms: Room[] }) {
                   <div style={{
                     width:'100%',
                     height: innerH,
-                    // ── Figma: 기본 #F1F1F1→#DDD / 활성 #747474→#424242 ──
+                    // ── Figma rotate-180 + bg-gradient-to-b 시각 효과 = to top 사용 ──
+                    //   · 기본: 위 #DDD(진함) → 아래 #F1F1F1(밝음)
+                    //   · 활성: 위 #424242(더 진함) → 아래 #747474(밝음)
                     background: isActive
-                      ? 'linear-gradient(to bottom, #747474 0.481%, #424242 58.173%)'
-                      : 'linear-gradient(to bottom, #F1F1F1 0.481%, #DDD 58.173%)',
+                      ? 'linear-gradient(to top, #747474 0.481%, #424242 58.173%)'
+                      : 'linear-gradient(to top, #F1F1F1 0.481%, #DDD 58.173%)',
                     transition:'height 0.4s ease, background 0.15s ease',
                   }}/>
                 )}
@@ -1609,6 +1611,191 @@ function RoomNoshowCard({ rooms }: { rooms: Room[] }) {
             <span style={{ fontSize:12, color:'#CBD5E1' }}>0</span>
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── 위젯 ⑥ 예약추이 (Figma node 551:3608) ──────────────────────────────────
+//   사용처: Row 3 Col 1 (542×504, 2-col grid)
+//   데이터: 자체 dateFrom/dateTo (default 30일) + useBookingsByRange
+//   동작: 각 column = 1일, 각 cell = 1 예약 (pixel heatmap)
+//   ※ Figma 1:1: 31 columns × 25 cells, cell 12×12 radius 1, gap 4
+//   ※ subtitle "셀 한칸이 예약 1건..." 위젯 ⑥ 고유 (다른 위젯엔 없음)
+
+// ─── BOOKING_TRENDS — Figma 1:1 cell 사양 상수 ──────────────────────────
+const BOOKING_TRENDS_MAX_CELLS = 25     // ← Figma: column당 25 cells max (Q3: 25 cap)
+const BOOKING_TRENDS_CELL_SIZE = 12     // ← Figma: cell w/h 12
+const BOOKING_TRENDS_CELL_GAP  = 4      // ← Figma: cells 사이 gap 4
+
+function BookingTrendsHeatmapCard({ bookings: _propBookings }: { bookings?: Booking[] }) {
+  // ← [_propBookings unused — 자체 fetch 사용, 시그니처 확장성 위해 유지]
+  // ── 1. 자체 날짜 state (default 지난 30일 → inclusive 31 days, Q2: Figma 일치) ──
+  const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
+  const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
+
+  // ── 2. 자체 fetch (Phase 4 cache 공유, 위젯 ②④⑤와 dedupe) ────────────
+  const { data: bookings, loading } = useBookingsByRange(dateFrom, dateTo)
+
+  // ── 3. 일자별 count (Q1: 모든 booking, status 무관) ──────────────────
+  const dayStats = useMemo(() => {
+    const diffDays = Math.round(
+      (new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000
+    ) + 1
+    if (diffDays <= 0 || diffDays > 365) return []   // ← 가드: 비정상 range 차단
+    return Array.from({ length: diffDays }, (_, i) => {
+      const date  = addDaysStr(dateFrom, i)
+      const count = bookings.filter(b => tsDate(b.start_at) === date).length    // Q1: 모든 booking
+      return { date, count }
+    })
+  }, [bookings, dateFrom, dateTo])
+
+  // ── 4. 인터랙티브 hover/click state (Q4: 위젯 ②⑤ v3 패턴 일관성) ──────
+  const [activeDate, setActiveDate] = useState<string | null>(null)
+  const activeStats  = useMemo(
+    () => dayStats.find(d => d.date === activeDate) ?? null,
+    [activeDate, dayStats]
+  )
+
+  // ── 활성 column label 내용 ("5월 1일 16건") ──────────────────────────
+  const activeLabel = useMemo(() => {
+    if (!activeStats) return null
+    const dt = new Date(activeStats.date)
+    return `${dt.getMonth() + 1}월 ${dt.getDate()}일 ${activeStats.count}건`
+  }, [activeStats])
+
+  return (
+    <div style={{
+      // ── Figma outer 1:1 ─────────────────────────────────────
+      background:    '#fff',
+      borderRadius:  24,
+      padding:       '12px 16px 16px 16px',
+      display:       'flex',
+      flexDirection: 'column',
+      alignItems:    'flex-start',
+      justifyContent:'space-between',
+      height:        504,
+      width:         '100%',
+    }}>
+      {/* ── 헤더 (gap 2, 타이틀 + subtitle + 날짜 picker) ────── */}
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2, width:'100%' }}>
+        <p style={{
+          fontFamily:"'Pretendard', -apple-system, sans-serif",
+          fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
+          whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+        }}>예약추이</p>
+        {/* ── Subtitle (위젯 ⑥ 고유) ── */}
+        <p style={{
+          fontFamily:"'Pretendard', -apple-system, sans-serif",
+          fontWeight:400, fontSize:12, lineHeight:1.5, color:'#AEB5C4', margin:0,
+        }}>셀 한칸이 예약 1건, x축이 Day, y축이 예약 수, 기본 30일 조회</p>
+        {/* ── 날짜 범위 picker (위젯 ②④⑤와 동일) ── */}
+        <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+          <SmallDateTrigger value={dateFrom} onChange={setDateFrom} max={dateTo} />
+          <span style={{
+            fontFamily:"'Pretendard', -apple-system, sans-serif",
+            fontWeight:400, fontSize:12, lineHeight:1.5, color:'#AEB5C4',
+          }}>⎯</span>
+          <SmallDateTrigger value={dateTo} onChange={setDateTo} min={dateFrom} max={todayStr()} />
+        </div>
+      </div>
+
+      {/* ── 히트맵 차트 (columns flex row, gap 4) ───────────── */}
+      <div
+        onMouseLeave={() => setActiveDate(null)}
+        style={{
+          display:    'flex',
+          alignItems: 'flex-start',
+          gap:        4,                                  // ← Figma: column 사이 gap 4
+          height:     412,                                // ← Figma: chart container h 412
+          width:      '100%',
+          position:   'relative',
+        }}>
+        {dayStats.length === 0 ? (
+          <div style={{ flex:1, height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#CBD5E1' }}>
+            {loading ? '로딩 중…' : '데이터 없음'}
+          </div>
+        ) : (
+          dayStats.map(d => {
+            const isActive    = d.date === activeDate
+            // ── Q3: 25 cap (Figma 1:1) ─────────────────────────
+            const filledCount = Math.min(d.count, BOOKING_TRENDS_MAX_CELLS)
+            const emptyCount  = BOOKING_TRENDS_MAX_CELLS - filledCount
+            // filled cells 영역 height (label 위치 계산용)
+            //   filledCount * 12 + (filledCount - 1) * 4 = filledCount * 16 - 4 (>= 1일 때)
+            const filledH     = filledCount > 0
+              ? filledCount * BOOKING_TRENDS_CELL_SIZE + (filledCount - 1) * BOOKING_TRENDS_CELL_GAP
+              : 0
+            return (
+              <div
+                key={d.date}
+                onMouseEnter={() => setActiveDate(d.date)}
+                onClick={() => setActiveDate(prev => prev === d.date ? null : d.date)}
+                style={{
+                  flex:    1,
+                  height:  '100%',
+                  display: 'flex',
+                  flexDirection:'column',
+                  gap:     BOOKING_TRENDS_CELL_GAP,
+                  alignItems:'stretch',                   // ← Figma: column cells full width
+                  minWidth:0,
+                  cursor:  'pointer',
+                  position:'relative',
+                }}>
+                {/* ── 25 cells (위에서부터 empty → 아래쪽 filled) ── */}
+                {Array.from({ length: BOOKING_TRENDS_MAX_CELLS }).map((_, i) => {
+                  const isFilled = i >= emptyCount      // ← i가 emptyCount부터 끝까지 filled
+                  return (
+                    <div key={i} style={{
+                      width:        '100%',
+                      height:       BOOKING_TRENDS_CELL_SIZE,
+                      borderRadius: 1,                    // ← Figma: radius 1 (거의 직각)
+                      background:   isFilled
+                        ? (isActive ? '#1E1E1E' : '#525252')  // 활성 시 더 진함
+                        : '#FBFBFB',
+                      flexShrink:   0,
+                      transition:   'background 0.15s ease',
+                    }}/>
+                  )
+                })}
+
+                {/* ── 활성 column label (filled 영역 위쪽 6px) ── */}
+                {isActive && activeLabel && (
+                  <div style={{
+                    position:    'absolute',
+                    // cells가 위에서부터 채워지므로 filled top y = emptyCount * (cell+gap)
+                    // label은 그 위쪽 6px
+                    top:         emptyCount * (BOOKING_TRENDS_CELL_SIZE + BOOKING_TRENDS_CELL_GAP) - 6,
+                    transform:   'translate(-50%, -100%)',
+                    left:        '50%',
+                    // ── Figma StatusBadge-XS 사양 (위젯 ②⑤와 동일) ──
+                    background:  'rgba(255,255,255,0.9)',
+                    border:      '1px solid #000',
+                    borderRadius:24,
+                    padding:     '2px 8px',
+                    display:     'flex',
+                    gap:         10,
+                    alignItems:  'center',
+                    justifyContent:'center',
+                    fontFamily:  "'Pretendard', -apple-system, sans-serif",
+                    fontWeight:  400,
+                    fontSize:    10,
+                    lineHeight:  1.5,
+                    letterSpacing:'0.1px',
+                    color:       '#1E1E1E',
+                    whiteSpace:  'nowrap',
+                    pointerEvents:'none',
+                    zIndex:      1,
+                  }}>
+                    {activeLabel}
+                  </div>
+                )}
+              </div>
+            )
+          })
+        )}
       </div>
     </div>
   )
@@ -1750,11 +1937,8 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
 
       {/* ── Row 3: 위젯 ⑥ 예약추이 / ⑦ 부서별 예약 현황 ── */}
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
-        <DashboardPlaceholderCard
-          height={504}
-          title="예약추이"
-          phaseNote="Phase 8에서 구현 예정"
-        />
+        {/* ⑥ 예약추이 — Phase 8 구현 (Figma 551:3608) ✓ */}
+        <BookingTrendsHeatmapCard />
         <DashboardPlaceholderCard
           height={504}
           title="부서별 예약 현황"
