@@ -2113,8 +2113,8 @@ function DepartmentBookingsCard() {
           gap:         1,                                // ← Figma: gap 1px
           height:      '100%',                            // ← wrapper height 자동 채움 (Top 5/6/7 변동 무관 자동 조정)
           width:       '100%',
-          borderRadius:16,
-          overflow:    'hidden',                          // ← Figma: radius 16 + overflow-clip
+          borderRadius:0,                                 // ← 사용자 정정 2026-05-12: borderRadius 16 → 0 (직각 모서리)
+          overflow:    'hidden',                          // ← column ellipsis용 유지 (borderRadius와 무관)
         }}>
           {top7.length === 0 || totalCount === 0 ? (
             <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#CBD5E1', background:'#F8F9FB' }}>
