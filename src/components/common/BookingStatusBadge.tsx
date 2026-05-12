@@ -1,11 +1,21 @@
 import type { Booking, Room } from '../../types'
-import { tsDate, tsMin, todayStr, nowMinutes } from '../../utils/time'
+import { tsDate, tsMin, todayStr, nowMinutes, CHECKIN_EARLY_MIN, isCheckinable } from '../../utils/time'  // ← [2026-05-12] CHECKIN_EARLY_MIN, isCheckinable 추가
 import { isBooker, isAttendee } from '../../utils/bookingOwnership'  // ← [2026-04-24 P4-B] isOwner를 isBooker(UUID/email)로 교체 / [2026-05-04 핫픽스 v11] isAttendee 추가 — mine 칩 라벨 분기용
 
 /**
  * BookingStatusBadge — 예약 상태 뱃지 묶음
  *
  * ✅ 변경 이력
+ *  - [2026-05-12 체크인 활성 5분 전 핫픽스]
+ *    · countdown 칩 표시 범위: tl > 0 && tl <= 10 → tl > CHECKIN_EARLY_MIN(5) && tl <= 10
+ *      → 10~5분 전 사이에만 카운트다운 표시 (5분 전부터는 checkin-wait 칩이 자리 대체)
+ *    · checkin-wait 칩 조건: nci = isAct && !checkedIn → isCheckinable(b)
+ *      → 시작 5분 전부터 시작 후 10분까지 미체크인 동안 표시 (체크인 시 자동 사라짐)
+ *    · 칩 라벨 정책:
+ *        · 10~5분 전 → "곧 시작" (chip-countdown 재사용, 라벨 변경)
+ *        · 5분 전 ~ 체크인 → "체크인 대기" (chip-checkin-wait, 기존 라벨 유지)
+ *    · BadgeType 추가 없음, 호출부 호환 100% (only 필터 그대로)
+ *
  *  - [2026-05-04 옵션 B] '예약자 취소' / '참석자 취소' 라벨 분기 + isOwner 버그 수정
  *    · 메인 버그: user-cancel 칩에 `&& isOwner` 가드가 있어서 본인이 예약자가 아니면 칩 안 보임
  *      (MyPage 참석자 시점, AdminPage 등) → 가드 제거
@@ -188,7 +198,12 @@ export function BookingStatusBadge({
   // ── 진행 상태 판별 ──────────────────────────────────────────────
   const isAct     = isToday && sm <= now && now < em && !b.autoCancelled && !b.earlyEnded
   const isApproved = adminRoom && b.status === 'confirmed' && !b.autoCancelled
-  const nci       = isAct && !b.checkedIn
+  // ← [2026-05-12] nci: "체크인 대기" 칩 표시 조건 변경
+  //   기존: isAct && !checkedIn — 시작 후 미체크인 동안만
+  //   변경: isCheckinable(b)    — 시작 5분 전부터 시작 후 10분까지 미체크인 동안
+  //   isCheckinable 내부에 status='confirmed' + !checkedIn + !autoCancelled + !earlyEnded 가드 포함
+  //   사용자 정책: "체크인 활성 시점부터 사용자가 체크인 할 때까지 '체크인 대기' 라벨 표시"
+  const nci       = isCheckinable(b)
   const isFuture  = tsDate(b.start_at) > todayStr() || (isToday && sm > now)
   // ← [2026-04-23] 조기반납도 '사용완료'에 포함 (earlyEnded는 조기 사용완료의 서브셋)
   //   기존: !b.earlyEnded 제외 → 조기반납이면 사용완료 칩 안 나옴
@@ -215,7 +230,7 @@ export function BookingStatusBadge({
   //   · 정의: 미래(또는 오늘 시작 전) + status='confirmed' + 살아있음 + 일반 룸(non-Emerald) + countdown 외
   //   · 배타성:
   //     - Emerald 룸은 chip-approved(승인완료, 라임)로 별도 표시 → adminRoom 제외
-  //     - 시작 10분 전 카운트다운 표시 시 양보 → countdown 조건 제외
+  //     - "곧 시작" 카운트다운 표시 시 양보 → countdown 조건 제외
   //     - autoCancelled / checkedIn / earlyEnded 시 다른 상태 칩이 표시되므로 자동 배타
   //   · 적용: chip-confirmed (#CBECFF) — Figma node 449:796 1:1
   const isConfirmed = isFuture
@@ -224,7 +239,7 @@ export function BookingStatusBadge({
                     && !b.checkedIn
                     && !b.earlyEnded
                     && !adminRoom                                  // ← Emerald 'approved' 칩과 배타
-                    && !(isToday && tl > 0 && tl <= 10)            // ← countdown 'N분 후' 칩 우선
+                    && !(isToday && tl > CHECKIN_EARLY_MIN && tl <= 10)            // ← [2026-05-12] "곧 시작" 칩(10~5분 전) 우선
   // ← [2026-04-24 P7-A] isOwner 판정 fallback 제거 — 이름 비교 0건 원칙 달성
   //   기존(P4-B): (currentUserId || currentUserEmail) ? isBooker(...) : (b.user === currentUser)
   //                ↑ 호환성 위해 이름 비교 fallback 유지
@@ -275,7 +290,7 @@ export function BookingStatusBadge({
     (show('checkin-done')    && b.checkedIn && isAct) ||
     (show('past')            && isPast) ||
     (show('early-end')       && b.earlyEnded) ||
-    (show('countdown')       && !isAct && !b.autoCancelled && isToday && tl > 0 && tl <= 10)
+    (show('countdown')       && !isAct && !b.autoCancelled && isToday && tl > CHECKIN_EARLY_MIN && tl <= 10)  // ← [2026-05-12] tl > 0 → tl > CHECKIN_EARLY_MIN: 10~5분 전만 "곧 시작" 표시
 
   if (!hasAny) return null
 
@@ -362,9 +377,10 @@ export function BookingStatusBadge({
   // ⑪ 사용완료 ← [2026-04-23] 라벨 '종료' → '사용완료', !earlyEnded 제외
   if (show('past') && isPast)
     chipList.push(<C key="past" cls="chip-done">사용완료</C>)
-  // ⑫ N분 후 카운트다운
-  if (show('countdown') && !isAct && !b.autoCancelled && isToday && tl > 0 && tl <= 10)
-    chipList.push(<C key="countdown" cls="chip-countdown">{tl}분 후</C>)
+  // ⑫ "곧 시작" 카운트다운 ← [2026-05-12] 라벨 "{tl}분 후" → "곧 시작" + 표시 범위 10~5분 전으로 축소
+  //   · 5분 전부터는 checkin-wait 칩이 자리 대체 (사용자 정책)
+  if (show('countdown') && !isAct && !b.autoCancelled && isToday && tl > CHECKIN_EARLY_MIN && tl <= 10)
+    chipList.push(<C key="countdown" cls="chip-countdown">곧 시작</C>)
 
   // ← [Figma UI갱신] maxChips 미지정 시 전체 표시, 지정 시 상위 N개만
   // ← [2026-05-04 STEP 3] size='list'(MyBookingTable)는 단일 칩 표시 정책 — 자동 maxChips=1

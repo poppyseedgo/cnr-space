@@ -5,6 +5,13 @@
  * 방금 생성한 예약의 요약 정보를 표시 (회의실, 시간, 예약자, 참석자 등).
  *
  * ✅ 변경 이력
+ *  - [2026-05-12 체크인 활성 5분 전 핫픽스] 안내 박스 텍스트 신규 정책 문구로 교체
+ *    · 기존: "회의 시작 후 10분 이내 체크인하세요. 체크인하지 않으면 자동취소(노쇼) 됩니다."
+ *    · 변경: "회의 시작 5분 전부터 체크인 가능합니다. 체크인하지 않으면 회의 시작 10분 후
+ *            노쇼처리되어 자동으로 예약이 취소되니 꼭 체크인하세요!"
+ *    · 디자인 스펙 유지: #F0FFCF bg, radius 10, padding 12, no icon, no border
+ *    · 무수정: 표시 조건 (항상 표시), props 시그니처, 모달 구조
+ *
  *  - [2026-04-30 피그마 273:891 알림 영역 복원]
  *    · 증상: 미래 예약(오늘이 아닌 예약) 생성 시 체크인 안내 영역이 표시되지 않음
  *    · 원인: `tsDate(b.start_at) === todayStr()` 조건으로 오늘 예약에만 표시
@@ -51,7 +58,7 @@ import { useBreakpoint } from '../../hooks/useBreakpoint'
 // ← [2026-04-25] lucide 아이콘 제거 (피그마 디자인은 라벨 옆 아이콘 없음)
 // ← [2026-04-25] time.ts import 정리 — 신규 디자인에서 실제 사용하는 함수만
 // ← [2026-04-30] todayStr import 제거 — 체크인 안내 조건 제거로 더 이상 사용처 없음
-import { tsDate, tsMin, fmtDateFull, fmtTSRangeFull, CHECKIN_WINDOW_MIN } from '../../utils/time'
+import { tsDate, tsMin, fmtDateFull, fmtTSRangeFull, CHECKIN_WINDOW_MIN, CHECKIN_EARLY_MIN } from '../../utils/time'
 import { getFloor } from '../../data/floors'
 import { UserChip } from '../common/UserChip'
 import { AttendeeChip } from '../common/AttendeeChip'
@@ -238,30 +245,24 @@ export function BookingDoneModal({booking:b, onClose, rooms:rp=[], users:up=[]})
         )}
       </div>
 
-      {/* ── 체크인 안내 ──   ← [2026-04-25 피그마 273:891 / 2026-04-30 조건 제거]
-            #F0FFCF rounded 10 padding 12, no icon, no border (기존 #FFF7ED + Clock 폐기)
-            ← [2026-04-30] tsDate(b.start_at)===todayStr() 조건 제거
-            · 배경: 미래 예약(예: 5/2) 생성 시 알림이 사라지는 결함 발생
-            · 해결: Figma 디자인대로 항상 표시 (방금 만든 예약 확인 모달 컨텍스트상 안전)
-            ← [2026-04-30 텍스트 정정] Figma 273:892~895 1:1 일치
-            · "시작 후" Bold 분리, "체크인 하세요", "자동취소(노쇼)" */}
+      {/* ── 체크인 안내 ──   ← [2026-05-12] 텍스트 신규 정책 문구로 교체
+            기존: "회의 시작 후 10분 이내 체크인하세요 / 체크인하지 않으면 자동취소(노쇼) 됩니다."
+            변경: "회의 시작 5분 전부터 체크인 가능합니다. 체크인하지 않으면 회의 시작 10분 후
+                   노쇼처리되어 자동으로 예약이 취소되니 꼭 체크인하세요!"
+            디자인 스펙 유지: #F0FFCF bg, radius 10, padding 12, no icon, no border */}
       <div style={{padding: 10, background:"#fff", flexShrink:0}}>
         <div style={{
           background: "#F0FFCF", borderRadius: 10, padding: 12,
-          display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center",
-          gap: 4,
-          fontSize: 12, color: "#000", lineHeight: 1.5,
+          fontSize: 12, color: "#000", lineHeight: 1.6,
+          textAlign: "center",
         }}>
-          <div style={{display:"flex", alignItems:"center", gap:4}}>
-            {/* ← [2026-04-30 피그마 273:892] "회의" Medium + "시작 후" Bold (강조 분리) */}
-            <span style={{fontWeight:500}}>회의</span>
-            <span style={{fontWeight:700}}>시작 후</span>
-            <span style={{fontWeight:700}}>{CHECKIN_WINDOW_MIN}분 이내</span>
-            {/* ← [2026-04-30 피그마 273:894] "체크인이 필요합니다" → "체크인 하세요" */}
-            <span style={{fontWeight:500}}>체크인 하세요.</span>
-          </div>
-          {/* ← [2026-04-30 피그마 273:895] "자동취소" → "자동취소(노쇼)" */}
-          <span style={{fontWeight:500}}>체크인 하지 않으면 자동취소(노쇼) 됩니다.</span>
+          <span style={{fontWeight:500}}>회의 </span>
+          <span style={{fontWeight:700}}>시작 {CHECKIN_EARLY_MIN}분 전부터</span>
+          <span style={{fontWeight:500}}> 체크인 가능합니다.</span>
+          <br/>
+          <span style={{fontWeight:500}}>체크인하지 않으면 회의 </span>
+          <span style={{fontWeight:700}}>시작 {CHECKIN_WINDOW_MIN}분 후</span>
+          <span style={{fontWeight:500}}> 노쇼처리되어 자동 취소되니 꼭 체크인하세요!</span>
         </div>
       </div>
 

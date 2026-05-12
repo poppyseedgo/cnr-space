@@ -133,7 +133,7 @@ import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtRangeFull, fmtTimeFull, fmtTSRangeFull, fmtTSFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
-  DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../../utils/time'
+  DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN, CHECKIN_EARLY_MIN, isCheckinable } from '../../utils/time'
 import { FLOORS, getFloor } from '../../data/floors'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 import { RoomStatusBadge } from '../common/RoomStatusBadge'
@@ -338,7 +338,13 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
             const isActive   = tsDate(b.start_at)===today && tsMin(b.start_at)<=now && now<tsMin(b.end_at) && !b.autoCancelled;
             const isPast     = tsMin(b.end_at) < now;
             const minsUntil  = tsMin(b.start_at) - now;   // 시작까지 남은 분
-            const isSoon     = minsUntil > 0 && minsUntil <= 10;  // 10분 이내
+            // ← [2026-05-12] isSoon 범위 변경: 10~5분 전만 "곧 시작" 표시
+            //   5분 전 이후는 isCheckinable로 진입 → 활성 체크인 버튼이 자리 대체
+            const isSoon     = minsUntil > CHECKIN_EARLY_MIN && minsUntil <= 10;
+            // ← [2026-05-12] cardState 분기 변경
+            //   · "checkin" 활성 조건: isActive → isCheckinable(b) (5분 전부터 활성)
+            //   · "soon" 의미: 10~5분 전 (5분 전부터는 checkin이 자리 대체)
+            //   · "soon"/"waiting" 라벨: "체크인 대기" → "곧 시작" (전체 라벨 통일)
             const cardState: string = b.status === 'rejected'                                  ? "rejected"
               : b.cancelledBy === 'admin'                                                      ? "adminCancel"
               : b.autoCancelled && b.cancelledBy === 'system' && b.status === 'cancelled'      ? "pendingExpired"
@@ -347,26 +353,28 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
               : b.earlyEnded                      ? "earlyEnded"
               : b.checkedIn && isActive           ? "using"
               : b.checkedIn                       ? "done"
-              : isActive                          ? "checkin"
+              : isCheckinable(b)                  ? "checkin"   // ← [2026-05-12] 5분 전부터 활성
+              : isActive                          ? "checkin"   // 진행중인데 isCheckinable=false (e.g. cancelled_by 가드) → 일반 checkin 폴백
               : isPast                            ? "done"
               : b.status === 'pending'            ? "pending"
-              : isSoon                            ? "soon"
+              : isSoon                            ? "soon"      // ← [2026-05-12] 10~5분 전
               : "waiting";
 
             const S = {
-              waiting:    {label:"체크인 대기",  btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:true},  // ← [Figma UI갱신] #F1F5F9/#94A3B8 → #e7ecf6/#8e97ab
-              soon:       {label:"체크인 대기",  btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:true},  // ← [Figma UI갱신] 동일
+              // ← [2026-05-12] "체크인 대기" → "곧 시작" 라벨 통일 (waiting/soon 모두 동일 표기)
+              waiting:    {label:"곧 시작",       btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:true},
+              soon:       {label:"곧 시작",       btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:true},
               pending:    {label:"승인 대기",    btnBg:"#E6FFB0", btnColor:"#111",    disabled:true,  action:null,                showBtn:true},
               checkin:    {label:"체크인",       btnBg:"#16A34A", btnColor:"#fff",    disabled:false, action:()=>onCheckIn(b.id), showBtn:true},
               using:      {label:"조기반납",     btnBg:"#111111", btnColor:"#fff",    disabled:false, action:()=>onEarlyEnd(b.id),showBtn:true},
               noshow:        {label:null,           btnBg:"",        btnColor:"",        disabled:true,  action:null,                showBtn:false},
               pendingExpired:{label:null,           btnBg:"",        btnColor:"",        disabled:true,  action:null,                showBtn:false},
-              done:       {label:"종료",         btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:true},  // ← [Figma UI갱신] 동일
+              done:       {label:"종료",         btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:true},
               earlyEnded: {label:"반납됨",       btnBg:"#DBEAFE", btnColor:"#2563EB", disabled:true,  action:null,                showBtn:true},
-              adminCancel:{label:"강제취소",      btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:false}, // ← [Figma UI갱신] 동일
-              rejected:   {label:"거절됨",       btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:false}, // ← [Figma UI갱신] 동일
-              cancelled:  {label:"취소됨",       btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:true},  // ← [Figma UI갱신] 동일
-            }[cardState] ?? {label:"체크인 대기", btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true, action:null, showBtn:true}; // ← [Figma UI갱신]
+              adminCancel:{label:"강제취소",      btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:false},
+              rejected:   {label:"거절됨",       btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:false},
+              cancelled:  {label:"취소됨",       btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:true},
+            }[cardState] ?? {label:"곧 시작", btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true, action:null, showBtn:true};
 
             const isCancellable = cardState==="waiting" || cardState==="soon" || cardState==="pending";
 

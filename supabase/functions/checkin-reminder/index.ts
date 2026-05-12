@@ -2,11 +2,10 @@
 /**
  * checkin-reminder Edge Function
  *
- * 매 1분 간격 cron 실행. 예약 시간 기준 3가지 시점에 알림 발송 요청.
+ * 매 1분 간격 cron 실행. 예약 시간 기준 2가지 시점에 알림 발송 요청.
  *
- *   ① 예약 시작 10분 전  → type: checkin_before_10  (예약자만)
- *   ② 예약 시작 시각     → type: checkin_start      (예약자 + 참석자)
- *   ③ 예약 시작 후 5분   → type: checkin_warning_5  (예약자만)
+ *   ① 예약 시작 5분 전  → type: checkin_before_5    (예약자 + 참석자) — 체크인 활성 시작 알림
+ *   ② 예약 시작 후 5분  → type: checkin_warning_5  (예약자 + 참석자) — 자동취소 5분 전 경고
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * 변경 이력
@@ -17,14 +16,23 @@
  *   · 참석자 이메일 발송 로직 추가
  *
  * [2026-04-18 P2] 전면 리팩토링 — 336줄 → ~140줄 (58% 축소)
- *   · 자체 HTML 템플릿 3개(makeBefore10Html/makeStartHtml/makeAfter5Html) 완전 제거
- *   · 자체 sendEmail 제거
+ *   · 자체 HTML 템플릿 3개 + 자체 sendEmail 완전 제거
  *   · 각 예약마다 send-notification Edge Function을 HTTP 호출하는 패턴으로 전환
  *   · 이 파일은 이제 "DB 조회 + 알림 트리거" 역할만
- *   · 실제 이메일/인앱 발송은 send-notification이 전담 (일관성 확보)
- *   · 인앱 알림 누락 보완:
- *       - checkin_start 참석자 인앱 알림 추가 (기존 없음)
- *       - type 이름을 정책 표준(checkin_before_10/start/warning_5)으로 통일
+ *
+ * [2026-05-12] 체크인 활성 5분 전 핫픽스 — 트리거 3개 → 2개로 축소
+ *   변경 내용:
+ *     · ① checkin_before_10 (시작 10분 전 이동 안내) → 삭제
+ *     · ② checkin_start (시작 시점 체크인 요청)      → 삭제
+ *     · ③ checkin_warning_5 (시작 후 5분 경고)       → 유지
+ *     · 신규: checkin_before_5 (시작 5분 전 체크인 요청 + 체크인 활성 시작 알림)
+ *   설계 의도:
+ *     · 체크인 활성 윈도우가 [start-5분, start+10분]으로 변경됨에 따라
+ *       체크인 요청 메일도 활성 시작 시점(5분 전)에 발송
+ *     · 10분 전 이동 안내는 5분 전 메일에 통합 (메일 중복 발송 부담 감소)
+ *     · 시작 시점 메일은 불필요 (이미 5분 전부터 체크인 가능)
+ *   ±30초 윈도우 정책 유지: cron 1분 주기, 시작 시각이 ±30초 구간에 들어오면 발송
+ *   노쇼 cutoff(start+10분) 변동 없음 — auto-cancel-bookings cron이 처리
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * 배포 규칙
@@ -57,13 +65,6 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
 // 회의실 이름 캐시 (cron 실행당 한 번만 rooms 조회)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * room_id → 영문 room_name 매핑 로드
- * ← [2026-04-18 P2 v4] 이메일 회의실명 한글 출력 버그 수정
- *   · 문제: bookings 테이블에 room_name 컬럼이 없어서 booking.room_name이 undefined
- *   · 해결: rooms 테이블에서 영문 우선으로 조회해 booking에 주입
- *   · 캐시: cron 1회 실행 중 rooms 테이블 1번만 조회 (성능)
- */
 let roomNameCache: Map<string, string> | null = null
 
 async function getRoomNameMap(): Promise<Map<string, string>> {
@@ -74,7 +75,6 @@ async function getRoomNameMap(): Promise<Map<string, string>> {
       .select('room_id, room_name, room_name_ko')
     const map = new Map<string, string>()
     for (const r of (data ?? [])) {
-      // 영문 우선, 한글 폴백
       map.set(r.room_id, r.room_name ?? r.room_name_ko ?? String(r.room_id))
     }
     roomNameCache = map
@@ -89,16 +89,9 @@ async function getRoomNameMap(): Promise<Map<string, string>> {
 // send-notification HTTP 호출 헬퍼
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * send-notification Edge Function 호출
- * · 동일 Supabase 프로젝트 내 Edge Function 간 호출은 ANON_KEY Bearer 필수
- * · 실패해도 throw 안 함 (warn 로그만) — 한 건 실패가 전체 cron을 멈추면 안 됨
- * · room_name을 rooms 테이블에서 조회해 booking에 주입 (영문 우선)
- */
 async function triggerNotification(type: string, booking: any): Promise<void> {
   if (!SUPABASE_URL) return
 
-  // ← [P2 v4] room_name 보강 (bookings 테이블엔 room_name 없음)
   const roomMap  = await getRoomNameMap()
   const roomName = roomMap.get(booking.room_id) ?? String(booking.room_id)
   const enrichedBooking = { ...booking, room_name: roomName }
@@ -132,46 +125,36 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    // ← [P2 v4] supabase client는 모듈 최상단에 이미 생성됨 (getRoomNameMap에서 공유)
     const now = new Date()
     let triggered = 0
 
     // 공통 필터: 취소되지 않고, 조기종료 안 됐고, 아직 체크인 안 된 예약
-    // ← [P2] 메모리 규칙: start_at 범위에 lower bound 추가해 full scan 방지
     const commonQuery = () => supabase
       .from('bookings')
-      .select('*, booking_attendees(email, name)')    // ← send-notification에 참석자 정보 넘길 때 필요
+      .select('*, booking_attendees(email, name)')
       .eq('auto_cancelled', false)
       .eq('early_ended',    false)
       .eq('checked_in',     false)
-      .neq('status',        'cancelled')              // 취소된 예약 제외
-      .neq('status',        'pending')                // 승인 대기 중인 예약 제외
+      .neq('status',        'cancelled')
+      .neq('status',        'pending')
 
-    // ─── ① 예약 시작 10분 전 ────────────────────────────────────────────────
-    //     대상: start_at이 (지금+10분) ± 30초 구간
-    const before10 = new Date(now.getTime() + 10 * 60 * 1000)
+    // ─── ① 예약 시작 5분 전 — 체크인 요청 알림 ────────────────────────
+    //     대상: start_at이 (지금 + 5분) ± 30초 구간
+    //     ← [2026-05-12] 신규 트리거. 체크인 활성 시작 시점에 메일/인앱 발송.
+    //     기존 ①(10분 전 이동 안내) + ②(시작 시점 체크인 요청)을 통합.
+    const before5 = new Date(now.getTime() + 5 * 60 * 1000)
     const { data: upcoming } = await commonQuery()
-      .gte('start_at', new Date(before10.getTime() - 30_000).toISOString())
-      .lte('start_at', new Date(before10.getTime() + 30_000).toISOString())
+      .gte('start_at', new Date(before5.getTime() - 30_000).toISOString())
+      .lte('start_at', new Date(before5.getTime() + 30_000).toISOString())
 
     for (const b of upcoming ?? []) {
-      await triggerNotification('checkin_before_10', b)
+      await triggerNotification('checkin_before_5', b)
       triggered++
     }
 
-    // ─── ② 예약 시작 시각 ──────────────────────────────────────────────────
-    //     대상: start_at이 (지금) ± 30초 구간
-    const { data: justStarted } = await commonQuery()
-      .gte('start_at', new Date(now.getTime() - 30_000).toISOString())
-      .lte('start_at', new Date(now.getTime() + 30_000).toISOString())
-
-    for (const b of justStarted ?? []) {
-      await triggerNotification('checkin_start', b)
-      triggered++
-    }
-
-    // ─── ③ 예약 시작 후 5분 경고 ──────────────────────────────────────────
-    //     대상: start_at이 (지금-5분) ± 30초 + 회의가 아직 안 끝난 것
+    // ─── ② 예약 시작 후 5분 — 자동취소 5분 전 경고 ────────────────────
+    //     대상: start_at이 (지금 - 5분) ± 30초 구간 + 회의가 아직 안 끝난 것
+    //     유지 사유: 정책 이미지 "노쇼(자동취소) 경고" 시점과 1:1 매칭
     const after5 = new Date(now.getTime() - 5 * 60 * 1000)
     const { data: started } = await commonQuery()
       .gte('start_at', new Date(after5.getTime() - 30_000).toISOString())
@@ -183,15 +166,14 @@ Deno.serve(async (req: Request) => {
       triggered++
     }
 
-    console.log(`[checkin-reminder] 완료 — ${triggered}건 트리거됨 (before10: ${upcoming?.length ?? 0}, start: ${justStarted?.length ?? 0}, warning5: ${started?.length ?? 0})`)
+    console.log(`[checkin-reminder] 완료 — ${triggered}건 트리거됨 (before5: ${upcoming?.length ?? 0}, warning5: ${started?.length ?? 0})`)
 
     return new Response(
       JSON.stringify({
         success:     true,
         triggered,
         breakdown:   {
-          before_10:   upcoming?.length ?? 0,
-          start:       justStarted?.length ?? 0,
+          before_5:    upcoming?.length ?? 0,
           warning_5:   started?.length ?? 0,
         },
         time: now.toISOString(),

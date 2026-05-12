@@ -3,6 +3,12 @@ import type { Booking, ConflictResult, RoomStatus } from '../types'
 /**
  * time.ts
  * ✅ 변경 이력
+ *  - [2026-05-12 체크인 활성 5분 전으로 변경] CHECKIN_EARLY_MIN 상수 + isCheckinable 헬퍼 신규
+ *    · 정책 변경: 체크인 활성 윈도우 [start, start+10분] → [start-5분, start+10분] (총 15분)
+ *    · 노쇼 cutoff(start+10분)는 변동 없음 — CHECKIN_WINDOW_MIN 그대로
+ *    · 새 상수 CHECKIN_EARLY_MIN=5: 시작 전 체크인 가능 분
+ *    · 새 헬퍼 isCheckinable(b): 6곳 분산 위험 차단 SSOT (DetailModal/HomeView/MyPage/BookingStatusBadge 등)
+ *    · isAct는 절대 손대지 않음 — "회의 진행중"의 의미 보존 (active/nci/getRoomStatus 등 의존)
  *  - [2026-05-07 HOTFIX] tsDate / tsTime / tsMin — 문자열 슬라이싱 → Date 파싱으로 교체
  *    · 원인: DB timestamptz가 UTC(+00:00) 형식일 때 slice()가 UTC 시간을 추출.
  *            nowMinutes()는 KST 기준이라 9시간 어긋남 → 미래 예약을 현재로 오인식.
@@ -21,7 +27,8 @@ import type { Booking, ConflictResult, RoomStatus } from '../types'
 export const HOURS = Array.from({ length: 12 }, (_, i) => i + 7); // ← [2026-04-29] 13→12: h=19(오후7시) 열 제거 — 19:xx 클릭 시 start>end 역전 버그 차단. 마지막 열 h=18(오후6시)이 6:00~7:00 범위 표현
 export const DAY_NAMES = ["일","월","화","수","목","금","토"];
 export const MONTH_NAMES = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
-export const CHECKIN_WINDOW_MIN = 10;
+export const CHECKIN_WINDOW_MIN = 10; // 시작 후 체크인 윈도우 (= 노쇼 cutoff). 변동 금지.
+export const CHECKIN_EARLY_MIN  = 5;  // ← [2026-05-12] 시작 전 체크인 윈도우. 정책 변경 시 이 값만 수정.
 
 export function fmt2(n) { return String(n).padStart(2,"0"); }
 
@@ -188,6 +195,43 @@ export function getAvailableRooms(allRooms, bookings, date, startTime, endTime, 
   });
   const unavailable = active.filter(r => !available.find(a => a.room_id === r.room_id));
   return { available, unavailable };
+}
+
+// ─── 체크인 가능 여부 (SSOT) ─────────────────────────────────────────────
+// ← [2026-05-12] 체크인 활성 시점 변경에 따라 신설
+//
+// 정책: 체크인 활성 윈도우 = [start_at - CHECKIN_EARLY_MIN, start_at + CHECKIN_WINDOW_MIN)
+//       즉, 시작 5분 전부터 시작 후 10분까지 총 15분간 활성
+//
+// 분산 위험 차단:
+//   · DetailModal 체크인 버튼 분기
+//   · HomeView "오늘 내 예약" 카드 cardState
+//   · MyPage WeeklyView 카드 cardState
+//   · BookingStatusBadge "체크인 대기" 칩
+//   → 4곳 이상이 동일 조건을 직접 작성하면 향후 분 단위 정책 변경 시 누락 위험.
+//     isNoshow(noshow.ts) SSOT 패턴과 동일하게 단일 함수로 통일.
+//
+// 가드:
+//   ① isToday — 다른 날 예약은 항상 false
+//   ② now ∈ [sm - 5, sm + 10) — 시간 윈도우
+//   ③ status === 'confirmed' — pending/cancelled/rejected 차단
+//   ④ !checkedIn — 이미 체크인한 건 false (체크인 → 다른 라벨로 전환)
+//   ⑤ !autoCancelled — 노쇼/만료 차단
+//   ⑥ !earlyEnded — 조기반납 차단
+//
+// 주의: isAct(회의 진행중)과 다른 개념. isAct는 [sm, em] 진행 시간대.
+//       isCheckinable은 체크인 가능 시간대 (시작 전 5분 포함).
+export function isCheckinable(b: Booking): boolean {
+  const isToday = tsDate(b.start_at) === todayStr()
+  if (!isToday) return false
+  const now = nowMinutes()
+  const sm  = tsMin(b.start_at)
+  return now >= sm - CHECKIN_EARLY_MIN
+      && now <  sm + CHECKIN_WINDOW_MIN
+      && b.status === 'confirmed'
+      && !b.checkedIn
+      && !b.autoCancelled
+      && !b.earlyEnded
 }
 
 /**

@@ -69,9 +69,12 @@ export type NotificationType =
   | 'pending_expiring'        // 승인 기한 10분 전 (Admin 알림)
   | 'pending_expired'         // 승인 기한 초과 자동취소
   // 체크인 관련
-  | 'checkin_before_10'       // 시작 10분 전 체크인 안내
-  | 'checkin_start'           // 시작 시점 체크인 요청
-  | 'checkin_warning_5'       // 시작 5분 후 미체크인 경고
+  // ← [2026-05-12 체크인 활성 5분 전 핫픽스]
+  //   삭제: checkin_before_10 (시작 10분 전 이동 안내), checkin_start (시작 시점 체크인 요청)
+  //   신규: checkin_before_5  (시작 5분 전 체크인 요청 + CTA — 체크인 활성과 동시 발송)
+  //   유지: checkin_warning_5 (시작 후 5분 자동취소 경고)
+  | 'checkin_before_5'        // 시작 5분 전 체크인 요청 (체크인 활성 시작 시점)
+  | 'checkin_warning_5'       // 시작 5분 후 미체크인 경고 (자동취소 5분 전)
   | 'early_end'               // 회의실 조기 반납 ← [P2 v7] 2026-04-19 신규
   // 일일 리마인더
   | 'daily_reminder'          // 매일 07:00 KST 당일 예약 안내
@@ -411,51 +414,35 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
   // ──────────────────────────────────────────────────────────────────────
   // 체크인 리마인더
   // ──────────────────────────────────────────────────────────────────────
+  // ← [2026-05-12 체크인 활성 5분 전 핫픽스]
+  //   기존 정책: ① 10분 전(이동 안내) ② 시작 시점(체크인 요청) ③ 시작+5분(경고)
+  //   새 정책:   ① 시작 5분 전(체크인 요청, 활성 동시) ② 시작+5분(경고)
+  //   삭제 사유:
+  //     · checkin_before_10: 5분 전 체크인 메일에 이동 안내 통합 (메일 중복 발송 부담 감소)
+  //     · checkin_start:     체크인 활성 시점이 5분 앞당겨졌으므로 시작 시각 메일은 불필요
+  //   유지 사유: checkin_warning_5는 자동취소 임박 경고 — 정책 이미지 "노쇼 경고"와 1:1 매칭
 
-  checkin_before_10: {
-    // ← [2026-04-20 파일럿 피드백 반영] 체크인 관련 워딩 전부 삭제
-    //   기존: 배너 body + CTA "체크인하러 가기" + 인앱 제목 "체크인 대기" 포함
-    //         → 사용자 혼란 (실제 체크인은 시작 후 10분만 가능한데 시작 전에 체크인 버튼 노출)
-    //   변경: CTA 삭제, 배너 body 삭제, 인앱 제목에서 "체크인 대기" 제거
-    // ← [2026-04-29] recipients booker_only → booker_and_attendees (참석자도 이동 안내 수신)
-    subjectTag:         '[회의10분전]',
-    headerLabel:        '회의 시작 10분 전입니다',
-    headerColor:        COLORS.CYAN,
-    recipients:         'booker_and_attendees',  // ← [2026-04-29] booker_only → booker_and_attendees
-    inappType:          'checkin_before_10',
-    inappTitleBooker:   '회의 시작 10분 전입니다',
-    inappTitleAttendee: '회의 시작 10분 전입니다',  // ← [2026-04-29] 참석자 인앱 추가
-    inappTitleAdmin:    '',
-    contextBanner: {
-      booker:   { ...BANNER_PRESETS.info, title: '회의 시작 10분 전입니다. 회의실로 이동해 주세요.' },
-      attendee: { ...BANNER_PRESETS.info, title: '회의 시작 10분 전입니다. 회의실로 이동해 주세요.' }, // ← [2026-04-29] 참석자 배너 추가
-    },
-    // cta 없음 — 이동 안내이므로 버튼 불필요
-    isCancelledStyle: false,
-  },
-
-  checkin_start: {
-    subjectTag:         '[회의시작]',
-    headerLabel:        '회의 시작 시간입니다 — 체크인해 주세요',
+  checkin_before_5: {
+    subjectTag:         '[회의5분전]',
+    headerLabel:        '회의 시작 5분 전입니다 — 체크인해 주세요',
     headerColor:        COLORS.CYAN,
     recipients:         'booker_and_attendees',
-    inappType:          'checkin_start',
-    inappTitleBooker:   '회의 시작 — 체크인해 주세요',
-    inappTitleAttendee: '참석 회의가 시작되었습니다',
+    inappType:          'checkin_before_5',
+    inappTitleBooker:   '회의 5분 전 — 체크인해 주세요',
+    inappTitleAttendee: '참석 회의 5분 전 — 체크인해 주세요',
     inappTitleAdmin:    '',
     contextBanner: {
-      // ← [2026-04-29] 배너 문구 공통 변경 (예약자/참석자 동일)
-      //   · title: \n 사용 → email-templates.ts에서 <br> 변환
-      //   · body: {NOSHOW_TIME} 플레이스홀더 → email-templates.ts에서 start_at+10분 자동 치환
+      // ← 본문: 신규 정책 문구 (시작 5분 전부터 체크인 가능 + 시작 후 10분 자동 취소)
+      //   {NOSHOW_TIME}: email-templates.ts에서 start_at + 10분으로 자동 치환
       booker: {
         ...BANNER_PRESETS.info,
-        title: '회의 시작 후 10분 동안\n체크인하지 않으면\n노쇼처리 됩니다.',
-        body:  '{NOSHOW_TIME}에 자동취소되어 회의실을 사용할 수 없으니, 꼭 체크인 해 주세요.',
+        title: '회의 시작 5분 전부터 체크인 가능합니다.\n체크인하지 않으면 회의 시작 10분 후\n노쇼처리되어 예약이 자동 취소됩니다.',
+        body:  '{NOSHOW_TIME}에 자동 취소되니, 지금 체크인해 주세요.',
       },
       attendee: {
         ...BANNER_PRESETS.info,
-        title: '회의 시작 후 10분 동안\n체크인하지 않으면\n노쇼처리 됩니다.',
-        body:  '{NOSHOW_TIME}에 자동취소되어 회의실을 사용할 수 없으니, 꼭 체크인 해 주세요.',
+        title: '회의 시작 5분 전부터 체크인 가능합니다.\n체크인하지 않으면 회의 시작 10분 후\n노쇼처리되어 예약이 자동 취소됩니다.',
+        body:  '{NOSHOW_TIME}에 자동 취소되니, 지금 체크인해 주세요.',
       },
     },
     cta: {

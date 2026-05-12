@@ -1,7 +1,7 @@
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { AlertTriangle, CheckCircle2, Clock, ShieldCheck, ShieldX } from 'lucide-react'
 import { useState } from 'react'
-import { todayStr, nowMinutes, tsDate, tsMin, fmtTSFull, fmtTSDateFull, CHECKIN_WINDOW_MIN } from '../../utils/time'
+import { todayStr, nowMinutes, tsDate, tsMin, fmtTSFull, fmtTSDateFull, CHECKIN_WINDOW_MIN, CHECKIN_EARLY_MIN, isCheckinable } from '../../utils/time'
 import { getFloor } from '../../data/floors'
 
 import { AttendeeChip } from '../common/AttendeeChip'
@@ -16,6 +16,15 @@ import { isMyBooking } from '../../utils/bookingOwnership'  // ← [2026-04-24 P
  * BookingDetailModal (export name: DetailModal)
  *
  * ✅ 변경 이력
+ *  - [2026-05-12 체크인 활성 5분 전 핫픽스]
+ *    · 체크인 버튼 활성 조건: isAct && !checkedIn → isCheckinable(b)
+ *      → 시작 5분 전부터 시작 후 10분까지 체크인 활성 (15분 윈도우)
+ *    · showCheckinWait 조건: tl > 0 && tl <= 10 → tl > CHECKIN_EARLY_MIN && tl <= 10
+ *      → 10~5분 전 사이에만 "곧 시작" 비활성 버튼 노출 (5분 전부터는 활성 체크인 버튼이 자리 대체)
+ *    · BtnCheckinWait 라벨: "체크인 대기" → "곧 시작" (BookingStatusBadge 칩 라벨 통일)
+ *    · 미체크인 경고 박스(nci): isAct && !checkedIn → isCheckinable(b)
+ *      → 5분 전부터 안내 시작, 텍스트도 새 정책 문구로 교체
+ *    · 노쇼 cutoff(start+10분) 변동 없음
  *  - [2026-04-30 참석자 가로스크롤 회귀 fix]
  *    · 증상: 긴 이름(예: "안영환_Yeonghwan An", "권혁준_David Hyuckjun") 참석자 시
  *            모달 전체 가로 스크롤 발생, 칩이 영역 밖으로 삐져나감
@@ -102,7 +111,12 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
   const features=r?.features ?? [];
   const isToday=tsDate(b.start_at)===todayStr(),now=nowMinutes();
   const sm=tsMin(b.start_at),em=tsMin(b.end_at);
-  const isAct=isToday&&sm<=now&&now<em&&!b.autoCancelled&&!b.earlyEnded,nci=isAct&&!b.checkedIn;
+  const isAct=isToday&&sm<=now&&now<em&&!b.autoCancelled&&!b.earlyEnded;
+  // ← [2026-05-12] 미체크인 안내 박스 표시 조건: isAct && !checkedIn → isCheckinable(b)
+  //   기존: 회의 시작 후 미체크인 동안만 경고 표시
+  //   변경: 시작 5분 전부터 시작 후 10분까지 (체크인 활성 윈도우 전체) 안내 표시
+  //   isCheckinable 내부에 status='confirmed' + !checkedIn + !autoCancelled + !earlyEnded 가드 포함
+  const nci = isCheckinable(b);
   // ← [2026-04-24 P1-hotfix] MyPage 방식(UUID + email)으로 통일 — 이름 비교 완전 제거
   //   기존 P1: isBookingOwner(b, currentUserId, currentUser) — 이름 fallback이 꼬임 원인
   //   현재:   isMyBooking(b, currentUserId, currentUserEmail) — snapshot 이름 영향 없음
@@ -328,12 +342,16 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
           </div>
         )}
 
-        {/* ── 미체크인 경고 (기능 유지) ── */}
+        {/* ── 미체크인 안내 박스 ──
+            ← [2026-05-12] 표시 조건/텍스트 변경
+              · 조건: nci = isCheckinable(b) — 시작 5분 전부터 시작 후 10분까지 미체크인 동안
+              · 텍스트: "시작 5분 전부터 체크인 가능 + 10분 후 노쇼 자동 취소" 신규 정책 문구
+              · 디자인 스펙: #FFF7ED bg, #FED7AA border, #92400E text (기존 유지) */}
         {nci && (
           <div style={{background:"#FFF7ED", border:"1px solid #FED7AA", borderRadius:10, padding:"10px 14px",
-            fontSize:12, color:"#92400E", display:"flex", alignItems:"flex-start", gap:6}}>
+            fontSize:12, color:"#92400E", display:"flex", alignItems:"flex-start", gap:6, lineHeight:1.5}}>
             <AlertTriangle size={14} strokeWidth={1.8} style={{flexShrink:0, marginTop:1}}/>
-            <span>회의 시작 후 <strong>{CHECKIN_WINDOW_MIN}분 이내</strong> 체크인 필요</span>
+            <span>회의 시작 <strong>{CHECKIN_EARLY_MIN}분 전부터</strong> 체크인 가능합니다. 체크인하지 않으면 회의 시작 <strong>{CHECKIN_WINDOW_MIN}분 후</strong> 노쇼처리되어 자동으로 예약이 취소되니 꼭 체크인하세요!</span>
           </div>
         )}
       </div>
@@ -349,11 +367,10 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
         const BtnCancel   = () => <Button variant="danger-outline" flex onClick={()=>onCancel(b.id)}>예약 취소</Button>
         const BtnEdit     = () => <Button variant="info-outline"   flex onClick={()=>{onClose();onEdit(b);}}>예약 변경</Button>
         const BtnCheckin  = () => <Button variant="success"        flex onClick={()=>{onCheckIn(b.id);onClose();}} icon={<CheckCircle2 size={14} strokeWidth={1.8}/>}>체크인하기</Button>
-        // ← [2026-04-19 P2 v8] 체크인 대기 상태 버튼 (비활성화 안내용)
-        //   정책: 체크인은 '시작 후 10분 이내'만 가능 → 시작 전에는 체크인 불가
-        //   표시 조건: 본인 예약 + 시작 10분 이내 남음 + 아직 시작 안 함 + 취소/거절 안 됨 + pending 아님
-        //   UX: disabled로 시각 안내만 제공, 실제 클릭 불가 (Button.disabled → opacity 0.45 + cursor 'not-allowed')
-        const BtnCheckinWait = () => <Button variant="secondary"   flex disabled icon={<Clock size={14} strokeWidth={1.8}/>}>체크인 대기</Button>
+        // ← [2026-05-12] 라벨 "체크인 대기" → "곧 시작" (10~5분 전 카운트다운 안내)
+        //   정책 변경: 체크인은 시작 5분 전부터 가능 → 10~5분 전 사이는 "곧 시작" 비활성 안내
+        //   UX: disabled로 시각 안내만 제공 (Button.disabled → opacity 0.45 + cursor 'not-allowed')
+        const BtnCheckinWait = () => <Button variant="secondary"   flex disabled icon={<Clock size={14} strokeWidth={1.8}/>}>곧 시작</Button>
         const BtnApprove  = () => <Button variant="success"        flex onClick={()=>{onApprove(b.id);onClose();}} icon={<ShieldCheck size={14} strokeWidth={1.8}/>}>승인</Button>
         const BtnReject   = () => <Button variant="danger-outline" flex onClick={()=>onReject(b.id)} icon={<ShieldX size={13} strokeWidth={1.8}/>}>거절</Button> // ← [2026-04-29] 인라인 flow 제거 → confirmAndRejectBooking 다이얼로그 경유
         // ← [2026-04-24 P8-B] 강제취소 버튼 동작 변경
@@ -368,11 +385,13 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
         // onClose() 같이 호출 시 React 18 배칭으로 setModal(null)이 마지막 적용 → 다이얼로그 소멸
         const BtnEarlyEnd = () => <Button variant="primary" flex onClick={()=>onEarlyEnd(b.id)}>조기반납</Button>
 
-        // ── [P2 v8] 체크인 대기 표시 조건 ──────────────────────────
-        //   isFuture(시작 전) + tl <= 10 (10분 이내) + confirmed(승인된) + 취소/거절/체크인 안 됨
+        // ── [2026-05-12] "곧 시작" 비활성 버튼 표시 조건 ──────────────
+        //   isFuture(시작 전) + tl > CHECKIN_EARLY_MIN(5분) + tl <= 10 (10~5분 전) + confirmed(승인된) + 미취소/미체크인
+        //   · 10분 전~5분 전 사이: "곧 시작" 비활성 안내
+        //   · 5분 전 이후 ~ 시작 + 10분: 활성 BtnCheckin (isCheckinable 조건)
         //   · pending 예약은 대기 상태 표시 안 함 (승인부터 받아야 함)
         //   · 에메랄드 승인완료 예약에는 표시됨 (approved + 시작 임박)
-        const showCheckinWait = isOwner && isFuture && tl > 0 && tl <= 10
+        const showCheckinWait = isOwner && isFuture && tl > CHECKIN_EARLY_MIN && tl <= 10
                                 && b.status === 'confirmed'
                                 && !b.autoCancelled && !b.earlyEnded && !b.checkedIn
 
@@ -395,12 +414,14 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
         if (isAdmin && isOwner) {
           // pending → 취소 + 승인 (Admin은 본인 예약 직접 승인 가능)
           if (adminCanApprove) return btnWrap(<>{onApprove&&<BtnApprove />}<BtnCancel /></>)
-          // 진행중 미체크인 → 체크인 + 취소
-          if (isAct && !b.checkedIn) return btnWrap(<><BtnCancel /><BtnCheckin /></>)
+          // ← [2026-05-12] 체크인 가능 (5분전 ~ 시작 + 10분, 미체크인) → 체크인 + 취소
+          //   기존: if (isAct && !b.checkedIn) — 시작 후만 활성
+          //   변경: if (isCheckinable(b))      — 시작 5분 전부터 활성 (isCheckinable 내부에 !checkedIn 가드 포함)
+          if (isCheckinable(b)) return btnWrap(<><BtnCancel /><BtnCheckin /></>)
           // ← [2026-04-29] 진행중 체크인 완료 → 닫기 + 조기반납
           if (isAct && b.checkedIn) return btnWrap(<><BtnClose />{onEarlyEnd&&<BtnEarlyEnd />}</>)
-          // ← [P2 v8] 시작 10분 이내 confirmed → 취소 + 변경 + 체크인 대기(비활성)
-          //   에메랄드룸은 변경 불가 → 취소 + 체크인 대기만
+          // ← [2026-05-12] 10~5분 전 confirmed → 취소 + 변경 + "곧 시작"(비활성)
+          //   에메랄드룸은 변경 불가 → 취소 + 곧시작만
           if (showCheckinWait) return btnWrap(<><BtnCancel />{!isApprovedAdminRoom&&<BtnEdit />}<BtnCheckinWait /></>)
           // 미래 confirmed → 변경 + 취소 (승인완료 에메랄드룸은 취소만)
           if (isFuture && b.status === 'confirmed') return btnWrap(<><BtnCancel />{!isApprovedAdminRoom&&<BtnEdit />}</>)
@@ -409,12 +430,14 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
 
         // ── 4. 유저 · 본인 ────────────────────────────────────────────
         if (isOwner) {
-          // 진행중 미체크인 → 체크인 + 취소
-          if (isAct && !b.checkedIn) return btnWrap(<><BtnCancel /><BtnCheckin /></>)
+          // ← [2026-05-12] 체크인 가능 (5분전 ~ 시작 + 10분, 미체크인) → 체크인 + 취소
+          //   기존: if (isAct && !b.checkedIn) — 시작 후만 활성
+          //   변경: if (isCheckinable(b))      — 시작 5분 전부터 활성
+          //   정책: 체크인 활성 윈도우 [start-5분, start+10분), 노쇼 cutoff(start+10분) 변동 없음
+          if (isCheckinable(b)) return btnWrap(<><BtnCancel /><BtnCheckin /></>)
           // ← [2026-04-29] 진행중 체크인 완료 → 닫기 + 조기반납
           if (isAct && b.checkedIn) return btnWrap(<><BtnClose />{onEarlyEnd&&<BtnEarlyEnd />}</>)
-          // ← [P2 v8] 시작 10분 이내 confirmed → 취소 + 변경 + 체크인 대기(비활성)
-          //   정책: 체크인은 시작 후 10분 이내만 가능 → 지금은 '대기' 상태만 노출
+          // ← [2026-05-12] 10~5분 전 confirmed → 취소 + 변경 + "곧 시작"(비활성)
           //   에메랄드룸 승인완료도 동일 로직 (에메랄드는 변경 불가이므로 BtnEdit 제외)
           if (showCheckinWait) return btnWrap(<><BtnCancel />{!isApprovedAdminRoom&&<BtnEdit />}<BtnCheckinWait /></>)
           // 미래 → 변경 + 취소 (승인완료 에메랄드룸은 취소만)

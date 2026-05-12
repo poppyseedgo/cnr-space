@@ -458,8 +458,9 @@ function renderBanner(input: EmailRenderInput): string {
     if (b.body) {
       // ← [2026-04-29] \n → <br> 변환 지원
       let bodyHtml = escapeHtml(b.body).replace(/\n/g, '<br>')
-      // ← [2026-04-29] {NOSHOW_TIME} 플레이스홀더 치환 — checkin_start: start_at+10분 자동 계산
-      //   정책 body에 {NOSHOW_TIME} 포함 시 예약 시작시각 기준 +10분 포맷 시간으로 치환
+      // ← [2026-04-29 / 2026-05-12 갱신] {NOSHOW_TIME} 플레이스홀더 치환
+      //   사용처: checkin_before_5 (구 checkin_start) — 노쇼 자동취소 시각 = start_at + 10분
+      //   체크인 활성 5분 전 핫픽스 이후에도 노쇼 cutoff(10분)는 변동 없음 → 치환 로직 그대로
       if (bodyHtml.includes('{NOSHOW_TIME}') && input.booking.start_at) {
         const noshowMs = new Date(input.booking.start_at).getTime() + 10 * 60 * 1000
         const noshowTime = escapeHtml(fmtTime(new Date(noshowMs).toISOString()))
