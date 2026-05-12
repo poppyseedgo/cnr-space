@@ -27,6 +27,12 @@
  *   · 제목 포맷 변경: "[C&R SPACE] ✅ 예약 확정 — ..." → "[예약확정]  ..."
  *     (notification-types.getSubject() 참조)
  *
+ * [2026-05-12] APP_URL fallback 운영 도메인으로 변경
+ *   · cnr-space.pages.dev (Cloudflare Pages 기본 도메인) → space.cnrres.com (운영)
+ *   · 환경변수 APP_URL이 설정된 경우 그쪽이 우선 (fallback은 안전망)
+ *   · 영향 범위: 모든 메일 CTA 버튼 URL, appUrl로 전달되는 모든 링크
+ *   · 배포 동기화: supabase secrets set APP_URL=https://space.cnrres.com 권장
+ *
  * ═══════════════════════════════════════════════════════════════════════════
  * 배포 규칙 (CRITICAL — 위반 시 401 발생)
  * ═══════════════════════════════════════════════════════════════════════════
@@ -70,7 +76,13 @@ import {
 // 1. 환경변수
 // ═══════════════════════════════════════════════════════════════════════════
 
-const APP_URL           = Deno.env.get('APP_URL') ?? 'https://cnr-space.pages.dev'
+// ← [2026-05-12] APP_URL fallback 변경: cnr-space.pages.dev → space.cnrres.com (운영 도메인)
+//   배경: 메일 링크 클릭 시 Cloudflare Pages 기본 도메인(cnr-space.pages.dev)으로 연결되어
+//         사용자가 어색한 URL을 보게 됨. 운영 커스텀 도메인 space.cnrres.com 으로 통일.
+//   환경변수 APP_URL이 설정되어 있으면 그쪽이 우선 — Secrets에도 동일 값 설정 권장.
+//   배포 후 다음 명령으로 Secrets 동기화:
+//     supabase secrets set APP_URL=https://space.cnrres.com
+const APP_URL           = Deno.env.get('APP_URL') ?? 'https://space.cnrres.com'
 const TEAMS_WEBHOOK_URL = Deno.env.get('TEAMS_WEBHOOK_URL') ?? ''
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
