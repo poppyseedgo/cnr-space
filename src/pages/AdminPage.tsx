@@ -1369,6 +1369,253 @@ function RoomRankingCard({ rooms }: { rooms: Room[] }) {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ─── 위젯 ⑤ 회의실 노쇼 현황 (Figma node 551:3548) ──────────────────────────
+//   사용처: Row 2 Col 2 (542×504, 2-col grid)
+//   데이터: 자체 dateFrom/dateTo (default 30일) + useBookingsByRange + isNoshow SSOT
+//   동작: 9 회의실 모두 차트 + Top 5 ranked list + bar hover/click 시 label
+//   ※ Figma 1:1: 3-section (헤더 + 세로 bar 차트 + ranked list)
+function RoomNoshowCard({ rooms }: { rooms: Room[] }) {
+  // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
+  const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
+  const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
+
+  // ── 2. 자체 fetch (Phase 4 cache 공유, 위젯 ②④와 dedupe) ────────────
+  const { data: bookings, loading } = useBookingsByRange(dateFrom, dateTo)
+
+  // ── 3. 회의실별 노쇼 카운트 + desc 정렬 (Q1, Q2: 9개 모두) ──────────
+  const roomNoshow = useMemo(() => {
+    return [...rooms]
+      .map(r => ({
+        room:   r,
+        noshow: bookings.filter(b => b.room_id === r.room_id && isNoshow(b)).length,
+      }))
+      .sort((a, b) => b.noshow - a.noshow)                         // Q1: noshow desc
+  }, [bookings, rooms])
+
+  // ── 4. 차트 max 값 (bar height 비례 계산) ──────────────────────────
+  //   maxNoshow=0이면 모든 bar 내부 미표시 (외곽만 보임)
+  const maxNoshow = useMemo(
+    () => roomNoshow.reduce((m, s) => Math.max(m, s.noshow), 0),
+    [roomNoshow]
+  )
+
+  // ── 5. Top 5 ranked list (Q3: 항상 5, count 0이어도 채움) ──────────
+  const top5 = useMemo(() => roomNoshow.slice(0, 5), [roomNoshow])
+
+  // ── 6. 인터랙티브 hover/click state (Q4: 위젯 ② v3 패턴) ───────────
+  const [activeRoomId, setActiveRoomId] = useState<number | null>(null)
+  const activeRoom = useMemo(
+    () => roomNoshow.find(s => s.room.room_id === activeRoomId) ?? null,
+    [activeRoomId, roomNoshow]
+  )
+
+  // ── 차트 상수 (Figma 사양) ──────────────────────────────────────────
+  const CHART_HEIGHT     = 172    // ← Figma: 외곽 컨테이너 h
+  const CHART_INNER_MAX  = 109    // ← Figma: 내부 bar max (Bar 1 = max noshow)
+
+  return (
+    <div style={{
+      // ── Figma outer 1:1 ─────────────────────────────────────
+      background:    '#fff',
+      borderRadius:  24,
+      padding:       '12px 16px 24px 16px',           // ← Figma: pt12 px16 pb24 (위젯 ④의 pb16과 다름)
+      display:       'flex',
+      flexDirection: 'column',
+      alignItems:    'flex-start',
+      justifyContent:'space-between',
+      height:        504,
+      width:         '100%',
+    }}>
+      {/* ── 헤더 (gap 2) ────────────────────────────────────── */}
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2, width:'100%' }}>
+        <p style={{
+          fontFamily:"'Pretendard', -apple-system, sans-serif",
+          fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
+          whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+        }}>회의실 노쇼 현황</p>
+        {/* ── 날짜 범위 picker (위젯 ②④와 동일) ── */}
+        <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+          <SmallDateTrigger value={dateFrom} onChange={setDateFrom} max={dateTo} />
+          <span style={{
+            fontFamily:"'Pretendard', -apple-system, sans-serif",
+            fontWeight:400, fontSize:12, lineHeight:1.5, color:'#AEB5C4',
+          }}>⎯</span>
+          <SmallDateTrigger value={dateTo} onChange={setDateTo} min={dateFrom} max={todayStr()} />
+        </div>
+      </div>
+
+      {/* ── 세로 bar 차트 (h 172, gap 2, 9 bars flex 1) ────── */}
+      <div
+        onMouseLeave={() => setActiveRoomId(null)}
+        style={{
+          display:    'flex',
+          alignItems: 'flex-start',
+          gap:        2,                                // ← Figma: gap 2 (bar 간격)
+          height:     CHART_HEIGHT,
+          width:      '100%',
+          position:   'relative',
+        }}>
+        {roomNoshow.length === 0 ? (
+          <div style={{ flex:1, height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#CBD5E1' }}>
+            {loading ? '로딩 중…' : '회의실 데이터 없음'}
+          </div>
+        ) : (
+          roomNoshow.map(s => {
+            const isActive = s.room.room_id === activeRoomId
+            // ── 내부 bar height: 노쇼 비례, max 109px (Figma 사양) ──
+            //   · maxNoshow=0이면 모든 bar 내부 h=0 → 외곽만 표시
+            //   · noshow>0이면 최소 8px 보장 (가시성)
+            const innerH = maxNoshow > 0 && s.noshow > 0
+              ? Math.max(8, (s.noshow / maxNoshow) * CHART_INNER_MAX)
+              : 0
+            return (
+              <div
+                key={s.room.room_id}
+                onMouseEnter={() => setActiveRoomId(s.room.room_id)}
+                onClick={() => setActiveRoomId(prev => prev === s.room.room_id ? null : s.room.room_id)}
+                style={{
+                  flex:     1,
+                  height:   CHART_HEIGHT,
+                  position: 'relative',
+                  // ── Figma: 외곽 bg #F6F7FA, items-end (bottom 정렬) ──
+                  background:'#F6F7FA',
+                  display:    'flex',
+                  flexDirection:'column',
+                  justifyContent:'flex-end',          // ← Figma: justify-end (내부 bar 하단 정렬)
+                  alignItems:'stretch',
+                  minWidth:0,                          // ← grid overflow 안전
+                  cursor:   'pointer',
+                }}>
+                {/* ── 내부 bar (활성 시 진한 색상 — Q4) ── */}
+                {innerH > 0 && (
+                  <div style={{
+                    width:'100%',
+                    height: innerH,
+                    // ── Figma: 기본 #F1F1F1→#DDD / 활성 #747474→#424242 ──
+                    background: isActive
+                      ? 'linear-gradient(to bottom, #747474 0.481%, #424242 58.173%)'
+                      : 'linear-gradient(to bottom, #F1F1F1 0.481%, #DDD 58.173%)',
+                    transition:'height 0.4s ease, background 0.15s ease',
+                  }}/>
+                )}
+              </div>
+            )
+          })
+        )}
+        {/* ── 활성 bar에 label 표시 (Q4: 위젯 ② v3 패턴) ── */}
+        {activeRoom && (() => {
+          const idx       = roomNoshow.findIndex(s => s.room.room_id === activeRoom.room.room_id)
+          if (idx < 0) return null
+          const barCount  = roomNoshow.length
+          // bar 폭: flex 1 균등분할 = (100% - gaps) / count
+          const totalGap  = (barCount - 1) * 2
+          const barW      = `calc((100% - ${totalGap}px) / ${barCount})`
+          const innerH    = maxNoshow > 0 && activeRoom.noshow > 0
+            ? Math.max(8, (activeRoom.noshow / maxNoshow) * CHART_INNER_MAX)
+            : 0
+          return (
+            <div style={{
+              position:    'absolute',
+              // label 위치: bar 중앙 위쪽
+              bottom:      innerH + 6,
+              left:        `calc(${idx} * (${barW} + 2px) + ${barW} / 2)`,
+              transform:   'translateX(-50%)',
+              // ── Figma StatusBadge-XS 사양 (위젯 ② 동일) ──
+              background:  'rgba(255,255,255,0.9)',
+              border:      '1px solid #000',
+              borderRadius:24,
+              padding:     '2px 8px',
+              display:     'flex',
+              gap:         10,
+              alignItems:  'center',
+              fontFamily:  "'Pretendard', -apple-system, sans-serif",
+              fontWeight:  400,
+              fontSize:    10,
+              lineHeight:  1.5,
+              letterSpacing:'0.1px',
+              color:       '#1E1E1E',
+              whiteSpace:  'nowrap',
+              pointerEvents:'none',
+              zIndex:      1,
+            }}>
+              {activeRoom.room.room_name} {activeRoom.noshow}건
+            </div>
+          )
+        })()}
+      </div>
+
+      {/* ── Top 5 ranked list (h 34 × 5 rows = 170) ────────── */}
+      <div style={{
+        display:'flex', flexDirection:'column', width:'100%',
+      }}>
+        {top5.map((s, i) => (
+          <div key={s.room.room_id} style={{
+            // ── Figma row 1:1: py 8, border-top + border-bottom #FAFBFF ──
+            display:      'flex',
+            alignItems:   'center',
+            justifyContent:'space-between',
+            padding:      '8px 0',
+            borderTop:    i === 0 ? '1px solid #FAFBFF' : 'none',   // ← 첫 row만 top
+            borderBottom: '1px solid #FAFBFF',
+            width:        '100%',
+          }}>
+            {/* ── 좌측: rank circle + 회의실명 (gap 10) ── */}
+            <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:1, minWidth:0, paddingRight:8 }}>
+              {/* ── Rank circle (Figma: 16×16, border 1px #000, radius 999) ── */}
+              <div style={{
+                width:16, height:16,
+                border:'1px solid #000',
+                borderRadius:999,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                flexShrink:0,
+              }}>
+                <span style={{
+                  fontFamily:"'Pretendard', -apple-system, sans-serif",
+                  fontWeight:400, fontSize:8, lineHeight:1.5, color:'#000',
+                }}>{i + 1}</span>
+              </div>
+              {/* ── 회의실명 ── */}
+              <span style={{
+                fontFamily:"'Pretendard', -apple-system, sans-serif",
+                fontWeight:400, fontSize:12, lineHeight:1.5, color:'#000',
+                whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+              }}>{s.room?.room_name ?? '—'}</span>
+            </div>
+            {/* ── 우측: count ── */}
+            <span style={{
+              fontFamily:"'Pretendard', -apple-system, sans-serif",
+              fontWeight:400, fontSize:12, lineHeight:1.5, color:'#000',
+              flexShrink:0,
+            }}>{s.room ? s.noshow : '—'}</span>
+          </div>
+        ))}
+        {/* ── Q3: rooms.length < 5인 경우 placeholder row로 5개 채움 (count 0 표시) ── */}
+        {Array.from({ length: Math.max(0, 5 - top5.length) }).map((_, i) => (
+          <div key={`empty-${i}`} style={{
+            display:'flex', alignItems:'center', justifyContent:'space-between',
+            padding:'8px 0',
+            borderBottom:'1px solid #FAFBFF',
+            width:'100%',
+          }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{
+                width:16, height:16, border:'1px solid #CBD5E1', borderRadius:999,
+                display:'flex', alignItems:'center', justifyContent:'center',
+              }}>
+                <span style={{ fontSize:8, color:'#CBD5E1' }}>{top5.length + i + 1}</span>
+              </div>
+              <span style={{ fontSize:12, color:'#CBD5E1' }}>—</span>
+            </div>
+            <span style={{ fontSize:12, color:'#CBD5E1' }}>0</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+
 // ─── DashboardPlaceholderCard ───────────────────────────────────────────────
 //   목적: Phase 4~10 위젯 구현 전까지 외곽 레이아웃 유지 + 진척 표시
 //   교체 방식: 각 Phase에서 해당 카드만 진짜 위젯으로 교체
@@ -1497,11 +1744,8 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
         {/* ④ 예약 많은 회의실 — Phase 6 구현 (Figma 551:3513) ✓ */}
         <RoomRankingCard rooms={rooms} />
-        <DashboardPlaceholderCard
-          height={504}
-          title="회의실 노쇼 현황"
-          phaseNote="Phase 7에서 구현 예정"
-        />
+        {/* ⑤ 회의실 노쇼 현황 — Phase 7 구현 (Figma 551:3548) ✓ */}
+        <RoomNoshowCard rooms={rooms} />
       </div>
 
       {/* ── Row 3: 위젯 ⑥ 예약추이 / ⑦ 부서별 예약 현황 ── */}
