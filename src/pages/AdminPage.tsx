@@ -2090,6 +2090,221 @@ function DepartmentBookingsCard() {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ─── 위젯 ⑧ 시간대별 예약 분포 (Figma node 565:21770) ─────────────────────
+//   사용처: Row 4 (좌측만, 우측 빈 칸 — Figma 1:1)
+//   데이터: 자체 dateFrom/dateTo (default 30일) + useBookingsByRange
+//   동작: 13 columns (7시~19시 운영시간) 이중 봉 차트, 위젯 ⑥ 그래프 형식
+//   ※ Figma 1:1: 외곽 봉 bg #F6F7FA + 내부 봉 #DDDEDF→#EFF0F1 (활성 시 #000→#7E7F80)
+//   ※ 헤더 두 번째 줄 justify-between: 좌(picker) / 우(subtitle) — 위젯 ⑥⑦과 다름
+//   ※ Q5: timezone 안전 — b.start_at.substring(11, 13)로 KST hour 추출
+
+// ─── HOURLY — Figma 1:1 차트 사양 상수 ────────────────────────────────────
+const OPERATING_HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]   // ← Q3: 7~19시 13 columns
+const HOURLY_OUTER_H  = 93                                                    // ← Figma: 외곽 봉 height
+
+function HourlyDistributionCard() {
+  // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
+  const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
+  const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
+
+  // ── 2. 자체 fetch (Phase 4 cache 공유, 위젯 ②④⑤⑥⑦와 dedupe) ────────
+  const { data: bookings, loading } = useBookingsByRange(dateFrom, dateTo)
+
+  // ── 3. 시간대별 count (Q1: 모든 booking, Q2: start_at hour, Q5: substring 안전) ─
+  //   · Q5: b.start_at.substring(11, 13) → "08" → 8 (KST hour, timezone 무관)
+  //   · Q3: 7~19시만 카운트 (운영 외 시간 표시 안 함)
+  const hourStats = useMemo(() => {
+    return OPERATING_HOURS.map(h => {
+      const count = bookings.filter(b => {
+        if (!b.start_at) return false                  // ← 안전: start_at 없는 booking 제외
+        const hourStr = b.start_at.substring(11, 13)   // Q5: ISO 8601 "T08:30..." → "08"
+        return parseInt(hourStr, 10) === h
+      }).length
+      return { hour: h, count }
+    })
+  }, [bookings])
+
+  // ── 4. maxCount (내부 봉 비례 계산 기준) ──────────────────────────────
+  const maxCount = useMemo(
+    () => hourStats.reduce((m, d) => Math.max(m, d.count), 0),
+    [hourStats]
+  )
+
+  // ── 5. 인터랙티브 hover/click state (Q4: 위젯 ②⑤⑥⑦ v3 패턴 일관) ───
+  const [activeHour, setActiveHour] = useState<number | null>(null)
+  const activeStats  = useMemo(
+    () => hourStats.find(d => d.hour === activeHour) ?? null,
+    [activeHour, hourStats]
+  )
+
+  // ── 활성 column label 내용 ("{N}시 {N}건") ───────────────────────────
+  const activeLabel = useMemo(() => {
+    if (!activeStats) return null
+    return `${activeStats.hour}시 ${activeStats.count}건`
+  }, [activeStats])
+
+  return (
+    <div style={{
+      // ── Figma outer 1:1 (Row 4 단독, 좌측만) ──
+      background:    '#fff',
+      borderRadius:  24,
+      padding:       '12px 16px 16px 16px',           // ← Figma: pt12 px16 pb16
+      display:       'flex',
+      flexDirection: 'column',
+      gap:           24,                                // ← Figma: flex-col gap 24
+      width:         '100%',
+      overflow:      'hidden',                          // ← Figma: overflow-clip
+    }}>
+      {/* ── 헤더 (위젯 ⑥⑦과 다른 구조 - 두 번째 줄 justify-between) ──── */}
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2, width:'100%' }}>
+        <p style={{
+          fontFamily:"'Pretendard', -apple-system, sans-serif",
+          fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
+          whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+        }}>시간대별 예약 분포</p>
+        {/* ── 두 번째 줄: 좌(picker) ↔ 우(subtitle) justify-between ── */}
+        <div style={{
+          display:        'flex',
+          alignItems:     'center',
+          justifyContent: 'space-between',              // ← Figma: 헤더 두 번째 줄 좌/우 분리
+          width:          '100%',
+        }}>
+          {/* 좌: 날짜 범위 picker (위젯 ②④⑤⑥⑦와 동일) */}
+          <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+            <SmallDateTrigger value={dateFrom} onChange={setDateFrom} max={dateTo} />
+            <span style={{
+              fontFamily:"'Pretendard', -apple-system, sans-serif",
+              fontWeight:400, fontSize:12, lineHeight:1.5, color:'#AEB5C4',
+            }}>⎯</span>
+            <SmallDateTrigger value={dateTo} onChange={setDateTo} min={dateFrom} max={todayStr()} />
+          </div>
+          {/* 우: subtitle "운영시간 오전 7시 부터 오후 7시" — Figma 1:1 */}
+          <p style={{
+            fontFamily:"'Pretendard', -apple-system, sans-serif",
+            fontWeight:400, fontSize:12, lineHeight:1.5, color:'#AEB5C4', margin:0,
+            whiteSpace:'nowrap',
+          }}>운영시간 오전 7시 부터 오후 7시</p>
+        </div>
+      </div>
+
+      {/* ── 차트 (h 111, gap 4, items-end, 13 columns) ──────────────── */}
+      <div
+        onMouseLeave={() => setActiveHour(null)}
+        style={{
+          display:    'flex',
+          alignItems: 'flex-end',                       // ← Figma: items-end
+          gap:        4,                                 // ← Figma: gap 4
+          height:     111,                               // ← Figma: chart 컨테이너 h 111 (graph 93 + gap 4 + label 14)
+          width:      '100%',
+          position:   'relative',
+        }}>
+        {hourStats.map(d => {
+          const isActive = d.hour === activeHour
+          // ── 내부 봉 height: count/maxCount × 93 (외곽 height) ──
+          //   · maxCount=0 (전체 0) → 내부 미표시 (외곽만)
+          //   · Math.max(2,...): count > 0이면 최소 2px 표시 (시각적 존재감)
+          const innerH = maxCount > 0 && d.count > 0
+            ? Math.max(2, (d.count / maxCount) * HOURLY_OUTER_H)
+            : 0
+          return (
+            <div
+              key={d.hour}
+              onMouseEnter={() => setActiveHour(d.hour)}
+              onClick={() => setActiveHour(prev => prev === d.hour ? null : d.hour)}
+              style={{
+                flex:          1,
+                height:        '100%',
+                display:       'flex',
+                flexDirection: 'column',
+                alignItems:    'stretch',
+                justifyContent:'flex-end',                // ← Figma: column items-start justify-end
+                gap:           4,                          // ← Figma: column 내부 gap 4
+                minWidth:      0,
+                cursor:        'pointer',
+              }}>
+              {/* ── Graph 영역 (외곽 봉 + 내부 봉) ── */}
+              <div style={{
+                position:    'relative',
+                height:      HOURLY_OUTER_H,             // ← Figma: 외곽 h 93
+                width:       '100%',
+                background:  '#F6F7FA',                   // ← Figma: 외곽 bg #F6F7FA (위젯 ⑥의 #FCFCFC와 다름)
+              }}>
+                {/* ── 내부 봉 (bottom 정렬, 비례 height, 활성 시 검정 그라데이션) ── */}
+                {innerH > 0 && (
+                  <div style={{
+                    position:   'absolute',
+                    bottom:     0,
+                    left:       0,
+                    right:      0,
+                    height:     innerH,
+                    // ── Figma 1:1 ──
+                    //   평소: linear-gradient(to bottom, #DDDEDF 24.207%, #EFF0F1 100%)
+                    //   활성: linear-gradient(to bottom, #000 48.954%, #7E7F80 100%)
+                    background: isActive
+                      ? 'linear-gradient(to bottom, #000 48.954%, #7E7F80 100%)'
+                      : 'linear-gradient(to bottom, #DDDEDF 24.207%, #EFF0F1 100%)',
+                    transition: 'height 0.4s ease, background 0.15s ease',
+                  }}/>
+                )}
+                {/* ── 활성 column label (내부 봉 위쪽 6px - 위젯 ⑥ 패턴) ── */}
+                {isActive && activeLabel && (
+                  <div style={{
+                    position:    'absolute',
+                    bottom:      innerH + 6,
+                    left:        '50%',
+                    transform:   'translateX(-50%)',
+                    // ── Figma StatusBadge-XS (위젯 ②⑤⑥⑦와 동일) ──
+                    background:  'rgba(255,255,255,0.9)',
+                    border:      '1px solid #000',
+                    borderRadius:24,
+                    padding:     '2px 8px',
+                    display:     'flex',
+                    gap:         10,
+                    alignItems:  'center',
+                    justifyContent:'center',
+                    fontFamily:  "'Pretendard', -apple-system, sans-serif",
+                    fontWeight:  400,
+                    fontSize:    10,
+                    lineHeight:  1.5,
+                    letterSpacing:'0.1px',
+                    color:       '#1E1E1E',
+                    whiteSpace:  'nowrap',
+                    pointerEvents:'none',
+                    zIndex:      10,
+                  }}>
+                    {activeLabel}
+                  </div>
+                )}
+              </div>
+              {/* ── 시간 라벨 (X축, "7시" ~ "19시") ── */}
+              <span style={{
+                fontFamily:"'Pretendard', -apple-system, sans-serif",
+                fontWeight:400, fontSize:9, lineHeight:1.5, color:'#AEB5C4',
+                textAlign:'center',
+                whiteSpace:'nowrap',
+              }}>{d.hour}시</span>
+            </div>
+          )
+        })}
+        {/* ── 빈 데이터 case (전체 0건) - 차트 자체는 모두 외곽만 표시 ── */}
+        {!loading && maxCount === 0 && bookings.length === 0 && (
+          <div style={{
+            position:'absolute',
+            top:0, left:0, right:0, bottom:0,
+            display:'flex', alignItems:'center', justifyContent:'center',
+            pointerEvents:'none',
+            fontSize:11, color:'#CBD5E1',
+          }}>
+            예약 데이터 없음
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+
 // ─── DashboardPlaceholderCard ───────────────────────────────────────────────
 //   목적: Phase 4~10 위젯 구현 전까지 외곽 레이아웃 유지 + 진척 표시
 //   교체 방식: 각 Phase에서 해당 카드만 진짜 위젯으로 교체
@@ -2232,13 +2447,8 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
 
       {/* ── Row 4: 위젯 ⑧ 시간대별 예약 분포 (좌측만) ── */}
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
-        <DashboardPlaceholderCard
-          height={205}
-          title="시간대별 예약 분포"
-          subtitle="운영시간 오전 7시 부터 오후 7시"
-          dateRange={null}
-          phaseNote="Phase 10에서 구현 예정"
-        />
+        {/* ⑧ 시간대별 예약 분포 — Phase 10 (Figma 565:21770) ✓ */}
+        <HourlyDistributionCard />
         {/* 우측 빈 칸 — Figma 사양 (Row 4는 좌측 카드만) */}
         {!isMobile && <div />}
       </div>
