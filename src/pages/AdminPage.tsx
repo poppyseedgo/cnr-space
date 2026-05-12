@@ -1120,6 +1120,255 @@ function NoshowChartCard() {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ─── 위젯 ③ 최근 생성된 예약 (Figma node 551:3458) ──────────────────────────
+//   사용처: Row 1 Col 3 (356×268, 3-col grid)
+//   데이터: bookings prop top 5 sorted by createdAt desc (옵션 A — 자체 fetch 안 함)
+//   동작: row 클릭 → onDetail(booking) → BookingModal 열기
+//   ※ Figma 1:1 사양: 헤더(타이틀만, 날짜 범위 없음) + 5 rows (각 h 34)
+function RecentBookingsCard({
+  bookings,
+  users,
+  rooms,
+  onDetail,
+}: {
+  bookings: Booking[]
+  users:    AppUser[]
+  rooms:    Room[]
+  onDetail?: (b: Booking) => void
+}) {
+  // ── 데이터: createdAt desc top 5 (옵션 A — bookings prop 사용) ────────
+  //   · createdAt이 number(timestamp) → desc 정렬 = 최신순
+  //   · createdAt 없는 row는 안전 제외 (legacy data 방어)
+  const recent = useMemo(() => {
+    return [...bookings]
+      .filter(b => b.createdAt != null)
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 5)
+  }, [bookings])
+
+  return (
+    <div style={{
+      // ── Figma outer 1:1 (위젯 ①과 동일 카드 스타일) ──
+      background:   '#fff',
+      borderRadius: 24,
+      padding:      '12px 16px 16px 16px',
+      display:      'flex',
+      flexDirection:'column',
+      alignItems:   'flex-start',
+      gap:          48,                              // ← Figma: 헤더(22h) ↔ 리스트(82y) = 82-12-22=48
+      height:       268,
+      width:        '100%',
+    }}>
+      {/* ── 헤더 (타이틀만, 날짜 범위 없음 — Figma) ── */}
+      <div style={{ width:'100%' }}>
+        <p style={{
+          fontFamily:"'Pretendard', -apple-system, sans-serif",
+          fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
+          whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+        }}>최근 생성된 예약</p>
+      </div>
+
+      {/* ── 리스트 (5 rows, 각 h 34, 인접 row 사이 border #FAFBFF) ── */}
+      <div style={{
+        display:      'flex',
+        flexDirection:'column',
+        width:        '100%',
+      }}>
+        {recent.length === 0 ? (
+          <div style={{
+            padding:'24px 0', textAlign:'center', fontSize:11, color:'#CBD5E1',
+          }}>예약 없음</div>
+        ) : (
+          recent.map((b, i) => {
+            // user lookup (UUID 기반, fallback to snapshot)
+            const user = users.find(u => u.user_id === b.user_id)
+            const ownerName   = user?.name ?? b.user ?? '—'
+            const ownerAvatar = user?.avatar_url ?? null
+            // room lookup
+            const room        = rooms.find(r => r.room_id === b.room_id)
+            const roomName    = room?.room_name ?? '—'
+            return (
+              <div
+                key={b.id}
+                onClick={() => onDetail?.(b)}
+                style={{
+                  // ── Figma row 1:1 ─────────────────────────────────────
+                  display:        'flex',
+                  alignItems:     'center',
+                  justifyContent: 'space-between',
+                  padding:        '8px 0',           // ← Figma: py 8 (row h 34 = 18 + 8*2)
+                  // ── Figma: border-top + border-bottom #FAFBFF (인접 row 자연스러운 구분) ──
+                  borderTop:      i === 0 ? '1px solid #FAFBFF' : 'none',  // ← 첫 row만 top 보임
+                  borderBottom:   '1px solid #FAFBFF',
+                  cursor:         onDetail ? 'pointer' : 'default',
+                  transition:     'background 0.12s',
+                }}
+                onMouseEnter={e => { if (onDetail) (e.currentTarget as HTMLElement).style.background = '#FAFBFD' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
+                {/* ── 제목 (w 120) ── */}
+                <div style={{ display:'flex', alignItems:'center', flexShrink:0, width:120 }}>
+                  <p style={{
+                    fontFamily:"'Pretendard', -apple-system, sans-serif",
+                    fontWeight:400, fontSize:12, lineHeight:1.5, color:'#000', margin:0,
+                    whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+                  }}>{b.title || '—'}</p>
+                </div>
+                {/* ── 회의실 (w 120) ── */}
+                <div style={{ display:'flex', alignItems:'center', flexShrink:0, width:120 }}>
+                  <p style={{
+                    fontFamily:"'Pretendard', -apple-system, sans-serif",
+                    fontWeight:400, fontSize:10, lineHeight:1.5, color:'#000', margin:0,
+                    whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+                  }}>{roomName}</p>
+                </div>
+                {/* ── 예약자 (avatar 16 + name) ── */}
+                <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
+                  <UserAvatar
+                    name={ownerName}
+                    avatarUrl={ownerAvatar}
+                    size={16}
+                    fontSize={9}                       // ← Figma: 이니셜 9 (Regular)
+                    fontWeight={400}                   // ← Figma: Regular (이전 기본 500)
+                  />
+                  <span style={{
+                    fontFamily:"'Pretendard', -apple-system, sans-serif",
+                    fontWeight:400, fontSize:11, lineHeight:1.3, color:'#111',
+                    whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+                    maxWidth:60,
+                  }}>{ownerName}</span>
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── 위젯 ④ 예약 많은 회의실 (Figma node 551:3513) ──────────────────────────
+//   사용처: Row 2 Col 1 (542×504, 2-col grid)
+//   데이터: 자체 dateFrom/dateTo (default 30일) + useBookingsByRange + rooms prop
+//   동작: 9 회의실 모두 표시, count desc 정렬, count 0도 마지막에 표시 (Q2)
+//   ※ Figma 1:1: 9-row 점진적 height + 점진적 색상 그라데이션 (rank 시각화)
+
+// ─── ROOM_RANKING_STYLES — Figma 1:1 색상/높이 매핑 ──────────────────────
+//   rank 0 = 1위 (가장 어두운 #393939) → rank 8 = 9위 (가장 밝은 #F4F4F4)
+//   text color: rank 0-4 = white, rank 5-8 = #111 (어두운 텍스트)
+//   total list height = 52 + 46*3 + 29*5 + 8*2 (gap) = 351 (Figma 1:1)
+const ROOM_RANKING_STYLES: { h: number; bg: string; color: string }[] = [
+  { h: 52, bg: '#393939', color: '#fff'  },   // rank 0 (1위) — 가장 진함
+  { h: 46, bg: '#525252', color: '#fff'  },
+  { h: 46, bg: '#6F6F6F', color: '#fff'  },
+  { h: 46, bg: '#8D8D8D', color: '#fff'  },
+  { h: 29, bg: '#A8A8A8', color: '#fff'  },   // 마지막 white text
+  { h: 29, bg: '#C6C6C6', color: '#111'  },   // 5위부터 #111 텍스트
+  { h: 29, bg: '#E0E0E0', color: '#111'  },
+  { h: 29, bg: '#F4F4F4', color: '#111'  },
+  { h: 29, bg: '#F4F4F4', color: '#111'  },   // rank 8 (9위) — 가장 밝음
+]
+
+function RoomRankingCard({ rooms }: { rooms: Room[] }) {
+  // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
+  const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
+  const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
+
+  // ── 2. 자체 fetch (Phase 4 cache 재사용, 위젯 ②와 dedupe) ────────────
+  const { data: bookings, loading } = useBookingsByRange(dateFrom, dateTo)
+
+  // ── 3. 회의실별 카운트 + desc 정렬 (Q1: 모든 booking, Q2: 9개 모두) ──
+  const roomStats = useMemo(() => {
+    return [...rooms]
+      .map(r => ({
+        room:  r,
+        count: bookings.filter(b => b.room_id === r.room_id).length,  // Q1: 그 날짜 범위 모든 booking
+      }))
+      .sort((a, b) => b.count - a.count)                              // Q2: count desc, 0도 마지막에 표시
+  }, [bookings, rooms])
+
+  return (
+    <div style={{
+      // ── Figma outer 1:1 ─────────────────────────────────────
+      background:    '#fff',
+      borderRadius:  24,
+      padding:       '12px 16px 16px 16px',
+      display:       'flex',
+      flexDirection: 'column',
+      alignItems:    'flex-start',
+      justifyContent:'space-between',                // ← Figma: 헤더↔리스트 양 끝 분배 (no gap)
+      height:        504,
+      width:         '100%',
+    }}>
+      {/* ── 헤더 (gap 2) ────────────────────────────────────── */}
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2, width:'100%' }}>
+        <p style={{
+          fontFamily:"'Pretendard', -apple-system, sans-serif",
+          fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
+          whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+        }}>예약 많은 회의실</p>
+        {/* ── 날짜 범위 picker (SmallDateTrigger × 2 + ⎯) — Q3: 위젯 ②와 동일 ── */}
+        <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+          <SmallDateTrigger value={dateFrom} onChange={setDateFrom} max={dateTo} />
+          <span style={{
+            fontFamily:"'Pretendard', -apple-system, sans-serif",
+            fontWeight:400, fontSize:12, lineHeight:1.5, color:'#AEB5C4',
+          }}>⎯</span>
+          <SmallDateTrigger value={dateTo} onChange={setDateTo} min={dateFrom} max={todayStr()} />
+        </div>
+      </div>
+
+      {/* ── 리스트 (9 rows, gap 2, 점진적 height/색상) ────── */}
+      <div style={{
+        display:      'flex',
+        flexDirection:'column',
+        gap:          2,                              // ← Figma: gap 2 (row 사이)
+        width:        '100%',
+      }}>
+        {roomStats.length === 0 ? (
+          <div style={{ padding:'40px 0', textAlign:'center', fontSize:11, color:'#CBD5E1' }}>
+            {loading ? '로딩 중…' : '회의실 데이터 없음'}
+          </div>
+        ) : (
+          roomStats.slice(0, ROOM_RANKING_STYLES.length).map((s, i) => {
+            const style = ROOM_RANKING_STYLES[i]
+            return (
+              <div
+                key={s.room.room_id}
+                style={{
+                  // ── Figma row 1:1 ─────────────────────────────────────
+                  background:     style.bg,
+                  color:          style.color,
+                  height:         style.h,
+                  display:        'flex',
+                  alignItems:     'flex-start',          // ← Figma: items-start (텍스트 상단 정렬)
+                  justifyContent: 'space-between',
+                  padding:        '8px 12px',            // ← Figma: px 12 py 8
+                  borderRadius:   1,                     // ← Figma: radius 1 (거의 직각)
+                  // ── Figma 텍스트: Regular 10 / lh 1.25 / tracking 0.1 ──
+                  fontFamily:     "'Pretendard', -apple-system, sans-serif",
+                  fontWeight:     400,
+                  fontSize:       10,
+                  lineHeight:     1.25,
+                  letterSpacing:  '0.1px',
+                }}>
+                <span style={{
+                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                  flexShrink:1, minWidth:0, paddingRight:8,
+                }}>{s.room.room_name}</span>
+                <span style={{ flexShrink:0 }}>{s.count}</span>
+              </div>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+
 // ─── DashboardPlaceholderCard ───────────────────────────────────────────────
 //   목적: Phase 4~10 위젯 구현 전까지 외곽 레이아웃 유지 + 진척 표시
 //   교체 방식: 각 Phase에서 해당 카드만 진짜 위젯으로 교체
@@ -1235,22 +1484,19 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
         {/* ② 노쇼 현황 — Phase 4 구현 (Figma 490:704) ✓ */}
         <NoshowChartCard />
 
-        {/* ③ 최근 생성된 예약 — Phase 5 구현 예정 */}
-        <DashboardPlaceholderCard
-          height={268}
-          title="최근 생성된 예약"
-          dateRange={null}
-          phaseNote="Phase 5에서 구현 예정"
+        {/* ③ 최근 생성된 예약 — Phase 5 구현 (Figma 551:3458) ✓ */}
+        <RecentBookingsCard
+          bookings={bookings}
+          users={users}
+          rooms={rooms}
+          onDetail={onDetail}
         />
       </div>
 
       {/* ── Row 2: 위젯 ④ 예약 많은 회의실 / ⑤ 회의실 노쇼 현황 ── */}
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
-        <DashboardPlaceholderCard
-          height={504}
-          title="예약 많은 회의실"
-          phaseNote="Phase 6에서 구현 예정"
-        />
+        {/* ④ 예약 많은 회의실 — Phase 6 구현 (Figma 551:3513) ✓ */}
+        <RoomRankingCard rooms={rooms} />
         <DashboardPlaceholderCard
           height={504}
           title="회의실 노쇼 현황"
