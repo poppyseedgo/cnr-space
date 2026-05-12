@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Circle, X } from 'lucide-react'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
-import { todayStr, nowMinutes, tsDate, tsMin, fmtTimeFull, fmtTSFull, getRoomStatus } from '../../utils/time'
+import { todayStr, nowMinutes, tsDate, tsMin, fmtTimeFull, fmtTSFull, getRoomStatus, isCheckinable, CHECKIN_EARLY_MIN } from '../../utils/time'  // ← [2026-05-12] isCheckinable + CHECKIN_EARLY_MIN 추가 (체크인 대기/완료 칩 5분 전 표시)
 import { getFloor } from '../../data/floors'
 import { Button } from '../common/Button'
 import { RoomStatusBadge } from '../common/RoomStatusBadge'  // ← [신규] 공통 상태 뱃지 사용
@@ -312,12 +312,19 @@ export function RoomDetailModal({room:r, bookings, users = [], onClose, onBook, 
                             <div style={{display:"flex", alignItems:"center", gap:8 /* ← [피그마] 칩↔제목 gap 8 */, flex:1, minWidth:0}}>
                               {/* ← 상태칩 XS (tokens.css .chip--xs 피그마 반영분 자동 적용) */}
                               {isActive   && <span style={{width:7,height:7,borderRadius:"50%",background:"#E11D48",display:"inline-block",flexShrink:0}}/>}
-                              {/* ← [2026-05-12] 진행 중 + 체크인 상태 칩 추가
-                                    · 미체크인: "체크인 대기 중" (사용자 요청 — 시작 후 ~ 노쇼 전, Figma 556:6218)
-                                    · 체크인 완료: "체크인 완료"
-                                    · earlyEnded 케이스는 별도 chip-earlyend가 우선 */}
-                              {isActive && !b.checkedIn && <span className="chip chip--xs chip-checkin-wait" style={{flexShrink:0}}>체크인 대기 중</span>}
-                              {isActive && b.checkedIn && !b.earlyEnded && <span className="chip chip--xs chip-success" style={{flexShrink:0}}>체크인 완료</span>}
+                              {/* ← [2026-05-12 v2] "체크인 대기 중" 칩 표시 조건 변경
+                                    기존: isActive && !checkedIn — 시작 후~노쇼 전만 (5분 전 미표시 버그)
+                                    변경: isCheckinable(b)       — 시작 5분 전부터 시작 후 10분까지 미체크인 동안 표시
+                                    isCheckinable 내부 가드: status='confirmed' + !checkedIn + !autoCancelled + !earlyEnded
+                                    → 사용자 정책 일치 (Figma 556:6218 "체크인 대기 중") */}
+                              {isCheckinable(b) && <span className="chip chip--xs chip-checkin-wait" style={{flexShrink:0}}>체크인 대기 중</span>}
+                              {/* ← [2026-05-12 v3] "체크인 완료" 칩 표시 조건 변경
+                                    기존: isActive && checkedIn          — 진행 중만 (5분 전 체크인 시 표시 누락)
+                                    변경: checkedIn + !earlyEnded + 시작 5분 전 이후 + 종료 전
+                                          → 5분 전 미리 체크인한 사용자도 즉시 "체크인 완료" 칩으로 피드백
+                                          → "체크인 대기 중"과 자연스럽게 양방향 전환 (둘이 배타: !checkedIn vs checkedIn)
+                                    윈도우: [start - CHECKIN_EARLY_MIN, end) — 회의 종료 시까지 유지 후 isDone으로 전환 */}
+                              {b.checkedIn && !b.earlyEnded && bNow >= startMin - CHECKIN_EARLY_MIN && bNow < endMin && <span className="chip chip--xs chip-success" style={{flexShrink:0}}>체크인 완료</span>}
                               {isPending  && <span className="chip chip--xs chip-pending"  style={{flexShrink:0}}>승인대기</span>}
                               {isExpired  && <span className="chip chip--xs chip-expired"  style={{flexShrink:0}}>기한초과</span>}
                               {isNoshow   && <span className="chip chip--xs chip-noshow"   style={{flexShrink:0}}>노쇼</span>}
