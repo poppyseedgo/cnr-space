@@ -361,16 +361,19 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
               : "waiting";
 
             const S = {
-              // ← [2026-05-12] "체크인 대기" → "곧 시작" 라벨 통일 (waiting/soon 모두 동일 표기)
+              // ← [2026-05-12 Figma 556:6212~6225 사용자 요청] 라벨/색상 변경
+              //   · checkin 라벨: "체크인" → "체크인 하세요" (Figma 556:6225)
+              //   · earlyEnded 색상: #DBEAFE/#2563EB(파랑) → #EDE9FE/#7C3AED(보라)
+              //     → chip-earlyend(보라)와 통일, Figma 556:6231/6237 "반납됨" 카드와 일치
               waiting:    {label:"곧 시작",       btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:true},
               soon:       {label:"곧 시작",       btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:true},
               pending:    {label:"승인 대기",    btnBg:"#E6FFB0", btnColor:"#111",    disabled:true,  action:null,                showBtn:true},
-              checkin:    {label:"체크인",       btnBg:"#16A34A", btnColor:"#fff",    disabled:false, action:()=>onCheckIn(b.id), showBtn:true},
+              checkin:    {label:"체크인 하세요", btnBg:"#16A34A", btnColor:"#fff",    disabled:false, action:()=>onCheckIn(b.id), showBtn:true},  // ← [2026-05-12] 라벨 변경
               using:      {label:"조기반납",     btnBg:"#111111", btnColor:"#fff",    disabled:false, action:()=>onEarlyEnd(b.id),showBtn:true},
               noshow:        {label:null,           btnBg:"",        btnColor:"",        disabled:true,  action:null,                showBtn:false},
               pendingExpired:{label:null,           btnBg:"",        btnColor:"",        disabled:true,  action:null,                showBtn:false},
               done:       {label:"종료",         btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:true},
-              earlyEnded: {label:"반납됨",       btnBg:"#DBEAFE", btnColor:"#2563EB", disabled:true,  action:null,                showBtn:true},
+              earlyEnded: {label:"반납됨",       btnBg:"#EDE9FE", btnColor:"#7C3AED", disabled:true,  action:null,                showBtn:true},  // ← [2026-05-12] 칩과 색상 통일 (chip-earlyend)
               adminCancel:{label:"강제취소",      btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:false},
               rejected:   {label:"거절됨",       btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:false},
               cancelled:  {label:"취소됨",       btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:true},

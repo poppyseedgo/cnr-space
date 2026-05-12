@@ -3,6 +3,11 @@
    이 파일은 새 토큰 + 컴포넌트 클래스만 추가합니다.
 
    ✅ 변경 이력
+   - [2026-05-12 체크인 대기 칩 색상 변경 (Figma 556:6218 사용자 요청)]
+     · checkin-wait : #DBEAFE/#1D4ED8 → #FFFAB3/#111 (노랑 계열)
+       (사용자 정책 변경 — 체크인 활성 5분 전부터 표시되는 "체크인 대기 중" 칩.
+        파란색은 정보성으로 보였으나 액션 유도 강도 약함 → 노란색으로 attention 강화)
+     · 라벨도 별도 PR에서 "체크인 대기" → "체크인 대기 중"으로 변경 (Figma 일치)
    - [2026-04-18 스타일 정리] chip 색상 토큰 구분 확립
      · noshow       : #FEF3C7/#92400E → #FEE2E2/#B91C1C
        (기존 pending과 동일색 → 위반 의미 강조 위해 부드러운 빨강 계열로 분리)
@@ -47,7 +52,7 @@
   --color-earlyend-bg:    #EDE9FE;  --color-earlyend-text:  #7C3AED;
   --color-countdown-bg:   #EEF2FF;  --color-countdown-text: #6366F1;
   --color-neutral-bg:     #F1F5F9;  --color-neutral-text:   #64748B;
-  --color-checkin-wait-bg: #DBEAFE; --color-checkin-wait-text: #1D4ED8;  /* ← [변경] soon과 구분, 파란 계열 */
+  --color-checkin-wait-bg: #FFFAB3; --color-checkin-wait-text: #111;  /* ← [2026-05-12] Figma 556:6218 — 파랑(#DBEAFE/#1D4ED8) → 노랑(#FFFAB3/#111) */
   /* ← [피그마 212:328] 사용완료(done): 기존 연회색 #F1F5F9/#64748B → 검정 #000/흰색 #FFF */
   --color-done-bg:         #000;    --color-done-text:         #fff;
   --color-noshow-bg:       #FEE2E2; --color-noshow-text:       #B91C1C;  /* ← [변경] pending과 구분, 부드러운 빨강 */

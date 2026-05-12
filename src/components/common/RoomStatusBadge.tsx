@@ -52,7 +52,8 @@ export function RoomStatusBadge({ status, isAdminRoom = false }: RoomStatusBadge
             사용중
           </span>
           {checkinWaiting && (
-            <span className="chip chip-checkin-wait">체크인 대기</span>
+            // ← [2026-05-12] "체크인 대기" → "체크인 대기 중"
+            <span className="chip chip-checkin-wait">체크인 대기 중</span>
           )}
           {checkedIn && (
             <span className="chip chip-success">체크인 완료</span>

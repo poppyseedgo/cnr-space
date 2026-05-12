@@ -313,10 +313,10 @@ export function RoomDetailModal({room:r, bookings, users = [], onClose, onBook, 
                               {/* ← 상태칩 XS (tokens.css .chip--xs 피그마 반영분 자동 적용) */}
                               {isActive   && <span style={{width:7,height:7,borderRadius:"50%",background:"#E11D48",display:"inline-block",flexShrink:0}}/>}
                               {/* ← [2026-05-12] 진행 중 + 체크인 상태 칩 추가
-                                    · 미체크인: "체크인 대기" (사용자 요청 — 시작 후 ~ 노쇼 전)
+                                    · 미체크인: "체크인 대기 중" (사용자 요청 — 시작 후 ~ 노쇼 전, Figma 556:6218)
                                     · 체크인 완료: "체크인 완료"
                                     · earlyEnded 케이스는 별도 chip-earlyend가 우선 */}
-                              {isActive && !b.checkedIn && <span className="chip chip--xs chip-checkin-wait" style={{flexShrink:0}}>체크인 대기</span>}
+                              {isActive && !b.checkedIn && <span className="chip chip--xs chip-checkin-wait" style={{flexShrink:0}}>체크인 대기 중</span>}
                               {isActive && b.checkedIn && !b.earlyEnded && <span className="chip chip--xs chip-success" style={{flexShrink:0}}>체크인 완료</span>}
                               {isPending  && <span className="chip chip--xs chip-pending"  style={{flexShrink:0}}>승인대기</span>}
                               {isExpired  && <span className="chip chip--xs chip-expired"  style={{flexShrink:0}}>기한초과</span>}

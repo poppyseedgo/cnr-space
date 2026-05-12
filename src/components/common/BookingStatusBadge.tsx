@@ -6,6 +6,11 @@ import { isBooker, isAttendee } from '../../utils/bookingOwnership'  // ← [202
  * BookingStatusBadge — 예약 상태 뱃지 묶음
  *
  * ✅ 변경 이력
+ *  - [2026-05-12 Figma 556:6212~6225 사용자 요청] 체크인 라벨 + 칩 색상 일괄 변경
+ *    · "체크인 대기" → "체크인 대기 중" (라벨 텍스트만)
+ *    · chip-checkin-wait 색상은 tokens.css에서 #FFFAB3/#111로 변경 (별도 PR)
+ *    · 본 파일은 텍스트만 변경, CSS 클래스 그대로
+ *
  *  - [2026-05-12 체크인 상태 칩 우선순위 상향]
  *    · chipList push 순서: ⑧ 체크인 대기/완료 / ⑨ 진행 중 (기존 역순)
  *    · 배경: maxChips=1 환경(HomeView 소형 카드 등)에서 "진행 중" 칩이 체크인 상태를 가림
@@ -369,7 +374,7 @@ export function BookingStatusBadge({
   //   변경: 체크인 상태를 먼저 push → maxChips=1이어도 "체크인 대기"/"체크인 완료"가 우선 표시.
   //   영향: maxChips 미지정 화면(DetailModal 등)은 표시 순서만 바뀜, 모든 칩 그대로 다 보임.
   if (show('checkin-wait') && nci)
-    chipList.push(<C key="checkin-wait" cls="chip-checkin-wait">체크인 대기</C>)
+    chipList.push(<C key="checkin-wait" cls="chip-checkin-wait">체크인 대기 중</C>)
   if (show('checkin-done') && b.checkedIn && isAct)
     chipList.push(<C key="checkin-done" cls="chip-success">체크인 완료</C>)
   // ⑨ 진행 중 (room color 동적 적용) ← [2026-05-12] ⑧ → ⑨로 우선순위 하향

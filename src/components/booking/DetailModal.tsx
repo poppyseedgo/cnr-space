@@ -1,5 +1,5 @@
 import { useBreakpoint } from '../../hooks/useBreakpoint'
-import { AlertTriangle, CheckCircle2, Clock, ShieldCheck, ShieldX } from 'lucide-react'
+import { AlertTriangle, Clock, ShieldCheck, ShieldX } from 'lucide-react'  // ← [2026-05-12] CheckCircle2 제거 (BtnCheckin 아이콘 제거됨)
 import { useState } from 'react'
 import { todayStr, nowMinutes, tsDate, tsMin, fmtTSFull, fmtTSDateFull, CHECKIN_WINDOW_MIN, CHECKIN_EARLY_MIN, isCheckinable } from '../../utils/time'
 import { getFloor } from '../../data/floors'
@@ -366,7 +366,8 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
         const BtnClose    = () => <Button variant="ghost"         flex onClick={onClose}>닫기</Button>
         const BtnCancel   = () => <Button variant="danger-outline" flex onClick={()=>onCancel(b.id)}>예약 취소</Button>
         const BtnEdit     = () => <Button variant="info-outline"   flex onClick={()=>{onClose();onEdit(b);}}>예약 변경</Button>
-        const BtnCheckin  = () => <Button variant="success"        flex onClick={()=>{onCheckIn(b.id);onClose();}} icon={<CheckCircle2 size={14} strokeWidth={1.8}/>}>체크인하기</Button>
+        // ← [2026-05-12 Figma 556:6224~6225] "체크인하기" + 아이콘 → "체크인 하세요" (텍스트만, 아이콘 제거)
+        const BtnCheckin  = () => <Button variant="success"        flex onClick={()=>{onCheckIn(b.id);onClose();}}>체크인 하세요</Button>
         // ← [2026-05-12] 라벨 "체크인 대기" → "곧 시작" (10~5분 전 카운트다운 안내)
         //   정책 변경: 체크인은 시작 5분 전부터 가능 → 10~5분 전 사이는 "곧 시작" 비활성 안내
         //   UX: disabled로 시각 안내만 제공 (Button.disabled → opacity 0.45 + cursor 'not-allowed')
