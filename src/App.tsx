@@ -319,15 +319,21 @@ function AppContent() {
     return 56;                                          // 슬림 헤더 (모바일/데스크톱 동일)
   });
   // URL 해시에서 초기 view 복원 (#home, #calendar, #mypage, #admin)
+  // ← [2026-05-12] booking-{id} deeplink → home 폴백
+  //   배경: 이전에는 booking-/admin-booking- 딥링크 시 mypage/admin으로 강제 이동
+  //         → 사용자가 어떤 페이지든 메일 클릭하면 DetailModal만 보고 싶은데 mypage로 끌려감
+  //   변경: booking- deeplink는 home으로 폴백 (앱 첫 진입 시) + DetailModal은 별도 useEffect가 오픈
+  //         admin-booking-는 그대로 admin 폴백 유지 (관리자 워크플로 의도 보존)
+  //   페이지 컨텍스트 유지: 이미 앱에 있던 사용자는 별도 useEffect에서 view 변경 안 함
   const getViewFromHash = (): string => {
     const hash = window.location.hash.replace('#', '')
     if (hash.startsWith('admin-tab-')) return 'admin'
     if (hash.startsWith('admin-booking-')) return 'admin'
-    if (hash.startsWith('booking-')) return 'mypage'
+    if (hash.startsWith('booking-')) return 'home'  // ← [2026-05-12] mypage → home (앱 첫 진입 폴백)
     // OAuth 리다이렉트 후 해시가 소실된 경우 sessionStorage에서 복원
     const saved = sessionStorage.getItem('cnr_deeplink')
     if (saved?.startsWith('admin-booking-')) return 'admin'
-    if (saved?.startsWith('booking-')) return 'mypage'
+    if (saved?.startsWith('booking-')) return 'home'  // ← [2026-05-12] mypage → home
     return ['home','calendar','mypage','admin'].includes(hash) ? hash : 'home'
   }
   const [view, setViewState] = useState<string>(getViewFromHash);
@@ -514,13 +520,22 @@ function AppContent() {
     }
   }, [])
 
-  // ── [P2 v7] booking-{id} 딥링크 → DetailModal 자동 오픈 ──────────────────
+  // ── [P2 v7 / 2026-05-12 페이지 컨텍스트 보존] booking-{id} 딥링크 → DetailModal 자동 오픈 ──
   //
   // 이메일 CTA 공통 규칙: "해당 예약에 대한 액션" 버튼은 해당 예약 모달 직접 연결
   //   · 딥링크 스킴: {APP_URL}#booking-{BOOKING_ID}
-  //   · 감지 조건: bookings 로드 완료 + 예약 찾음 + 현재 모달 열려있지 않음
-  //   · 동작: mypage 탭 + DetailModal(해당 예약) 자동 오픈
-  //   · 1회성: 모달 열린 후 sessionStorage 플래그 정리 + 해시 제거
+  //   · 감지 조건: bookings 로드 완료 + 예약 찾음 + 동일 예약 모달이 이미 열려있지 않음
+  //   · 동작: 현재 view 그대로 유지 + DetailModal(해당 예약) 자동 오픈
+  //   · 1회성: 모달 열린 후 sessionStorage 플래그 정리 + 해시만 제거 (view 변경 X)
+  //
+  // ← [2026-05-12] 페이지 강제 이동 제거
+  //   기존: hash가 'booking-'으로 시작 시 window.location.hash = 'mypage' → setView('mypage') 트리거
+  //   변경: history.replaceState로 hash만 제거 → 현재 view(home/calendar/admin/mypage) 그대로 유지
+  //   의도: 사용자가 home에서 메일 클릭 후 같은 탭에 돌아오면 home 컨텍스트에서 DetailModal만 오픈
+  //
+  // ← [2026-05-12] hashchange 이벤트 + modal 의존성 추가
+  //   기존: bookings.length 변동 시에만 실행 → 이미 앱이 열린 상태에서 메일 다시 클릭 시 안 열림
+  //   변경: hashchange 리스너 + modal?.data?.id 의존성 → 다른 예약 메일 연속 클릭도 대응
   //
   // 대상 이벤트: created, updated, approved, checkin_*, early_end 등
   // 참고: admin-booking-{id}는 AdminView에서 별도 처리 (본 로직은 일반 사용자용)
@@ -528,32 +543,58 @@ function AppContent() {
     if (!authUser || loading) return
     if (bookings.length === 0) return
 
-    // 해시 또는 sessionStorage에서 딥링크 확인
-    const hash       = window.location.hash.replace('#', '')
-    const savedHash  = sessionStorage.getItem('cnr_deeplink') ?? ''
-    const deeplink   = hash.startsWith('booking-') ? hash :
-                       savedHash.startsWith('booking-') ? savedHash : ''
+    const tryOpenDeeplink = () => {
+      const hash       = window.location.hash.replace('#', '')
+      const savedHash  = sessionStorage.getItem('cnr_deeplink') ?? ''
+      const deeplink   = hash.startsWith('booking-') ? hash :
+                         savedHash.startsWith('booking-') ? savedHash : ''
 
-    if (!deeplink) return
+      if (!deeplink) return
 
-    const bookingId  = deeplink.replace('booking-', '')
-    if (!bookingId) return
+      const bookingId  = deeplink.replace('booking-', '')
+      if (!bookingId) return
 
-    const target = bookings.find(b => b.id === bookingId)
-    if (!target) {
-      // 예약이 없음 (삭제됨/권한 없음) — 조용히 딥링크 정리
-      console.warn('[deeplink] 예약을 찾을 수 없음:', bookingId)
+      const target = bookings.find(b => b.id === bookingId)
+      if (!target) {
+        // 예약이 없음 (삭제됨/권한 없음) — 조용히 딥링크 정리
+        console.warn('[deeplink] 예약을 찾을 수 없음:', bookingId)
+        sessionStorage.removeItem('cnr_deeplink')
+        if (hash.startsWith('booking-')) {
+          // ← [2026-05-12] view 변경 없이 hash만 제거 (현재 페이지 컨텍스트 유지)
+          window.history.replaceState(null, '', window.location.pathname + window.location.search)
+        }
+        return
+      }
+
+      // ← [2026-05-12] 이미 같은 예약 모달이 열려있으면 재오픈하지 않음 (불필요한 리렌더 방지)
+      if (modal?.type === 'detail' && (modal.data as any)?.id === bookingId) {
+        sessionStorage.removeItem('cnr_deeplink')
+        if (hash.startsWith('booking-')) {
+          window.history.replaceState(null, '', window.location.pathname + window.location.search)
+        }
+        return
+      }
+
+      // 모달 오픈 + 딥링크 정리
+      setModal({ type: 'detail', data: target })
       sessionStorage.removeItem('cnr_deeplink')
-      if (hash.startsWith('booking-')) window.location.hash = 'mypage'
-      return
+      // ← [2026-05-12] view 변경 없이 hash만 제거 (현재 페이지 컨텍스트 유지)
+      //   기존: window.location.hash = 'mypage' → 강제 mypage 이동
+      //   변경: history.replaceState → URL 정리만, 현재 view 보존
+      if (hash.startsWith('booking-')) {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search)
+      }
     }
 
-    // 모달 오픈 + 딥링크 정리 (이후 새로고침에선 재오픈 안 됨)
-    setModal({ type: 'detail', data: target })
-    sessionStorage.removeItem('cnr_deeplink')
-    // hash는 mypage로 대체 (다음 뒤로가기 시 모달 닫힘 자연스럽게)
-    if (hash.startsWith('booking-')) window.location.hash = 'mypage'
-  }, [authUser?.user_id, loading, bookings.length])
+    // ① 마운트/의존성 변경 시 1회 실행
+    tryOpenDeeplink()
+
+    // ② hashchange 리스너: 이미 앱에 있는 상태에서 메일 클릭 시 같은 탭에 hash 갱신만 발생하는 케이스 대응
+    //    (브라우저가 같은 탭으로 포커스 이동 + hash 변경만 일어남, 페이지 리로드 X)
+    const onHashChange = () => tryOpenDeeplink()
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [authUser?.user_id, loading, bookings.length, modal?.data?.id])
 
   // 틱 타이머 + Realtime + 이벤트 리스너 + 탭 복귀 새로고침 (마운트 1회)
   useEffect(() => {
