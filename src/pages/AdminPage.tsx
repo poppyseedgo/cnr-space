@@ -1802,14 +1802,15 @@ function BookingTrendsBarCard() {
 //   ※ Figma 1:1: padding p16 균등 + flex-col gap 24 (위젯 ②④⑤⑥과 다름)
 //   ※ hover/click 시 그 column #343333 진해짐 + label (위젯 ②⑤⑥ 패턴 일관)
 
-// ─── DEPT_RANK_COLORS — Rank별 점진적 옅음 (Figma 1:1) ────────────────────
+// ─── DEPT_RANK_COLORS — Rank별 점진적 옅음 (Top 7 대응, 7단계 그라데이션) ──
 //   rank 0 (1위): #777 (가장 진함)
-//   rank 1 (2위): #949494
-//   rank 2 (3위): #B0B0B0 (Figma의 #343333은 활성 mockup, 평소는 추정)
-//   rank 3 (4위): #CFCFCF
-//   rank 4 (5위): #DCDCDC
-//   rank 5+ (6위~): #DFDFDF (모두 동일)
-const DEPT_RANK_COLORS = ['#777', '#949494', '#B0B0B0', '#CFCFCF', '#DCDCDC', '#DFDFDF']
+//   rank 1 (2위): #8B8B8B
+//   rank 2 (3위): #A0A0A0
+//   rank 3 (4위): #B5B5B5
+//   rank 4 (5위): #C8C8C8
+//   rank 5 (6위): #D6D6D6
+//   rank 6+ (7위~): #E2E2E2 (가장 옅음)
+const DEPT_RANK_COLORS = ['#777', '#8B8B8B', '#A0A0A0', '#B5B5B5', '#C8C8C8', '#D6D6D6', '#E2E2E2']
 const DEPT_RANK_ACTIVE_COLOR = '#343333'    // ← hover/click 시 (Figma mockup의 활성 색)
 
 function DepartmentBookingsCard() {
@@ -1835,20 +1836,21 @@ function DepartmentBookingsCard() {
       .sort((a, b) => b.count - a.count)                // Q6: count desc
   }, [bookings])
 
-  // ── 4. 총 카운트 (Q6: bar width = count / totalCount × 100%) ──────────
-  const totalCount = useMemo(
-    () => deptStats.reduce((s, d) => s + d.count, 0),
-    [deptStats]
-  )
+  // ── 4. Top 7 부서 (사용자 정정 2026-05-12: list와 chart 모두 Top 7) ───
+  const top7 = useMemo(() => deptStats.slice(0, 7), [deptStats])
 
-  // ── 5. Top 5 부서 list (Q2: 항상 5, 부족 시 placeholder) ──────────────
-  const top5 = useMemo(() => deptStats.slice(0, 5), [deptStats])
+  // ── 5. 총 카운트 (Q6: bar width = count / totalCount × 100%) ──────────
+  //   ← Top 7 합 기준 → chart가 가득 차오름 (Top 8+ 부서 제외)
+  const totalCount = useMemo(
+    () => top7.reduce((s, d) => s + d.count, 0),
+    [top7]
+  )
 
   // ── 6. 인터랙티브 hover/click state (Q5: 위젯 ②⑤⑥ v3 패턴 일관) ────
   const [activeDept, setActiveDept] = useState<string | null>(null)
   const activeStats  = useMemo(
-    () => deptStats.find(d => d.dept === activeDept) ?? null,
-    [activeDept, deptStats]
+    () => top7.find(d => d.dept === activeDept) ?? null,    // ← Top 7 안에서만
+    [activeDept, top7]
   )
 
   // ── 활성 column label 내용 ("{부서명} {N}건") ─────────────────────────
@@ -1888,9 +1890,9 @@ function DepartmentBookingsCard() {
         </div>
       </div>
 
-      {/* ── 부서 list (상단, Top 5 - 위젯 ⑤ 패턴 일관) ──── */}
+      {/* ── 부서 list (상단, Top 7 - 사용자 정정 2026-05-12) ──────────── */}
       <div style={{ display:'flex', flexDirection:'column', width:'100%' }}>
-        {top5.map((s, i) => {
+        {top7.map((s, i) => {
           const dotColor = DEPT_RANK_COLORS[Math.min(i, DEPT_RANK_COLORS.length - 1)]
           return (
             <div key={s.dept} style={{
@@ -1925,8 +1927,8 @@ function DepartmentBookingsCard() {
             </div>
           )
         })}
-        {/* ── Q2: deptStats.length < 5인 경우 placeholder row로 5개 채움 ── */}
-        {Array.from({ length: Math.max(0, 5 - top5.length) }).map((_, i) => (
+        {/* ── deptStats.length < 7인 경우 placeholder row로 7개 채움 ── */}
+        {Array.from({ length: Math.max(0, 7 - top7.length) }).map((_, i) => (
           <div key={`empty-${i}`} style={{
             display:'flex', alignItems:'center', justifyContent:'space-between',
             padding:'8px 0',
@@ -1942,87 +1944,96 @@ function DepartmentBookingsCard() {
         ))}
       </div>
 
-      {/* ── 가로 비율 bar 차트 (하단, 모든 부서 - h 212, gap 1, radius 16) ── */}
+      {/* ── 가로 비율 bar 차트 (하단, Top 7만 표시) ─────────────────────
+            ※ wrapper(외부) + container(내부 overflow:hidden) 구조로 분리
+              · 사유: label은 container 위쪽(top: -25)에 표시되어야 하는데
+                      Figma의 radius 16 + overflow:hidden 때문에 label이 잘림
+              · 해결: wrapper(position:relative)에 label 위치, container만 overflow hidden */}
       <div
         onMouseLeave={() => setActiveDept(null)}
         style={{
-          display:    'flex',
-          alignItems: 'stretch',
-          gap:        1,                                  // ← Figma: gap 1px
-          height:     212,                                 // ← Figma: h 212
-          width:      '100%',
-          borderRadius:16,
-          overflow:   'hidden',                            // ← Figma: radius 16 + overflow-clip
-          position:   'relative',
+          position: 'relative',                          // ← label absolute 기준점
+          width:    '100%',
         }}>
-        {deptStats.length === 0 || totalCount === 0 ? (
-          <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#CBD5E1', background:'#F8F9FB' }}>
-            {loading ? '로딩 중…' : '예약 데이터 없음'}
-          </div>
-        ) : (
-          deptStats.map((s, i) => {
-            const isActive = s.dept === activeDept
-            // Q6: width = count / totalCount × 100%
-            const widthPct = (s.count / totalCount) * 100
-            // Q4: rank별 색상, 활성 시 #343333
-            const bgColor = isActive
-              ? DEPT_RANK_ACTIVE_COLOR
-              : DEPT_RANK_COLORS[Math.min(i, DEPT_RANK_COLORS.length - 1)]
-            // 부서명 표시 여부: rank 0-4까지만 부서명 표시, rank 5+는 transparent (Figma 1:1)
-            const showDeptName = i < 5
-            return (
-              <div
-                key={s.dept}
-                onMouseEnter={() => setActiveDept(s.dept)}
-                onClick={() => setActiveDept(prev => prev === s.dept ? null : s.dept)}
-                style={{
-                  // ── Figma column 1:1 ──
-                  width:         `${widthPct}%`,
-                  minWidth:      0,
-                  background:    bgColor,
-                  display:       'flex',
-                  flexDirection: 'column',
-                  alignItems:    'flex-start',
-                  justifyContent:'space-between',           // ← count 위 / 부서명 아래
-                  padding:       8,
-                  cursor:        'pointer',
-                  transition:    'background 0.15s ease',
-                  overflow:      'hidden',
-                  position:      'relative',
-                }}>
-                {/* ── count (상단) ── */}
-                <span style={{
-                  fontFamily:"'Pretendard', -apple-system, sans-serif",
-                  fontWeight:400, fontSize:10, lineHeight:1.3, color:'#fff',
-                  whiteSpace:'nowrap',
-                }}>{s.count}</span>
-                {/* ── 부서명 (하단, rank 5+ transparent) ── */}
-                <span style={{
-                  fontFamily:"'Pretendard', -apple-system, sans-serif",
-                  fontWeight:400, fontSize:10, lineHeight:1.5,
-                  color: showDeptName ? '#fff' : 'transparent',
-                  whiteSpace:'nowrap',
-                  overflow:'hidden', textOverflow:'ellipsis',
-                  maxWidth:'100%',
-                }}>{s.dept}</span>
-              </div>
-            )
-          })
-        )}
-        {/* ── 활성 column label (위쪽 - 위젯 ②⑤⑥ 패턴 일관) ── */}
+        {/* ── Chart container (overflow hidden + radius 16) ── */}
+        <div style={{
+          display:     'flex',
+          alignItems:  'stretch',
+          gap:         1,                                // ← Figma: gap 1px
+          height:      212,                              // ← Figma: h 212
+          width:       '100%',
+          borderRadius:16,
+          overflow:    'hidden',                          // ← Figma: radius 16 + overflow-clip
+        }}>
+          {top7.length === 0 || totalCount === 0 ? (
+            <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#CBD5E1', background:'#F8F9FB' }}>
+              {loading ? '로딩 중…' : '예약 데이터 없음'}
+            </div>
+          ) : (
+            top7.map((s, i) => {
+              const isActive = s.dept === activeDept
+              // Q6: width = count / totalCount × 100% (Top 7 합 기준 → 100% 차오름)
+              const widthPct = (s.count / totalCount) * 100
+              // Q4: rank별 색상, 활성 시 #343333
+              const bgColor = isActive
+                ? DEPT_RANK_ACTIVE_COLOR
+                : DEPT_RANK_COLORS[Math.min(i, DEPT_RANK_COLORS.length - 1)]
+              return (
+                <div
+                  key={s.dept}
+                  onMouseEnter={() => setActiveDept(s.dept)}
+                  onClick={() => setActiveDept(prev => prev === s.dept ? null : s.dept)}
+                  style={{
+                    width:         `${widthPct}%`,
+                    minWidth:      0,
+                    background:    bgColor,
+                    display:       'flex',
+                    flexDirection: 'column',
+                    alignItems:    'flex-start',
+                    justifyContent:'space-between',         // ← count 위 / 부서명 아래
+                    padding:       8,
+                    cursor:        'pointer',
+                    transition:    'background 0.15s ease',
+                    overflow:      'hidden',                 // ← column 내부 ellipsis용 (label은 wrapper에서 처리)
+                    position:      'relative',
+                  }}>
+                  {/* ── count (상단) ── */}
+                  <span style={{
+                    fontFamily:"'Pretendard', -apple-system, sans-serif",
+                    fontWeight:400, fontSize:10, lineHeight:1.3, color:'#fff',
+                    whiteSpace:'nowrap',
+                  }}>{s.count}</span>
+                  {/* ── 부서명 (하단, Top 7 모두 표시 - 사용자 정정) ── */}
+                  <span style={{
+                    fontFamily:"'Pretendard', -apple-system, sans-serif",
+                    fontWeight:400, fontSize:10, lineHeight:1.5,
+                    color:       '#fff',                    // ← 모두 표시 (좁은 column은 ellipsis로 자동 자름)
+                    whiteSpace:  'nowrap',
+                    overflow:    'hidden',
+                    textOverflow:'ellipsis',
+                    maxWidth:    '100%',
+                  }}>{s.dept}</span>
+                </div>
+              )
+            })
+          )}
+        </div>
+        {/* ── 활성 column label (chart container 외부 - overflow:hidden 영향 안 받음) ──
+              · 위치: chart 위쪽 외부 (top: -25)
+              · 형식: "{부서명} {N}건" (위젯 ②⑤⑥ 패턴 일관) */}
         {activeStats && activeLabel && totalCount > 0 && (() => {
-          // 활성 column 중앙 위치 계산 (누적 width)
+          // 활성 column 중앙 위치 계산 (Top 7 누적 width)
           let leftPct = 0
-          for (const s of deptStats) {
+          for (const s of top7) {
             if (s.dept === activeStats.dept) break
             leftPct += (s.count / totalCount) * 100
           }
-          const widthPct  = (activeStats.count / totalCount) * 100
-          const centerPct = leftPct + widthPct / 2
+          const activeWidthPct = (activeStats.count / totalCount) * 100
+          const centerPct      = leftPct + activeWidthPct / 2
           return (
             <div style={{
               position:    'absolute',
-              top:         -25,                              // ← bar 위쪽 외부 (label 표시)
+              top:         -25,                              // ← chart 위쪽 외부 (wrapper 기준)
               left:        `${centerPct}%`,
               transform:   'translateX(-50%)',
               // ── Figma StatusBadge-XS (위젯 ②⑤⑥와 동일) ──
