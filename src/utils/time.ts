@@ -199,6 +199,14 @@ export function getAvailableRooms(allRooms, bookings, date, startTime, endTime, 
 
 // ─── 체크인 가능 여부 (SSOT) ─────────────────────────────────────────────
 // ← [2026-05-12] 체크인 활성 시점 변경에 따라 신설
+// ← [2026-05-12 hotfix v2] 분 단위(nowMinutes/tsMin) → ms 단위 비교로 교체
+//   배경: 사용자 보고 — 메일 링크로 5분 전 클릭 시 모바일에서 체크인 버튼 비활성
+//   근본 원인: 분 단위 정수 비교(Math.floor)가 메일 cron ±30초 발송 윈도우와 어긋남
+//     · 메일 cron 발송 시점: start_at - 5분 ± 30초 (즉 sm-5'30" ~ sm-4'30")
+//     · 사용자가 sm-5'30" 즈음 즉시 클릭 → nowMinutes()는 sm-6분으로 반올림
+//     · `now >= sm - 5` 분 단위 비교: sm-6 >= sm-5 → false → 비활성
+//   해결: Date.now() ms 단위 비교 → 발송/활성 시점이 ms 정밀도로 정렬
+//   영향: isAct/nci/tl 등 다른 곳은 분 단위 그대로 유지 (의미 보존)
 //
 // 정책: 체크인 활성 윈도우 = [start_at - CHECKIN_EARLY_MIN, start_at + CHECKIN_WINDOW_MIN)
 //       즉, 시작 5분 전부터 시작 후 10분까지 총 15분간 활성
@@ -212,8 +220,8 @@ export function getAvailableRooms(allRooms, bookings, date, startTime, endTime, 
 //     isNoshow(noshow.ts) SSOT 패턴과 동일하게 단일 함수로 통일.
 //
 // 가드:
-//   ① isToday — 다른 날 예약은 항상 false
-//   ② now ∈ [sm - 5, sm + 10) — 시간 윈도우
+//   ① b.start_at 존재 — 누락 시 false (방어)
+//   ② nowMs ∈ [startMs - 5분, startMs + 10분) — ms 단위 시간 윈도우
 //   ③ status === 'confirmed' — pending/cancelled/rejected 차단
 //   ④ !checkedIn — 이미 체크인한 건 false (체크인 → 다른 라벨로 전환)
 //   ⑤ !autoCancelled — 노쇼/만료 차단
@@ -222,12 +230,12 @@ export function getAvailableRooms(allRooms, bookings, date, startTime, endTime, 
 // 주의: isAct(회의 진행중)과 다른 개념. isAct는 [sm, em] 진행 시간대.
 //       isCheckinable은 체크인 가능 시간대 (시작 전 5분 포함).
 export function isCheckinable(b: Booking): boolean {
-  const isToday = tsDate(b.start_at) === todayStr()
-  if (!isToday) return false
-  const now = nowMinutes()
-  const sm  = tsMin(b.start_at)
-  return now >= sm - CHECKIN_EARLY_MIN
-      && now <  sm + CHECKIN_WINDOW_MIN
+  if (!b.start_at) return false
+  const nowMs   = Date.now()
+  const startMs = new Date(b.start_at).getTime()
+  if (Number.isNaN(startMs)) return false   // 불완전한 booking 객체 방어
+  return nowMs >= startMs - CHECKIN_EARLY_MIN  * 60_000
+      && nowMs <  startMs + CHECKIN_WINDOW_MIN * 60_000
       && b.status === 'confirmed'
       && !b.checkedIn
       && !b.autoCancelled
