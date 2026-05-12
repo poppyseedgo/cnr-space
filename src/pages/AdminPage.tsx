@@ -1664,6 +1664,19 @@ function catmullRomPath(points: { x: number; y: number }[]): string {
   return path
 }
 
+// ─── linearPath — 직선 polyline SVG path (각진 mountain chart) ────────────
+//   · 데이터 포인트를 직선으로 연결 (sharp peak, Catmull-Rom 곡선보다 각짐)
+//   · 사용자 정정 2026-05-12: 곡선 → 직선 (각진 시각 효과)
+//   · catmullRomPath와 동일한 input/output 시그니처 (drop-in 교체 가능)
+function linearPath(points: { x: number; y: number }[]): string {
+  if (points.length === 0) return ''
+  let path = `M ${points[0].x.toFixed(2)},${points[0].y.toFixed(2)}`
+  for (let i = 1; i < points.length; i++) {
+    path += ` L ${points[i].x.toFixed(2)},${points[i].y.toFixed(2)}`
+  }
+  return path
+}
+
 // ─── BOOKING_TRENDS — Figma 1:1 차트 viewBox 사양 ───────────────────────
 const TREND_VIEWBOX_W = 496       // ← Figma: 차트 영역 width
 const TREND_VIEWBOX_H = 414       // ← Figma: 차트 영역 height
@@ -1728,6 +1741,9 @@ function BookingTrendsAreaCard() {
   }, [dayStats, maxCount])
 
   // ── 7. Catmull-Rom path 생성 (line + area) ───────────────────────────
+  // ── 7. 곡선 path 생성 (사용자 정정 2026-05-12: 직선 → 곡선 복귀) ────
+  //   · Catmull-Rom 스플라인: 자연스러운 부드러운 곡선
+  //   · linearPath (직선) 보존 — 필요 시 1줄 교체로 직선 복귀 가능
   const linePath = useMemo(() => catmullRomPath(points), [points])
   const areaPath = useMemo(() => {
     if (points.length === 0) return ''
@@ -1762,19 +1778,30 @@ function BookingTrendsAreaCard() {
 
   return (
     <div style={{
-      // ── Figma outer 1:1 (위젯 ⑥ 옛과 동일 padding/layout) ──
+      // ── Figma outer (v4: padding 제거, 헤더만 padding 적용 - full bleed chart) ──
+      //   · 이전 v1: 카드 전체 padding → 차트도 padding 안에 갇혀 카드 가장자리까지 못 감
+      //   · 이전 v2: negative margin trick → flex 컨테이너에서 brittle (cache 문제)
+      //   · v4: 카드 padding 0 + 헤더에만 padding 적용 → 차트 영역 자연스럽게 full bleed
       background:    '#fff',
       borderRadius:  24,
-      padding:       '12px 16px 16px 16px',           // ← Figma: pt12 px16 pb16
+      padding:       0,                                  // ← 카드 outer padding 제거 (v4)
       display:       'flex',
       flexDirection: 'column',
-      justifyContent:'space-between',                  // ← Figma: 헤더(상) + 차트(하)
       height:        504,
       width:         '100%',
-      overflow:      'hidden',
+      overflow:      'hidden',                            // ← borderRadius 24 둥근 모서리 자동 clip
     }}>
-      {/* ── 헤더 (gap 2, 타이틀 + 날짜 picker - 위젯 ⑥ 옛과 동일) ── */}
-      <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2, width:'100%' }}>
+      {/* ── 헤더 (padding 자체 보유, 카드 outer는 padding 0) ── */}
+      <div style={{
+        display:       'flex',
+        flexDirection: 'column',
+        alignItems:    'flex-start',
+        gap:           2,
+        width:         '100%',
+        padding:       '12px 16px 0 16px',               // ← Figma pt12 px16 (헤더만 padding, 아래는 0)
+        boxSizing:     'border-box',
+        flexShrink:    0,                                 // ← 헤더는 줄어들지 않음
+      }}>
         <p style={{
           fontFamily:"'Pretendard', -apple-system, sans-serif",
           fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
@@ -1790,20 +1817,17 @@ function BookingTrendsAreaCard() {
         </div>
       </div>
 
-      {/* ── 차트 영역 (카드 padding 상쇄 → 카드 가장자리까지 가득 채움) ───
-            · width: calc(100% + 32px) + marginLeft/Right -16: 카드 좌우 padding 상쇄
-            · marginBottom: -16: 카드 하단 padding 상쇄 → 차트 영역 fill까지 가득
-            · marginTop: 16: 헤더와 차트 사이 여백 유지
-            · 카드 outer `borderRadius: 24` + `overflow: hidden`로 둥근 모서리 자동 clip */}
+      {/* ── 차트 영역 (full bleed - 카드 가장자리까지 자연스럽게 가득) ───────
+            · v4: negative margin trick 폐기, 자연스러운 full bleed
+            · width 100% + marginTop 16 (헤더와 여백)
+            · flex:1 + minHeight:0 → 헤더 제외 남은 공간 자동 채움
+            · 카드 outer overflow:hidden + borderRadius:24로 둥근 모서리 자동 clip */}
       <div style={{
-        position:    'relative',
-        width:       'calc(100% + 32px)',                // ← 카드 padding 좌우 16+16 상쇄
-        marginLeft:  -16,                                 // ← 카드 좌측 padding 상쇄
-        marginRight: -16,                                 // ← 카드 우측 padding 상쇄
-        marginBottom:-16,                                 // ← 카드 하단 padding 상쇄
-        marginTop:   16,                                  // ← 헤더와 차트 사이 여백
-        flex:        1,                                    // ← 위젯 ⑦ v4 패턴: 남은 공간 자동
-        minHeight:   0,
+        position: 'relative',
+        width:    '100%',
+        marginTop:16,                                     // ← 헤더와 차트 사이 여백
+        flex:     1,                                       // ← 위젯 ⑦ v4 패턴: 남은 공간 자동 채움
+        minHeight:0,
       }}>
         {dayStats.length === 0 ? (
           <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#CBD5E1' }}>
@@ -1830,14 +1854,14 @@ function BookingTrendsAreaCard() {
               {areaPath && (
                 <path d={areaPath} fill="url(#trend-area-fill)" />
               )}
-              {/* ── Q3: 외곽선 (line stroke - 영역과 자연스럽게 융합) ── */}
+              {/* ── Q3: 외곽선 (line stroke - 곡선과 조화로운 round 모서리) ── */}
               {linePath && (
                 <path
                   d={linePath}
                   fill="none"
                   stroke="#888"
                   strokeWidth="1"
-                  strokeLinejoin="round"                  // ← peak 모서리 부드럽게
+                  strokeLinejoin="round"                   // ← 부드러운 모서리 (곡선과 조화)
                   strokeLinecap="round"                    // ← 양 끝 부드럽게
                   vectorEffect="non-scaling-stroke"        // ← preserveAspectRatio="none"에도 stroke 균일 유지
                 />
