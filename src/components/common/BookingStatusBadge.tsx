@@ -6,6 +6,12 @@ import { isBooker, isAttendee } from '../../utils/bookingOwnership'  // ← [202
  * BookingStatusBadge — 예약 상태 뱃지 묶음
  *
  * ✅ 변경 이력
+ *  - [2026-05-12 체크인 상태 칩 우선순위 상향]
+ *    · chipList push 순서: ⑧ 체크인 대기/완료 / ⑨ 진행 중 (기존 역순)
+ *    · 배경: maxChips=1 환경(HomeView 소형 카드 등)에서 "진행 중" 칩이 체크인 상태를 가림
+ *    · 효과: 진행 중인 회의 카드에 "체크인 대기" 또는 "체크인 완료" 라벨이 우선 표시
+ *    · maxChips 미지정 화면(DetailModal 등) 영향: 표시 순서만 변경, 모든 칩 그대로 표시
+ *
  *  - [2026-05-12 체크인 활성 5분 전 핫픽스]
  *    · countdown 칩 표시 범위: tl > 0 && tl <= 10 → tl > CHECKIN_EARLY_MIN(5) && tl <= 10
  *      → 10~5분 전 사이에만 카운트다운 표시 (5분 전부터는 checkin-wait 칩이 자리 대체)
@@ -357,7 +363,16 @@ export function BookingStatusBadge({
   //   · 다른 화면 영향 0을 위해 size 가드 적용 (hasAny와 동일)
   if (show('confirmed') && isConfirmed && size === 'list')
     chipList.push(<C key="confirmed" cls="chip-confirmed">예약확정</C>)
-  // ⑧ 진행 중 (room color 동적 적용)
+  // ⑧ 체크인 대기 / 완료 ← [2026-05-12] 우선순위 상향: ⑨ "진행 중"보다 위로 이동
+  //   배경: maxChips=1 환경(HomeView 소형 카드/BookingListTable 등)에서 "진행 중" 칩이
+  //         체크인 상태를 가려 사용자가 체크인 완료/대기 여부를 알기 어려웠음.
+  //   변경: 체크인 상태를 먼저 push → maxChips=1이어도 "체크인 대기"/"체크인 완료"가 우선 표시.
+  //   영향: maxChips 미지정 화면(DetailModal 등)은 표시 순서만 바뀜, 모든 칩 그대로 다 보임.
+  if (show('checkin-wait') && nci)
+    chipList.push(<C key="checkin-wait" cls="chip-checkin-wait">체크인 대기</C>)
+  if (show('checkin-done') && b.checkedIn && isAct)
+    chipList.push(<C key="checkin-done" cls="chip-success">체크인 완료</C>)
+  // ⑨ 진행 중 (room color 동적 적용) ← [2026-05-12] ⑧ → ⑨로 우선순위 하향
   if (show('active') && isAct && !b.autoCancelled)
     chipList.push(
       <span key="active" className={`chip ${sizeClass} ${shapeClass}`.trim().replace(/\s+/g, ' ')}
@@ -365,11 +380,6 @@ export function BookingStatusBadge({
         진행 중
       </span>
     )
-  // ⑨ 체크인 대기 / 완료
-  if (show('checkin-wait') && nci)
-    chipList.push(<C key="checkin-wait" cls="chip-checkin-wait">체크인 대기</C>)
-  if (show('checkin-done') && b.checkedIn && isAct)
-    chipList.push(<C key="checkin-done" cls="chip-success">체크인 완료</C>)
   // ⑩ 조기반납 — '사용완료'보다 먼저 (Figma 242:427 순서)
   //    ← [2026-04-23] earlyEnded=true면 '조기반납' + '사용완료' 세트로 표시
   if (show('early-end') && b.earlyEnded)
