@@ -924,7 +924,7 @@ function SmallDateTrigger({ value, onChange, min, max }: SmallDateTriggerProps) 
 //   ※ [Phase 4 v3] 라벨 표시: peak 자동 → 인터랙티브 툴팁 (사용자 의도)
 function NoshowChartCard() {
   // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
-  const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -14))
+  const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
   const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
 
   // ── 2. 자체 fetch (dedupe cache 통해) ────────────────────────────────
@@ -1272,7 +1272,7 @@ const ROOM_RANKING_STYLES: { h: number; bg: string; color: string }[] = [
 
 function RoomRankingCard({ rooms }: { rooms: Room[] }) {
   // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
-  const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -14))
+  const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
   const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
 
   // ── 2. 자체 fetch (Phase 4 cache 재사용, 위젯 ②와 dedupe) ────────────
@@ -1376,7 +1376,7 @@ function RoomRankingCard({ rooms }: { rooms: Room[] }) {
 //   ※ Figma 1:1: 3-section (헤더 + 세로 bar 차트 + ranked list)
 function RoomNoshowCard({ rooms }: { rooms: Room[] }) {
   // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
-  const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -14))
+  const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
   const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
 
   // ── 2. 자체 fetch (Phase 4 cache 공유, 위젯 ②④와 dedupe) ────────────
@@ -1630,7 +1630,7 @@ const BOOKING_TRENDS_CHART_H = 396        // ← Figma: 외곽 컨테이너 / �
 
 function BookingTrendsBarCard() {
   // ── 1. 자체 날짜 state (Q3 B: today - 14 ~ today, 15일 inclusive) ────
-  const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -14))
+  const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
   const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
 
   // ── 2. 자체 fetch (Phase 4 cache 공유, 위젯 ②④⑤와 dedupe) ────────────
@@ -1795,6 +1795,266 @@ function BookingTrendsBarCard() {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ─── 위젯 ⑦ 부서별 예약 현황 (Figma node 565:13085) ─────────────────────────
+//   사용처: Row 3 Col 2 (542×504, 2-col grid)
+//   데이터: 자체 dateFrom/dateTo (default 30일) + useBookingsByRange + b.dept group by
+//   동작: 상단 부서 list (Top 5, count 0 placeholder) + 하단 가로 비율 bar
+//   ※ Figma 1:1: padding p16 균등 + flex-col gap 24 (위젯 ②④⑤⑥과 다름)
+//   ※ hover/click 시 그 column #343333 진해짐 + label (위젯 ②⑤⑥ 패턴 일관)
+
+// ─── DEPT_RANK_COLORS — Rank별 점진적 옅음 (Figma 1:1) ────────────────────
+//   rank 0 (1위): #777 (가장 진함)
+//   rank 1 (2위): #949494
+//   rank 2 (3위): #B0B0B0 (Figma의 #343333은 활성 mockup, 평소는 추정)
+//   rank 3 (4위): #CFCFCF
+//   rank 4 (5위): #DCDCDC
+//   rank 5+ (6위~): #DFDFDF (모두 동일)
+const DEPT_RANK_COLORS = ['#777', '#949494', '#B0B0B0', '#CFCFCF', '#DCDCDC', '#DFDFDF']
+const DEPT_RANK_ACTIVE_COLOR = '#343333'    // ← hover/click 시 (Figma mockup의 활성 색)
+
+function DepartmentBookingsCard() {
+  // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
+  const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
+  const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
+
+  // ── 2. 자체 fetch (Phase 4 cache 공유, 위젯 ②④⑤⑥와 dedupe) ──────────
+  const { data: bookings, loading } = useBookingsByRange(dateFrom, dateTo)
+
+  // ── 3. 부서별 카운트 (Q1: 모든 booking, Q6: b.dept group by) ─────────
+  //   · b.dept null/empty 안전 제외
+  //   · 그 기간 예약 있는 부서만 표시 (Q6 A)
+  const deptStats = useMemo(() => {
+    const map = new Map<string, number>()
+    bookings.forEach(b => {
+      const dept = b.dept?.trim()
+      if (!dept) return                                 // ← 안전: dept 없는 booking 제외
+      map.set(dept, (map.get(dept) ?? 0) + 1)
+    })
+    return Array.from(map.entries())
+      .map(([dept, count]) => ({ dept, count }))
+      .sort((a, b) => b.count - a.count)                // Q6: count desc
+  }, [bookings])
+
+  // ── 4. 총 카운트 (Q6: bar width = count / totalCount × 100%) ──────────
+  const totalCount = useMemo(
+    () => deptStats.reduce((s, d) => s + d.count, 0),
+    [deptStats]
+  )
+
+  // ── 5. Top 5 부서 list (Q2: 항상 5, 부족 시 placeholder) ──────────────
+  const top5 = useMemo(() => deptStats.slice(0, 5), [deptStats])
+
+  // ── 6. 인터랙티브 hover/click state (Q5: 위젯 ②⑤⑥ v3 패턴 일관) ────
+  const [activeDept, setActiveDept] = useState<string | null>(null)
+  const activeStats  = useMemo(
+    () => deptStats.find(d => d.dept === activeDept) ?? null,
+    [activeDept, deptStats]
+  )
+
+  // ── 활성 column label 내용 ("{부서명} {N}건") ─────────────────────────
+  const activeLabel = useMemo(() => {
+    if (!activeStats) return null
+    return `${activeStats.dept} ${activeStats.count}건`
+  }, [activeStats])
+
+  return (
+    <div style={{
+      // ── Figma outer 1:1 (다른 위젯과 다른 padding/gap 패턴) ──
+      background:    '#fff',
+      borderRadius:  24,
+      padding:       16,                                // ← Figma: p16 균등 (위젯 ②④⑤⑥의 pt12 px16 pb16과 다름)
+      display:       'flex',
+      flexDirection: 'column',
+      gap:           24,                                // ← Figma: flex-col gap 24
+      height:        504,
+      width:         '100%',
+      overflow:      'hidden',                          // ← Figma: overflow-clip
+    }}>
+      {/* ── 헤더 (gap 2, 위젯 ②④⑤⑥과 동일) ─────────────── */}
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2, width:'100%' }}>
+        <p style={{
+          fontFamily:"'Pretendard', -apple-system, sans-serif",
+          fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
+          whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+        }}>부서별 예약 현황</p>
+        {/* ── 날짜 범위 picker (위젯 ②④⑤⑥와 동일) ── */}
+        <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+          <SmallDateTrigger value={dateFrom} onChange={setDateFrom} max={dateTo} />
+          <span style={{
+            fontFamily:"'Pretendard', -apple-system, sans-serif",
+            fontWeight:400, fontSize:12, lineHeight:1.5, color:'#AEB5C4',
+          }}>⎯</span>
+          <SmallDateTrigger value={dateTo} onChange={setDateTo} min={dateFrom} max={todayStr()} />
+        </div>
+      </div>
+
+      {/* ── 부서 list (상단, Top 5 - 위젯 ⑤ 패턴 일관) ──── */}
+      <div style={{ display:'flex', flexDirection:'column', width:'100%' }}>
+        {top5.map((s, i) => {
+          const dotColor = DEPT_RANK_COLORS[Math.min(i, DEPT_RANK_COLORS.length - 1)]
+          return (
+            <div key={s.dept} style={{
+              // ── Figma row 1:1: py 8, border #FAFBFF ──
+              display:      'flex',
+              alignItems:   'center',
+              justifyContent:'space-between',
+              padding:      '8px 0',
+              borderTop:    i === 0 ? '1px solid #FAFBFF' : 'none',
+              borderBottom: '1px solid #FAFBFF',
+              width:        '100%',
+            }}>
+              {/* ── 좌측: dot 12 + 부서명 (gap 10) ── */}
+              <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:1, minWidth:0, paddingRight:8 }}>
+                <div style={{
+                  width:12, height:12,
+                  borderRadius:999,
+                  background: dotColor,                  // ← rank별 색상 (bar 색상과 일관)
+                  flexShrink:0,
+                }}/>
+                <span style={{
+                  fontFamily:"'Pretendard', -apple-system, sans-serif",
+                  fontWeight:400, fontSize:12, lineHeight:1.5, color:'#000',
+                  whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+                }}>{s.dept}</span>
+              </div>
+              <span style={{
+                fontFamily:"'Pretendard', -apple-system, sans-serif",
+                fontWeight:400, fontSize:12, lineHeight:1.5, color:'#000',
+                flexShrink:0,
+              }}>{s.count}</span>
+            </div>
+          )
+        })}
+        {/* ── Q2: deptStats.length < 5인 경우 placeholder row로 5개 채움 ── */}
+        {Array.from({ length: Math.max(0, 5 - top5.length) }).map((_, i) => (
+          <div key={`empty-${i}`} style={{
+            display:'flex', alignItems:'center', justifyContent:'space-between',
+            padding:'8px 0',
+            borderBottom:'1px solid #FAFBFF',
+            width:'100%',
+          }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{ width:12, height:12, borderRadius:999, background:'#E5E7EB' }}/>
+              <span style={{ fontSize:12, color:'#CBD5E1' }}>—</span>
+            </div>
+            <span style={{ fontSize:12, color:'#CBD5E1' }}>0</span>
+          </div>
+        ))}
+      </div>
+
+      {/* ── 가로 비율 bar 차트 (하단, 모든 부서 - h 212, gap 1, radius 16) ── */}
+      <div
+        onMouseLeave={() => setActiveDept(null)}
+        style={{
+          display:    'flex',
+          alignItems: 'stretch',
+          gap:        1,                                  // ← Figma: gap 1px
+          height:     212,                                 // ← Figma: h 212
+          width:      '100%',
+          borderRadius:16,
+          overflow:   'hidden',                            // ← Figma: radius 16 + overflow-clip
+          position:   'relative',
+        }}>
+        {deptStats.length === 0 || totalCount === 0 ? (
+          <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#CBD5E1', background:'#F8F9FB' }}>
+            {loading ? '로딩 중…' : '예약 데이터 없음'}
+          </div>
+        ) : (
+          deptStats.map((s, i) => {
+            const isActive = s.dept === activeDept
+            // Q6: width = count / totalCount × 100%
+            const widthPct = (s.count / totalCount) * 100
+            // Q4: rank별 색상, 활성 시 #343333
+            const bgColor = isActive
+              ? DEPT_RANK_ACTIVE_COLOR
+              : DEPT_RANK_COLORS[Math.min(i, DEPT_RANK_COLORS.length - 1)]
+            // 부서명 표시 여부: rank 0-4까지만 부서명 표시, rank 5+는 transparent (Figma 1:1)
+            const showDeptName = i < 5
+            return (
+              <div
+                key={s.dept}
+                onMouseEnter={() => setActiveDept(s.dept)}
+                onClick={() => setActiveDept(prev => prev === s.dept ? null : s.dept)}
+                style={{
+                  // ── Figma column 1:1 ──
+                  width:         `${widthPct}%`,
+                  minWidth:      0,
+                  background:    bgColor,
+                  display:       'flex',
+                  flexDirection: 'column',
+                  alignItems:    'flex-start',
+                  justifyContent:'space-between',           // ← count 위 / 부서명 아래
+                  padding:       8,
+                  cursor:        'pointer',
+                  transition:    'background 0.15s ease',
+                  overflow:      'hidden',
+                  position:      'relative',
+                }}>
+                {/* ── count (상단) ── */}
+                <span style={{
+                  fontFamily:"'Pretendard', -apple-system, sans-serif",
+                  fontWeight:400, fontSize:10, lineHeight:1.3, color:'#fff',
+                  whiteSpace:'nowrap',
+                }}>{s.count}</span>
+                {/* ── 부서명 (하단, rank 5+ transparent) ── */}
+                <span style={{
+                  fontFamily:"'Pretendard', -apple-system, sans-serif",
+                  fontWeight:400, fontSize:10, lineHeight:1.5,
+                  color: showDeptName ? '#fff' : 'transparent',
+                  whiteSpace:'nowrap',
+                  overflow:'hidden', textOverflow:'ellipsis',
+                  maxWidth:'100%',
+                }}>{s.dept}</span>
+              </div>
+            )
+          })
+        )}
+        {/* ── 활성 column label (위쪽 - 위젯 ②⑤⑥ 패턴 일관) ── */}
+        {activeStats && activeLabel && totalCount > 0 && (() => {
+          // 활성 column 중앙 위치 계산 (누적 width)
+          let leftPct = 0
+          for (const s of deptStats) {
+            if (s.dept === activeStats.dept) break
+            leftPct += (s.count / totalCount) * 100
+          }
+          const widthPct  = (activeStats.count / totalCount) * 100
+          const centerPct = leftPct + widthPct / 2
+          return (
+            <div style={{
+              position:    'absolute',
+              top:         -25,                              // ← bar 위쪽 외부 (label 표시)
+              left:        `${centerPct}%`,
+              transform:   'translateX(-50%)',
+              // ── Figma StatusBadge-XS (위젯 ②⑤⑥와 동일) ──
+              background:  'rgba(255,255,255,0.9)',
+              border:      '1px solid #000',
+              borderRadius:24,
+              padding:     '2px 8px',
+              display:     'flex',
+              gap:         10,
+              alignItems:  'center',
+              justifyContent:'center',
+              fontFamily:  "'Pretendard', -apple-system, sans-serif",
+              fontWeight:  400,
+              fontSize:    10,
+              lineHeight:  1.5,
+              letterSpacing:'0.1px',
+              color:       '#1E1E1E',
+              whiteSpace:  'nowrap',
+              pointerEvents:'none',
+              zIndex:      10,
+            }}>
+              {activeLabel}
+            </div>
+          )
+        })()}
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+
 // ─── DashboardPlaceholderCard ───────────────────────────────────────────────
 //   목적: Phase 4~10 위젯 구현 전까지 외곽 레이아웃 유지 + 진척 표시
 //   교체 방식: 각 Phase에서 해당 카드만 진짜 위젯으로 교체
@@ -1818,7 +2078,7 @@ interface PlaceholderProps {
 function DashboardPlaceholderCard({ height, title, subtitle, dateRange, phaseNote }: PlaceholderProps) {
   // ← [2026-05-11 Phase 3.5] dateRange 미지정 시 default 30일 자동 표시
   //   default 산출: 각 위젯이 own state로 초기화할 때 동일한 값 사용 예정 (UX 연속성)
-  const effectiveDateRange = dateRange ?? `${addDaysStr(todayStr(), -14)} ⎯ ${todayStr()}`
+  const effectiveDateRange = dateRange ?? `${addDaysStr(todayStr(), -29)} ⎯ ${todayStr()}`
   return (
     <div style={{
       background:   '#fff',
@@ -1931,11 +2191,8 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
         {/* ⑥ 예약추이 — Phase 8 v2 (Figma 565:21710) ✓ */}
         <BookingTrendsBarCard />
-        <DashboardPlaceholderCard
-          height={504}
-          title="부서별 예약 현황"
-          phaseNote="Phase 9에서 구현 예정"
-        />
+        {/* ⑦ 부서별 예약 현황 — Phase 9 (Figma 565:13085) ✓ */}
+        <DepartmentBookingsCard />
       </div>
 
       {/* ── Row 4: 위젯 ⑧ 시간대별 예약 분포 (좌측만) ── */}
