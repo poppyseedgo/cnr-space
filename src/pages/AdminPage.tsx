@@ -1778,29 +1778,27 @@ function BookingTrendsAreaCard() {
 
   return (
     <div style={{
-      // ── Figma outer (v4: padding 제거, 헤더만 padding 적용 - full bleed chart) ──
-      //   · 이전 v1: 카드 전체 padding → 차트도 padding 안에 갇혀 카드 가장자리까지 못 감
-      //   · 이전 v2: negative margin trick → flex 컨테이너에서 brittle (cache 문제)
-      //   · v4: 카드 padding 0 + 헤더에만 padding 적용 → 차트 영역 자연스럽게 full bleed
+      // ── v5: absolute positioning 기반 (flex 의존성 폐기, 작동 보장) ──
+      //   · v4 (flex:1 + minHeight:0) 일부 환경에서 작동 안 함 (사용자 보고)
+      //   · v5: 모든 자식을 absolute 좌표로 명시 → layout 100% 결정론적
+      position:      'relative',                          // ← absolute 자식 기준점
       background:    '#fff',
       borderRadius:  24,
-      padding:       0,                                  // ← 카드 outer padding 제거 (v4)
-      display:       'flex',
-      flexDirection: 'column',
       height:        504,
       width:         '100%',
-      overflow:      'hidden',                            // ← borderRadius 24 둥근 모서리 자동 clip
+      overflow:      'hidden',                            // ← borderRadius 둥근 모서리 자동 clip
     }}>
-      {/* ── 헤더 (padding 자체 보유, 카드 outer는 padding 0) ── */}
+      {/* ── 헤더 (absolute top, 명시적 좌표) ── */}
       <div style={{
+        position:      'absolute',
+        top:           12,                                 // ← Figma pt12
+        left:          16,
+        right:         16,
         display:       'flex',
         flexDirection: 'column',
         alignItems:    'flex-start',
         gap:           2,
-        width:         '100%',
-        padding:       '12px 16px 0 16px',               // ← Figma pt12 px16 (헤더만 padding, 아래는 0)
-        boxSizing:     'border-box',
-        flexShrink:    0,                                 // ← 헤더는 줄어들지 않음
+        zIndex:        2,                                  // ← SVG 위에 표시
       }}>
         <p style={{
           fontFamily:"'Pretendard', -apple-system, sans-serif",
@@ -1817,17 +1815,16 @@ function BookingTrendsAreaCard() {
         </div>
       </div>
 
-      {/* ── 차트 영역 (full bleed - 카드 가장자리까지 자연스럽게 가득) ───────
-            · v4: negative margin trick 폐기, 자연스러운 full bleed
-            · width 100% + marginTop 16 (헤더와 여백)
-            · flex:1 + minHeight:0 → 헤더 제외 남은 공간 자동 채움
-            · 카드 outer overflow:hidden + borderRadius:24로 둥근 모서리 자동 clip */}
+      {/* ── 차트 영역 (absolute, 헤더 영역 아래부터 카드 끝까지 정확히) ──────
+            · top: 70 = 12 padding + 22 title + 2 gap + 18 date row + 16 margin
+            · bottom: 0 → 카드 끝까지 (잘림 0)
+            · left/right: 0 → 카드 좌우 끝까지 (full bleed) */}
       <div style={{
-        position: 'relative',
-        width:    '100%',
-        marginTop:16,                                     // ← 헤더와 차트 사이 여백
-        flex:     1,                                       // ← 위젯 ⑦ v4 패턴: 남은 공간 자동 채움
-        minHeight:0,
+        position: 'absolute',
+        top:      70,                                       // ← 헤더 영역 끝 (54) + 16 여백
+        left:     0,
+        right:    0,
+        bottom:   0,
       }}>
         {dayStats.length === 0 ? (
           <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#CBD5E1' }}>
