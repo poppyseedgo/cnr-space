@@ -1676,11 +1676,11 @@ function linearPath(points: { x: number; y: number }[]): string {
   }
   return path
 }
-
 // ─── BOOKING_TRENDS — Figma 1:1 차트 viewBox 사양 ───────────────────────
-const TREND_VIEWBOX_W = 496       // ← Figma: 차트 영역 width
+const TREND_VIEWBOX_W = 510       // ← Figma 565:21965: w 509 (510으로 단순화)
 const TREND_VIEWBOX_H = 414       // ← Figma: 차트 영역 height
-const TREND_PADDING_TOP = 22      // ← Figma: SVG path가 chart 상단 ~5.2%부터 시작 (peak 잘림 방지)
+const TREND_PADDING_TOP = 22      // ← Figma: SVG path가 chart 상단 5.2%부터 시작 (peak 잘림 방지)
+const TREND_MARKER_LINE_H = 40    // ← Figma 570:7429: 활성 marker 수직 연결선 h-[40px]
 
 function BookingTrendsAreaCard() {
   // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
@@ -1695,7 +1695,7 @@ function BookingTrendsAreaCard() {
     const diffDays = Math.round(
       (new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000
     ) + 1
-    if (diffDays <= 0 || diffDays > 365) return []   // ← 가드: 비정상 range 차단
+    if (diffDays <= 0 || diffDays > 365) return []
     return Array.from({ length: diffDays }, (_, i) => {
       const date  = addDaysStr(dateFrom, i)
       const count = bookings.filter(b => tsDate(b.start_at) === date).length
@@ -1703,13 +1703,12 @@ function BookingTrendsAreaCard() {
     })
   }, [bookings, dateFrom, dateTo])
 
-  // ── 4. maxCount (SVG y좌표 비례 계산 기준) ────────────────────────────
   const maxCount = useMemo(
     () => dayStats.reduce((m, d) => Math.max(m, d.count), 0),
     [dayStats]
   )
 
-  // ── 5. 인터랙티브 hover/click state (Q5: column별 hit area) ──────────
+  // ── 4. 인터랙티브 hover/click state ──────────────────────────────────
   const [activeDate, setActiveDate] = useState<string | null>(null)
   const activeIdx = useMemo(
     () => activeDate ? dayStats.findIndex(d => d.date === activeDate) : -1,
@@ -1717,16 +1716,25 @@ function BookingTrendsAreaCard() {
   )
   const activeStats = activeIdx >= 0 ? dayStats[activeIdx] : null
 
-  // ── 활성 column label 내용 ("{월}월 {일}일 {N}건") ──────────────────
+  // ── Active label "5월 20일  20건" (Figma 1:1: 공백 2개) ──
   const activeLabel = useMemo(() => {
     if (!activeStats) return null
     const dt = new Date(activeStats.date)
-    return `${dt.getMonth() + 1}월 ${dt.getDate()}일 ${activeStats.count}건`
+    return `${dt.getMonth() + 1}월 ${dt.getDate()}일  ${activeStats.count}건`
   }, [activeStats])
 
-  // ── 6. SVG 좌표 계산 (viewBox 기준) ──────────────────────────────────
-  //   · x: 0 ~ VIEWBOX_W 균등 분포
-  //   · y: count 0 → VIEWBOX_H 바닥, max → PADDING_TOP (peak 잘림 방지)
+  // ── X축 footer 양 끝 라벨 (Figma 570:7467: 양 끝만 표시) ──────────────
+  const xAxisLabels = useMemo(() => {
+    if (dayStats.length === 0) return null
+    const first = new Date(dayStats[0].date)
+    const last  = new Date(dayStats[dayStats.length - 1].date)
+    return {
+      from: `${first.getMonth() + 1}월 ${first.getDate()}일`,
+      to:   `${last.getMonth() + 1}월 ${last.getDate()}일`,
+    }
+  }, [dayStats])
+
+  // ── 5. SVG 좌표 계산 ──────────────────────────────────────────────────
   const points = useMemo(() => {
     if (dayStats.length === 0) return []
     const drawableH = TREND_VIEWBOX_H - TREND_PADDING_TOP
@@ -1740,14 +1748,9 @@ function BookingTrendsAreaCard() {
     })
   }, [dayStats, maxCount])
 
-  // ── 7. Catmull-Rom path 생성 (line + area) ───────────────────────────
-  // ── 7. 곡선 path 생성 (사용자 정정 2026-05-12: 직선 → 곡선 복귀) ────
-  //   · Catmull-Rom 스플라인: 자연스러운 부드러운 곡선
-  //   · linearPath (직선) 보존 — 필요 시 1줄 교체로 직선 복귀 가능
   const linePath = useMemo(() => catmullRomPath(points), [points])
   const areaPath = useMemo(() => {
     if (points.length === 0) return ''
-    // line path + 우측 바닥 + 좌측 바닥 + close = 닫힌 영역
     return linePath +
       ` L ${TREND_VIEWBOX_W.toFixed(2)},${TREND_VIEWBOX_H.toFixed(2)}` +
       ` L 0,${TREND_VIEWBOX_H.toFixed(2)} Z`
@@ -1755,54 +1758,55 @@ function BookingTrendsAreaCard() {
 
   const activePoint = activeIdx >= 0 ? points[activeIdx] : null
 
-  // ── 8. 활성 label 위치 (위젯 ⑦ clamp 패턴 일관) ─────────────────────
+  // ── 6. Label clamp (좌/우 가장자리 잘림 방지) ────────────────────────
   const labelPosition = useMemo(() => {
     if (!activePoint) return null
     const leftPct = (activePoint.x / TREND_VIEWBOX_W) * 100
-    const topPct  = (activePoint.y / TREND_VIEWBOX_H) * 100
-    // ── 좌/우 가장자리 clamp 처리 (label "5월 1일 16건" 정도 ~80px, chart ~510px) ──
-    let leftStr:      string
-    let translateX:   string
+    let leftStr:    string
+    let translateX: string
     if (leftPct < 12) {
       leftStr    = '0'
-      translateX = '0'                                // ← 좌측 끝: label 좌측 정렬
+      translateX = '0'
     } else if (leftPct > 88) {
       leftStr    = '100%'
-      translateX = '-100%'                             // ← 우측 끝: label 우측 정렬
+      translateX = '-100%'
     } else {
       leftStr    = `${leftPct}%`
-      translateX = '-50%'                              // ← 정상: 중앙 정렬
+      translateX = '-50%'
     }
-    return { leftStr, translateX, topPct }
+    return { leftStr, translateX }
   }, [activePoint])
 
   return (
     <div style={{
-      // ── v5: absolute positioning 기반 (flex 의존성 폐기, 작동 보장) ──
-      //   · v4 (flex:1 + minHeight:0) 일부 환경에서 작동 안 함 (사용자 보고)
-      //   · v5: 모든 자식을 absolute 좌표로 명시 → layout 100% 결정론적
-      position:      'relative',                          // ← absolute 자식 기준점
+      // ── v6: Figma 1:1 정확 반영 ──────────────────────────────────
+      //   · padding pt12 px16 pb16 (Figma 565:21848)
+      //   · flex-col items-start justify-between
+      //   · v5 (padding 0) 폐기 → Figma 1:1로 복귀
+      //   · 단, absolute layout 유지 (작동 보장)
+      position:      'relative',
       background:    '#fff',
       borderRadius:  24,
       height:        504,
       width:         '100%',
-      overflow:      'hidden',                            // ← borderRadius 둥근 모서리 자동 clip
+      overflow:      'hidden',
     }}>
-      {/* ── 헤더 (absolute top, 명시적 좌표) ── */}
+      {/* ── 헤더 (absolute top 12 left 16 right 16) ─────────────── */}
       <div style={{
         position:      'absolute',
         top:           12,                                 // ← Figma pt12
-        left:          16,
+        left:          16,                                 // ← Figma px16
         right:         16,
         display:       'flex',
         flexDirection: 'column',
         alignItems:    'flex-start',
-        gap:           2,
-        zIndex:        2,                                  // ← SVG 위에 표시
+        gap:           2,                                  // ← Figma gap-[2px]
+        zIndex:        2,
       }}>
         <p style={{
           fontFamily:"'Pretendard', -apple-system, sans-serif",
-          fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
+          fontWeight:500,                                  // ← Pretendard:Medium
+          fontSize:16, lineHeight:1.4, color:'#111', margin:0,
           whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
         }}>예약추이</p>
         <div style={{ display:'flex', gap:4, alignItems:'center' }}>
@@ -1815,16 +1819,16 @@ function BookingTrendsAreaCard() {
         </div>
       </div>
 
-      {/* ── 차트 영역 (absolute, 헤더 영역 아래부터 카드 끝까지 정확히) ──────
-            · top: 70 = 12 padding + 22 title + 2 gap + 18 date row + 16 margin
-            · bottom: 0 → 카드 끝까지 (잘림 0)
-            · left/right: 0 → 카드 좌우 끝까지 (full bleed) */}
+      {/* ── 차트 영역 (absolute, X축 footer 위까지) ──────────────────
+            · top 70 = 헤더 끝 (12 + 22 title + 2 gap + 18 date = 54) + 16 gap
+            · bottom 40 = X축 footer (24 = 수평선 1 + gap 4 + text 15 + 4 안전) + pb16 = 40
+            · left/right 16 = Figma px16 padding */}
       <div style={{
         position: 'absolute',
-        top:      70,                                       // ← 헤더 영역 끝 (54) + 16 여백
-        left:     0,
-        right:    0,
-        bottom:   0,
+        top:      70,
+        left:     16,
+        right:    16,
+        bottom:   40,
       }}>
         {dayStats.length === 0 ? (
           <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#CBD5E1' }}>
@@ -1832,38 +1836,41 @@ function BookingTrendsAreaCard() {
           </div>
         ) : (
           <>
-            {/* ── SVG: fill area + outline + active point ── */}
+            {/* ── SVG: fill area + outline + active marker (line + circle) ── */}
             <svg
               width="100%"
               height="100%"
               viewBox={`0 0 ${TREND_VIEWBOX_W} ${TREND_VIEWBOX_H}`}
-              preserveAspectRatio="none"               // ← 가로 stretch (column별 비율 유지)
+              preserveAspectRatio="none"                   // ← 가로 stretch
               style={{ position:'absolute', inset:0, display:'block' }}
             >
               <defs>
-                {/* ── Q2: Figma 1:1 그라데이션 (위 진함 → 아래 흰색 fade-out) ── */}
+                {/* ── Figma 그라데이션 fill: 위 진함 → 아래 흰색 fade-out ── */}
                 <linearGradient id="trend-area-fill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%"   stopColor="#5C5C5C" stopOpacity="0.55" />
                   <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
                 </linearGradient>
               </defs>
-              {/* ── Q3: Fill area (그라데이션) ── */}
+              {/* ── Fill area (그라데이션, 외곽선 없이 자연스러운 형태) ── */}
               {areaPath && (
                 <path d={areaPath} fill="url(#trend-area-fill)" />
               )}
-              {/* ── Q3: 외곽선 (line stroke - 곡선과 조화로운 round 모서리) ── */}
-              {linePath && (
-                <path
-                  d={linePath}
-                  fill="none"
-                  stroke="#888"
-                  strokeWidth="1"
-                  strokeLinejoin="round"                   // ← 부드러운 모서리 (곡선과 조화)
-                  strokeLinecap="round"                    // ← 양 끝 부드럽게
-                  vectorEffect="non-scaling-stroke"        // ← preserveAspectRatio="none"에도 stroke 균일 유지
+              {/* ── 외곽선 삭제됨 (사용자 정정 2026-05-12) ──
+                    이전: <path d={linePath} fill="none" stroke="#888" ... />
+                    fade-out gradient만으로 자연스러운 mountain 효과 */}
+              {/* ── Active 수직 연결선 (Figma 570:7429: h-[40px], 0.5px) ── */}
+              {activePoint && (
+                <line
+                  x1={activePoint.x}
+                  y1={activePoint.y - TREND_MARKER_LINE_H - 4}    // ← label 아래 끝
+                  x2={activePoint.x}
+                  y2={activePoint.y - 4}                            // ← circle 위 끝
+                  stroke="#000"
+                  strokeWidth="0.5"
+                  vectorEffect="non-scaling-stroke"
                 />
               )}
-              {/* ── Q4: Active 데이터 포인트 (Figma 1:1 size 6, 흰 배경 + 검정 외곽선) ── */}
+              {/* ── Active 데이터 포인트 (Figma 565:21972: size-[8px] = r=4) ── */}
               {activePoint && (
                 <circle
                   cx={activePoint.x}
@@ -1871,13 +1878,13 @@ function BookingTrendsAreaCard() {
                   r="4"
                   fill="#FFFFFF"
                   stroke="#000000"
-                  strokeWidth="1.5"
+                  strokeWidth="1"
                   vectorEffect="non-scaling-stroke"
                 />
               )}
             </svg>
 
-            {/* ── Q5: Column별 hit area (위젯 ⑥ 옛 패턴 유지 - hover detection) ── */}
+            {/* ── Column별 hit area (위젯 ⑥ 패턴, hover detection) ── */}
             <div
               onMouseLeave={() => setActiveDate(null)}
               style={{
@@ -1900,24 +1907,25 @@ function BookingTrendsAreaCard() {
               ))}
             </div>
 
-            {/* ── 활성 column label (StatusBadge - 데이터 포인트 위쪽 8px) ── */}
+            {/* ── Active label (StatusBadge-XS, line 위쪽) ──
+                  · Figma 565:21967: bg rgba(255,255,255,0.9), border 1px black, rounded-24
+                  · Figma 565:21968: Pretendard Medium 10 #1E1E1E tracking 0.1
+                  · 위치: line 위쪽 (top = (activePoint.y - MARKER_LINE_H - 4) %, translateY -100% - 2px) */}
             {activePoint && activeLabel && labelPosition && (
               <div style={{
                 position:    'absolute',
                 left:        labelPosition.leftStr,
-                top:         `${labelPosition.topPct}%`,
-                transform:   `translate(${labelPosition.translateX}, calc(-100% - 12px))`,
-                // ── Figma StatusBadge-XS (위젯 ②⑤⑦⑧와 동일) ──
+                top:         `${((activePoint.y - TREND_MARKER_LINE_H - 4) / TREND_VIEWBOX_H) * 100}%`,
+                transform:   `translate(${labelPosition.translateX}, calc(-100% - 2px))`,
                 background:  'rgba(255,255,255,0.9)',
                 border:      '1px solid #000',
                 borderRadius:24,
                 padding:     '2px 8px',
                 display:     'flex',
-                gap:         10,
                 alignItems:  'center',
                 justifyContent:'center',
                 fontFamily:  "'Pretendard', -apple-system, sans-serif",
-                fontWeight:  400,
+                fontWeight:  500,                              // ← Figma: Pretendard Medium
                 fontSize:    10,
                 lineHeight:  1.5,
                 letterSpacing:'0.1px',
@@ -1934,6 +1942,38 @@ function BookingTrendsAreaCard() {
             )}
           </>
         )}
+      </div>
+
+      {/* ── X축 footer (Figma 570:7433 수평선 + 570:7467 양 끝 라벨) ──── */}
+      <div style={{
+        position:      'absolute',
+        bottom:        16,                                  // ← Figma pb16
+        left:          16,
+        right:         16,
+        display:       'flex',
+        flexDirection: 'column',
+        gap:           4,
+      }}>
+        {/* 수평선 (Figma 570:7433: 0.5px) */}
+        <div style={{
+          borderTop: '0.5px solid #DDE1E6',
+          width:     '100%',
+        }} />
+        {/* 양 끝 날짜 라벨 (Figma 570:7467: justify-between, Medium 10 #DDE1E6) */}
+        <div style={{
+          display:        'flex',
+          justifyContent: 'space-between',
+          fontFamily:     "'Pretendard', -apple-system, sans-serif",
+          fontWeight:     500,                              // ← Figma: Pretendard Medium
+          fontSize:       10,
+          lineHeight:     1.5,
+          letterSpacing:  '0.1px',
+          color:          '#DDE1E6',                         // ← Figma: #DDE1E6 (날짜 picker #AEB5C4와 다름)
+          whiteSpace:     'nowrap',
+        }}>
+          <span>{xAxisLabels?.from ?? ''}</span>
+          <span>{xAxisLabels?.to ?? ''}</span>
+        </div>
       </div>
     </div>
   )
