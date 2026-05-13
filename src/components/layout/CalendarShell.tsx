@@ -2,6 +2,10 @@
  * CalendarShell.tsx — 캘린더 뷰 (Daily / Weekly / Monthly)
  *
  * ✅ 변경 이력
+ *  - [2026-05-13 v6] Date Display fontSize 되돌림 (사용자 피드백)
+ *    · fontSize: 21 → 20 (v3에서 20→21 변경했던 것을 되돌림)
+ *    · fontWeight 400은 그대로 유지 (사용자 명시 지시 없음)
+ *    · UI-only (로직/props/API 무변경)
  *  - [2026-05-13 v5] 캘린더 뷰 쉘 외곽 border-radius 변경 (사용자 피드백)
  *    · 3개 view(MonthlyView/DailyView/WeeklyView) 외곽 borderRadius: 16 → 20
  *    · 회의실 드롭다운 팝업의 borderRadius:16 (L567)은 외곽 쉘이 아니므로 미변경
@@ -432,7 +436,7 @@ export function CalendarShell({
                 borderRadius: 8, display: 'flex', alignItems: 'center', cursor: 'pointer',
                 userSelect: 'none', WebkitUserSelect: 'none',
               }}>
-              <span style={{ fontSize: 21, fontWeight: 400, color: '#111',                /* ← [2026-05-13 v3] fontSize 20→21, fontWeight 500→400 (사용자 피드백) */
+              <span style={{ fontSize: 20, fontWeight: 400, color: '#111',                /* ← [2026-05-13 v6] fontSize 21→20 되돌림 / [v3] fontWeight 500→400 유지 */
                 fontFamily: "'Pretendard', -apple-system, sans-serif",
                 userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'none' }}>
                 {calView === 'daily'
