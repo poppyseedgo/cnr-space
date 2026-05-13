@@ -3,8 +3,8 @@
  * create-zoom-meeting Edge Function
  *
  * 사용자가 Zoom 예약 시 호출되는 Edge Function.
- * Frontend가 zoom_bookings에 status='pending' INSERT 후 이 함수 호출.
- * 이 함수는 Zoom API로 미팅 생성하고 booking을 status='confirmed'로 UPDATE.
+ * Frontend가 zoom_bookings에 status='confirmed' INSERT 후 이 함수 호출 (zoom_meeting_id=null).
+ * 이 함수는 Zoom API로 미팅 생성하고 booking에 zoom_meeting_id/join_url/passcode를 UPDATE.
  *
  * 입력 (POST body):
  *   { booking_id: uuid }
@@ -18,10 +18,13 @@
  *   - 502 Zoom API 호출 실패 (메시지 포함)
  *   - 500 그 외 (DB UPDATE 실패 등)
  *
+ *   실패 시 Frontend가 booking을 DELETE 하여 rollback 처리 (immediate confirmed 패턴).
+ *
  * 호출 패턴 (Frontend):
- *   1. zoom_bookings INSERT (status='pending', zoom_meeting_id=null) → 본인 user_id RLS 통과
+ *   1. zoom_bookings INSERT (status='confirmed', zoom_meeting_id=null) → 본인 user_id RLS 통과
  *   2. supabase.functions.invoke('create-zoom-meeting', { body: { booking_id } })
- *   3. 응답 받아 화면 표시
+ *   3-A. 성공 응답: zoom_meeting_id/join_url 화면 표시
+ *   3-B. 실패 응답: zoom_bookings DELETE (rollback)
  *
  * 멱등성 (idempotent):
  *   이미 zoom_meeting_id가 있는 booking이면 그대로 반환 (재호출 안전)
@@ -165,6 +168,8 @@ Deno.serve(async (req) => {
     const meetingData = await zoomRes.json()
 
     // ── 8. zoom_bookings UPDATE ──────────────────────────────────
+    // [2026-05-13] status는 INSERT 시점에 이미 'confirmed'이므로 여기서 set 안 함.
+    // Race condition으로 사용자가 그 사이 취소했다면 cancelled 상태를 유지.
     const updateRes = await fetch(
       `${SUPABASE_URL}/rest/v1/zoom_bookings?id=eq.${booking_id}`,
       {
@@ -177,7 +182,6 @@ Deno.serve(async (req) => {
           zoom_meeting_id: String(meetingData.id),
           join_url:        meetingData.join_url,
           passcode:        meetingData.password ?? null,
-          status:          'confirmed',
         })
       }
     )
