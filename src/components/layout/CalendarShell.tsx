@@ -2,6 +2,14 @@
  * CalendarShell.tsx — 캘린더 뷰 (Daily / Weekly / Monthly)
  *
  * ✅ 변경 이력
+ *  - [2026-05-13] 툴바 UI 미세 조정 (Figma 586:647)
+ *    · 외부 Toolbar wrapper: bg-white 제거(투명), padding 좌우 0 (12px 18px → 12px 0)
+ *    · Date picker 트리거 버튼: background '#fff' → 'transparent' (투명)
+ *    · Date Nav 좌/우 화살표 아이콘: 20×20 → 16×16
+ *      (IcoBack/IcoForward SVG size + 버튼 컨테이너 width/height 모두 16)
+ *    · 우측 회의실 dropdown: padding 14/7/7/7 → 16/8/8/8, height 32 → 36
+ *    · 우측 View Tabs(전체예약/내예약): 컨테이너 + 버튼 height 32 → 36, lineHeight 1 → '16px'
+ *    · UI-only 변경 (로직/props/API 무변경)
  *  - [2026-05-07] 툴바 재설계 + 회의실 필터로 교체 (Figma 396:3716)
  *    · props: filterFloor → filterRoomId (값 'ALL' | room_id로 의미 변경)
  *    · 좌/중/우 3구역 flex justify-between 구조 (외부 wrapper flex-1 + 내부 justify-between)
@@ -38,12 +46,12 @@ import type { Booking, Room } from '../../types'
 
 // ── 툴바 아이콘 SVG (Figma 기준) ──────────────────────────────────────────────
 const IcoBack = () => (
-  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+  <svg width="16" height="16" viewBox="0 0 20 20" fill="none">{/* ← [2026-05-13] 20→16 (Figma 586:657) */}
     <path d="M13.25 17.5L6 10.25L13.25 3L13.896 3.646L7.292 10.25L13.896 16.854L13.25 17.5Z" fill="#1c1b1f"/>
   </svg>
 )
 const IcoForward = () => (
-  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+  <svg width="16" height="16" viewBox="0 0 20 20" fill="none">{/* ← [2026-05-13] 20→16 (Figma 586:662) */}
     <path d="M6.646 17.5L6 16.854L12.604 10.25L6 3.646L6.646 3L13.896 10.25L6.646 17.5Z" fill="#1c1b1f"/>
   </svg>
 )
@@ -312,10 +320,11 @@ export function CalendarShell({
            외부: padding 12 18 / rounded 16 / h 64 / flex items-center
            내부 wrapper(데스크탑): flex-1 + flex justify-between
              → 좌/중/우 3개 자식이 양 끝 + 중앙에 자동 분배
-             → 중앙 Date Nav가 w=420 고정폭이라 좌/우 무엇이 바뀌어도 위치 불변 */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl mb-4"
+             → 중앙 Date Nav가 w=420 고정폭이라 좌/우 무엇이 바뀌어도 위치 불변
+           [2026-05-13] bg-white 제거(투명), 좌우 padding 삭제 (Figma 586:647) */}
+      <div className="rounded-2xl mb-4"
         style={{
-          padding: '12px 18px', position: 'relative', zIndex: 50,
+          padding: '12px 0', position: 'relative', zIndex: 50,                  // ← [2026-05-13] '12px 18px' → '12px 0' (좌우 padding 삭제, Figma 586:647)
           display: 'flex', flexDirection: isMobile ? 'column' : 'row',
           gap: 10,
           alignItems: 'center',
@@ -382,7 +391,7 @@ export function CalendarShell({
           flexShrink: 0,
         }}>
           <button className="btn" onClick={() => navigate(-1)}
-            style={{ width: 20, height: 20, padding: 0, background: 'none', border: 'none',
+            style={{ width: 16, height: 16, padding: 0, background: 'none', border: 'none',  /* ← [2026-05-13] 20→16 (Figma 586:657) */
               display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
             <IcoBack />
           </button>
@@ -393,7 +402,7 @@ export function CalendarShell({
             <button className="btn"
               onClick={() => setShowDatePicker(v => !v)}
               style={{
-                padding: '5px 14px', background: '#fff', whiteSpace: 'nowrap',
+                padding: '5px 14px', background: 'transparent', whiteSpace: 'nowrap',  /* ← [2026-05-13] '#fff' → 'transparent' (Figma 586:660) */
                 border: 'none',
                 borderRadius: 8, display: 'flex', alignItems: 'center', cursor: 'pointer',
                 userSelect: 'none', WebkitUserSelect: 'none',
@@ -478,7 +487,7 @@ export function CalendarShell({
 
           {/* arrow_forward_ios */}
           <button className="btn" onClick={() => navigate(1)}
-            style={{ width: 20, height: 20, padding: 0, background: 'none', border: 'none',
+            style={{ width: 16, height: 16, padding: 0, background: 'none', border: 'none',  /* ← [2026-05-13] 20→16 (Figma 586:662) */
               display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
             <IcoForward />
           </button>
@@ -517,12 +526,12 @@ export function CalendarShell({
             <button className="btn" onClick={() => setShowRoomDrop(v => !v)}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-                paddingLeft: 14, paddingRight: 7, paddingTop: 7, paddingBottom: 7,
+                paddingLeft: 16, paddingRight: 8, paddingTop: 8, paddingBottom: 8,   /* ← [2026-05-13] 14/7/7/7 → 16/8/8/8 (Figma 586:668) */
                 borderRadius: 999, border: 'none',
                 fontSize: 13, fontWeight: 400,
                 letterSpacing: 0.13, lineHeight: '16px', whiteSpace: 'nowrap',
                 fontFamily: "'Pretendard', -apple-system, sans-serif",
-                background: '#111', color: '#fff', cursor: 'pointer', height: 32,
+                background: '#111', color: '#fff', cursor: 'pointer', height: 36,    /* ← [2026-05-13] 32→36 (Figma 586:668 자연 높이) */
               }}>
               {currentRoomLabel}
               {/* ← [2026-05-07 v2] Figma 1:1 새 arrow SVG (fill #D0D0D0) */}
@@ -603,7 +612,7 @@ export function CalendarShell({
             style={{
               position: 'relative',
               display: 'flex', background: '#F3F4F8', borderRadius: 1000,
-              padding: 2, gap: 2, flexShrink: 0, height: 32, alignItems: 'center',
+              padding: 2, gap: 2, flexShrink: 0, height: 36, alignItems: 'center',  /* ← [2026-05-13] 32→36 (Figma 586:672) */
               overflow: 'hidden',
             }}>
             {filterReady && (
@@ -631,7 +640,7 @@ export function CalendarShell({
                   padding: '8px 16px', borderRadius: 10000, border: 'none',
                   fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap',
                   fontFamily: "'Pretendard', -apple-system, sans-serif",
-                  cursor: 'pointer', lineHeight: 1, height: 32,
+                  cursor: 'pointer', lineHeight: '16px', height: 36,                 /* ← [2026-05-13] lineHeight 1→'16px', height 32→36 (Figma 586:673~676) */
                   WebkitTapHighlightColor: 'transparent',              // ← [2026-05-07 v3] iOS 회색 박스 제거
                   touchAction: 'manipulation',                          // ← [2026-05-07 v3] 300ms tap delay 제거
                   userSelect: 'none',                                    // ← [2026-05-07 v3] 텍스트 선택 차단
