@@ -2,6 +2,14 @@
  * CalendarShell.tsx — 캘린더 뷰 (Daily / Weekly / Monthly)
  *
  * ✅ 변경 이력
+ *  - [2026-05-13 v2] 탭 토글 배경 흰색 + 우측 영역 높이 정확 일치 (사용자 피드백)
+ *    · 좌측 View Tabs(일/주/월) 컨테이너 bg: '#F3F4F8' → '#FFFFFF'
+ *    · 우측 View Tabs(전체예약/내예약) 컨테이너 bg: '#F3F4F8' → '#FFFFFF'
+ *    · 우측 View Tabs 컨테이너 padding 2 → 0, gap 2 → 0
+ *      → active 검정 pill 외곽 32px → 36px (회의실 dropdown 외곽 36과 정확 일치)
+ *    · sliding pill top/bottom 2 → 0 (컨테이너 padding 0 동기화)
+ *    · 페이지 wrapper(App.tsx)는 view별 분기 별도 처리됨 — 캘린더만 padding 20px 28px
+ *    · UI-only (로직/props/API 무변경)
  *  - [2026-05-13] 툴바 UI 미세 조정 (Figma 586:647)
  *    · 외부 Toolbar wrapper: bg-white 제거(투명), padding 좌우 0 (12px 18px → 12px 0)
  *    · Date picker 트리거 버튼: background '#fff' → 'transparent' (투명)
@@ -339,7 +347,7 @@ export function CalendarShell({
             ref={viewContainerRef}
             style={{
               position: 'relative',
-              display: 'flex', background: '#F3F4F8', borderRadius: 1000,
+              display: 'flex', background: '#FFFFFF', borderRadius: 1000,    /* ← [2026-05-13] '#F3F4F8' → '#FFFFFF' (탭 토글 배경 흰색) */
               padding: 2, gap: 2, flexShrink: 0, height: 40, alignItems: 'center',
               overflow: 'hidden',
             }}>
@@ -611,13 +619,13 @@ export function CalendarShell({
             ref={filterContainerRef}
             style={{
               position: 'relative',
-              display: 'flex', background: '#F3F4F8', borderRadius: 1000,
-              padding: 2, gap: 2, flexShrink: 0, height: 36, alignItems: 'center',  /* ← [2026-05-13] 32→36 (Figma 586:672) */
+              display: 'flex', background: '#FFFFFF', borderRadius: 1000,                /* ← [2026-05-13] '#F3F4F8' → '#FFFFFF' (탭 토글 배경 흰색) */
+              padding: 0, gap: 0, flexShrink: 0, height: 36, alignItems: 'center',       /* ← [2026-05-13] padding 2→0, gap 2→0 (회의실 dropdown 외곽 36px와 active pill 외곽 일치) */
               overflow: 'hidden',
             }}>
             {filterReady && (
               <div style={{
-                position: 'absolute', top: 2, bottom: 2,
+                position: 'absolute', top: 0, bottom: 0,                                /* ← [2026-05-13] 2→0 (컨테이너 padding 0과 동기화 - pill 외곽 36px) */
                 left: 0,                                              // ← [2026-05-07 v3] translate3d 사용
                 width: filterPill.width,
                 transform: `translate3d(${filterPill.left}px, 0, 0)`, // ← [2026-05-07 v3] GPU 가속
