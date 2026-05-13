@@ -2,6 +2,16 @@
  * CalendarShell.tsx — 캘린더 뷰 (Daily / Weekly / Monthly)
  *
  * ✅ 변경 이력
+ *  - [2026-05-13 v5] 캘린더 뷰 쉘 외곽 border-radius 변경 (사용자 피드백)
+ *    · 3개 view(MonthlyView/DailyView/WeeklyView) 외곽 borderRadius: 16 → 20
+ *    · 회의실 드롭다운 팝업의 borderRadius:16 (L567)은 외곽 쉘이 아니므로 미변경
+ *    · UI-only (로직/props/API 무변경)
+ *  - [2026-05-13 v4] 캘린더 뷰 쉘 외곽 border 색상 변경 (사용자 피드백)
+ *    · 3개 view(MonthlyView/DailyView/WeeklyView) 외곽 border: '#E2E8F0' → '#FFFFFF'
+ *      (border 자체는 1px 유지 → 사용자가 명시한 rgb(255,255,255) 1:1 적용,
+ *       border:none 사용 안 함 — 1px 공간 유지하여 view 전환 시 레이아웃 jump 방지)
+ *    · 일관성: 세 view 모두 동일한 외곽 패턴이라 3곳 모두 변경
+ *    · UI-only (로직/props/API 무변경)
  *  - [2026-05-13 v3] 툴바 하단 간격 + 날짜 폰트 조정 (사용자 피드백)
  *    · Toolbar wrapper className: 'mb-4' → 'mb-1' (margin-bottom 1rem → 0.25rem)
  *      → 사용자 표현 "padding-bottom" = Chrome DevTools에서 보라색으로 표시된 margin 영역
@@ -696,7 +706,7 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
     //   · min-height 560: 6주 월(최대)에서 각 행 최소 ~90px 확보
     //   · grid rows를 auto(헤더) + 1fr repeat(6)으로 분할해 본체 행이 세로 공간 균등 차지
     <div style={{
-      background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden',
+      background: '#fff', borderRadius: 20, border: '1px solid #FFFFFF', overflow: 'hidden',  /* ← [2026-05-13 v5] borderRadius 16→20 / [v4] border '#E2E8F0' → '#FFFFFF' (캘린더 쉘 외곽, MonthlyView) */
       height: 'calc(100vh - 220px)', minHeight: 560,
       display: 'flex', flexDirection: 'column',
     }}>
@@ -880,7 +890,7 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
   // ← [2026-04-23] getRoomDot 함수 완전 삭제 — 회의실 상태 dot 표시 불필요 (요청)
 
   return (
-    <div ref={scrollRef} style={{ background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', overflowX: 'auto', overflowY: 'visible' }}>
+    <div ref={scrollRef} style={{ background: '#fff', borderRadius: 20, border: '1px solid #FFFFFF', overflowX: 'auto', overflowY: 'visible' }}>{/* ← [2026-05-13 v5] borderRadius 16→20 / [v4] border '#E2E8F0' → '#FFFFFF' (캘린더 쉘 외곽, DailyView) */}
       <div style={{ minWidth: LW + totalW, position: 'relative' }}>
 
         {/* 현재시간 인디케이터 — dot(헤더 하단 경계선) + 세로 라인만
@@ -1192,7 +1202,7 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
   }
 
   return (
-    <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden' }}>
+    <div style={{ background: '#fff', borderRadius: 20, border: '1px solid #FFFFFF', overflow: 'hidden' }}>{/* ← [2026-05-13 v5] borderRadius 16→20 / [v4] border '#E2E8F0' → '#FFFFFF' (캘린더 쉘 외곽, WeeklyView) */}
       <div ref={scrollRef} style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 180px)', overflowX: 'auto' }}>
         <div style={{ minWidth: TIME_W + days.length * 140, position: 'relative' }}>
 
