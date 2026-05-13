@@ -2,6 +2,13 @@
  * CalendarShell.tsx — 캘린더 뷰 (Daily / Weekly / Monthly)
  *
  * ✅ 변경 이력
+ *  - [2026-05-13 v3] 툴바 하단 간격 + 날짜 폰트 조정 (사용자 피드백)
+ *    · Toolbar wrapper className: 'mb-4' → 'mb-1' (margin-bottom 1rem → 0.25rem)
+ *      → 사용자 표현 "padding-bottom" = Chrome DevTools에서 보라색으로 표시된 margin 영역
+ *      → 실제 클래스는 Tailwind margin-bottom (mb-4 = 16px → mb-1 = 4px)
+ *    · Date Display 텍스트: fontSize 20 → 21, fontWeight 500 → 400
+ *      (캘린더 뷰 모든 모드 — daily/weekly/monthly 공통 span 한 곳)
+ *    · UI-only (로직/props/API 무변경)
  *  - [2026-05-13 v2] 탭 토글 배경 흰색 + 우측 영역 높이 정확 일치 (사용자 피드백)
  *    · 좌측 View Tabs(일/주/월) 컨테이너 bg: '#F3F4F8' → '#FFFFFF'
  *    · 우측 View Tabs(전체예약/내예약) 컨테이너 bg: '#F3F4F8' → '#FFFFFF'
@@ -330,7 +337,7 @@ export function CalendarShell({
              → 좌/중/우 3개 자식이 양 끝 + 중앙에 자동 분배
              → 중앙 Date Nav가 w=420 고정폭이라 좌/우 무엇이 바뀌어도 위치 불변
            [2026-05-13] bg-white 제거(투명), 좌우 padding 삭제 (Figma 586:647) */}
-      <div className="rounded-2xl mb-4"
+      <div className="rounded-2xl mb-1"                                              /* ← [2026-05-13 v3] 'mb-4' → 'mb-1' (margin-bottom 1rem → 0.25rem, 사용자 피드백) */
         style={{
           padding: '12px 0', position: 'relative', zIndex: 50,                  // ← [2026-05-13] '12px 18px' → '12px 0' (좌우 padding 삭제, Figma 586:647)
           display: 'flex', flexDirection: isMobile ? 'column' : 'row',
@@ -415,7 +422,7 @@ export function CalendarShell({
                 borderRadius: 8, display: 'flex', alignItems: 'center', cursor: 'pointer',
                 userSelect: 'none', WebkitUserSelect: 'none',
               }}>
-              <span style={{ fontSize: 20, fontWeight: 500, color: '#111',
+              <span style={{ fontSize: 21, fontWeight: 400, color: '#111',                /* ← [2026-05-13 v3] fontSize 20→21, fontWeight 500→400 (사용자 피드백) */
                 fontFamily: "'Pretendard', -apple-system, sans-serif",
                 userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'none' }}>
                 {calView === 'daily'
