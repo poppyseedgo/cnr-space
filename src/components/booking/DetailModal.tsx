@@ -16,6 +16,14 @@ import { isMyBooking } from '../../utils/bookingOwnership'  // ← [2026-04-24 P
  * BookingDetailModal (export name: DetailModal)
  *
  * ✅ 변경 이력
+ *  - [2026-05-14 #5] 참석자 chip 세로 중앙 정렬 (사용자 진단)
+ *    · 문제: 인스펙터로 본 wrapper div(168.91 × 30.5)가 행 stretch로 늘어났는데,
+ *            자식 chip은 top에 붙어 있어 행 간격이 시각적으로 들쭉날쭉 보임
+ *    · 해결:
+ *      ① flex-wrap 컨테이너에 alignItems:center → wrapper div가 콘텐츠 높이만 차지
+ *      ② 각 wrapper div에 display:flex + alignItems:center → 자식 chip 세로 중앙
+ *      두 단계 모두 적용해 어느 상황에서도 chip이 행 중앙에 위치하도록 보장
+ *    · 기능 변동 없음 - 정렬만 수정
  *  - [2026-05-14 #4] max-height 620px + fade 높이 62px (사용자 명시값)
  *    · maxHeight 데스크탑: min(720px, 85vh) → 620px (고정값)
  *    · 하단 그라데이션 fade height: 32 → 62 (더 두드러진 흐림)
@@ -341,6 +349,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
                   columnGap: 14,
                   rowGap: 10,
                   width: "100%",
+                  alignItems: "center",                /* ← [2026-05-14 #5] flex item 세로 중앙 정렬 - 한 행 안의 chip들이 행 높이의 가운데에 위치 */
                 }}>
                   {b.attendees.map((a:any, idx:number) => {
                     const u = (up as any[]).find((u:any) => u.email === a.email)
@@ -349,6 +358,8 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
                         flex: "0 1 auto",                  // 콘텐츠 너비 우선, 필요시 shrink
                         minWidth: "calc(50% - 7px)",       // 기본 절반 강제 (gap 14의 절반)
                         maxWidth: "100%",                  // 부모 100% 초과 방지
+                        display: "flex",                   /* ← [2026-05-14 #5] 자식 세로 중앙 정렬용 */
+                        alignItems: "center",              /* ← [2026-05-14 #5] 행 높이 불균등 시 chip을 middle center에 배치 (긴이름 두줄 다음 행과 짧은 한줄 행 시각적 균일감) */
                       }}>
                         <AttendeeChip
                           name={u?.name ?? a.name ?? a.email}
