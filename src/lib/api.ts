@@ -759,10 +759,18 @@ export async function loadUsers(): Promise<AppUser[]> {
     // ← [2026-04-23] withRetry: 일시 오류 시 최대 3회 재시도
     //   중요: 이 함수가 빈 배열 반환 시 BookingModal 참석자 검색이 전부 실패
     //   (메모리 기록 증상: "참석자 검색 안됨 - 5명 문의")
+    // ← [2026-05-14] is_active=false(퇴사자) 제외 필터 추가
+    //   · 배경: AdminPage 사용자 관리의 '재직자' 카운트에 퇴사자가 포함되어 있던 문제
+    //   · 시스템 전반에서 is_active=false = 퇴사자/비활성으로 일관되게 취급되는데
+    //     loadUsers만 필터 누락 → users 배열에 퇴사자 섞여 들어옴
+    //   · 다른 곳(api.ts:searchUsers, BookingModal 등)은 이미 `.neq('is_active', false)` 적용 중
+    //   · 추가 효과: Live profile lookup의 fallback 메커니즘 의도대로 작동
+    //     (퇴사자 예약 표시 시 owner를 못 찾고 snapshot으로 fallback)
     const data = await withRetry(async () => {
       const { data, error } = await supabase
         .from('profiles')
         .select('id, employee_id, name, dept, role, email, is_active, avatar_url')
+        .neq('is_active', false) // ← [2026-05-14] 퇴사자 제외 — 시스템 전반 일관성
         .order('name')
       if (error) throw error
       return data
