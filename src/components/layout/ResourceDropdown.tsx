@@ -2,6 +2,15 @@
  * ResourceDropdown.tsx — 헤더 우측 "자원 예약" 드롭다운 (기능 비활성화 placeholder)
  *
  * ✅ 변경 이력
+ *  - [2026-05-13 v11] 트리거 버튼 Figma 1:1 + hover 배경 + 아이콘 교차 애니메이션
+ *      · padding: '10px 20px' → '10px 12px 10px 16px' (Figma 572:474 비대칭 1:1)
+ *        좌측 아이콘 24px / 우측 화살표 20px 시각 무게 차이 반영
+ *      · hover/active 시 background #F5F9FF (Figma bg-[#f5f9ff] 1:1)
+ *        + 마운스/터치 모두 대응 (mouseenter/leave + touchstart/end + click 후 일정시간 유지)
+ *      · 좌측 아이콘 자동 교차 애니메이션: ZOOM → 포인터 → 도서 → ZOOM ...
+ *        - 4초 주기, 스케일+페이드 (0.5s cubic-bezier)
+ *        - 드롭다운 열림 중에는 일시정지 (현재 표시 아이콘 고정)
+ *        - position:absolute 3개 레이어, active 클래스 교차
  *  - [2026-05-13 v10] opacity 0.35 → 1 복원 (사용자 피드백)
  *      · v8에서 비활성 시각화 목적 0.35 적용했던 것을 다시 100%로
  *      · 기능 onClick은 여전히 미연결 — 시각적 비활성 표시만 해제 (placeholder UI는 유지)
@@ -91,6 +100,8 @@ const IcoBook = () => (
 
 export function ResourceDropdown({ dark }: ResourceDropdownProps) {
   const [open, setOpen] = useState(false)
+  const [hover, setHover] = useState(false)                                  // ← [2026-05-13 v11] hover 배경 변화 (마우스 + 터치 통합)
+  const [iconIdx, setIconIdx] = useState(0)                                  // ← [2026-05-13 v11] 좌측 아이콘 교차 (0:zoom 1:pointer 2:book)
   const wrapRef = useRef<HTMLDivElement>(null)
 
   // 외부 클릭 시 드롭다운 닫기 (자기완결적)
@@ -103,6 +114,17 @@ export function ResourceDropdown({ dark }: ResourceDropdownProps) {
     return () => document.removeEventListener('mousedown', onDown)
   }, [open])
 
+  // ── [2026-05-13 v11] 좌측 아이콘 자동 교차 (4초 주기) ──
+  //   · 드롭다운 열림 중에는 멈춤 (현재 표시 아이콘 고정 → 메뉴와 시각적 일관성)
+  //   · setInterval 1개만 사용 (cleanup 자동)
+  useEffect(() => {
+    if (open) return                                                          // 드롭다운 열림 중에는 일시정지
+    const id = window.setInterval(() => {
+      setIconIdx(i => (i + 1) % 3)
+    }, 4000)
+    return () => window.clearInterval(id)
+  }, [open])
+
   // 메뉴 항목 정의 — 기능은 추후 구현 (onClick 미연결, e.preventDefault)
   const MENU_ITEMS: { key: string; icon: JSX.Element; label: string }[] = [
     { key: 'zoom',    icon: <IcoZoom />,    label: 'ZOOM 예약' },
@@ -112,16 +134,22 @@ export function ResourceDropdown({ dark }: ResourceDropdownProps) {
 
   return (
     <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0, opacity: 1 }}>  {/* ← [2026-05-13 v10] opacity 0.35 → 1 (100%, 시각적 비활성화 해제) - 기능은 여전히 onClick 미연결 */}
-      {/* 트리거 버튼 — Figma 572:474 */}
+      {/* 트리거 버튼 — Figma 572:474 1:1 ([2026-05-13 v11]) */}
       <button
         className="btn"
         onClick={() => setOpen(v => !v)}
+        onMouseEnter={() => setHover(true)}                                   /* ← [v11] hover 배경 */
+        onMouseLeave={() => setHover(false)}
+        onTouchStart={() => setHover(true)}                                   /* ← [v11] 터치 시작 - 모바일 active 효과 */
+        onTouchEnd={() => setHover(false)}
+        onTouchCancel={() => setHover(false)}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           gap: 8,
-          padding: '10px 20px',
+          padding: '10px 12px 10px 16px',                                     /* ← [v11] Figma 1:1: pl-16 pr-12 py-10 (비대칭, 좌측 아이콘 24px 시각 무게 보정) */
           borderRadius: 100, border: 'none',
-          background: 'transparent',
+          background: hover ? '#F5F9FF' : 'transparent',                       /* ← [v11] hover/touch 시 #F5F9FF (Figma bg-[#f5f9ff] 1:1) */
+          transition: 'background 0.18s ease',                                 /* ← [v11] 부드러운 전환 */
           cursor: 'pointer',
           fontFamily: "'Pretendard', -apple-system, sans-serif",
           WebkitTapHighlightColor: 'transparent',
@@ -130,9 +158,29 @@ export function ResourceDropdown({ dark }: ResourceDropdownProps) {
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        {/* 좌측: 아이콘 + 라벨 (gap 4) */}
+        {/* 좌측: 아이콘(교차 슬롯) + 라벨 (gap 4) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <IcoZoom />
+          {/* ── [v11] 아이콘 교차 슬롯 ──
+              · 24×24 고정 컨테이너에 3개 SVG를 position:absolute로 겹쳐 둠
+              · active 1개만 opacity 1 + scale 1, 나머지는 opacity 0 + scale 0.4
+              · transition 0.5s cubic-bezier로 스케일+페이드 효과 */}
+          <div style={{ position: 'relative', width: 24, height: 24, flexShrink: 0 }}>
+            {[<IcoZoom key="z" />, <IcoPointer key="p" />, <IcoBook key="b" />].map((ico, i) => (
+              <div
+                key={i}
+                style={{
+                  position: 'absolute', top: 0, left: 0, width: 24, height: 24,
+                  opacity: iconIdx === i ? 1 : 0,
+                  transform: iconIdx === i ? 'scale(1)' : 'scale(0.4)',
+                  transition: 'opacity 0.5s ease, transform 0.5s cubic-bezier(0.4,0,0.2,1)',
+                  willChange: 'opacity, transform',
+                }}
+                aria-hidden={iconIdx !== i}
+              >
+                {ico}
+              </div>
+            ))}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', height: 20 }}>
             <span style={{
               fontSize: 15, fontWeight: 400, lineHeight: 1.25,
