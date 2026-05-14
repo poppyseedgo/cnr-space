@@ -690,6 +690,7 @@ export async function loadAllRooms(): Promise<Room[]> {
       room_name_ko: row.room_name_ko  ?? '',
       capacity:     row.capacity      ?? 4,
       notes:        row.notes         ?? '',
+      usage_rules:  row.usage_rules   ?? '', // ← [2026-05-14] 이용규칙 필드 추가
       is_active:    row.is_active     ?? true,
       is_admin_only: row.is_admin_only ?? false,
       color:        row.color         ?? '#111111',
@@ -734,6 +735,7 @@ export async function loadRooms(): Promise<Room[]> {
       room_name_ko: row.room_name_ko  ?? '',
       capacity:     row.capacity      ?? 4,
       notes:        row.notes         ?? '',
+      usage_rules:  row.usage_rules   ?? '', // ← [2026-05-14] 이용규칙 필드 추가
       is_active:    row.is_active     ?? true,
       is_admin_only: row.is_admin_only ?? false,
       color:        row.color         ?? '#111111',
@@ -1027,6 +1029,7 @@ export async function upsertRoom(room: Room): Promise<void> {
     floor_id:     room.floor_id    ?? 1,
     capacity:     room.capacity    ?? 4,
     notes:        room.notes       ?? '',
+    usage_rules:  room.usage_rules ?? '', // ← [2026-05-14] 이용규칙 저장
     is_active:    room.is_active   ?? true,
     is_admin_only: room.is_admin_only ?? false,
     color:        room.color       ?? '#111111',

@@ -186,6 +186,17 @@ export function RoomDetailModal({room:r, bookings, users = [], onClose, onBook, 
                   <div style={{fontSize:14,color:"#111",fontWeight:400,wordBreak:"break-word",flex:1,lineHeight:1.5}}>{r.notes}</div>
                 </div>
               )}
+              {/* ← [2026-05-14] 이용규칙 섹션 추가 — whiteSpace:'pre-wrap'으로 엔터/연속공백 보존 */}
+              {r.usage_rules && (
+                <div style={{
+                  padding:"10px 0",
+                  borderBottom:"0.5px solid #F1F5F9",
+                  display:"flex", alignItems:"flex-start", width:"100%",
+                }}>
+                  <div style={{fontSize:14,color:"#96A0B3",width:64,fontWeight:600,flexShrink:0,lineHeight:1.5}}>이용규칙</div>
+                  <div style={{fontSize:14,color:"#111",fontWeight:400,wordBreak:"break-word",flex:1,lineHeight:1.5,whiteSpace:"pre-wrap"}}>{r.usage_rules}</div>
+                </div>
+              )}
               {features.length>0 && (
                 <div style={{
                   padding:"10px 0",

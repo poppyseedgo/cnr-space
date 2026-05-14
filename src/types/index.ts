@@ -20,6 +20,7 @@ export interface Room {
   room_name_ko: string
   capacity:     number
   notes:        string
+  usage_rules?: string  // ← [2026-05-14] 회의실 이용규칙 (멀티라인 자유 텍스트, 옵셔널)
   is_active:    boolean
   is_admin_only?: boolean
   color:        string
