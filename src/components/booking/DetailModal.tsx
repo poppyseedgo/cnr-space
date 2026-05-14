@@ -16,6 +16,14 @@ import { isMyBooking } from '../../utils/bookingOwnership'  // ← [2026-04-24 P
  * BookingDetailModal (export name: DetailModal)
  *
  * ✅ 변경 이력
+ *  - [2026-05-14] 모달 max-height 적정화 (사용자 피드백)
+ *    · 데스크탑: 90vh → "min(720px, 85vh)"
+ *    · 모바일: 88vh 유지 (이미 적정)
+ *    · 배경: 참석자 많은 회의는 모달이 화면 거의 다 차지(90vh) → 답답함
+ *    · 720px = 13~16인치 노트북에서 안락한 모달 높이
+ *    · 85vh fallback: 작은 모니터(1024×768)에서 720이 너무 클 때 보호
+ *    · 기존 3-area flex 스크롤 구조(header flexShrink + body overflowY:auto flex:1 + footer flexShrink) 그대로 작동
+ *      → 콘텐츠 많아도 body 영역만 스크롤, 헤더/푸터 항상 노출
  *  - [2026-05-12 체크인 활성 5분 전 핫픽스]
  *    · 체크인 버튼 활성 조건: isAct && !checkedIn → isCheckinable(b)
  *      → 시작 5분 전부터 시작 후 10분까지 체크인 활성 (15분 윈도우)
@@ -139,7 +147,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
       borderRadius: isMobile ? "20px 20px 0 0" : 24, // ← [피그마] 16 → 24
       width:"100%", maxWidth: isMobile ? "100%" : 460,
       minHeight: isMobile ? undefined : 460, // ← [2026-04-24] 500 → 460 (요청 반영)
-      maxHeight: isMobile ? "88vh" : "90vh",
+      maxHeight: isMobile ? "88vh" : "min(720px, 85vh)",   /* ← [2026-05-14] 데스크탑 90vh → min(720px, 85vh) — 참석자/내용 많아도 모달 적정 크기 유지, 화면 작을 땐 85vh fallback */
       boxShadow:"0 20px 60px rgba(0,0,0,0.15)",
       overflow:"hidden", display:"flex", flexDirection:"column",
       alignSelf: isMobile ? "flex-end" : "center",

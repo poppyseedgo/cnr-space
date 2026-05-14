@@ -13,6 +13,10 @@ import { isNoshow as isNoshowSSOT } from '../../utils/noshow'
  * RoomDetailModal
  *
  * ✅ 변경 이력
+ *  - [2026-05-14] 모달 max-height 적정화 (사용자 피드백)
+ *    · 데스크탑: 90vh → "min(720px, 85vh)" — DetailModal/BookingModal과 일관 적용
+ *    · 모바일: 88vh 유지 (이미 적정)
+ *    · 기존 flex 스크롤 구조(L106 헤더 flexShrink:0 + L128 body overflowY:auto flex:1) 그대로 작동
  *  - [2026-04-25] 좌우 컬럼 1:1 width 강제 (min-width: 0 패턴 적용)
  *    · 문제: 오른쪽 영역 예약카드의 회의제목이 길어지면 RIGHT 컬럼이 push되어
  *            grid `1fr 1fr` 비율이 깨지고 LEFT 컬럼이 줄어드는 현상
@@ -91,7 +95,7 @@ export function RoomDetailModal({room:r, bookings, users = [], onClose, onBook, 
       background:"#fff",
       borderRadius: isMobile ? "20px 20px 0 0" : 24, // ← [피그마] 24
       width:"100%", maxWidth: isMobile ? "100%" : 760, // ← [피그마] 760
-      maxHeight: isMobile ? "88vh" : "90vh",
+      maxHeight: isMobile ? "88vh" : "min(720px, 85vh)",   /* ← [2026-05-14] 데스크탑 90vh → min(720px, 85vh) — DetailModal과 일관 적용 */
       boxShadow:"0 20px 60px rgba(0,0,0,0.15)",
       overflow:"hidden", display:"flex", flexDirection:"column",
       alignSelf: isMobile ? "flex-end" : "center",
@@ -184,17 +188,6 @@ export function RoomDetailModal({room:r, bookings, users = [], onClose, onBook, 
                 }}>
                   <div style={{fontSize:14,color:"#96A0B3",width:64,fontWeight:600,flexShrink:0,lineHeight:1.5}}>설명</div>
                   <div style={{fontSize:14,color:"#111",fontWeight:400,wordBreak:"break-word",flex:1,lineHeight:1.5}}>{r.notes}</div>
-                </div>
-              )}
-              {/* ← [2026-05-14] 이용규칙 섹션 추가 — whiteSpace:'pre-wrap'으로 엔터/연속공백 보존 */}
-              {r.usage_rules && (
-                <div style={{
-                  padding:"10px 0",
-                  borderBottom:"0.5px solid #F1F5F9",
-                  display:"flex", alignItems:"flex-start", width:"100%",
-                }}>
-                  <div style={{fontSize:14,color:"#96A0B3",width:64,fontWeight:600,flexShrink:0,lineHeight:1.5}}>이용규칙</div>
-                  <div style={{fontSize:14,color:"#111",fontWeight:400,wordBreak:"break-word",flex:1,lineHeight:1.5,whiteSpace:"pre-wrap"}}>{r.usage_rules}</div>
                 </div>
               )}
               {features.length>0 && (

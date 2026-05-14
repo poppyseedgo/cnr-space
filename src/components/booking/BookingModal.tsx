@@ -2,6 +2,10 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-05-14] 모달 max-height 적정화 (사용자 피드백)
+ *      · 데스크탑: modalMaxH 90vh → "min(720px, 85vh)"
+ *      · 모바일: visualViewport * 0.92/0.95 그대로 유지 (가상 키보드 대응 그대로)
+ *      · 기존 flex 스크롤 구조 그대로 작동 (헤더/푸터 flexShrink:0, body overflowY:auto)
  *  - [2026-04-29] 우측 패널 noTimeLeft 상태 안내 추가
  *      · 증상: 오후 7시 이후 모달 열면 우측에 시간·회의실이 그대로 표시됨
  *      · 원인: 우측 패널이 validTime만 체크 — noTimeLeft(오늘+슬롯 없음)를 무시
@@ -1493,7 +1497,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   // (iOS Safari 주소창/탭바 영역을 정확히 제외)
   const modalMaxH = isMobile
     ? Math.floor(vvHeight * 0.92)   // 가시 영역의 92%
-    : "90vh";
+    : "min(720px, 85vh)";            /* ← [2026-05-14] 90vh → min(720px, 85vh) — 데스크탑에서 모달이 화면 다 차지 안 함 */
 
   return (
     <div className="anm" style={{
