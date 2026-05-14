@@ -16,6 +16,9 @@ import { isMyBooking } from '../../utils/bookingOwnership'  // ← [2026-04-24 P
  * BookingDetailModal (export name: DetailModal)
  *
  * ✅ 변경 이력
+ *  - [2026-05-14 #4] max-height 620px + fade 높이 62px (사용자 명시값)
+ *    · maxHeight 데스크탑: min(720px, 85vh) → 620px (고정값)
+ *    · 하단 그라데이션 fade height: 32 → 62 (더 두드러진 흐림)
  *  - [2026-05-14 #2-revised] body 스크롤 힌트만 유지, 참석자 grid 시도 롤백 (사용자 피드백)
  *    · 스크롤 힌트(유지): body 영역 하단에 32px 흰색→투명 그라데이션 fade overlay
  *      - canScrollDown 상태 추적 (scroll + ResizeObserver 동시 감시)
@@ -183,7 +186,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
       borderRadius: isMobile ? "20px 20px 0 0" : 24, // ← [피그마] 16 → 24
       width:"100%", maxWidth: isMobile ? "100%" : 460,
       minHeight: isMobile ? undefined : 460, // ← [2026-04-24] 500 → 460 (요청 반영)
-      maxHeight: isMobile ? "88vh" : "min(720px, 85vh)",   /* ← [2026-05-14] 데스크탑 90vh → min(720px, 85vh) — 참석자/내용 많아도 모달 적정 크기 유지, 화면 작을 땐 85vh fallback */
+      maxHeight: isMobile ? "88vh" : 620,   /* ← [2026-05-14 #4] min(720px,85vh) → 620px (사용자 명시값) */
       boxShadow:"0 20px 60px rgba(0,0,0,0.15)",
       overflow:"hidden", display:"flex", flexDirection:"column",
       alignSelf: isMobile ? "flex-end" : "center",
@@ -413,7 +416,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
              · transition opacity 0.2s — 자연스러운 등장/사라짐 */}
         <div style={{
           position: "absolute", left: 0, right: 0, bottom: 0,
-          height: 32,
+          height: 62,                                    /* ← [2026-05-14 #4] 32 → 62 (사용자 명시값, 더 두드러진 fade) */
           background: "linear-gradient(to bottom, rgba(255,255,255,0) 0%, #FFFFFF 100%)",
           pointerEvents: "none",
           opacity: canScrollDown ? 1 : 0,
