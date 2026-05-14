@@ -16,17 +16,16 @@ import { isMyBooking } from '../../utils/bookingOwnership'  // ← [2026-04-24 P
  * BookingDetailModal (export name: DetailModal)
  *
  * ✅ 변경 이력
- *  - [2026-05-14 #2] body 스크롤 힌트 + 참석자 영역 wrap 간격 균일화 (사용자 피드백)
- *    · 스크롤 힌트: body 영역 하단에 32px 흰색→투명 그라데이션 fade overlay
+ *  - [2026-05-14 #2-revised] body 스크롤 힌트만 유지, 참석자 grid 시도 롤백 (사용자 피드백)
+ *    · 스크롤 힌트(유지): body 영역 하단에 32px 흰색→투명 그라데이션 fade overlay
  *      - canScrollDown 상태 추적 (scroll + ResizeObserver 동시 감시)
  *      - 스크롤 가능할 때만 fade 표시, 끝까지 가면 자동 숨김 (opacity 0.2s 전환)
  *      - pointerEvents:none — 스크롤/클릭 이벤트 차단 없음
  *      - body div를 wrapper(position:relative, flex:1)로 감싸서 overlay 위치 기준 마련
- *    · 참석자 영역: flex-wrap + calc(50% - 7px) → CSS Grid auto-fit + minmax(140px, 1fr)
- *      - 이전 문제: 긴 이름이 단독 행 차지하면서 1칸/2칸 행 섞여 시각적 불균형
- *      - 해결: 모든 칸 동일 폭으로 그리드 분배 → 행 간격 항상 균일
- *      - 짧은/긴 이름 모두 한 줄에 2개씩 배치, 각 칸 안에서 max-width:100% + overflow:hidden
- *      - 가로스크롤 방지(2026-04-30 fix), 이름 live 표시(P4-A-1) 그대로 보존
+ *    · 참석자 영역(롤백): grid auto-fit minmax(140px, 1fr) → flex-wrap + calc(50%-7px) 복원
+ *      - 시도한 grid 방식이 칸 폭을 140px로 강제해 긴 이름(전재은_Jaeeun Jeon 등) 잘림
+ *      - 사용자 우선순위 재확인: "이름 100% 표시" > "간격 균일화"
+ *      - 2026-04-30 flex-wrap 방식이 사용자 요구 그대로 맞는 방식이라 그대로 복원
  *  - [2026-05-14] 모달 max-height 적정화 (사용자 피드백)
  *    · 데스크탑: 90vh → "min(720px, 85vh)"
  *    · 모바일: 88vh 유지 (이미 적정)
@@ -313,26 +312,29 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
               label="참석자"
               alignTop
               value={
-                /* ── [2026-05-14] 참석자 영역 wrap 간격 균일화 (사용자 피드백) ─────────
-                     이전 방식 (flex-wrap + minWidth calc(50% - 7px)):
-                       · 짧은 이름은 한 줄에 2개 (정상)
-                       · 긴 이름은 단독 행 차지 → 1칸 행과 2칸 행 섞임 → 시각적 불균형
+                /* ── [2026-04-30 #3 사용자 요청] flex-wrap + outer wrapper minWidth 50% ──
+                     #2 시도(grid 2컬럼)는 긴 이름이 컬럼 안에서 잘리는 문제 → 사용자 거부.
+                     사용자 의도:
+                       · 이름은 자르거나 줄이지 않고 100% 표시
+                       · 짧은 이름들은 2컬럼으로 정렬
+                       · 긴 이름은 다음 줄로 자동 wrap (image 1 같은 자연스러운 동작)
 
-                     해결: CSS Grid auto-fit
-                       · `gridTemplateColumns: repeat(auto-fit, minmax(140px, 1fr))`
-                       · value 영역 폭(약 300px)에서 자동으로 2열 결정, 모든 칸 동일 폭
-                       · 짧은 이름 2개: 한 줄 50/50 (이전과 동일)
-                       · 긴 이름 2개도: 한 줄 50/50 (각자 칸 안에서 wrap/truncate)
-                         → AttendeeChip wrapper의 max-width:100% + overflow:hidden 그대로 작동
-                       · 홀수 개일 때: 마지막 칩이 좌측 50% 차지, 우측은 빈 공간 → 행 간격 균일
+                     해결: flex-wrap + 각 칩 outer wrapper에 minWidth 50% 강제
+                       · 짧은 이름: minWidth 50%로 강제 → 한 줄에 2개 (2컬럼 정렬)
+                       · 긴 이름: 콘텐츠 너비대로 차지 → 다음 칩이 자동 wrap
+                       · gap 14 → 자식 minWidth는 calc(50% - 7px)로 보정
 
-                     보존되는 기능:
-                       · AttendeeChip 자체 (변경 0)
-                       · 칩 wrapper의 max-width:100%, min-width:0 (가로스크롤 방지 — 2026-04-30 fix 유지)
-                       · 이름 표시 live 우선 순위 (P4-A-1 유지) */
+                     이전 가로스크롤 회귀 방지: AttendeeChip wrapper의
+                     max-width:100% + min-width:0 + overflow:hidden 그대로 유지
+
+                     ── [2026-05-14 #3 롤백] grid auto-fit 시도 철회 ──
+                     · 시도: gridTemplateColumns repeat(auto-fit, minmax(140px, 1fr))
+                     · 문제: 칸 폭 강제 → 긴 이름(예: 전재은_Jaeeun Jeon, 안영환_Yeonghwan An) 잘림
+                     · 결정: 사용자 우선순위가 "이름 100% 표시" > "간격 균일화"
+                             간격 균일화는 다른 방식으로 재검토 예정 */
                 <div style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                  display: "flex",
+                  flexWrap: "wrap",
                   columnGap: 14,
                   rowGap: 10,
                   width: "100%",
@@ -341,9 +343,9 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
                     const u = (up as any[]).find((u:any) => u.email === a.email)
                     return (
                       <div key={a.email || idx} style={{
-                        minWidth: 0,                        // ← Grid item 콘텐츠 overflow 방지
-                        maxWidth: "100%",
-                        overflow: "hidden",
+                        flex: "0 1 auto",                  // 콘텐츠 너비 우선, 필요시 shrink
+                        minWidth: "calc(50% - 7px)",       // 기본 절반 강제 (gap 14의 절반)
+                        maxWidth: "100%",                  // 부모 100% 초과 방지
                       }}>
                         <AttendeeChip
                           name={u?.name ?? a.name ?? a.email}
