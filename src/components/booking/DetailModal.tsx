@@ -16,6 +16,7 @@ import { isMyBooking } from '../../utils/bookingOwnership'  // ← [2026-04-24 P
  * BookingDetailModal (export name: DetailModal)
  *
  * ✅ 변경 이력
+ *  - [2026-05-14 #6] 참석자 영역 rowGap 10 → 14 (사용자 명시값, columnGap과 동일)
  *  - [2026-05-14 #5] 참석자 chip 세로 중앙 정렬 (사용자 진단)
  *    · 문제: 인스펙터로 본 wrapper div(168.91 × 30.5)가 행 stretch로 늘어났는데,
  *            자식 chip은 top에 붙어 있어 행 간격이 시각적으로 들쭉날쭉 보임
@@ -347,7 +348,7 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
                   display: "flex",
                   flexWrap: "wrap",
                   columnGap: 14,
-                  rowGap: 10,
+                  rowGap: 14,                          /* ← [2026-05-14 #6] 10 → 14 (사용자 명시값, columnGap과 동일) */
                   width: "100%",
                   alignItems: "center",                /* ← [2026-05-14 #5] flex item 세로 중앙 정렬 - 한 행 안의 chip들이 행 높이의 가운데에 위치 */
                 }}>
