@@ -2899,6 +2899,7 @@ export function AdminRooms({ showToast, isMobile }) {
 //              → 기존 `dept 유무 = 로그인 여부` heuristic이 무효화됨
 //      · 변경: FilterType에서 'logged'|'unlogged' 제거, 카운트/필터/탭/뱃지/CSV 라벨 모두 정리
 //      · 영향: 사용자 목록 화면에서 '로그인'·'미로그인' 탭 사라짐, dept 빈값은 '-'로 표시
+//      · 후속 [2026-05-14] '전체' 라벨 → '재직자'로 변경 (퇴사자와 대구되는 명확한 표현)
 
 export function AdminUsers({ users, setUsers, showToast, isMobile }) {
   type FilterType = 'all' | 'admin' | 'departed' // ← [2026-05-14] 'logged' | 'unlogged' 제거
@@ -3013,7 +3014,7 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
 
   // ── 필터 탭
   const FILTER_TABS: { id: FilterType; label: string }[] = [
-    { id: 'all',      label: '전체' },
+    { id: 'all',      label: '재직자' }, // ← [2026-05-14] '전체' → '재직자' (퇴사자와 대구되는 명확한 표현, 의미적으로 'all'은 재직중인 사용자 전체)
     { id: 'admin',    label: 'Admin' },
     // ← [2026-05-14] '로그인'·'미로그인' 탭 제거 (dept 유무 heuristic 폐기)
     { id: 'departed', label: '퇴사자' },
