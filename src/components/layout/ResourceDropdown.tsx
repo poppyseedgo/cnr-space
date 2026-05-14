@@ -2,6 +2,10 @@
  * ResourceDropdown.tsx — 헤더 우측 "자원 예약" 드롭다운 (기능 비활성화 placeholder)
  *
  * ✅ 변경 이력
+ *  - [2026-05-13 v12] open 상태에서도 hover와 동일 배경 유지 (사용자 피드백)
+ *      · background 조건: `hover` → `open || hover`
+ *      · 드롭다운 열려있는 동안 트리거 버튼이 active 상태임을 시각적으로 표시
+ *      · 같은 #F5F9FF 색으로 hover/open 시각 일관성 유지
  *  - [2026-05-13 v11] 트리거 버튼 Figma 1:1 + hover 배경 + 아이콘 교차 애니메이션
  *      · padding: '10px 20px' → '10px 12px 10px 16px' (Figma 572:474 비대칭 1:1)
  *        좌측 아이콘 24px / 우측 화살표 20px 시각 무게 차이 반영
@@ -148,7 +152,7 @@ export function ResourceDropdown({ dark }: ResourceDropdownProps) {
           gap: 8,
           padding: '10px 12px 10px 16px',                                     /* ← [v11] Figma 1:1: pl-16 pr-12 py-10 (비대칭, 좌측 아이콘 24px 시각 무게 보정) */
           borderRadius: 100, border: 'none',
-          background: hover ? '#F5F9FF' : 'transparent',                       /* ← [v11] hover/touch 시 #F5F9FF (Figma bg-[#f5f9ff] 1:1) */
+          background: (open || hover) ? '#F5F9FF' : 'transparent',             /* ← [v12] open 상태에서도 hover와 동일 배경 유지 (사용자 피드백) / [v11] hover/touch 시 #F5F9FF */
           transition: 'background 0.18s ease',                                 /* ← [v11] 부드러운 전환 */
           cursor: 'pointer',
           fontFamily: "'Pretendard', -apple-system, sans-serif",
