@@ -1,7 +1,17 @@
 // @ts-nocheck
 /**
- * sync-all-users Edge Function v6
- * Microsoft Graph API User.ReadBasic.All (Application 권한)
+ * sync-all-users Edge Function v7
+ * Microsoft Graph API User.Read.All (Application 권한)
+ *
+ * ✅ 변경 이력
+ *  - v7 [2026-05-14] dept(부서) 자동 동기화 추가
+ *      · 배경: User.Read.All 권한 IT팀 승인 완료 (기존 User.ReadBasic.All은
+ *              department 필드 미포함이라 조직개편 시 부서 변경 미반영 컴플레인 발생)
+ *      · 변경 1: Graph $select에 `department` 추가 (line 77)
+ *      · 변경 2: 신규 INSERT 시 Azure department 값으로 저장 (기존 빈문자 하드코딩 → 라이브 값)
+ *      · 변경 3: 기존 PATCH 시 dept 갱신 — 단 Azure에 값 있을 때만 (관리자 수동입력 보호)
+ *      · 짝 배포: src/hooks/useAuth.tsx의 `!user.dept` 가드 제거
+ *               (사용자가 부서 변경 후 즉시 로그인 시 sync 주기 안 기다리고 반영)
  *
  * 퇴사자 처리 정책:
  *   - departed_users 테이블에 이력 INSERT (화면에서 퇴사자 목록으로 표시)
@@ -13,8 +23,9 @@
  *   - auth.users에 없음(미로그인)         → Azure AD object id 사용
  *
  * 기존 직원 PATCH:
- *   - name, employee_id 만 갱신
- *   - id, dept, role, avatar_url 절대 건드리지 않음
+ *   - name, employee_id 갱신 (필수 — 항상)
+ *   - dept 갱신 — Azure에 department 값 있을 때만 (빈값 덮어쓰기 방지)
+ *   - id, role, avatar_url 절대 건드리지 않음
  *
  * 프로필 사진 동기화:
  *   - avatar_url 없는 계정만 처리 (이미 있으면 skip)
@@ -74,7 +85,7 @@ async function fetchAllAzureUsers(token: string): Promise<any[]> {
   const all: any[] = []
   let url: string | null =
     'https://graph.microsoft.com/v1.0/users' +
-    '?$select=id,displayName,mail,userPrincipalName' +
+    '?$select=id,displayName,mail,userPrincipalName,department' + // ← [v7 2026-05-14] department 추가 — User.Read.All 권한으로 부서 조회
     '&$top=999' +
     '&$count=true'
 
@@ -215,7 +226,8 @@ async function cancelFutureBookings(userIds: string[]): Promise<number> {
 }
 
 // ── profiles 신규/기존 분리 처리 ─────────────────────────────────────────────
-// name, employee_id 만 갱신 — id, dept, role, avatar_url 절대 건드리지 않음
+// name, employee_id, dept 갱신 — id, role, avatar_url 절대 건드리지 않음
+// dept는 Azure department 값이 비어있지 않을 때만 PATCH (수동 입력값 보호)
 async function syncProfiles(
   azUsers: any[],
   existingEmails: Set<string>,
@@ -228,6 +240,7 @@ async function syncProfiles(
       name:        u.displayName ?? '',
       email:       (u.mail ?? u.userPrincipalName ?? '').toLowerCase(),
       employee_id: u.userPrincipalName ?? '',
+      dept:        u.department ?? '', // ← [v7 2026-05-14] Azure AD department 추출
     }))
     .filter(r => r.name && r.email)
 
@@ -242,7 +255,7 @@ async function syncProfiles(
       email:       r.email,
       employee_id: r.employee_id,
       role:        'USER',
-      dept:        '',
+      dept:        r.dept, // ← [v7 2026-05-14] Azure department 그대로 (빈문자열 가능)
     }))
 
   if (toInsert.length > 0) {
@@ -257,15 +270,24 @@ async function syncProfiles(
     if (!res.ok) throw new Error(`profiles INSERT 실패 (${res.status}): ${await res.text()}`)
   }
 
-  // 기존 PATCH — name, employee_id 만
+  // 기존 PATCH — name, employee_id, dept(있을 때만)
   const toUpdate = rows.filter(r => existingEmails.has(r.email))
   for (const row of toUpdate) {
+    // ← [v7 2026-05-14] dept 조건부 추가
+    //   · Azure department가 빈문자가 아닐 때만 dept 갱신 → 수동 입력된 dept를 빈값으로 덮어쓰기 방지
+    //   · 이름은 이미 `.filter(r => r.name && r.email)`로 빈값 제외돼 있어 항상 안전
+    const patchBody: Record<string, any> = {
+      name:        row.name,
+      employee_id: row.employee_id,
+    }
+    if (row.dept) patchBody.dept = row.dept // ← Azure SoT — 값 있을 때만 갱신
+
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/profiles?email=eq.${encodeURIComponent(row.email)}`,
       {
         method:  'PATCH',
         headers: { ...sbHeaders, 'Prefer': 'return=minimal' },
-        body:    JSON.stringify({ name: row.name, employee_id: row.employee_id }),
+        body:    JSON.stringify(patchBody),
       }
     )
     if (!res.ok) console.error(`[sync] PATCH 실패 (${row.email}):`, await res.text())

@@ -128,8 +128,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // DB 프로필은 백그라운드에서 조회 후 업데이트 (name/dept/role 보정)
             loadProfile(uid, email).then(async user => {
               if (!user) return
-              // DB dept가 비어있으면 Graph API로 보정 (sync로 인해 dept 유실된 경우 복구)
-              if (!user.dept && session.provider_token) {
+              // ← [2026-05-14] sync-all-users v7과 짝 배포 — `!user.dept` 가드 제거
+              //   · 배경: 가드가 있으면 한 번 채워진 dept는 영원히 갱신 안 됨 (조직개편 시 미반영)
+              //   · 변경: 매 로그인마다 Graph /me로 부서 확인 → sync 주기 안 기다리고 즉시 반영
+              //   · 비용: fire-and-forget이라 사용자 체감 없음, /me는 Delegated User.Read(기본 부여)로 충분
+              //   · fetchAndSaveDept는 빈값일 때 DB 갱신 안 함(내부 가드) → 안전
+              if (session.provider_token) {
                 const dept = await fetchAndSaveDept(uid, session.provider_token)
                 if (dept) user = { ...user, dept }
               }
@@ -166,7 +170,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // 백그라운드: DB 프로필 조회 + Graph API 부서 동기화
             loadProfile(uid, email).then(async user => {
               if (!user) return
-              if (!user.dept && session.provider_token) {
+              // ← [2026-05-14] sync-all-users v7과 짝 배포 — `!user.dept` 가드 제거 (위 INITIAL_SESSION과 동일 사유)
+              if (session.provider_token) {
                 const dept = await fetchAndSaveDept(uid, session.provider_token)
                 if (dept) user = { ...user, dept }
               }
