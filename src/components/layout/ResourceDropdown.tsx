@@ -2,6 +2,17 @@
  * ResourceDropdown.tsx — 헤더 우측 "자원 예약" 드롭다운 (기능 비활성화 placeholder)
  *
  * ✅ 변경 이력
+ *  - [2026-05-13 v9] 포인터 아이콘 SVG 재교체 (사용자 재제공)
+ *      · path 구조 변경: 2 path → 3 path (그라데이션 + 흰 fill + 검정 outline 레이어)
+ *      · React 호환 처리: stop-color/stop-opacity → stopColor/stopOpacity (camelCase)
+ *      · gradient ID는 기존(paint0_lin_resource_pointer) 유지로 collision 방지
+ *  - [2026-05-13 v8] 화살표 이펙트 + opacity 35% (사용자 피드백)
+ *      · 트리거 화살표: 정적 인라인 컴포넌트 → SegmentTabBar(전체 회의실)와 동일 이펙트
+ *        (path/fill #D0D0D0 / transition transform 0.2s / open 시 rotate 180deg)
+ *      · 최외각 wrapper에 opacity 0.35 적용
+ *        → 트리거 + 드롭다운 메뉴 모두 한 번에 처리 (CSS opacity는 descendant에 상속,
+ *          position:absolute 자식인 드롭다운 메뉴에도 동일 적용됨)
+ *      · 비활성 시각화만 — 클릭 동작은 그대로 (트리거 열림/닫힘은 작동)
  *  - [2026-05-13 v7] 신규 생성 (Figma 572:462)
  *      · 헤더 우측 영역에 "자원 예약" 드롭다운 메뉴 추가
  *      · 메뉴 3종: ZOOM 예약 / 포인터 대여 / 도서 대여
@@ -44,11 +55,12 @@ const IcoZoom = ({ size = 24 }: { size?: number }) => (
   </svg>
 )
 
-// pointer.svg: 포인터 대여 (그라데이션 포함)
+// pointer.svg: 포인터 대여 (그라데이션 포함) [2026-05-13 v9] 사용자 제공 새 SVG로 교체
 const IcoPointer = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M21.9873 6.71281C20.8089 4.67186 19.1141 2.97704 17.0732 1.79869C15.0322 0.620348 12.717 2.9302e-07 10.3604 0L10.3604 6.71281L10.3604 13.4256L16.1738 10.0692L21.9873 6.71281Z" fill="url(#paint0_lin_resource_pointer)"/>
-    <path d="M12.6732 13.7887L7.46765 22.805L3.68301 20.62L8.88858 11.6037L12.6732 13.7887ZM15.0228 9.71908L13.1732 12.9227L9.38858 10.7376L11.2382 7.53403L15.0228 9.71908Z" fill="#D9D9D9" stroke="#1C1B1F"/>
+    <path d="M21.9873 6.71281C20.8089 4.67186 19.1141 2.97704 17.0732 1.79869C15.0322 0.620348 12.717 2.9302e-07 10.3604 0L10.3604 13.4256L21.9873 6.71281Z" fill="url(#paint0_lin_resource_pointer)"/>
+    <path d="M11.0554 6.85101L15.7061 9.53614L13.3567 13.6056L7.65077 23.4885L3 20.8033L8.70589 10.9204L11.0554 6.85101Z" fill="white"/>
+    <path d="M15.7061 9.53614L7.65077 23.4885L3 20.8033L11.0554 6.85101L15.7061 9.53614ZM9.82179 10.9876L12.7404 12.6727L14.34 9.9021L11.4214 8.21704L9.82179 10.9876ZM4.36623 20.437L7.28483 22.122L12.2404 13.5387L9.32179 11.8537L4.36623 20.437Z" fill="black"/>
     <defs>
       <linearGradient id="paint0_lin_resource_pointer" x1="16.6857" y1="2.46997" x2="3.64759" y2="25.0526" gradientUnits="userSpaceOnUse">
         <stop stopColor="#737373" stopOpacity="0"/>
@@ -70,12 +82,9 @@ const IcoBook = () => (
   </svg>
 )
 
-// keyboard_arrow_down (Material Symbols 표준, 인라인 SVG)
-const IcoArrowDown = () => (
-  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M10 12.146L5.396 7.542L6.104 6.834L10 10.729L13.896 6.834L14.604 7.542L10 12.146Z" fill="#1C1B1F"/>
-  </svg>
-)
+// keyboard_arrow_down: 트리거 버튼 내부에 직접 인라인 SVG로 작성 (open 상태에 따라 rotate)
+// [2026-05-13 v8] 인라인 컴포넌트 제거 — open 상태 동적 활용 위해 트리거 JSX 내부로 이동
+//   참고 SegmentTabBar L153~156 (전체 회의실 드롭다운과 동일 이펙트)
 
 export function ResourceDropdown({ dark }: ResourceDropdownProps) {
   const [open, setOpen] = useState(false)
@@ -99,7 +108,7 @@ export function ResourceDropdown({ dark }: ResourceDropdownProps) {
   ]
 
   return (
-    <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0 }}>
+    <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0, opacity: 0.35 }}>  {/* ← [2026-05-13 v8] opacity 0.35 - 비활성 시각화 (트리거+드롭다운 모두 상속) */}
       {/* 트리거 버튼 — Figma 572:474 */}
       <button
         className="btn"
@@ -131,8 +140,12 @@ export function ResourceDropdown({ dark }: ResourceDropdownProps) {
             }}>자원 예약</span>
           </div>
         </div>
-        {/* 우측: 아래 화살표 */}
-        <IcoArrowDown />
+        {/* 우측: 아래 화살표 — [2026-05-13 v8] SegmentTabBar(전체 회의실)와 동일 이펙트 1:1
+            (path/fill #D0D0D0 / transition transform 0.2s / open 시 rotate 180deg) */}
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"
+          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+          <path d="M10.25 12.5625L6 8.3125L6.3125 8L10.25 11.9375L14.1875 8L14.5 8.3125L10.25 12.5625Z" fill="#D0D0D0"/>
+        </svg>
       </button>
 
       {/* 드롭다운 메뉴 — Figma 572:508 */}
