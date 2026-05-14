@@ -2892,9 +2892,16 @@ export function AdminRooms({ showToast, isMobile }) {
 
 // ─── AdminUsers ────────────────────────────────────────────────────────────────
 // ← [2026-04-18 P0 fix] import 제거 → 최상단으로 이동
+//
+// ✅ 변경 이력
+//  - [2026-05-14] '로그인/미로그인' 구별 기능 제거
+//      · 배경: sync-all-users v7부터 미로그인 사용자도 Azure AD에서 dept 자동 수집
+//              → 기존 `dept 유무 = 로그인 여부` heuristic이 무효화됨
+//      · 변경: FilterType에서 'logged'|'unlogged' 제거, 카운트/필터/탭/뱃지/CSV 라벨 모두 정리
+//      · 영향: 사용자 목록 화면에서 '로그인'·'미로그인' 탭 사라짐, dept 빈값은 '-'로 표시
 
 export function AdminUsers({ users, setUsers, showToast, isMobile }) {
-  type FilterType = 'all' | 'admin' | 'logged' | 'unlogged' | 'departed'
+  type FilterType = 'all' | 'admin' | 'departed' // ← [2026-05-14] 'logged' | 'unlogged' 제거
 
   const [filter,     setFilter]     = useState<FilterType>('all')
   const [searchQ,    setSearchQ]    = useState('')
@@ -2929,16 +2936,14 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
   const counts = {
     all:      users.length,
     admin:    users.filter(u => u.role === 'ADMIN').length,
-    logged:   users.filter(u => !!u.dept).length,        // dept 있으면 로그인 완료
-    unlogged: users.filter(u => !u.dept).length,
+    // ← [2026-05-14] logged/unlogged 카운트 제거 (dept 유무로 판정하던 heuristic 폐기)
     departed: departed.length,
   }
 
   // ── 검색 + 필터
   const filteredUsers = users.filter(u => {
     if (filter === 'admin'    && u.role !== 'ADMIN') return false
-    if (filter === 'logged'   && !u.dept)            return false
-    if (filter === 'unlogged' && !!u.dept)           return false
+    // ← [2026-05-14] logged/unlogged 필터 분기 제거 (FilterType에서도 제거됨)
     if (!searchQ) return true
     const q = searchQ.toLowerCase()
     return u.name.toLowerCase().includes(q)
@@ -3010,8 +3015,7 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
   const FILTER_TABS: { id: FilterType; label: string }[] = [
     { id: 'all',      label: '전체' },
     { id: 'admin',    label: 'Admin' },
-    { id: 'logged',   label: '로그인' },
-    { id: 'unlogged', label: '미로그인' },
+    // ← [2026-05-14] '로그인'·'미로그인' 탭 제거 (dept 유무 heuristic 폐기)
     { id: 'departed', label: '퇴사자' },
   ]
 
@@ -3032,7 +3036,7 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
             onClick={() => exportCSV(
               filter === 'departed'
                 ? filteredDeparted.map(u => ({ 이름:u.name, 부서:u.dept, 이메일:u.email, 퇴사일:u.departed_at.slice(0,10) }))
-                : filteredUsers.map(u => ({ 이름:u.name, 부서:u.dept||'(미로그인)', 이메일:u.email, 권한:u.role })),
+                : filteredUsers.map(u => ({ 이름:u.name, 부서:u.dept || '', 이메일:u.email, 권한:u.role })), // ← [2026-05-14] '(미로그인)' fallback 제거 → 빈문자열
               filter === 'departed' ? '퇴사자목록' : '사용자목록'
             )}
             style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', fontSize:11, borderRadius:8, background:'#F8FAFC', border:'1px solid #E2E8F0', color:'#374151', fontWeight:600 }}>
@@ -3133,11 +3137,9 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
                   <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={36} bgColor={u.role==='ADMIN'?'#111':'#E2E8F0'} textColor={u.role==='ADMIN'?'#fff':'#64748B'} />
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
-                      {u.name}{' '}
-                      {u.dept
-                        ? <span style={{ color:'#94A3B8', fontWeight:400 }}>{u.dept}</span>
-                        : <span style={{ fontSize:10, fontWeight:600, background:'#FEF3C7', color:'#92400E', padding:'1px 6px', borderRadius:999 }}>미로그인</span>
-                      }
+                      {u.name}
+                      {/* ← [2026-05-14] '미로그인' 노란뱃지 제거 — dept 있을 때만 회색 부서 표시 */}
+                      {u.dept && <> <span style={{ color:'#94A3B8', fontWeight:400 }}>{u.dept}</span></>}
                     </div>
                     <div style={{ fontSize:11, color:'#94A3B8', marginTop:1 }}>{u.email}</div>
                   </div>
@@ -3171,7 +3173,8 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
                     </td>
                     <td style={{ padding:'10px 14px', fontWeight:600, color:'#111' }}>{u.name}</td>
                     <td style={{ padding:'10px 14px', color:'#64748B' }}>
-                      {u.dept || <span style={{ fontSize:10, fontWeight:600, background:'#FEF3C7', color:'#92400E', padding:'2px 8px', borderRadius:999 }}>미로그인</span>}
+                      {/* ← [2026-05-14] '미로그인' 노란뱃지 제거 — 빈값은 '-' 표시 (테이블 컬럼 정렬 유지) */}
+                      {u.dept || '-'}
                     </td>
                     <td style={{ padding:'10px 14px', color:'#64748B' }}>{u.email}</td>
                     <td style={{ padding:'10px 14px' }}>
