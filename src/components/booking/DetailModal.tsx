@@ -1,6 +1,6 @@
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { AlertTriangle, Clock, ShieldCheck, ShieldX } from 'lucide-react'  // ← [2026-05-12] CheckCircle2 제거 (BtnCheckin 아이콘 제거됨)
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'                          // ← [2026-05-14] useRef/useEffect 추가 (body 스크롤 힌트용)
 import { todayStr, nowMinutes, tsDate, tsMin, fmtTSFull, fmtTSDateFull, CHECKIN_WINDOW_MIN, CHECKIN_EARLY_MIN, isCheckinable } from '../../utils/time'
 import { getFloor } from '../../data/floors'
 
@@ -16,6 +16,17 @@ import { isMyBooking } from '../../utils/bookingOwnership'  // ← [2026-04-24 P
  * BookingDetailModal (export name: DetailModal)
  *
  * ✅ 변경 이력
+ *  - [2026-05-14 #2] body 스크롤 힌트 + 참석자 영역 wrap 간격 균일화 (사용자 피드백)
+ *    · 스크롤 힌트: body 영역 하단에 32px 흰색→투명 그라데이션 fade overlay
+ *      - canScrollDown 상태 추적 (scroll + ResizeObserver 동시 감시)
+ *      - 스크롤 가능할 때만 fade 표시, 끝까지 가면 자동 숨김 (opacity 0.2s 전환)
+ *      - pointerEvents:none — 스크롤/클릭 이벤트 차단 없음
+ *      - body div를 wrapper(position:relative, flex:1)로 감싸서 overlay 위치 기준 마련
+ *    · 참석자 영역: flex-wrap + calc(50% - 7px) → CSS Grid auto-fit + minmax(140px, 1fr)
+ *      - 이전 문제: 긴 이름이 단독 행 차지하면서 1칸/2칸 행 섞여 시각적 불균형
+ *      - 해결: 모든 칸 동일 폭으로 그리드 분배 → 행 간격 항상 균일
+ *      - 짧은/긴 이름 모두 한 줄에 2개씩 배치, 각 칸 안에서 max-width:100% + overflow:hidden
+ *      - 가로스크롤 방지(2026-04-30 fix), 이름 live 표시(P4-A-1) 그대로 보존
  *  - [2026-05-14] 모달 max-height 적정화 (사용자 피드백)
  *    · 데스크탑: 90vh → "min(720px, 85vh)"
  *    · 모바일: 88vh 유지 (이미 적정)
@@ -114,6 +125,32 @@ function fmtDuration(startISO: string, endISO: string): string {
 
 export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarlyEnd=null,currentUser, currentUserId='', currentUserEmail='', rooms:rp=[], users:up=[], isAdmin=false, onApprove=null, onReject=null, onForceCancel=null}: any) {  // ← [2026-04-29] onEarlyEnd 추가 — 체크인 완료 후 조기반납 버튼용  // ← [2026-04-24 P1-hotfix] currentUserEmail 추가 — MyPage 방식 참석자 판정용
   const { isMobile } = useBreakpoint();
+
+  /* ── [2026-05-14] body 스크롤 가능 힌트 (하단 그라데이션 fade) ─────────────────
+       · canScrollDown=true 일 때만 body 하단에 흰색→투명 그라데이션 표시
+       · body가 끝까지 스크롤되면 자동 숨김 (scrollHeight - scrollTop - clientHeight <= 1)
+       · ResizeObserver로 콘텐츠 변경(예약 데이터 갱신, 모달 리사이즈)에도 대응
+       · 32px 라는 작은 fade — Material/iOS HIG 스크롤 표시 표준치 */
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const [canScrollDown, setCanScrollDown] = useState(false)
+
+  useEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    const update = () => {
+      const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+      setCanScrollDown(distance > 1)
+    }
+    update()  // 초기 측정
+    el.addEventListener('scroll', update, { passive: true })
+    const ro = new ResizeObserver(update)  // 콘텐츠/창 크기 변경 대응
+    ro.observe(el)
+    return () => {
+      el.removeEventListener('scroll', update)
+      ro.disconnect()
+    }
+  }, [])
+
   const r=rp.find(r=>r.room_id===b.room_id);
   const floor=r ? getFloor(r.floor_id) : null;
   const features=r?.features ?? [];
@@ -183,9 +220,11 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
       </div>
 
       {/* ── Body (Hero) [피그마] padding 20, gap 16 ──
-          ← [2026-04-24] padding-bottom 16 → 60 (본문-버튼 사이 여유 공간 확대) */}
-      <div style={{padding: isMobile ? "0 20px 60px" : "0 20px 60px", overflowY:"auto", flex:1,
-        display:"flex", flexDirection:"column", gap:16}}>
+          ← [2026-04-24] padding-bottom 16 → 60 (본문-버튼 사이 여유 공간 확대)
+          ← [2026-05-14] 스크롤 가능 힌트 위해 wrapper로 감싸기 (position: relative + flex:1) */}
+      <div style={{position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column"}}>
+        <div ref={bodyRef} style={{padding: isMobile ? "0 20px 60px" : "0 20px 60px", overflowY:"auto", flex:1,
+          display:"flex", flexDirection:"column", gap:16}}>
 
         {/* ── 정보 리스트: 0.5px #F1F5F9 구분선형 (피그마) ── */}
         <div style={{display:"flex", flexDirection:"column"}}>
@@ -274,23 +313,26 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
               label="참석자"
               alignTop
               value={
-                /* ── [2026-04-30 #3 사용자 요청] flex-wrap + outer wrapper minWidth 50% ──
-                     #2 시도(grid 2컬럼)는 긴 이름이 컬럼 안에서 잘리는 문제 → 사용자 거부.
-                     사용자 의도:
-                       · 이름은 자르거나 줄이지 않고 100% 표시
-                       · 짧은 이름들은 2컬럼으로 정렬
-                       · 긴 이름은 다음 줄로 자동 wrap (image 1 같은 자연스러운 동작)
+                /* ── [2026-05-14] 참석자 영역 wrap 간격 균일화 (사용자 피드백) ─────────
+                     이전 방식 (flex-wrap + minWidth calc(50% - 7px)):
+                       · 짧은 이름은 한 줄에 2개 (정상)
+                       · 긴 이름은 단독 행 차지 → 1칸 행과 2칸 행 섞임 → 시각적 불균형
 
-                     해결: flex-wrap + 각 칩 outer wrapper에 minWidth 50% 강제
-                       · 짧은 이름: minWidth 50%로 강제 → 한 줄에 2개 (2컬럼 정렬)
-                       · 긴 이름: 콘텐츠 너비대로 차지 → 다음 칩이 자동 wrap
-                       · gap 14 → 자식 minWidth는 calc(50% - 7px)로 보정
+                     해결: CSS Grid auto-fit
+                       · `gridTemplateColumns: repeat(auto-fit, minmax(140px, 1fr))`
+                       · value 영역 폭(약 300px)에서 자동으로 2열 결정, 모든 칸 동일 폭
+                       · 짧은 이름 2개: 한 줄 50/50 (이전과 동일)
+                       · 긴 이름 2개도: 한 줄 50/50 (각자 칸 안에서 wrap/truncate)
+                         → AttendeeChip wrapper의 max-width:100% + overflow:hidden 그대로 작동
+                       · 홀수 개일 때: 마지막 칩이 좌측 50% 차지, 우측은 빈 공간 → 행 간격 균일
 
-                     이전 가로스크롤 회귀 방지: AttendeeChip wrapper의
-                     max-width:100% + min-width:0 + overflow:hidden 그대로 유지 */
+                     보존되는 기능:
+                       · AttendeeChip 자체 (변경 0)
+                       · 칩 wrapper의 max-width:100%, min-width:0 (가로스크롤 방지 — 2026-04-30 fix 유지)
+                       · 이름 표시 live 우선 순위 (P4-A-1 유지) */
                 <div style={{
-                  display: "flex",
-                  flexWrap: "wrap",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
                   columnGap: 14,
                   rowGap: 10,
                   width: "100%",
@@ -299,9 +341,9 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
                     const u = (up as any[]).find((u:any) => u.email === a.email)
                     return (
                       <div key={a.email || idx} style={{
-                        flex: "0 1 auto",                  // 콘텐츠 너비 우선, 필요시 shrink
-                        minWidth: "calc(50% - 7px)",       // 기본 절반 강제 (gap 14의 절반)
-                        maxWidth: "100%",                  // 부모 100% 초과 방지
+                        minWidth: 0,                        // ← Grid item 콘텐츠 overflow 방지
+                        maxWidth: "100%",
+                        overflow: "hidden",
                       }}>
                         <AttendeeChip
                           name={u?.name ?? a.name ?? a.email}
@@ -362,6 +404,19 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
             <span>회의 시작 <strong>{CHECKIN_EARLY_MIN}분 전부터</strong> 체크인 가능합니다. 체크인하지 않으면 회의 시작 <strong>{CHECKIN_WINDOW_MIN}분 후</strong> 노쇼처리되어 자동으로 예약이 취소되니 꼭 체크인하세요!</span>
           </div>
         )}
+      </div>
+        {/* ── [2026-05-14] 스크롤 가능 힌트 — 하단 32px 흰색→투명 그라데이션 fade ─────
+             · canScrollDown=true 시에만 표시 (스크롤 끝까지 가면 자동 숨김)
+             · pointerEvents:none — 클릭/스크롤 이벤트는 통과 (body가 받음)
+             · transition opacity 0.2s — 자연스러운 등장/사라짐 */}
+        <div style={{
+          position: "absolute", left: 0, right: 0, bottom: 0,
+          height: 32,
+          background: "linear-gradient(to bottom, rgba(255,255,255,0) 0%, #FFFFFF 100%)",
+          pointerEvents: "none",
+          opacity: canScrollDown ? 1 : 0,
+          transition: "opacity 0.2s ease",
+        }} aria-hidden="true" />
       </div>
       {/* 버튼 영역 - 항상 하단 고정 */}
       {(()=>{
