@@ -2,6 +2,9 @@
  * ResourceDropdown.tsx — 헤더 우측 "자원 예약" 드롭다운 (기능 비활성화 placeholder)
  *
  * ✅ 변경 이력
+ *  - [2026-05-13 v10] opacity 0.35 → 1 복원 (사용자 피드백)
+ *      · v8에서 비활성 시각화 목적 0.35 적용했던 것을 다시 100%로
+ *      · 기능 onClick은 여전히 미연결 — 시각적 비활성 표시만 해제 (placeholder UI는 유지)
  *  - [2026-05-13 v9] 포인터 아이콘 SVG 재교체 (사용자 재제공)
  *      · path 구조 변경: 2 path → 3 path (그라데이션 + 흰 fill + 검정 outline 레이어)
  *      · React 호환 처리: stop-color/stop-opacity → stopColor/stopOpacity (camelCase)
@@ -108,7 +111,7 @@ export function ResourceDropdown({ dark }: ResourceDropdownProps) {
   ]
 
   return (
-    <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0, opacity: 0.35 }}>  {/* ← [2026-05-13 v8] opacity 0.35 - 비활성 시각화 (트리거+드롭다운 모두 상속) */}
+    <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0, opacity: 1 }}>  {/* ← [2026-05-13 v10] opacity 0.35 → 1 (100%, 시각적 비활성화 해제) - 기능은 여전히 onClick 미연결 */}
       {/* 트리거 버튼 — Figma 572:474 */}
       <button
         className="btn"
