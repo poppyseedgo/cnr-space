@@ -2,6 +2,7 @@
  * ResourceDropdown.tsx — 헤더 우측 "자원 예약" 드롭다운 (기능 비활성화 placeholder)
  *
  * ✅ 변경 이력
+ *  - [2026-05-13 v13] 아이콘 교차 주기 4초 → 3초 (사용자 피드백 — 너무 느림)
  *  - [2026-05-13 v12] open 상태에서도 hover와 동일 배경 유지 (사용자 피드백)
  *      · background 조건: `hover` → `open || hover`
  *      · 드롭다운 열려있는 동안 트리거 버튼이 active 상태임을 시각적으로 표시
@@ -118,14 +119,15 @@ export function ResourceDropdown({ dark }: ResourceDropdownProps) {
     return () => document.removeEventListener('mousedown', onDown)
   }, [open])
 
-  // ── [2026-05-13 v11] 좌측 아이콘 자동 교차 (4초 주기) ──
+  // ── [2026-05-13 v11] 좌측 아이콘 자동 교차 ──
+  //   · [v13] 주기 4초 → 3초 (사용자 피드백 — 너무 느림)
   //   · 드롭다운 열림 중에는 멈춤 (현재 표시 아이콘 고정 → 메뉴와 시각적 일관성)
   //   · setInterval 1개만 사용 (cleanup 자동)
   useEffect(() => {
     if (open) return                                                          // 드롭다운 열림 중에는 일시정지
     const id = window.setInterval(() => {
       setIconIdx(i => (i + 1) % 3)
-    }, 4000)
+    }, 3000)                                                                  // ← [v13] 4000 → 3000ms
     return () => window.clearInterval(id)
   }, [open])
 
