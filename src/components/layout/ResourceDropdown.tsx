@@ -2,6 +2,10 @@
  * ResourceDropdown.tsx — 헤더 우측 "자원 예약" 드롭다운 (기능 비활성화 placeholder)
  *
  * ✅ 변경 이력
+ *  - [2026-05-13 v14] 드롭다운 열림 중에도 아이콘 애니메이션 계속 작동 (사용자 피드백)
+ *      · useEffect 의존성 [open] → []
+ *      · `if (open) return` 가드 제거
+ *      · 마운트 시 단 한 번 setInterval 설정, open 상태 무관하게 항상 3초마다 교차
  *  - [2026-05-13 v13] 아이콘 교차 주기 4초 → 3초 (사용자 피드백 — 너무 느림)
  *  - [2026-05-13 v12] open 상태에서도 hover와 동일 배경 유지 (사용자 피드백)
  *      · background 조건: `hover` → `open || hover`
@@ -120,16 +124,15 @@ export function ResourceDropdown({ dark }: ResourceDropdownProps) {
   }, [open])
 
   // ── [2026-05-13 v11] 좌측 아이콘 자동 교차 ──
-  //   · [v13] 주기 4초 → 3초 (사용자 피드백 — 너무 느림)
-  //   · 드롭다운 열림 중에는 멈춤 (현재 표시 아이콘 고정 → 메뉴와 시각적 일관성)
+  //   · [v13] 주기 4초 → 3초
+  //   · [v14] 드롭다운 열림 중에도 계속 교차 (사용자 피드백)
   //   · setInterval 1개만 사용 (cleanup 자동)
   useEffect(() => {
-    if (open) return                                                          // 드롭다운 열림 중에는 일시정지
     const id = window.setInterval(() => {
       setIconIdx(i => (i + 1) % 3)
-    }, 3000)                                                                  // ← [v13] 4000 → 3000ms
+    }, 3000)
     return () => window.clearInterval(id)
-  }, [open])
+  }, [])                                                                      /* ← [v14] [open] → [] (마운트 시 한 번만 설정, open 무관하게 항상 작동) */
 
   // 메뉴 항목 정의 — 기능은 추후 구현 (onClick 미연결, e.preventDefault)
   const MENU_ITEMS: { key: string; icon: JSX.Element; label: string }[] = [
