@@ -3,7 +3,7 @@
  *
  * ✅ 변경 이력
  *  - [2026-05-15] 버튼 padding 비대칭 미세조정 (Figma 1:1)
- *      · 데스크탑: '10px 20px' → '10px 20px 10px 16px' (좌 20→16, 우 20 유지)
+ *      · 데스크탑: '10px 20px' → '10px 20px 10px 18px' (좌 20→18, 우 20 유지)
  *      · 의도: 아이콘이 좌측에 있어 좌측 여백을 살짝 줄여 시각 균형 보정
  *      · 모바일 padding은 변경 없음 (7px 10px 유지)
  *  - [2026-05-13 v7] 중앙 토글 Figma 572:468 1:1 재설계
@@ -21,7 +21,7 @@
  *
  * Figma 사양 (572:468 — Nav pills 신버전):
  *  · 컨테이너: bg #F5F9FF (gradient 단색 해석) / border-radius 1000 / overflow hidden
- *  · 각 버튼: padding 10px 20px 10px 16px / gap 8px / 아이콘 24px + 텍스트 15px Pretendard leading 1.25
+ *  · 각 버튼: padding 10px 20px 10px 18px / gap 8px / 아이콘 24px + 텍스트 15px Pretendard leading 1.25
  *  · 비활성: bg 투명 (컨테이너색 통과) / color #2F394A
  *  · 활성  : bg #000 / color #fff / 아이콘 흰색
  *
@@ -129,7 +129,7 @@ export function HeaderNav({ view, onSetView, isMobile, dark }: HeaderNavProps) {
             style={{
               position: 'relative', zIndex: 1,                         // ← [2026-05-07] pill 위에 텍스트
               gap: 8,                                                   /* ← [2026-05-13 v7] Figma 1:1 (6 → 8) */
-              padding: isMobile ? "7px 10px" : "10px 20px 10px 16px",   /* ← [2026-05-15] 데스크탑 좌 padding 20→16 비대칭 (Figma 1:1) */
+              padding: isMobile ? "7px 10px" : "10px 20px 10px 18px",   /* ← [2026-05-15] 데스크탑 좌 padding 20→18 비대칭 (Figma 1:1) */
               fontSize: isMobile ? 11 : 15,
               fontWeight: 400,                                          /* ← [2026-05-13 v7] 500 → 400 (Pretendard Regular, Figma 1:1) */
               lineHeight: 1.25,                                         /* ← [2026-05-13 v7] Figma 1:1 (leading-[1.25]) */
