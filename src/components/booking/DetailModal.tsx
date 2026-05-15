@@ -1,7 +1,7 @@
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { AlertTriangle, Clock, ShieldCheck, ShieldX } from 'lucide-react'  // ← [2026-05-12] CheckCircle2 제거 (BtnCheckin 아이콘 제거됨)
 import { useState, useRef, useEffect } from 'react'                          // ← [2026-05-14] useRef/useEffect 추가 (body 스크롤 힌트용)
-import { todayStr, nowMinutes, tsDate, tsMin, fmtTSFull, fmtTSDateFull, CHECKIN_WINDOW_MIN, CHECKIN_EARLY_MIN, isCheckinable } from '../../utils/time'
+import { todayStr, nowMinutes, tsDate, tsMin, fmtTSFull, fmtTSDateFull, fmtTSDateFullWithDayFull, CHECKIN_WINDOW_MIN, CHECKIN_EARLY_MIN, isCheckinable } from '../../utils/time'  // ← [2026-05-16] fmtTSDateFullWithDayFull 추가 (날짜에 요일 풀네임 표시용)
 import { getFloor } from '../../data/floors'
 
 import { AttendeeChip } from '../common/AttendeeChip'
@@ -16,6 +16,12 @@ import { isMyBooking } from '../../utils/bookingOwnership'  // ← [2026-04-24 P
  * BookingDetailModal (export name: DetailModal)
  *
  * ✅ 변경 이력
+ *  - [2026-05-16] 날짜 필드에 요일 풀네임 표시 (사용자 요청)
+ *    · 표시 형식: "2026년 5월 27일" → "2026년 5월 27일 수요일"
+ *    · 헬퍼: fmtTSDateFull → fmtTSDateFullWithDayFull 교체
+ *    · time.ts에 신규 헬퍼 fmtTSDateFullWithDayFull / fmtDateFullWithDayFull 추가
+ *      (기존 fmtDateFullWithDay는 "(수)" 짧은 형식이라 다른 테이블에서 사용 중,
+ *       건드리지 않고 풀네임 전용 함수를 신규 추가 — 사이드 이펙트 0)
  *  - [2026-05-14 #6] 참석자 영역 rowGap 10 → 14 (사용자 명시값, columnGap과 동일)
  *  - [2026-05-14 #5] 참석자 chip 세로 중앙 정렬 (사용자 진단)
  *    · 문제: 인스펙터로 본 wrapper div(168.91 × 30.5)가 행 stretch로 늘어났는데,
@@ -245,8 +251,10 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
           <InfoRow label="위치" value={floor?.floor_name ?? '-'} />
           {/* 날짜 ← [2026-04-22 HOTFIX] fmtDateFull(b.start_at)은 'YYYY-MM-DD' 문자열을 기대하는데
                  b.start_at은 timestamp ISO라 파싱 실패 → 'NaN년 NaN월 NaN일' 표시.
-                 fmtTSDateFull(내부에서 tsDate로 KST 날짜 추출 후 포맷) 사용. */}
-          <InfoRow label="날짜" value={fmtTSDateFull(b.start_at)} />
+                 fmtTSDateFull(내부에서 tsDate로 KST 날짜 추출 후 포맷) 사용.
+                 ← [2026-05-16] 사용자 요청으로 요일 풀네임 표시 ("2026년 5월 27일 수요일")
+                                 fmtTSDateFull → fmtTSDateFullWithDayFull 교체 */}
+          <InfoRow label="날짜" value={fmtTSDateFullWithDayFull(b.start_at)} />
           {/* 시간 + 소요시간 칩 */}
           <InfoRow
             label="시간"

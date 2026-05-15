@@ -110,8 +110,20 @@ export function fmtDateFullWithDay(dateStr: string): string {
   const d = dateToObj(dateStr);
   return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${DAY_NAMES[d.getDay()]})`;
 }
+/** YYYY년 M월 D일 요일 형식 (풀네임, 예: "2026년 5월 27일 수요일")
+ *  ← [2026-05-16] DetailModal에서 요일 풀네임 표시 위해 신규 추가
+ *  · 기존 fmtDateFullWithDay와의 차이: (수) 짧은 형식 → 수요일 풀네임
+ *  · 기존 함수는 테이블 컴팩트 표시용으로 그대로 유지 */
+export function fmtDateFullWithDayFull(dateStr: string): string {
+  if (!dateStr) return "";
+  const d = dateToObj(dateStr);
+  return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 ${DAY_NAMES[d.getDay()]}요일`;
+}
 /** timestamp → YYYY년 MM월 DD일 */
 export function fmtTSDateFull(ts: string): string { return fmtDateFull(tsDate(ts)); }
+/** timestamp → YYYY년 M월 D일 요일 풀네임 (DetailModal 전용)
+ *  ← [2026-05-16] fmtTSDateFull의 요일 추가 버전 */
+export function fmtTSDateFullWithDayFull(ts: string): string { return fmtDateFullWithDayFull(tsDate(ts)); }
 /** N층 회의실명 합성 (예: 2층 에메랄드) */
 export function fmtRoomName(room: {room_name_ko?: string; room_name?: string}, floor: {floor_name?: string; floor_no?: number} | null): string {
   const name = room?.room_name_ko || room?.room_name || "";
