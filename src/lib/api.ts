@@ -88,6 +88,22 @@
  *     - 부하: 9개 회의실 × 평균 3~5건/일 × 15개월 ≈ 1만~1.6만건, payload 수 MB —
  *            첫 로드 1회만이고 이후는 subscribeBookings Realtime incremental, 안전
  *     - 호환: rowToBooking + utcToKST 그대로 적용, CalendarShell/MyPage prop 영향 0
+ *  5. [2026-05-15 HOTFIX] PostgREST default 1000-row limit 회피 — paging 적용
+ *     - 증상: 캘린더(CalendarShell)에서 2026-06-15 이후 예약이 전부 사라짐
+ *     - 검증: SELECT COUNT(*) FROM bookings WHERE start_at >= NOW()-INTERVAL '3 months'
+ *            → 1147건 (1000 초과)
+ *     - 근본 원인: loadBookings / loadBookingsByRange 가 .range() / .limit() 미명시
+ *            → PostgREST default max-rows(=1000)이 적용되어
+ *            ASC 정렬 시 가장 미래 147건이 잘림
+ *     - 해결: 1000건씩 .range(start, end) paging 루프로 모두 fetch 후 합산
+ *            · data.length < PAGE_SIZE 면 마지막 페이지로 판정하고 break
+ *            · 각 페이지마다 withRetry 그대로 적용 — 일시 오류 복원력 유지
+ *     - 대상 함수:
+ *       · loadBookings        (현재 발생 중인 증상의 원인)
+ *       · loadBookingsByRange (동일 패턴 — Admin Dashboard 90일 범위에서 동일 위험)
+ *     - 호환: 반환 타입 Booking[] 동일 — 호출부(App.tsx, AdminPage 등) 수정 불필요
+ *     - 별도: MyPage.tsx 인라인 쿼리 3건도 동일 패턴이지만 DESC 정렬이라 미래는
+ *            안 잘림. 가장 오래된 것부터 잘리는 별개 이슈로 follow-up 처리.
  */
 
 import { supabase, isSupabaseEnabled } from './supabase'
@@ -208,27 +224,46 @@ function bookingToRow(b: Booking, userId: string, userEmail: string = '') {
 // [2026-04-25] 정책: 과거 3개월 ~ 미래 무제한
 //   · 과거: -3개월 (지난 분기 통계/조회 지원, 7일은 너무 짧음)
 //   · 미래: 무제한 (Admin/recurring이 만든 모든 미래 예약을 캘린더에서 노출)
+// [2026-05-15 HOTFIX] PostgREST default max-rows(1000) 회피 — paging 루프 적용 (이력 5번 참조)
 export async function loadBookings(): Promise<Booking[]> {
   if (!isSupabaseEnabled) return localGetBookings()
   try {
     const from = new Date()
     from.setMonth(from.getMonth() - 3)   // ← [2026-04-25] -7일 → -3개월
     // ← [2026-04-25] 미래 컷오프 제거: 기존 const to = +60일 + .lte('start_at', to) 삭제
+    const fromISO = from.toISOString()   // ← [2026-05-15] paging 루프 안에서 재사용
 
     // bookings + booking_attendees join 조회
     // bookings.attendees JSONB는 신규 예약에 저장 안 됨 → booking_attendees 테이블이 정본
     // ← [2026-04-23] withRetry: 일시 오류 시 최대 3회 재시도 (exponential backoff + jitter)
-    const data = await withRetry(async () => {
-      const { data, error } = await supabase
-        .from('bookings')
-        .select('*, booking_attendees(email, name)')
-        .gte('start_at', from.toISOString())   // ← [2026-04-25] 미래 .lte 조건 제거됨 (무제한)
-        .order('start_at', { ascending: true })
-      if (error) throw error
-      return data
-    }, 'loadBookings')
+    // ← [2026-05-15 HOTFIX] PostgREST default 1000-row limit 회피 — paging 루프
+    //   · .range(pageStart, pageStart + PAGE_SIZE - 1) 로 1000건씩 fetch
+    //   · 받은 data.length < PAGE_SIZE 이면 마지막 페이지로 판정하고 break
+    //   · withRetry는 페이지마다 그대로 적용 — 일시 오류 복원력 유지
+    const PAGE_SIZE = 1000                  // ← [2026-05-15] PostgREST max-rows 기본값과 일치
+    const allRows: any[] = []               // ← [2026-05-15] 페이지 누적 버퍼
+    let pageStart = 0                       // ← [2026-05-15] range 시작 인덱스 (0부터)
 
-    return (data ?? []).map(row => {
+    while (true) {                          // ← [2026-05-15] 무한 루프 — break 조건은 내부에서
+      const pageEnd = pageStart + PAGE_SIZE - 1   // ← [2026-05-15] range 끝(포함) 인덱스
+      const data = await withRetry(async () => {
+        const { data, error } = await supabase
+          .from('bookings')
+          .select('*, booking_attendees(email, name)')
+          .gte('start_at', fromISO)         // ← [2026-04-25] 미래 .lte 조건 제거됨 (무제한)
+          .order('start_at', { ascending: true })
+          .range(pageStart, pageEnd)        // ← [2026-05-15 HOTFIX] 페이지 범위 명시 (필수)
+        if (error) throw error
+        return data
+      }, `loadBookings page=${pageStart}`)  // ← [2026-05-15] 재시도 로그에 페이지 식별자 포함
+
+      if (!data || data.length === 0) break  // ← [2026-05-15] 빈 결과 → 종료 (정확히 1000의 배수 케이스)
+      allRows.push(...data)                  // ← [2026-05-15] 누적
+      if (data.length < PAGE_SIZE) break     // ← [2026-05-15] 마지막 페이지 — 종료
+      pageStart += PAGE_SIZE                 // ← [2026-05-15] 다음 페이지로
+    }
+
+    return allRows.map(row => {              // ← [2026-05-15] data → allRows 로 교체
       const parsed = rowToBooking(row)
       // booking_attendees 테이블에서 attendees 파싱 (email이 유일 키)
       // ← [2026-04-29] dedupeAttendeesByEmail 적용 — DB 중복 행이 있어도 화면엔 1명씩만 표시
@@ -251,6 +286,8 @@ export async function loadBookings(): Promise<Booking[]> {
 // ← [2026-05-06 사용자 결정 Q3-A] dateField 파라미터 추가 — 'start_at'(default) | 'created_at'
 //    근거: 승인 관리 테이블에 신청일/시작일 토글이 추가되어 백엔드 fetch 기준도 통일 필요
 //    default 'start_at'으로 기존 호출처(AdminPage 등)는 영향 없음
+// ← [2026-05-15 HOTFIX] PostgREST default max-rows(1000) 회피 — paging 루프 적용 (이력 5번 참조)
+//    배경: loadBookings와 동일 패턴. 90일 범위 사용 시 1000건 초과 가능 → 동일 위험.
 export async function loadBookingsByRange(
   from: string,
   to: string,
@@ -260,14 +297,30 @@ export async function loadBookingsByRange(
   try {
     const fromISO = new Date(from + 'T00:00:00+09:00').toISOString()
     const toISO   = new Date(to   + 'T23:59:59+09:00').toISOString()
-    const { data, error } = await supabase
-      .from('bookings')
-      .select('*, booking_attendees(email, name)')
-      .gte(dateField, fromISO)                          // ← dateField 동적 ('start_at' 또는 'created_at')
-      .lte(dateField, toISO)
-      .order(dateField, { ascending: false })           // ← 정렬도 동일 기준
-    if (error) throw error
-    return (data ?? []).map(row => {
+
+    // ← [2026-05-15 HOTFIX] PostgREST default 1000-row limit 회피 — paging 루프
+    //   동일 패턴: loadBookings paging 구현 참조. 정렬 방향(DESC)은 기존 유지.
+    const PAGE_SIZE = 1000                       // ← [2026-05-15] max-rows 기본값과 일치
+    const allRows: any[] = []                    // ← [2026-05-15] 페이지 누적 버퍼
+    let pageStart = 0                            // ← [2026-05-15] range 시작 인덱스
+
+    while (true) {                               // ← [2026-05-15] break 조건은 내부에서
+      const pageEnd = pageStart + PAGE_SIZE - 1  // ← [2026-05-15] range 끝(포함) 인덱스
+      const { data, error } = await supabase
+        .from('bookings')
+        .select('*, booking_attendees(email, name)')
+        .gte(dateField, fromISO)                 // ← dateField 동적 ('start_at' 또는 'created_at')
+        .lte(dateField, toISO)
+        .order(dateField, { ascending: false })  // ← 정렬도 동일 기준
+        .range(pageStart, pageEnd)               // ← [2026-05-15 HOTFIX] 페이지 범위 명시 (필수)
+      if (error) throw error
+      if (!data || data.length === 0) break      // ← [2026-05-15] 빈 결과 → 종료
+      allRows.push(...data)                       // ← [2026-05-15] 누적
+      if (data.length < PAGE_SIZE) break          // ← [2026-05-15] 마지막 페이지 — 종료
+      pageStart += PAGE_SIZE                      // ← [2026-05-15] 다음 페이지로
+    }
+
+    return allRows.map(row => {                   // ← [2026-05-15] data → allRows 로 교체
       const b = rowToBooking(row)
       // ← [2026-04-29] dedupeAttendeesByEmail 적용 — Admin Dashboard 경로 동일 보장
       b.attendees = dedupeAttendeesByEmail(
