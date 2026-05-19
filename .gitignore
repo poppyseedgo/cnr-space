@@ -22,3 +22,10 @@ supabase/.temp/
 *.swp
 
 projects/cnr-pilot-survey/
+
+# Phase C — book metadata backfill
+scripts/reports/
+# Phase C — book metadata backfill
+scripts/reports/
+
+0515AM10.zip
