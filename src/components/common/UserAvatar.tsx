@@ -9,6 +9,7 @@ interface UserAvatarProps {
   fontSize?:  number
   fontWeight?: number   // ← [2026-04-30] override 가능 (기본값 500 유지로 기존 사용처 영향 0)
   borderRadius?: number | string   // ← [2026-05-04 STEP 1] 추가: MY PAGE 프로필 카드 64×64 rounded-24 대응 (기본값 '50%' 유지로 기존 사용처 영향 0)
+  border?:    string    // ← [2026-05-19] 추가: UserChip 팝오버 72×72 아바타에 1px solid #f7f9fa 테두리 적용 (기본값 undefined 유지로 기존 사용처 영향 0)
   className?: string
 }
 
@@ -23,6 +24,8 @@ interface UserAvatarProps {
  * ← [2026-04-30] fontWeight prop 추가 (헤더 프로필은 400으로 override)
  * ← [2026-05-04 STEP 1] borderRadius prop 추가 (MY PAGE 64px 프로필 카드: 24px rounded)
  *     · 기본값 '50%' 유지 → 기존 사용처(BookingModal/UserChip/ProfileDropdown/AdminPage 등) 영향 0
+ * ← [2026-05-19] border prop 추가 (UserChip 팝오버 72×72: 1px solid #f7f9fa)
+ *     · 기본값 undefined 유지 → 기존 사용처 영향 0
  */
 export function UserAvatar({
   name,
@@ -33,6 +36,7 @@ export function UserAvatar({
   fontSize,
   fontWeight = 500,    // ← 기본값 500 유지 (다른 사용처 영향 0)
   borderRadius = '50%', // ← [2026-05-04 STEP 1] 기본값 '50%' (원형) — 기존 동일
+  border,               // ← [2026-05-19] 기본값 undefined — 기존 동일
   className  = '',
 }: UserAvatarProps) {
   const [imgError, setImgError] = useState(false)
@@ -45,11 +49,13 @@ export function UserAvatar({
     width:          size,
     height:         size,
     borderRadius,                       // ← [2026-05-04 STEP 1] prop 사용 (기본값 '50%' = 기존 동일)
+    border,                             // ← [2026-05-19] prop 사용 (기본값 undefined = 기존 동일)
     flexShrink:     0,
     overflow:       'hidden',
     display:        'flex',
     alignItems:     'center',
     justifyContent: 'center',
+    boxSizing:      'border-box',       // ← [2026-05-19] border 추가 시 외부 size 유지를 위해 명시
   }
 
   if (avatarUrl && !imgError) {
