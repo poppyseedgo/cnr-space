@@ -24,6 +24,11 @@ interface UserChipProps {
  *   · md: avatar 24(기존 28) / gap 7(기존 5) / name 14px Medium / line-height 1.3
  *   · sm: avatar 20 / gap 5 / name 12px Medium (기존 유지)
  *   · bgColor/textColor 하드코딩 제거 → UserAvatar 기본값(#000/#E7E7E7) 사용
+ *
+ * ← [2026-05-19 스타일 업데이트] 사용자 정보 팝오버 모달
+ *   · 컨테이너 borderRadius 16 → 24
+ *   · 컨테이너 padding 16px → 12px
+ *   · 내부 UserAvatar borderRadius '50%'(기본) → 16 (정사각 라운드)
  */
 const CONFIG = {
   sm: { avatarSize: 20, fontSize: 12, gap: 5 },
@@ -68,8 +73,11 @@ export function UserChip({ name, avatarUrl, variant = 'md', isAdmin = false, use
         >
           {/* ← [2026-05-04 핫픽스 v16] 사용자 지정값 적용
                 · 컨테이너: padding 20→16, width 260→320 (나머지 속성 이미 일치)
-                · 내부 UserAvatar: size 44→72, fontSize 24, fontWeight 300 */}
-          <div onClick={e => e.stopPropagation()} style={{ background:'#fff', borderRadius:16, padding:'16px', width:320, boxShadow:'0 8px 32px rgba(0,0,0,0.16)', position:'relative' }}>
+                · 내부 UserAvatar: size 44→72, fontSize 24, fontWeight 300
+              ← [2026-05-19 스타일 업데이트]
+                · 컨테이너 borderRadius 16→24, padding 16px→12px
+                · 내부 UserAvatar borderRadius 16 (정사각 라운드) */}
+          <div onClick={e => e.stopPropagation()} style={{ background:'#fff', borderRadius:24, padding:'12px', width:320, boxShadow:'0 8px 32px rgba(0,0,0,0.16)', position:'relative' }}> {/* ← [2026-05-19] borderRadius 16→24, padding 16px→12px */}
             {/* ← [피그마 2026-04-22] ModalCloseButton sm (28×28) 공통화 */}
             <ModalCloseButton onClick={() => setOpen(false)} size="sm" style={{ position:'absolute', top:12, right:12 }} />
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
@@ -79,6 +87,7 @@ export function UserChip({ name, avatarUrl, variant = 'md', isAdmin = false, use
                 size={72}                /* ← [핫픽스 v16] 44 → 72 */
                 fontSize={24}            /* ← [핫픽스 v16] 자동 환산(36) → 24 명시 */
                 fontWeight={300}         /* ← [핫픽스 v16] 500 → 300 (Light) */
+                borderRadius={16}        /* ← [2026-05-19] 50%(원형) → 16(정사각 라운드) */
               />
               <div>
                 <div style={{ fontSize:14, fontWeight:600, color:'#111', lineHeight:1.3 }}>{userInfo.name}</div>
