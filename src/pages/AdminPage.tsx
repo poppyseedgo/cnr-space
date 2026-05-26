@@ -167,16 +167,20 @@ const DETAIL_META: Record<DetailType, { title: string; icon: React.ReactNode }> 
   users:    { title: '사용자 예약 현황',   icon: <Users size={16} strokeWidth={1.8}/> },
 }
 
-function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose }:
-  { type: DetailType; rooms: Room[]; users: AppUser[]; initFrom: string; initTo: string; onDetail?: (b:Booking)=>void; onClose: ()=>void }) {
+function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, initialSortAsc, onDetail, onClose }:
+  { type: DetailType; rooms: Room[]; users: AppUser[]; initFrom: string; initTo: string;
+    // ← [2026-05-26 카드 클릭 활성화] 진입 시 정렬 옵션 (RoomRanking vs RoomNoshow 분기용)
+    initialSortKey?: string; initialSortAsc?: boolean;
+    onDetail?: (b:Booking)=>void; onClose: ()=>void }) {
   const [presetId, setPresetId] = useState('custom')
   const [dateFrom, setDateFrom] = useState(initFrom)
   const [dateTo,   setDateTo]   = useState(initTo)
   const [data,     setData]     = useState<Booking[]>([])
   const [loading,  setLoading]  = useState(false)
   const [page,     setPage]     = useState(1)
-  const [sortKey,  setSortKey]  = useState('start_at')
-  const [sortAsc,  setSortAsc]  = useState(false)
+  // ← [2026-05-26] initialSortKey/Asc 적용 — 카드 클릭 진입 시 시각적 일관성 보장
+  const [sortKey,  setSortKey]  = useState(initialSortKey ?? 'start_at')
+  const [sortAsc,  setSortAsc]  = useState(initialSortAsc ?? false)
   // 드릴다운: 집계 행 클릭 → 해당 필터로 예약 목록 표시
   const [drill, setDrill] = useState<{ label: string; fn: (b:Booking)=>boolean } | null>(null)
   const PER = 30
@@ -235,16 +239,34 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
     return { hour: `${h}:00`, count }
   }), [filtered])
 
+  // ← [2026-05-26] userAgg 확장 — lastNoshowAt 추가
+  //   사유: "노쇼 현황 상세" 진입 시 "노쇼한 사람 최신순"(사용자 결정) 정렬 위해 마지막 노쇼 시점 필요
+  //   매핑 키 변경: b.user(이름) → b.user_id (UUID 우선, 없으면 b.user fallback)
+  //     · 동명이인 안전 — 이름이 같아도 user_id가 다르면 별도 행
+  //     · user_id 없는 외부 게스트는 b.user 키로 fallback (기존 동작 보존)
   const userAgg = useMemo(() => {
-    const map = new Map<string, { name:string; dept:string; count:number; noshow:number }>()
+    const map = new Map<string, { user_id?:string; name:string; dept:string; count:number; noshow:number; lastNoshowAt:number }>()
     filtered.forEach(b => {
-      if (!map.has(b.user)) map.set(b.user, { name:b.user, dept:b.dept, count:0, noshow:0 })
-      const s = map.get(b.user)!
+      const key = b.user_id ?? b.user                              // ← UUID 우선, 없으면 이름 (외부 게스트 fallback)
+      if (!map.has(key)) {
+        // 표시명: users 배열에서 live name 우선 (퇴사자도 안전)
+        const liveUser = b.user_id ? users.find(u => u.user_id === b.user_id) : null
+        const displayName = liveUser?.name ?? b.user
+        const displayDept = liveUser?.dept ?? b.dept
+        map.set(key, { user_id: b.user_id, name: displayName, dept: displayDept, count:0, noshow:0, lastNoshowAt: 0 })
+      }
+      const s = map.get(key)!
       if (!b.autoCancelled && b.status !== 'rejected') s.count++
-      if (isNoshow(b)) s.noshow++
+      if (isNoshow(b)) {
+        s.noshow++
+        // 가장 최근 노쇼 시점 추적 — start_at ISO 문자열을 timestamp로 변환
+        const t = new Date(b.start_at).getTime()
+        if (t > s.lastNoshowAt) s.lastNoshowAt = t
+      }
     })
+    // 기본 정렬은 예약 많은 순 (기존 호환). 정렬 변경은 sortKey/sortAsc로 처리
     return Array.from(map.values()).sort((a,b) => b.count - a.count)
-  }, [filtered])
+  }, [filtered, users])
 
   // 테이블 렌더
   // 공통 예약 목록 렌더 (drill-down 시에도 재사용)
@@ -358,10 +380,55 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
       onExport={() => exportCSV(hourAgg.map(r=>({시간대:r.hour,예약건수:r.count})), `시간대별분포_${dateFrom}_${dateTo}`)}
       onRowClick={row => { const h = parseInt(row.hour); setDrill({ label:row.hour, fn:(b)=>Math.floor(tsMin(b.start_at)/60)===h }); setPage(1) }}/>
 
-    if (type === 'users') return <AggTable rows={userAgg}
-      cols={[{k:'name',l:'이름'},{k:'dept',l:'부서'},{k:'count',l:'예약'},{k:'noshow',l:'노쇼'}]}
-      onExport={() => exportCSV(userAgg.map(r=>({이름:r.name,부서:r.dept,예약:r.count,노쇼:r.noshow})), `사용자별통계_${dateFrom}_${dateTo}`)}
-      onRowClick={row => { setDrill({ label:row.name, fn:(b)=>b.user===row.name }); setPage(1) }}/>
+    if (type === 'users') {
+      // ← [2026-05-26] 정렬 적용 — 카드 클릭 진입 시 initialSortKey/Asc 반영 (사용자 결정: 노쇼한 사람 최신순)
+      //   기본 정렬: count desc (기존). sortKey가 변경되면 그 키 기준 정렬.
+      //   특히 'lastNoshowAt' 정렬은 "노쇼한 사람 최신순" 진입용 (count=0인 사용자는 lastNoshowAt=0이라 자연스럽게 후순위)
+      const sortedUsers = [...userAgg].sort((a, b) => {
+        const av = (a as any)[sortKey] ?? 0
+        const bv = (b as any)[sortKey] ?? 0
+        if (typeof av === 'string') return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av)
+        return sortAsc ? av - bv : bv - av
+      })
+      return <AggTable rows={sortedUsers}
+        cols={[
+          {k:'name',l:'이름'},
+          {k:'dept',l:'부서'},
+          {k:'count',l:'예약'},
+          {k:'noshow',l:'노쇼'},
+          // ← [2026-05-26 신규] 마지막 노쇼 시점 — "노쇼한 사람 최신순" 정렬 진입 시 시각적 검증
+          {k:'lastNoshowAt',l:'최근 노쇼',fmt:(v:number) => v > 0 ? new Date(v).toISOString().slice(0,10) : '-'},
+        ]}
+        // ← [2026-05-26] 헤더 클릭 정렬 — 같은 키 다시 클릭 시 방향 토글, 다른 키 클릭 시 desc 시작
+        onHeaderClick={(k) => {
+          if (sortKey === k) setSortAsc(s => !s)
+          else { setSortKey(k); setSortAsc(false) }
+        }}
+        activeSortKey={sortKey}
+        activeSortAsc={sortAsc}
+        // ← [2026-05-26] CSV에 조회기간 + 최근 노쇼 일자 포함 (사용자 결정: 기간 정보 명확히)
+        onExport={() => exportCSV(
+          sortedUsers.map(r => ({
+            이름: r.name,
+            부서: r.dept,
+            예약: r.count,
+            누적노쇼: r.noshow,
+            최근노쇼: r.lastNoshowAt > 0 ? new Date(r.lastNoshowAt).toISOString().slice(0,10) : '-',
+            조회기간: `${dateFrom} ~ ${dateTo}`,
+          })),
+          `사용자별통계_${dateFrom}_${dateTo}`
+        )}
+        // ← [2026-05-26] 드릴다운 — user_id 우선 매칭 (동명이인 안전), 없으면 b.user fallback
+        onRowClick={row => {
+          const targetUid = row.user_id
+          const targetName = row.name
+          setDrill({
+            label: row.name,
+            fn: (b: Booking) => targetUid ? (b.user_id === targetUid) : (b.user === targetName),
+          })
+          setPage(1)
+        }}/>
+    }
 
     // bookings / noshow / pending → 개별 예약 목록
     return renderBookingList(filtered)
@@ -413,14 +480,20 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, onDetail, onClose 
 }
 
 // 집계 테이블 컴포넌트
-function AggTable({ rows, cols, onExport, onRowClick }: {
+// ← [2026-05-26] onHeaderClick 옵션 추가 — 사용자별 노쇼 테이블에서 헤더 클릭 정렬 지원
+function AggTable({ rows, cols, onExport, onRowClick, onHeaderClick, activeSortKey, activeSortAsc }: {
   rows: any[]
   cols: {k:string;l:string;fmt?:(v:any)=>string}[]
   onExport: () => void
   onRowClick?: (row: any) => void
+  // ← [2026-05-26 신규] 헤더 클릭으로 정렬 변경 (없으면 정렬 UI 비활성, 기존 호환)
+  onHeaderClick?: (key: string) => void
+  activeSortKey?: string
+  activeSortAsc?: boolean
 }) {
   if (!rows.length) return <div style={{ textAlign:'center', padding:40, color:'#CBD5E1', fontSize:12 }}>데이터 없음</div>
   const canDrill = !!onRowClick
+  const canSort  = !!onHeaderClick
   return (
     <>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
@@ -435,7 +508,22 @@ function AggTable({ rows, cols, onExport, onRowClick }: {
       <div style={{ overflowX:'auto', borderRadius:10, border:'1px solid #F1F5F9' }}>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
           <thead><tr style={{ background:'#F8FAFC' }}>
-            {cols.map(c => <th key={c.k} style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:600, color:'#94A3B8', borderBottom:'1px solid #F1F5F9', whiteSpace:'nowrap' }}>{c.l}</th>)}
+            {cols.map(c => {
+              const isActive = canSort && activeSortKey === c.k
+              return (
+                <th key={c.k}
+                  onClick={canSort ? () => onHeaderClick!(c.k) : undefined}
+                  style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:600,
+                    color: isActive ? '#111' : '#94A3B8', borderBottom:'1px solid #F1F5F9',
+                    whiteSpace:'nowrap', cursor: canSort ? 'pointer' : 'default',
+                    userSelect:'none' }}>
+                  {c.l}
+                  {canSort && <ArrowUpDown size={9} strokeWidth={1.8} style={{ marginLeft:4, opacity: isActive ? 1 : 0.4, verticalAlign:'middle' }}/>}
+                  {/* ← [2026-05-26] 활성 컬럼에 방향 표시 (▲▼) */}
+                  {isActive && <span style={{ marginLeft:2, fontSize:9 }}>{activeSortAsc ? '▲' : '▼'}</span>}
+                </th>
+              )
+            })}
             {canDrill && <th style={{ width:24, borderBottom:'1px solid #F1F5F9' }}/>}
           </tr></thead>
           <tbody>{rows.map((r,i) => (
@@ -572,7 +660,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
             · 기존 AdminApprovals 함수 자체는 보존 (혹시 다른 곳에서 import 시 안전) */}
       {activeTab==='approvals' && <AdminApprovalTable bookings={bookings} rooms={rooms} users={users} currentUserId={currentUserId} currentUserEmail={currentUserEmail} onApprove={onApprove} onReject={onReject} onDetail={onDetail} onCsvClick={() => showToast('CSV 다운로드 기능은 추후 구현 예정입니다.', 'info')}/>}
       {activeTab==='rooms'     && <AdminRooms     showToast={showToast} isMobile={isMobile}/>}
-      {activeTab==='users'     && <AdminUsers     users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile}/>}
+      {activeTab==='users'     && <AdminUsers     users={users} setUsers={setUsers} rooms={rooms} showToast={showToast} isMobile={isMobile}/>}{/* ← [2026-05-26] rooms prop 추가 — 노쇼 현황 DetailDrawer 드릴다운에서 회의실 이름 표시용 */}
         </div>
       </div>
     </>
@@ -881,7 +969,11 @@ function SmallDateTrigger({ value, onChange, min, max }: SmallDateTriggerProps) 
       <button
         ref={triggerRef}
         type="button"
-        onClick={() => setOpen(o => !o)}
+        // ← [2026-05-26 Dashboard 카드 클릭 활성화] e.stopPropagation 추가
+        //   사유: AdminDashboard에서 카드 wrapper에 onClick 적용 시 SmallDateTrigger의
+        //         button click이 wrapper로 bubble-up되어 DetailDrawer가 잘못 열림.
+        //         이 한 줄로 8개 위젯 카드의 SmallDateTrigger 충돌 모두 해결.
+        onClick={(e) => { e.stopPropagation(); setOpen(o => !o) }}
         style={{
           // ── Figma: 텍스트만 표시, button reset ──
           background: 'transparent',
@@ -1042,8 +1134,9 @@ function NoshowChartCard() {
                   // ── [Phase 4 v3] 인터랙티브 툴팁 이벤트 ──
                   //   · 데스크탑: hover로 즉시 표시 (mouseEnter)
                   //   · 모바일/터치: 탭으로 toggle (같은 봉 재탭 시 해제)
+                  // ← [2026-05-26 Dashboard 카드 클릭 활성화] e.stopPropagation — 봉 클릭이 카드 wrapper onClick으로 bubble-up 차단
                   onMouseEnter={() => setActiveDate(d.date)}
-                  onClick={() => setActiveDate(prev => prev === d.date ? null : d.date)}
+                  onClick={(e) => { e.stopPropagation(); setActiveDate(prev => prev === d.date ? null : d.date) }}
                   style={{
                     flex:     1,
                     height:   CHART_HEIGHT,
@@ -1190,7 +1283,8 @@ function RecentBookingsCard({
             return (
               <div
                 key={b.id}
-                onClick={() => onDetail?.(b)}
+                // ← [2026-05-26 Dashboard 카드 클릭 활성화] e.stopPropagation — 행 클릭은 onDetail(개별 예약), 카드 wrapper 클릭은 bookings DetailDrawer로 분리 (사용자 결정)
+                onClick={(e) => { e.stopPropagation(); onDetail?.(b) }}
                 style={{
                   // ── Figma row 1:1 ─────────────────────────────────────
                   display:        'flex',
@@ -1471,8 +1565,9 @@ function RoomNoshowCard({ rooms }: { rooms: Room[] }) {
             return (
               <div
                 key={s.room.room_id}
+                // ← [2026-05-26 Dashboard 카드 클릭 활성화] e.stopPropagation
                 onMouseEnter={() => setActiveRoomId(s.room.room_id)}
-                onClick={() => setActiveRoomId(prev => prev === s.room.room_id ? null : s.room.room_id)}
+                onClick={(e) => { e.stopPropagation(); setActiveRoomId(prev => prev === s.room.room_id ? null : s.room.room_id) }}
                 style={{
                   flex:     1,
                   height:   CHART_HEIGHT,
@@ -1896,8 +1991,9 @@ function BookingTrendsAreaCard() {
               {dayStats.map(d => (
                 <div
                   key={d.date}
+                  // ← [2026-05-26 Dashboard 카드 클릭 활성화] e.stopPropagation
                   onMouseEnter={() => setActiveDate(d.date)}
-                  onClick={() => setActiveDate(prev => prev === d.date ? null : d.date)}
+                  onClick={(e) => { e.stopPropagation(); setActiveDate(prev => prev === d.date ? null : d.date) }}
                   style={{
                     flex:     1,
                     height:   '100%',
@@ -2169,8 +2265,9 @@ function DepartmentBookingsCard() {
               return (
                 <div
                   key={s.dept}
+                  // ← [2026-05-26 Dashboard 카드 클릭 활성화] e.stopPropagation
                   onMouseEnter={() => setActiveDept(s.dept)}
-                  onClick={() => setActiveDept(prev => prev === s.dept ? null : s.dept)}
+                  onClick={(e) => { e.stopPropagation(); setActiveDept(prev => prev === s.dept ? null : s.dept) }}
                   style={{
                     width:         `${widthPct}%`,
                     minWidth:      0,
@@ -2395,8 +2492,9 @@ function HourlyDistributionCard() {
           return (
             <div
               key={d.hour}
+              // ← [2026-05-26 Dashboard 카드 클릭 활성화] e.stopPropagation
               onMouseEnter={() => setActiveHour(d.hour)}
-              onClick={() => setActiveHour(prev => prev === d.hour ? null : d.hour)}
+              onClick={(e) => { e.stopPropagation(); setActiveHour(prev => prev === d.hour ? null : d.hour) }}
               style={{
                 flex:          1,
                 height:        '100%',
@@ -2581,6 +2679,32 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
   // 위젯 ① 승인 대기용 — bookings prop에서 직접 계산 (날짜 필터 없음)
   const pendingCount = bookings.filter(b => b.status === 'pending' && !b.autoCancelled).length
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ← [2026-05-26 신규] 카드 클릭 → DetailDrawer 활성화 (사용자 결정 2026-05-26)
+  //   · 8개 카드 모두 클릭 가능 (정렬 옵션은 카드별 분기)
+  //   · ③ RecentBookingsCard는 행 클릭은 onDetail(개별 예약), 카드 wrapper 클릭은 bookings drawer (행 onClick에 stopPropagation)
+  //   · SmallDateTrigger / 차트 봉 클릭 등 inner 인터랙티브 요소는 stopPropagation으로 충돌 차단 완료
+  //
+  // 진입 기간: 카드 클릭 시 기본 30일 (DetailDrawer가 자체 DateRangePicker로 재변경 가능)
+  // ═══════════════════════════════════════════════════════════════════════════
+  type CardDrawer = { type: DetailType; sortKey?: string; sortAsc?: boolean }
+  const [cardDrawer, setCardDrawer] = useState<CardDrawer | null>(null)
+  const drawerInitFrom = addDaysStr(todayStr(), -29)
+  const drawerInitTo   = todayStr()
+
+  // 카드 wrapper 공통 스타일 — hover 시 살짝 그림자 (cursor pointer)
+  const cardWrapStyle: React.CSSProperties = {
+    cursor: 'pointer',
+    borderRadius: 24,
+    transition: 'box-shadow 0.15s',
+  }
+  const cardWrapHover = (e: React.MouseEvent<HTMLDivElement>) => {
+    (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 20px rgba(0,0,0,0.06)'
+  }
+  const cardWrapLeave = (e: React.MouseEvent<HTMLDivElement>) => {
+    (e.currentTarget as HTMLElement).style.boxShadow = 'none'
+  }
+
   return (
     <div className="flex flex-col gap-4" style={{ maxWidth: 1100, width: '100%' }}>
 
@@ -2595,54 +2719,92 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
            · Row 2 (gap 16): 위젯 ④⑤   각 542×504 (2-col)
            · Row 3 (gap 16): 위젯 ⑥⑦   각 542×504 (2-col)
            · Row 4 (gap 16): 위젯 ⑧     542×205 (좌측만, 우측 빈 칸)
-           · 위젯 ②~⑧는 Phase 4~10에서 PlaceholderCard 자리 1개씩 진짜 구현으로 교체
          ──────────────────────────────────────────────────────────────── */}
 
       {/* ── Row 1: 위젯 ① 승인 대기 / ② 노쇼 현황 / ③ 최근 생성된 예약 ── */}
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
-        {/* ① 승인 대기 — Phase 3 구현 (Figma 489:406) */}
-        <ApprovalPendingCard count={pendingCount} />
+        {/* ① 승인 대기 → 승인 대기 목록 */}
+        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'pending' })}>
+          <ApprovalPendingCard count={pendingCount} />
+        </div>
 
-        {/* ② 노쇼 현황 — Phase 4 구현 (Figma 490:704) ✓ */}
-        <NoshowChartCard />
+        {/* ② 노쇼 현황 → 노쇼 목록 */}
+        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'noshow' })}>
+          <NoshowChartCard />
+        </div>
 
-        {/* ③ 최근 생성된 예약 — Phase 5 구현 (Figma 551:3458) ✓ */}
-        <RecentBookingsCard
-          bookings={bookings}
-          users={users}
-          rooms={rooms}
-          onDetail={onDetail}
-        />
+        {/* ③ 최근 생성된 예약 → 헤더 클릭은 bookings drawer, 행 클릭은 onDetail (사용자 결정) */}
+        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'bookings' })}>
+          <RecentBookingsCard
+            bookings={bookings}
+            users={users}
+            rooms={rooms}
+            onDetail={onDetail}
+          />
+        </div>
       </div>
 
       {/* ── Row 2: 위젯 ④ 예약 많은 회의실 / ⑤ 회의실 노쇼 현황 ── */}
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
-        {/* ④ 예약 많은 회의실 — Phase 6 구현 (Figma 551:3513) ✓ */}
-        <RoomRankingCard rooms={rooms} />
-        {/* ⑤ 회의실 노쇼 현황 — Phase 7 구현 (Figma 551:3548) ✓ */}
-        <RoomNoshowCard rooms={rooms} />
+        {/* ④ 예약 많은 회의실 → rooms 통계 (confirmed desc) */}
+        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'confirmed', sortAsc: false })}>
+          <RoomRankingCard rooms={rooms} />
+        </div>
+        {/* ⑤ 회의실 노쇼 현황 → rooms 통계 (noshow desc — 진입 정렬 분기) */}
+        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'noshow', sortAsc: false })}>
+          <RoomNoshowCard rooms={rooms} />
+        </div>
       </div>
 
       {/* ── Row 3: 위젯 ⑥ 예약추이 / ⑦ 부서별 예약 현황 ── */}
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
-        {/* ⑥ 예약추이 — Mountain Chart (Figma 565:21848) ✓ */}
-        <BookingTrendsAreaCard />
-        {/* ⑦ 부서별 예약 현황 — Phase 9 (Figma 565:13085) ✓ */}
-        <DepartmentBookingsCard />
+        {/* ⑥ 예약추이 → 전체 예약 목록 */}
+        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'bookings' })}>
+          <BookingTrendsAreaCard />
+        </div>
+        {/* ⑦ 부서별 예약 현황 → dept 통계 */}
+        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'dept' })}>
+          <DepartmentBookingsCard />
+        </div>
       </div>
 
       {/* ── Row 4: 위젯 ⑧ 시간대별 예약 분포 (좌측만) ── */}
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
-        {/* ⑧ 시간대별 예약 분포 — Phase 10 (Figma 565:21770) ✓ */}
-        <HourlyDistributionCard />
+        {/* ⑧ 시간대별 예약 분포 → hours 통계 */}
+        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'hours' })}>
+          <HourlyDistributionCard />
+        </div>
         {/* 우측 빈 칸 — Figma 사양 (Row 4는 좌측 카드만) */}
         {!isMobile && <div />}
       </div>
 
-      {/* ── [2026-05-11 Phase 3] DetailDrawer 렌더링 제거 (Q5 결정) ──
-            · 기존: 카드 클릭 → setDetail(type) → <DetailDrawer .../> 표시
-            · 변경: 카드 클릭 액션 자체 제거 (정적 카드, Figma 1:1)
-            · 안전: DetailDrawer 컴포넌트 함수 자체는 보존 (L168) — 다른 곳에서 import 시 안전 */}
+      {/* ═══════════════════════════════════════════════════════════════════════
+          ← [2026-05-26] DetailDrawer 재활성화 (Q5 결정 번복 → 사용자 결정 2026-05-26)
+          · 카드 클릭 시 setCardDrawer 호출 → 여기서 렌더링
+          · type / sortKey / sortAsc 카드별 분기 (RoomRanking ↔ RoomNoshow 정렬 차별화)
+          · 진입 기간: 기본 -30일 ~ 오늘 (DetailDrawer 내부 DateRangePicker로 재변경 가능)
+          ═══════════════════════════════════════════════════════════════════════ */}
+      {cardDrawer && (
+        <DetailDrawer
+          type={cardDrawer.type}
+          rooms={rooms}
+          users={users}
+          initFrom={drawerInitFrom}
+          initTo={drawerInitTo}
+          initialSortKey={cardDrawer.sortKey}
+          initialSortAsc={cardDrawer.sortAsc}
+          onDetail={onDetail}
+          onClose={() => setCardDrawer(null)}
+        />
+      )}
     </div>
   )
 }
@@ -2904,7 +3066,9 @@ export function AdminRooms({ showToast, isMobile }) {
 //      · 영향: 사용자 목록 화면에서 '로그인'·'미로그인' 탭 사라짐, dept 빈값은 '-'로 표시
 //      · 후속 [2026-05-14] '전체' 라벨 → '재직자'로 변경 (퇴사자와 대구되는 명확한 표현)
 
-export function AdminUsers({ users, setUsers, showToast, isMobile }) {
+export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile }) {
+  // ← [2026-05-26] rooms prop 추가 — 노쇼 현황 DetailDrawer 드릴다운 시 회의실 이름 표시용
+  //   기본값 [] — 외부에서 미전달 시도 안전 동작 (회의실 컬럼만 빈 값)
   type FilterType = 'all' | 'admin' | 'departed' // ← [2026-05-14] 'logged' | 'unlogged' 제거
 
   const [filter,     setFilter]     = useState<FilterType>('all')
@@ -2920,6 +3084,46 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
   const [departed,   setDeparted]   = useState<DepartedUser[]>([])
   // 수동 퇴사 처리 — API 구현 완료, UI 버튼은 미노출 (기술검증 완료)
   // countFutureBookings / manualDepartUser 함수는 api.ts에 존재
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ← [2026-05-26 신규] 사용자별 누적 노쇼 통계
+  //   · 기본 기간: 현재일 기준 한 달 전 ~ 오늘 (사용자 결정 2026-05-26)
+  //   · 데이터 소스: loadBookingsByRange(noshowFrom, noshowTo) — 자체 fetch (memory-light)
+  //   · 카운트 룰: isNoshow SSOT (utils/noshow.ts) — 분산 룰 추가 금지 (userMemories 원칙)
+  //   · 매핑 키: user_id UUID (동명이인 안전)
+  //   · 정렬 기본: 이름순 (사용자 결정) — 컬럼 헤더 클릭 시 노쇼 많은 순으로 변경 가능
+  // ═══════════════════════════════════════════════════════════════════════════
+  const [noshowFrom, setNoshowFrom] = useState<string>(() => addDaysStr(todayStr(), -30))  // ← 한 달 전 (사용자 결정)
+  const [noshowTo,   setNoshowTo]   = useState<string>(() => todayStr())
+  const [noshowMap,  setNoshowMap]  = useState<Map<string, number>>(new Map())              // ← Map<user_id, noshowCount>
+  const [noshowLoading, setNoshowLoading] = useState(false)
+  // ← 컬럼 정렬 ('name' 기본 — 사용자 결정 / 컬럼 클릭 시 변경)
+  const [userSortKey, setUserSortKey] = useState<'name' | 'noshow'>('name')
+  const [userSortAsc, setUserSortAsc] = useState<boolean>(true)
+  // ← 노쇼 현황 상세 DetailDrawer state
+  const [noshowDrawer, setNoshowDrawer] = useState<{ from: string; to: string } | null>(null)
+
+  // 누적 노쇼 fetch — 기간 변경 시 자동 재조회
+  useEffect(() => {
+    let cancelled = false
+    setNoshowLoading(true)
+    loadBookingsByRange(noshowFrom, noshowTo)
+      .then(bookings => {
+        if (cancelled) return
+        const m = new Map<string, number>()
+        bookings.forEach(b => {
+          if (!isNoshow(b)) return
+          // user_id UUID 우선 매핑 (동명이인 안전). user_id 없는 외부 예약은 통계 제외.
+          const uid = b.user_id
+          if (!uid) return
+          m.set(uid, (m.get(uid) ?? 0) + 1)
+        })
+        setNoshowMap(m)
+      })
+      .catch(e => console.error('[AdminUsers] noshow fetch failed', e))
+      .finally(() => { if (!cancelled) setNoshowLoading(false) })
+    return () => { cancelled = true }
+  }, [noshowFrom, noshowTo])
 
   useEffect(() => {
     loadDepartedUsers().then(setDeparted).catch(() => {})
@@ -2954,6 +3158,22 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
         || (u.dept ?? '').toLowerCase().includes(q)
         || u.email.toLowerCase().includes(q)
   })
+
+  // ← [2026-05-26 신규] 정렬 — userSortKey 'name'(이름) 또는 'noshow'(누적노쇼)
+  //   기본: 이름 asc (사용자 결정). 노쇼 컬럼 헤더 클릭 시 noshow desc로 변경.
+  const sortedFilteredUsers = useMemo(() => {
+    return [...filteredUsers].sort((a, b) => {
+      if (userSortKey === 'noshow') {
+        const an = noshowMap.get(a.user_id) ?? 0
+        const bn = noshowMap.get(b.user_id) ?? 0
+        if (an !== bn) return userSortAsc ? an - bn : bn - an
+        // 동률은 이름으로 안정 정렬
+        return a.name.localeCompare(b.name)
+      }
+      // 이름 정렬
+      return userSortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name)
+    })
+  }, [filteredUsers, userSortKey, userSortAsc, noshowMap])
 
   const filteredDeparted = departed.filter(u => {
     if (!searchQ) return true
@@ -3036,11 +3256,28 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
             <RefreshCw size={11} strokeWidth={1.8}/>
             {syncing ? '동기화 중...' : 'Azure AD 동기화'}
           </button>
+          {/* ← [2026-05-26 신규] 노쇼 현황 상세 — DetailDrawer type='users' 진입 시 노쇼한 사람 최신순 정렬 (사용자 결정) */}
+          {filter !== 'departed' && (
+            <button className="btn"
+              onClick={() => setNoshowDrawer({ from: noshowFrom, to: noshowTo })}
+              style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', fontSize:11, borderRadius:8,
+                background:'#FFF5F5', border:'1px solid #FECACA', color:'#DC2626', fontWeight:600 }}>
+              <AlertCircle size={11} strokeWidth={1.8}/> 노쇼 현황 상세
+            </button>
+          )}
           <button className="btn"
+            // ← [2026-05-26] CSV에 누적노쇼 + 조회기간 컬럼 추가 (사용자 요청)
             onClick={() => exportCSV(
               filter === 'departed'
                 ? filteredDeparted.map(u => ({ 이름:u.name, 부서:u.dept, 이메일:u.email, 퇴사일:u.departed_at.slice(0,10) }))
-                : filteredUsers.map(u => ({ 이름:u.name, 부서:u.dept || '', 이메일:u.email, 권한:u.role })), // ← [2026-05-14] '(미로그인)' fallback 제거 → 빈문자열
+                : sortedFilteredUsers.map(u => ({
+                    이름: u.name,
+                    부서: u.dept || '',
+                    이메일: u.email,
+                    권한: u.role,
+                    누적노쇼: noshowMap.get(u.user_id) ?? 0,
+                    조회기간: `${noshowFrom} ~ ${noshowTo}`,
+                  })),
               filter === 'departed' ? '퇴사자목록' : '사용자목록'
             )}
             style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', fontSize:11, borderRadius:8, background:'#F8FAFC', border:'1px solid #E2E8F0', color:'#374151', fontWeight:600 }}>
@@ -3048,6 +3285,38 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
           </button>
         </div>
       </div>
+
+      {/* ─ [2026-05-26 신규] 누적 노쇼 기간 선택 ─────────────────────────────────
+          · 위치: 헤더 바로 아래 (검색/필터와는 독립 — 노쇼 통계 전용 기간)
+          · 기본: 한 달 전 ~ 오늘 (사용자 결정)
+          · 표시: '재직자'·'Admin' 필터에서만 (퇴사자 탭 제외 — 노쇼 컬럼도 미표시)
+      ──────────────────────────────────────────────────────────────────────────── */}
+      {filter !== 'departed' && (
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12, padding:'8px 12px',
+          background:'#fff', borderRadius:10, border:'1px solid #F1F5F9', flexWrap:'wrap' }}>
+          <AlertCircle size={12} strokeWidth={1.8} color="#DC2626"/>
+          <span style={{ fontSize:11, fontWeight:600, color:'#111' }}>누적 노쇼 조회 기간</span>
+          <input type="date" value={noshowFrom} max={noshowTo}
+            onChange={e => setNoshowFrom(e.target.value)}
+            style={{ padding:'5px 8px', borderRadius:6, border:'1px solid #E2E8F0', fontSize:11, background:'#F8FAFC', outline:'none' }}/>
+          <span style={{ fontSize:11, color:'#CBD5E1' }}>~</span>
+          <input type="date" value={noshowTo} min={noshowFrom} max={todayStr()}
+            onChange={e => setNoshowTo(e.target.value)}
+            style={{ padding:'5px 8px', borderRadius:6, border:'1px solid #E2E8F0', fontSize:11, background:'#F8FAFC', outline:'none' }}/>
+          {/* 퀵 프리셋 — DateRangeFilter 도입은 향후 enhancement */}
+          <button className="btn" onClick={() => { setNoshowFrom(addDaysStr(todayStr(), -7));  setNoshowTo(todayStr()) }}
+            style={{ padding:'4px 10px', fontSize:11, borderRadius:6, background:'#F8FAFC', border:'1px solid #E2E8F0', color:'#64748B' }}>7일</button>
+          <button className="btn" onClick={() => { setNoshowFrom(addDaysStr(todayStr(), -30)); setNoshowTo(todayStr()) }}
+            style={{ padding:'4px 10px', fontSize:11, borderRadius:6, background:'#F8FAFC', border:'1px solid #E2E8F0', color:'#64748B' }}>한 달</button>
+          <button className="btn" onClick={() => { setNoshowFrom(addDaysStr(todayStr(), -90)); setNoshowTo(todayStr()) }}
+            style={{ padding:'4px 10px', fontSize:11, borderRadius:6, background:'#F8FAFC', border:'1px solid #E2E8F0', color:'#64748B' }}>3개월</button>
+          {noshowLoading && (
+            <span style={{ fontSize:10, color:'#94A3B8', display:'flex', alignItems:'center', gap:4, marginLeft:'auto' }}>
+              <RefreshCw size={10} strokeWidth={1.8}/> 노쇼 집계 중...
+            </span>
+          )}
+        </div>
+      )}
 
       {/* ── 동기화 결과 배너 ── */}
       {syncResult && (
@@ -3132,65 +3401,123 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
           {isMobile ? (
             // 모바일: 카드 리스트
             <div>
-              {filteredUsers.map(u => (
-                <div key={u.user_id}
-                  onClick={() => openDetail(u)}
-                  style={{ padding:'14px 20px', borderBottom:'1px solid #F8FAFC', display:'flex', alignItems:'center', gap:12, cursor:'pointer' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#FAFBFD')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                  <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={36} bgColor={u.role==='ADMIN'?'#111':'#E2E8F0'} textColor={u.role==='ADMIN'?'#fff':'#64748B'} />
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
-                      {u.name}
-                      {/* ← [2026-05-14] '미로그인' 노란뱃지 제거 — dept 있을 때만 회색 부서 표시 */}
-                      {u.dept && <> <span style={{ color:'#94A3B8', fontWeight:400 }}>{u.dept}</span></>}
+              {sortedFilteredUsers.map(u => {
+                // ← [2026-05-26] 누적 노쇼 카운트 — 0/1~2/3+ 색상 구분 (사용자 결정)
+                const nsCount = noshowMap.get(u.user_id) ?? 0
+                const nsColor = nsCount === 0 ? '#94A3B8' : nsCount <= 2 ? '#D97706' : '#DC2626'
+                const nsBg    = nsCount === 0 ? '#F1F5F9' : nsCount <= 2 ? '#FEF3C7' : '#FEE2E2'
+                return (
+                  <div key={u.user_id}
+                    onClick={() => openDetail(u)}
+                    style={{ padding:'14px 20px', borderBottom:'1px solid #F8FAFC', display:'flex', alignItems:'center', gap:12, cursor:'pointer' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#FAFBFD')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={36} bgColor={u.role==='ADMIN'?'#111':'#E2E8F0'} textColor={u.role==='ADMIN'?'#fff':'#64748B'} />
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
+                        {u.name}
+                        {u.dept && <> <span style={{ color:'#94A3B8', fontWeight:400 }}>{u.dept}</span></>}
+                      </div>
+                      <div style={{ fontSize:11, color:'#94A3B8', marginTop:1 }}>{u.email}</div>
                     </div>
-                    <div style={{ fontSize:11, color:'#94A3B8', marginTop:1 }}>{u.email}</div>
+                    {/* ← [2026-05-26 신규] 모바일 노쇼 뱃지 */}
+                    <span title={`최근 ${noshowFrom} ~ ${noshowTo}`} style={{
+                      padding:'3px 8px', borderRadius:999, fontSize:10, fontWeight:600,
+                      background: nsBg, color: nsColor, whiteSpace:'nowrap',
+                    }}>노쇼 {nsCount}</span>
+                    <span style={{
+                      padding:'3px 9px', borderRadius:999, fontSize:10, fontWeight:600,
+                      background: u.role==='ADMIN' ? '#111' : '#F8FAFC',
+                      color:      u.role==='ADMIN' ? '#fff' : '#64748B',
+                    }}>{u.role}</span>
                   </div>
-                  <span style={{
-                    padding:'3px 9px', borderRadius:999, fontSize:10, fontWeight:600,
-                    background: u.role==='ADMIN' ? '#111' : '#F8FAFC',
-                    color:      u.role==='ADMIN' ? '#fff' : '#64748B',
-                  }}>{u.role}</span>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ) : (
             // 데스크탑: 테이블 (관리 컬럼 없음, row 전체 클릭)
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
               <thead>
                 <tr style={{ background:'#F8FAFC' }}>
-                  {['', '이름', '부서', '이메일', '권한'].map(h => (
-                    <th key={h} style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:600, color:'#94A3B8', borderBottom:'1px solid #F1F5F9' }}>{h}</th>
-                  ))}
+                  {/* ← [2026-05-26] 헤더 정렬 가능 — 이름·누적노쇼 컬럼 (사용자 결정: 이름 기본, 노쇼 클릭 시 desc) */}
+                  <th style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:600, color:'#94A3B8', borderBottom:'1px solid #F1F5F9' }}></th>
+                  {/* 이름 — 정렬 가능 */}
+                  <th onClick={() => {
+                      if (userSortKey === 'name') setUserSortAsc(s => !s)
+                      else { setUserSortKey('name'); setUserSortAsc(true) }
+                    }}
+                    style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:600,
+                      color: userSortKey==='name' ? '#111' : '#94A3B8',
+                      borderBottom:'1px solid #F1F5F9', cursor:'pointer', userSelect:'none', whiteSpace:'nowrap' }}>
+                    이름
+                    <ArrowUpDown size={9} strokeWidth={1.8} style={{ marginLeft:4, opacity: userSortKey==='name' ? 1 : 0.4, verticalAlign:'middle' }}/>
+                    {userSortKey==='name' && <span style={{ marginLeft:2, fontSize:9 }}>{userSortAsc ? '▲' : '▼'}</span>}
+                  </th>
+                  <th style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:600, color:'#94A3B8', borderBottom:'1px solid #F1F5F9' }}>부서</th>
+                  <th style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:600, color:'#94A3B8', borderBottom:'1px solid #F1F5F9' }}>이메일</th>
+                  <th style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:600, color:'#94A3B8', borderBottom:'1px solid #F1F5F9' }}>권한</th>
+                  {/* 누적 노쇼 — 정렬 가능 (클릭 시 노쇼 많은 순) */}
+                  <th onClick={() => {
+                      if (userSortKey === 'noshow') setUserSortAsc(s => !s)
+                      else { setUserSortKey('noshow'); setUserSortAsc(false) }  // ← 노쇼는 desc 기본 (많은 순)
+                    }}
+                    style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:600,
+                      color: userSortKey==='noshow' ? '#DC2626' : '#94A3B8',
+                      borderBottom:'1px solid #F1F5F9', cursor:'pointer', userSelect:'none', whiteSpace:'nowrap' }}>
+                    누적 노쇼
+                    <ArrowUpDown size={9} strokeWidth={1.8} style={{ marginLeft:4, opacity: userSortKey==='noshow' ? 1 : 0.4, verticalAlign:'middle' }}/>
+                    {userSortKey==='noshow' && <span style={{ marginLeft:2, fontSize:9 }}>{userSortAsc ? '▲' : '▼'}</span>}
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.map(u => (
-                  <tr key={u.user_id}
-                    onClick={() => openDetail(u)}
-                    style={{ borderBottom:'1px solid #F8FAFC', cursor:'pointer' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#FAFBFD')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                    <td style={{ padding:'10px 14px', width:44 }}>
-                      <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={30} bgColor={u.role==='ADMIN'?'#111':'#E2E8F0'} textColor={u.role==='ADMIN'?'#fff':'#64748B'} />
-                    </td>
-                    <td style={{ padding:'10px 14px', fontWeight:600, color:'#111' }}>{u.name}</td>
-                    <td style={{ padding:'10px 14px', color:'#64748B' }}>
-                      {/* ← [2026-05-14] '미로그인' 노란뱃지 제거 — 빈값은 '-' 표시 (테이블 컬럼 정렬 유지) */}
-                      {u.dept || '-'}
-                    </td>
-                    <td style={{ padding:'10px 14px', color:'#64748B' }}>{u.email}</td>
-                    <td style={{ padding:'10px 14px' }}>
-                      <span style={{
-                        padding:'3px 10px', borderRadius:999, fontSize:11, fontWeight:600,
-                        background: u.role==='ADMIN' ? '#111' : '#F8FAFC',
-                        color:      u.role==='ADMIN' ? '#fff' : '#64748B',
-                        border:     u.role==='ADMIN' ? 'none' : '1px solid #E2E8F0',
-                      }}>{u.role}</span>
+                {/* ← [2026-05-26] 로딩 인디케이터 (사용자 결정: 약 1초 지연 대비) */}
+                {noshowLoading && (
+                  <tr style={{ borderBottom:'1px solid #F8FAFC' }}>
+                    <td colSpan={6} style={{ padding:'14px', textAlign:'center', color:'#CBD5E1', fontSize:11 }}>
+                      <RefreshCw size={11} strokeWidth={1.8} style={{ display:'inline-block', verticalAlign:'middle', marginRight:6 }}/>
+                      노쇼 집계 중...
                     </td>
                   </tr>
-                ))}
+                )}
+                {sortedFilteredUsers.map(u => {
+                  // ← [2026-05-26] 누적 노쇼 카운트 + 색상
+                  const nsCount = noshowMap.get(u.user_id) ?? 0
+                  const nsColor = nsCount === 0 ? '#94A3B8' : nsCount <= 2 ? '#D97706' : '#DC2626'
+                  const nsBg    = nsCount === 0 ? '#F1F5F9' : nsCount <= 2 ? '#FEF3C7' : '#FEE2E2'
+                  return (
+                    <tr key={u.user_id}
+                      onClick={() => openDetail(u)}
+                      style={{ borderBottom:'1px solid #F8FAFC', cursor:'pointer' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#FAFBFD')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                      <td style={{ padding:'10px 14px', width:44 }}>
+                        <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={30} bgColor={u.role==='ADMIN'?'#111':'#E2E8F0'} textColor={u.role==='ADMIN'?'#fff':'#64748B'} />
+                      </td>
+                      <td style={{ padding:'10px 14px', fontWeight:600, color:'#111' }}>{u.name}</td>
+                      <td style={{ padding:'10px 14px', color:'#64748B' }}>
+                        {u.dept || '-'}
+                      </td>
+                      <td style={{ padding:'10px 14px', color:'#64748B' }}>{u.email}</td>
+                      <td style={{ padding:'10px 14px' }}>
+                        <span style={{
+                          padding:'3px 10px', borderRadius:999, fontSize:11, fontWeight:600,
+                          background: u.role==='ADMIN' ? '#111' : '#F8FAFC',
+                          color:      u.role==='ADMIN' ? '#fff' : '#64748B',
+                          border:     u.role==='ADMIN' ? 'none' : '1px solid #E2E8F0',
+                        }}>{u.role}</span>
+                      </td>
+                      {/* ← [2026-05-26] 누적 노쇼 뱃지 — 0=회색, 1~2=노랑, 3+=빨강 (사용자 결정) */}
+                      <td style={{ padding:'10px 14px' }}>
+                        <span title={`조회기간: ${noshowFrom} ~ ${noshowTo}`} style={{
+                          display:'inline-block', minWidth:32, textAlign:'center',
+                          padding:'3px 10px', borderRadius:999, fontSize:11, fontWeight:700,
+                          background: nsBg, color: nsColor,
+                        }}>{nsCount}</span>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           )}
@@ -3322,6 +3649,25 @@ export function AdminUsers({ users, setUsers, showToast, isMobile }) {
           </div>
         </div>
         </ModalPortal>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          ← [2026-05-26 신규] 노쇼 현황 상세 DetailDrawer
+          · 진입 정렬: lastNoshowAt desc (노쇼한 사람 최신순 — 사용자 결정)
+          · 기간: AdminUsers의 현재 노쇼 조회기간(noshowFrom/To) prop 전달
+          · 기존 DetailDrawer 인프라 100% 재사용 (CSV/드릴다운/기간변경 모두 동작)
+          ═══════════════════════════════════════════════════════════════════════ */}
+      {noshowDrawer && (
+        <DetailDrawer
+          type='users'
+          rooms={rooms}
+          users={users}
+          initFrom={noshowDrawer.from}
+          initTo={noshowDrawer.to}
+          initialSortKey='lastNoshowAt'
+          initialSortAsc={false}
+          onClose={() => setNoshowDrawer(null)}
+        />
       )}
     </div>
   )
