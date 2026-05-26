@@ -302,7 +302,8 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
           </button>
         </div>
         <div style={{ overflowX:'auto', borderRadius:10, border:'1px solid #F1F5F9' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+          {/* ← [2026-05-26 UI HOTFIX] minWidth 720 — 6컬럼(회의명/회의실/날짜/시간/예약자/상태) 압축 방지 */}
+          <table style={{ width:'100%', minWidth:720, borderCollapse:'collapse', fontSize:12 }}>
             <thead>
               <tr style={{ background:'#F8FAFC' }}>
                 {[{k:'title',l:'회의명'},{k:'room_id',l:'회의실'},{k:'start_at',l:'날짜'},{k:'start_at',l:'시간'},{k:'user',l:'예약자'},{k:'',l:'상태'}].map((h,i) => (
@@ -442,7 +443,18 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
       {/* 배경 dim */}
       <div onClick={onClose} style={{ position:'absolute', inset:0, background:'rgba(15,23,42,0.4)', backdropFilter:'blur(4px)' }}/>
       {/* 드로어 패널 */}
-      <div className="anm" style={{ position:'relative', width:'min(700px,100vw)', height:'100%', background:'#fff', display:'flex', flexDirection:'column', boxShadow:'-8px 0 40px rgba(0,0,0,0.12)' }}>
+      {/* ← [2026-05-26 UI HOTFIX] width 700→1100 확장 (사용자 요청: 테이블 가로 잘림 해결) */}
+      {/*    · max width 1100px / 데스크탑 95vw / 모바일 100vw */}
+      {/*    · 컨텐츠 영역 padding 24→20 — 테이블 가용 폭 +8px 확보 */}
+      <div className="anm" style={{
+        position:'relative',
+        width:'min(1100px, 95vw)',
+        height:'100%',
+        background:'#fff',
+        display:'flex',
+        flexDirection:'column',
+        boxShadow:'-8px 0 40px rgba(0,0,0,0.12)'
+      }}>
         {/* 헤더 */}
         <div style={{ padding:'20px 24px 16px', borderBottom:'1px solid #F1F5F9', flexShrink:0 }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
@@ -469,8 +481,8 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
             </div>
           </div>
         </div>
-        {/* 컨텐츠 */}
-        <div style={{ flex:1, overflow:'auto', padding:'20px 24px' }}>
+        {/* 컨텐츠 — [2026-05-26 UI HOTFIX] padding 24→20 (테이블 가용 폭 확보) */}
+        <div style={{ flex:1, overflow:'auto', padding:'20px 20px' }}>
           {renderTable()}
         </div>
       </div>
@@ -506,7 +518,8 @@ function AggTable({ rows, cols, onExport, onRowClick, onHeaderClick, activeSortK
         </button>
       </div>
       <div style={{ overflowX:'auto', borderRadius:10, border:'1px solid #F1F5F9' }}>
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+        {/* ← [2026-05-26 UI HOTFIX] minWidth 600 — 다양한 컬럼 수 (3~5) 압축 방지 */}
+        <table style={{ width:'100%', minWidth:600, borderCollapse:'collapse', fontSize:13 }}>
           <thead><tr style={{ background:'#F8FAFC' }}>
             {cols.map(c => {
               const isActive = canSort && activeSortKey === c.k
@@ -3286,37 +3299,91 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile })
         </div>
       </div>
 
-      {/* ─ [2026-05-26 신규] 누적 노쇼 기간 선택 ─────────────────────────────────
-          · 위치: 헤더 바로 아래 (검색/필터와는 독립 — 노쇼 통계 전용 기간)
-          · 기본: 한 달 전 ~ 오늘 (사용자 결정)
-          · 표시: '재직자'·'Admin' 필터에서만 (퇴사자 탭 제외 — 노쇼 컬럼도 미표시)
+      {/* ─ [2026-05-26 UI HOTFIX] 누적 노쇼 기간 선택 — 직관성 개선 ─────────────
+          · 변경 사유: 사용자 보고 "조회 툴바가 직관적이지 않음"
+          · 개선:
+            1) 시각 그룹화 — 좌측 [라벨+input] · 중앙 [퀵버튼 그룹] · 우측 [로딩]
+            2) 라벨 명확화 — "누적 노쇼 조회 기간" → 아이콘+굵은 텍스트
+            3) input 크기 증가 — height 28→32, 폰트 11→12
+            4) 퀵버튼 그룹화 — 배경 추가하여 시각적 묶음 표시
+            5) 활성 퀵버튼 표시 — 현재 선택된 프리셋 black bg 강조
+            6) padding 8→10·14 — 더 여유로운 공간
       ──────────────────────────────────────────────────────────────────────────── */}
-      {filter !== 'departed' && (
-        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12, padding:'8px 12px',
-          background:'#fff', borderRadius:10, border:'1px solid #F1F5F9', flexWrap:'wrap' }}>
-          <AlertCircle size={12} strokeWidth={1.8} color="#DC2626"/>
-          <span style={{ fontSize:11, fontWeight:600, color:'#111' }}>누적 노쇼 조회 기간</span>
-          <input type="date" value={noshowFrom} max={noshowTo}
-            onChange={e => setNoshowFrom(e.target.value)}
-            style={{ padding:'5px 8px', borderRadius:6, border:'1px solid #E2E8F0', fontSize:11, background:'#F8FAFC', outline:'none' }}/>
-          <span style={{ fontSize:11, color:'#CBD5E1' }}>~</span>
-          <input type="date" value={noshowTo} min={noshowFrom} max={todayStr()}
-            onChange={e => setNoshowTo(e.target.value)}
-            style={{ padding:'5px 8px', borderRadius:6, border:'1px solid #E2E8F0', fontSize:11, background:'#F8FAFC', outline:'none' }}/>
-          {/* 퀵 프리셋 — DateRangeFilter 도입은 향후 enhancement */}
-          <button className="btn" onClick={() => { setNoshowFrom(addDaysStr(todayStr(), -7));  setNoshowTo(todayStr()) }}
-            style={{ padding:'4px 10px', fontSize:11, borderRadius:6, background:'#F8FAFC', border:'1px solid #E2E8F0', color:'#64748B' }}>7일</button>
-          <button className="btn" onClick={() => { setNoshowFrom(addDaysStr(todayStr(), -30)); setNoshowTo(todayStr()) }}
-            style={{ padding:'4px 10px', fontSize:11, borderRadius:6, background:'#F8FAFC', border:'1px solid #E2E8F0', color:'#64748B' }}>한 달</button>
-          <button className="btn" onClick={() => { setNoshowFrom(addDaysStr(todayStr(), -90)); setNoshowTo(todayStr()) }}
-            style={{ padding:'4px 10px', fontSize:11, borderRadius:6, background:'#F8FAFC', border:'1px solid #E2E8F0', color:'#64748B' }}>3개월</button>
-          {noshowLoading && (
-            <span style={{ fontSize:10, color:'#94A3B8', display:'flex', alignItems:'center', gap:4, marginLeft:'auto' }}>
-              <RefreshCw size={10} strokeWidth={1.8}/> 노쇼 집계 중...
-            </span>
-          )}
-        </div>
-      )}
+      {filter !== 'departed' && (() => {
+        // 현재 활성 프리셋 추정 (정확 매칭 시에만 활성 표시)
+        const isPreset7d   = noshowFrom === addDaysStr(todayStr(), -7)  && noshowTo === todayStr()
+        const isPreset30d  = noshowFrom === addDaysStr(todayStr(), -30) && noshowTo === todayStr()
+        const isPreset90d  = noshowFrom === addDaysStr(todayStr(), -90) && noshowTo === todayStr()
+
+        const quickBtnStyle = (active: boolean): React.CSSProperties => ({
+          padding:'6px 12px', fontSize:12, fontWeight:600, borderRadius:8,
+          background: active ? '#111' : '#fff',
+          color:      active ? '#fff' : '#64748B',
+          border:     active ? 'none' : '1px solid #E2E8F0',
+          cursor: 'pointer',
+          transition: 'all 0.12s',
+        })
+
+        return (
+          <div style={{
+            display:'flex', alignItems:'center', gap:14, marginBottom:14,
+            padding:'10px 14px', background:'#fff', borderRadius:12,
+            border:'1px solid #F1F5F9', flexWrap:'wrap',
+          }}>
+            {/* ── 좌측: 라벨 + 기간 입력 ────────────────────────────────── */}
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <AlertCircle size={14} strokeWidth={1.8} color="#DC2626"/>
+              <span style={{ fontSize:12, fontWeight:700, color:'#111', whiteSpace:'nowrap' }}>
+                누적 노쇼 조회 기간
+              </span>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+              <input type="date" value={noshowFrom} max={noshowTo}
+                onChange={e => setNoshowFrom(e.target.value)}
+                style={{
+                  padding:'7px 10px', borderRadius:8, border:'1px solid #E2E8F0',
+                  fontSize:12, fontWeight:500, color:'#111', background:'#F8FAFC',
+                  outline:'none', height:32, minWidth:130,
+                }}/>
+              <span style={{ fontSize:12, color:'#94A3B8', fontWeight:500 }}>~</span>
+              <input type="date" value={noshowTo} min={noshowFrom} max={todayStr()}
+                onChange={e => setNoshowTo(e.target.value)}
+                style={{
+                  padding:'7px 10px', borderRadius:8, border:'1px solid #E2E8F0',
+                  fontSize:12, fontWeight:500, color:'#111', background:'#F8FAFC',
+                  outline:'none', height:32, minWidth:130,
+                }}/>
+            </div>
+
+            {/* ── 중앙: 퀵버튼 그룹 (시각 묶음) ───────────────────────── */}
+            <div style={{
+              display:'flex', alignItems:'center', gap:4,
+              padding:4, background:'#F8FAFC', borderRadius:10,
+            }}>
+              <button className="btn"
+                onClick={() => { setNoshowFrom(addDaysStr(todayStr(), -7));  setNoshowTo(todayStr()) }}
+                style={quickBtnStyle(isPreset7d)}>7일</button>
+              <button className="btn"
+                onClick={() => { setNoshowFrom(addDaysStr(todayStr(), -30)); setNoshowTo(todayStr()) }}
+                style={quickBtnStyle(isPreset30d)}>한 달</button>
+              <button className="btn"
+                onClick={() => { setNoshowFrom(addDaysStr(todayStr(), -90)); setNoshowTo(todayStr()) }}
+                style={quickBtnStyle(isPreset90d)}>3개월</button>
+            </div>
+
+            {/* ── 우측: 로딩 인디케이터 ─────────────────────────────────── */}
+            {noshowLoading && (
+              <span style={{
+                fontSize:11, color:'#94A3B8', display:'flex', alignItems:'center',
+                gap:5, marginLeft:'auto', fontWeight:500,
+              }}>
+                <RefreshCw size={11} strokeWidth={1.8} style={{ animation:'spin 1s linear infinite' }}/>
+                노쇼 집계 중...
+              </span>
+            )}
+          </div>
+        )
+      })()}
 
       {/* ── 동기화 결과 배너 ── */}
       {syncResult && (
@@ -3435,8 +3502,12 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile })
               })}
             </div>
           ) : (
-            // 데스크탑: 테이블 (관리 컬럼 없음, row 전체 클릭)
-            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+            // ← [2026-05-26 UI HOTFIX] 데스크탑 테이블 — 가로 스크롤 wrapper 추가
+            //   원인: 새 컬럼(누적 노쇼) 추가로 6컬럼 → 좁은 화면에서 압축됨
+            //   해결: 외곽 div에 overflowX:'auto' + table minWidth 720
+            //   안전: 외곽 borderRadius는 부모 wrapper(L3465)가 유지
+            <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', minWidth:720, borderCollapse:'collapse', fontSize:13 }}>
               <thead>
                 <tr style={{ background:'#F8FAFC' }}>
                   {/* ← [2026-05-26] 헤더 정렬 가능 — 이름·누적노쇼 컬럼 (사용자 결정: 이름 기본, 노쇼 클릭 시 desc) */}
@@ -3520,6 +3591,7 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile })
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       )}
