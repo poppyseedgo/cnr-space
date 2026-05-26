@@ -3153,16 +3153,50 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile })
   const [syncLogs, setSyncLogs] = useState<SyncResult[]>(loadSyncLogs)
   const [showLogs, setShowLogs] = useState(false)
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ← [2026-05-26 BUGFIX] '재직자' 카운트에 퇴사자 섞이는 문제 해결
+  //   증상: 사용자 보고 — "재직자" 탭 숫자에 퇴사자가 더해져 나옴
+  //
+  //   진단 (3단계 가설 검증):
+  //   1) loadUsers는 .neq('is_active', false) 필터 이미 적용 (api.ts L828, 2026-05-14 동일 이슈 수정 시 추가됨)
+  //   2) App.tsx에서 setUsers는 loadUsers() 결과만 사용 — 다른 경로 없음 ✓
+  //   3) 결론: DB 데이터 불일치 — departed_users 테이블에는 있는데 profiles.is_active가 false가 아닌
+  //            (NULL 또는 true 상태로 남은) 케이스가 일부 존재. 즉 sync-all-users / manualDepartUser가
+  //            두 테이블 동시 업데이트를 누락한 케이스 (근본 점검 별도 TODO)
+  //
+  //   화면 안전망: departed.email Set으로 cross-reference 필터
+  //   · email은 NOT NULL + 시스템 전반 식별자 (userMemories 명시)
+  //   · users 배열에 퇴사자가 섞여 있어도 화면에서는 강제 제외
+  //   · 다른 컴포넌트(AdminBookings 등)에 영향 0 — AdminUsers 내부 변수만 변경
+  //
+  //   📌 TODO (별도 채팅 점검): sync-all-users / manualDepartUser Edge Function이
+  //      departed_users INSERT 시 profiles.is_active=false UPDATE도 동시에 하는지 검증.
+  //      누락 시 두 테이블 동기화 트리거 추가 또는 백필 스크립트 실행 필요.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const activeUsers = useMemo(() => {
+    if (!departed.length) return users  // 퇴사자 없으면 그대로 (불필요한 연산 회피)
+    // email 기반 cross-reference — DepartedUser.email은 NOT NULL, lowercase 정규화
+    const departedEmailSet = new Set(
+      departed
+        .map(d => (d.email ?? '').toLowerCase().trim())
+        .filter(Boolean)
+    )
+    if (!departedEmailSet.size) return users
+    return users.filter(u => !departedEmailSet.has((u.email ?? '').toLowerCase().trim()))
+  }, [users, departed])
+
   // ── 카운트
+  // ← [2026-05-26 BUGFIX] users → activeUsers — 퇴사자 cross-reference 안전망 적용
   const counts = {
-    all:      users.length,
-    admin:    users.filter(u => u.role === 'ADMIN').length,
+    all:      activeUsers.length,
+    admin:    activeUsers.filter(u => u.role === 'ADMIN').length,
     // ← [2026-05-14] logged/unlogged 카운트 제거 (dept 유무로 판정하던 heuristic 폐기)
     departed: departed.length,
   }
 
   // ── 검색 + 필터
-  const filteredUsers = users.filter(u => {
+  // ← [2026-05-26 BUGFIX] users → activeUsers — 퇴사자가 검색/정렬 결과에도 안 보이도록 보장
+  const filteredUsers = activeUsers.filter(u => {
     if (filter === 'admin'    && u.role !== 'ADMIN') return false
     // ← [2026-05-14] logged/unlogged 필터 분기 제거 (FilterType에서도 제거됨)
     if (!searchQ) return true
