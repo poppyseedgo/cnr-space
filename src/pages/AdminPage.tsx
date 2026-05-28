@@ -169,10 +169,25 @@ const DETAIL_META: Record<DetailType, { title: string; icon: React.ReactNode }> 
   users:    { title: '사용자 예약 현황',   icon: <Users size={16} strokeWidth={1.8}/> },
 }
 
-function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, initialSortAsc, onDetail, onClose, currentUserId = '', currentUserEmail = '' }:
+// ─── DetailDrawer ──────────────────────────────────────────────────────────────
+// ✅ 변경 이력
+//  - [2026-05-28 사용자 요청] 'bookings' 타입 날짜 필터 모드 토글 + 생성일 컬럼 분리
+//    · 배경: '최근 생성된 예약' 카드 클릭 시 회의 시작일 기준 조회/정렬되어 사용자 혼란
+//            ("최근 생성"인데 회의 시작 날짜로 정렬되어 진짜 최근 생성된 게 위로 안 옴)
+//    · 해결:
+//        ① initialDateMode prop 추가 — 카드별 진입 모드 결정 (최근 생성 카드는 'createdAt')
+//        ② dateMode state + 토글 UI — 생성일/회의 날짜 자유 전환 (AdminApprovalTable 패턴 일관)
+//        ③ loadBookingsByRange(from, to, dateField) 동적 호출 — 백엔드도 모드별 fetch
+//        ④ 테이블 컬럼 분리 — '생성일'(b.createdAt) + '회의 날짜'(b.start_at) 양립
+//        ⑤ CSV에도 두 날짜 컬럼 분리
+//    · 정렬: initialSortKey도 모드와 함께 결정 (최근 생성 카드는 'createdAt' desc)
+//      모드 변경 시 정렬은 자동 변경 X — 사용자가 헤더 클릭으로 자유 정렬 가능
+function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, initialSortAsc, initialDateMode, onDetail, onClose, currentUserId = '', currentUserEmail = '' }:
   { type: DetailType; rooms: Room[]; users: AppUser[]; initFrom: string; initTo: string;
     // ← [2026-05-26 카드 클릭 활성화] 진입 시 정렬 옵션 (RoomRanking vs RoomNoshow 분기용)
     initialSortKey?: string; initialSortAsc?: boolean;
+    // ← [2026-05-28] 진입 시 날짜 조회 모드 ('createdAt'=생성일 기준 / 'startAt'=회의 날짜 기준, default 'startAt')
+    initialDateMode?: 'createdAt' | 'startAt';
     onDetail?: (b:Booking)=>void; onClose: ()=>void;
     // ← [2026-05-28 P4-B 패턴 일관성] BookingStatusBadge 'mine' 칩 판정용 (어드민 본인 예약 표시)
     currentUserId?: string; currentUserEmail?: string }) {
@@ -185,16 +200,28 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
   // ← [2026-05-26] initialSortKey/Asc 적용 — 카드 클릭 진입 시 시각적 일관성 보장
   const [sortKey,  setSortKey]  = useState(initialSortKey ?? 'start_at')
   const [sortAsc,  setSortAsc]  = useState(initialSortAsc ?? false)
+  // ← [2026-05-28] 날짜 조회 모드 — 'bookings' 타입에서 토글 가능 (생성일 vs 회의 날짜)
+  //   · 'createdAt' = b.createdAt 기준 fetch + 클라 필터 (loadBookingsByRange dateField='created_at')
+  //   · 'startAt'   = b.start_at  기준 fetch + 클라 필터 (loadBookingsByRange dateField='start_at')
+  //   · AdminApprovalTable의 dateFilterMode 패턴과 동일 — 백엔드/프론트 단일 진실 원천
+  const [dateMode, setDateMode] = useState<'createdAt' | 'startAt'>(initialDateMode ?? 'startAt')
   // 드릴다운: 집계 행 클릭 → 해당 필터로 예약 목록 표시
   const [drill, setDrill] = useState<{ label: string; fn: (b:Booking)=>boolean } | null>(null)
   const PER = 30
 
+  // ← [2026-05-28] fetchData에 dateField 동적 적용 + dateMode 의존성 추가
+  //   기존: loadBookingsByRange(dateFrom, dateTo) — start_at 기준 고정
+  //   변경: dateMode에 따라 'created_at' 또는 'start_at' 기준 fetch
+  //   AdminApprovalTable.fetchRange와 동일 패턴 (DB 페이징 + dateField 동적)
   const fetchData = useCallback(async () => {
     setLoading(true); setPage(1)
-    try { setData(await loadBookingsByRange(dateFrom, dateTo)) }
+    try {
+      const dateField = dateMode === 'createdAt' ? 'created_at' : 'start_at'  // ← [2026-05-28] DB 컬럼 매핑 (snake_case)
+      setData(await loadBookingsByRange(dateFrom, dateTo, dateField))         // ← [2026-05-28] dateField 동적 전달
+    }
     catch (e) { console.error(e) }
     finally { setLoading(false) }
-  }, [dateFrom, dateTo])
+  }, [dateFrom, dateTo, dateMode])   // ← [2026-05-28] dateMode deps 추가 → 모드 변경 시 자동 refetch
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -275,8 +302,12 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
   // 테이블 렌더
   // 공통 예약 목록 렌더 (drill-down 시에도 재사용)
   const renderBookingList = (source: Booking[], drillLabel?: string) => {
+    // ← [2026-05-28] sort 비교 함수 — createdAt(number)과 start_at(ISO string) 둘 다 안전 처리
+    //   기존: a[sortKey] ?? '' — number와 string 혼합 시 '' fallback이 정상 비교 깨뜨림
+    //   변경: 양쪽 모두 0/'' fallback 명확화. createdAt 누락(과거 데이터) 시 0 → 가장 후순위 배치
     const sorted = [...source].sort((a,b) => {
-      const av = a[sortKey as keyof Booking] ?? '', bv = b[sortKey as keyof Booking] ?? ''
+      const av = (a as any)[sortKey] ?? (sortKey === 'createdAt' ? 0 : '')   // ← [2026-05-28] createdAt fallback 0 (number)
+      const bv = (b as any)[sortKey] ?? (sortKey === 'createdAt' ? 0 : '')
       return sortAsc ? (av<bv?-1:av>bv?1:0) : (av>bv?-1:av<bv?1:0)
     })
     const total = sorted.length, pages = Math.max(1, Math.ceil(total/PER))
@@ -287,7 +318,10 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
       //   기존(옛 룰): b.autoCancelled?'취소':b.checkedIn?'완료':b.status==='pending'?'승인대기':'예정'
       //     · 노쇼/거절/사용자 취소/관리자 강제취소/기한초과 모두 미분류 → 분석 무의미
       //   변경: getBookingStatusLabel(b) — BookingStatusBadge와 동일 우선순위, isNoshow SSOT 사용
-      return { 회의명:b.title, 회의실:r?.room_name??'', 날짜:tsDate(b.start_at), 시작:b.start_at.slice(11,16), 종료:b.end_at.slice(11,16), 예약자:b.user, 부서:b.dept, 상태:getBookingStatusLabel(b) }
+      // ← [2026-05-28] 생성일 컬럼 추가 + 라벨 '날짜' → '회의 날짜' (생성일과 명확히 구분)
+      //   생성일: b.createdAt(number ms) → ISO 변환 후 KST 날짜 표시
+      const createdDateStr = b.createdAt ? tsDate(new Date(b.createdAt).toISOString()) : ''
+      return { 회의명:b.title, 회의실:r?.room_name??'', 생성일:createdDateStr, '회의 날짜':tsDate(b.start_at), 시작:b.start_at.slice(11,16), 종료:b.end_at.slice(11,16), 예약자:b.user, 부서:b.dept, 상태:getBookingStatusLabel(b) }
     })
     return (
       <>
@@ -310,11 +344,15 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
           </button>
         </div>
         <div style={{ overflowX:'auto', borderRadius:10, border:'1px solid #F1F5F9' }}>
-          {/* ← [2026-05-26 UI HOTFIX] minWidth 720 — 6컬럼(회의명/회의실/날짜/시간/예약자/상태) 압축 방지 */}
-          <table style={{ width:'100%', minWidth:720, borderCollapse:'collapse', fontSize:12 }}>
+          {/* ← [2026-05-28] minWidth 720 → 860 — 7컬럼(회의명/회의실/생성일/회의 날짜/시간/예약자/상태) 압축 방지
+                · 생성일 컬럼 추가 + '날짜' 라벨 → '회의 날짜'로 명확화 (AdminApprovalTable 패턴 일관) */}
+          <table style={{ width:'100%', minWidth:860, borderCollapse:'collapse', fontSize:12 }}>
             <thead>
               <tr style={{ background:'#F8FAFC' }}>
-                {[{k:'title',l:'회의명'},{k:'room_id',l:'회의실'},{k:'start_at',l:'날짜'},{k:'start_at',l:'시간'},{k:'user',l:'예약자'},{k:'',l:'상태'}].map((h,i) => (
+                {/* ← [2026-05-28] '생성일'(createdAt) 컬럼 추가 + '날짜' → '회의 날짜' 라벨 변경
+                      · 정렬 키: 'createdAt'(camelCase Booking 필드) — DB 'created_at'과 매핑됨
+                      · 회의 날짜 정렬 키: 'start_at'(ISO string 사전순 = 시간순) */}
+                {[{k:'title',l:'회의명'},{k:'room_id',l:'회의실'},{k:'createdAt',l:'생성일'},{k:'start_at',l:'회의 날짜'},{k:'start_at',l:'시간'},{k:'user',l:'예약자'},{k:'',l:'상태'}].map((h,i) => (
                   <th key={i} onClick={() => { if(h.k){ setSortKey(h.k); setSortAsc(s => sortKey===h.k?!s:false) } }}
                     style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600, color:'#94A3B8', whiteSpace:'nowrap', borderBottom:'1px solid #F1F5F9', cursor:h.k?'pointer':'default' }}>
                     {h.l}{h.k && <ArrowUpDown size={9} strokeWidth={1.8}/>}
@@ -341,6 +379,9 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
                     onMouseLeave={e => { e.currentTarget.style.background='transparent' }}>
                     <td style={{ padding:'8px 12px', fontWeight:600, color:'#111', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{b.title}</td>
                     <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{r?.room_name??''}</td>
+                    {/* ← [2026-05-28] 생성일 컬럼 신규 — b.createdAt(number ms) → ISO 변환 후 KST 날짜 표시
+                          · createdAt 누락(과거 데이터 fallback) 시 '—' 표시 (AdminApprovalTable 동일 패턴) */}
+                    <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{b.createdAt ? fmtTSDateFull(new Date(b.createdAt).toISOString()) : '—'}</td>
                     <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{fmtTSDateFull(b.start_at)}</td>
                     <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{fmtTSRangeFull(b.start_at,b.end_at)}</td>
                     {/* ← [2026-05-28] 인라인 아바타 박스 → UserChip variant="sm" (BookingListTable과 동일 패턴) */}
@@ -494,6 +535,38 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
           </div>
           {/* 기간 선택 */}
           <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+            {/* ← [2026-05-28] 날짜 조회 모드 토글 — 'bookings' 타입에서만 노출
+                  · 생성일 모드: b.created_at 기준 fetch + 정렬 (사용자 요청: '최근 생성된 예약' 카드 진입 시 자연스러움)
+                  · 회의 날짜 모드: b.start_at 기준 fetch + 정렬 (예약추이 등 기존 동작)
+                  · UI 패턴: AdminApprovalTable의 modeToggle과 동일 (요청 날짜 / 회의 날짜)
+                  · 동작: 모드 변경 시 dateMode state 갱신 → fetchData useCallback deps 트리거 → 자동 refetch
+                  · 정렬 정책: 모드 변경 시 정렬은 자동 변경 X (사용자가 헤더 클릭으로 자유롭게 변경 가능) */}
+            {type === 'bookings' && (
+              <div style={{ display:'inline-flex', background:'#F1F5F9', borderRadius:8, padding:2, gap:0 }}>
+                {[
+                  { id: 'createdAt' as const, label: '생성일' },
+                  { id: 'startAt'   as const, label: '회의 날짜' },
+                ].map(opt => {
+                  const active = dateMode === opt.id
+                  return (
+                    <button
+                      key={opt.id}
+                      className="btn"
+                      onClick={() => setDateMode(opt.id)}
+                      style={{
+                        padding: '5px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                        background: active ? '#fff' : 'transparent',
+                        color:      active ? '#111' : '#64748B',
+                        boxShadow:  active ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                        border: 'none', cursor: 'pointer',
+                        transition: 'background 0.15s, color 0.15s',
+                      }}>
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
             <DateRangePicker from={dateFrom} to={dateTo} presetId={presetId}
               onChangeFn={(f,t)=>{ setDateFrom(f); setDateTo(t) }}
               onPreset={(id,f,t)=>{ setPresetId(id); setDateFrom(f); setDateTo(t) }}
@@ -503,6 +576,8 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
               <RefreshCw size={11} strokeWidth={1.8}/>{loading?'조회 중...':'새로고침'}
             </button>
             <div style={{ fontSize:11, color:'#94A3B8', marginLeft:'auto' }}>
+              {/* ← [2026-05-28] 날짜 표시에 모드 라벨 추가 — 어느 기준 기간인지 명확화 */}
+              {type === 'bookings' && <span style={{ marginRight:6, color:'#64748B' }}>{dateMode === 'createdAt' ? '생성일' : '회의 날짜'}:</span>}
               {dateFrom === dateTo ? dateFrom : `${dateFrom} ~ ${dateTo}`}
             </div>
           </div>
@@ -2727,7 +2802,8 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, cur
   //
   // 진입 기간: 카드 클릭 시 기본 30일 (DetailDrawer가 자체 DateRangePicker로 재변경 가능)
   // ═══════════════════════════════════════════════════════════════════════════
-  type CardDrawer = { type: DetailType; sortKey?: string; sortAsc?: boolean }
+  // ← [2026-05-28] initialDateMode 추가 — '최근 생성된 예약' 카드 진입 시 'createdAt' 모드로 시작
+  type CardDrawer = { type: DetailType; sortKey?: string; sortAsc?: boolean; initialDateMode?: 'createdAt' | 'startAt' }
   const [cardDrawer, setCardDrawer] = useState<CardDrawer | null>(null)
   const drawerInitFrom = addDaysStr(todayStr(), -29)
   const drawerInitTo   = todayStr()
@@ -2775,9 +2851,9 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, cur
           <NoshowChartCard />
         </div>
 
-        {/* ③ 최근 생성된 예약 → 헤더 클릭은 bookings drawer, 행 클릭은 onDetail (사용자 결정) */}
+        {/* ③ 최근 생성된 예약 → 헤더 클릭은 bookings drawer (생성일 기준 최신순 진입), 행 클릭은 onDetail (사용자 결정) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'bookings' })}>
+          onClick={() => setCardDrawer({ type: 'bookings', initialDateMode: 'createdAt', sortKey: 'createdAt', sortAsc: false })}>  {/* ← [2026-05-28] 사용자 결정: 생성일 모드 + createdAt 내림차순 (최신순)으로 진입 — '예약추이' 카드는 기존 startAt 유지 */}
           <RecentBookingsCard
             bookings={bookings}
             users={users}
@@ -2841,6 +2917,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, cur
           initTo={drawerInitTo}
           initialSortKey={cardDrawer.sortKey}
           initialSortAsc={cardDrawer.sortAsc}
+          initialDateMode={cardDrawer.initialDateMode}  /* ← [2026-05-28] 카드별 진입 모드 (예: 최근 생성→'createdAt', 예약추이→default 'startAt') */
           onDetail={onDetail}
           onClose={() => setCardDrawer(null)}
           currentUserId={currentUserId}        /* ← [2026-05-28] BookingStatusBadge 'mine' 칩 판정용 (P4-B) */
