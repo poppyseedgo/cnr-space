@@ -133,7 +133,7 @@ import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtRangeFull, fmtTimeFull, fmtTSRangeFull, fmtTSFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
-  DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN, CHECKIN_EARLY_MIN, isCheckinable } from '../../utils/time'
+  DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN, CHECKIN_EARLY_MIN, isCheckinable, isCheckedInWaiting } from '../../utils/time'  // ← [2026-05-28] isCheckedInWaiting 추가 — 시작 전 체크인 완료 미니카드 분기용
 import { FLOORS, getFloor } from '../../data/floors'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
 import { RoomStatusBadge } from '../common/RoomStatusBadge'
@@ -345,6 +345,11 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
             //   · "checkin" 활성 조건: isActive → isCheckinable(b) (5분 전부터 활성)
             //   · "soon" 의미: 10~5분 전 (5분 전부터는 checkin이 자리 대체)
             //   · "soon"/"waiting" 라벨: "체크인 대기" → "곧 시작" (전체 라벨 통일)
+            // ← [2026-05-28] checkedInWaiting 분기 신규 추가 — 시작 전 체크인 완료 케이스
+            //   배경: 5분 전 체크인 시 checkedIn=true && isActive=false 상태로
+            //         기존 분기에서 "done"(종료)으로 잘못 폴백되어 미니카드에 "종료" 표시되는 버그
+            //   해결: isCheckedInWaiting SSOT 헬퍼로 새 분기 추가, "{N}분 뒤 사용" 카운트다운 라벨
+            //   상단 뱃지: BookingStatusBadge가 "체크인 완료" 칩 자동 표시 (별도 작업)
             const cardState: string = b.status === 'rejected'                                  ? "rejected"
               : b.cancelledBy === 'admin'                                                      ? "adminCancel"
               : b.autoCancelled && b.cancelledBy === 'system' && b.status === 'cancelled'      ? "pendingExpired"
@@ -352,6 +357,7 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
               : b.autoCancelled                                                                ? "cancelled"
               : b.earlyEnded                      ? "earlyEnded"
               : b.checkedIn && isActive           ? "using"
+              : isCheckedInWaiting(b)             ? "checkedInWaiting"   // ← [2026-05-28] 시작 전 체크인 완료 (시작 전 + checkedIn) — "{N}분 뒤 사용"
               : b.checkedIn                       ? "done"
               : isCheckinable(b)                  ? "checkin"   // ← [2026-05-12] 5분 전부터 활성
               : isActive                          ? "checkin"   // 진행중인데 isCheckinable=false (e.g. cancelled_by 가드) → 일반 checkin 폴백
@@ -370,6 +376,12 @@ export function HomeView({bookings, rooms:roomsData=[], tick, searchQ, setSearch
               pending:    {label:"승인 대기",    btnBg:"#E6FFB0", btnColor:"#111",    disabled:true,  action:null,                showBtn:true},
               checkin:    {label:"체크인 하세요", btnBg:"#16A34A", btnColor:"#fff",    disabled:false, action:()=>onCheckIn(b.id), showBtn:true},  // ← [2026-05-12] 라벨 변경
               using:      {label:"조기반납",     btnBg:"#111111", btnColor:"#fff",    disabled:false, action:()=>onEarlyEnd(b.id),showBtn:true},
+              // ← [2026-05-28] 시작 전 체크인 완료 — "{N}분 뒤 사용" 카운트다운 (비활성 회색)
+              //   · 라벨: minsUntil이 양수면 "{N}분 뒤 사용", 0 이하면 "곧 시작" 폴백 (경계 케이스)
+              //   · 색상: waiting/soon과 동일한 회색 톤 (#e7ecf6 / #8e97ab) — 비활성 일관성
+              //   · disabled:true — 체크인 후엔 별도 액션 없음 (조기반납은 시작 후 isActive 시점에 활성화)
+              //   · 상단 BookingStatusBadge가 "체크인 완료" 칩 자동 표시 (별도 작업)
+              checkedInWaiting: {label: minsUntil > 0 ? `${minsUntil}분 뒤 사용` : "곧 시작", btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true, action:null, showBtn:true},
               noshow:        {label:null,           btnBg:"",        btnColor:"",        disabled:true,  action:null,                showBtn:false},
               pendingExpired:{label:null,           btnBg:"",        btnColor:"",        disabled:true,  action:null,                showBtn:false},
               done:       {label:"종료",         btnBg:"#e7ecf6", btnColor:"#8e97ab", disabled:true,  action:null,                showBtn:true},

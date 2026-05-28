@@ -1,11 +1,27 @@
 import type { Booking, Room } from '../../types'
-import { tsDate, tsMin, todayStr, nowMinutes, CHECKIN_EARLY_MIN, isCheckinable } from '../../utils/time'  // ← [2026-05-12] CHECKIN_EARLY_MIN, isCheckinable 추가
+import { tsDate, tsMin, todayStr, nowMinutes, CHECKIN_EARLY_MIN, isCheckinable, isCheckedInWaiting } from '../../utils/time'  // ← [2026-05-28] isCheckedInWaiting 추가 — 시작 전 체크인 완료 칩 표시용
 import { isBooker, isAttendee } from '../../utils/bookingOwnership'  // ← [2026-04-24 P4-B] isOwner를 isBooker(UUID/email)로 교체 / [2026-05-04 핫픽스 v11] isAttendee 추가 — mine 칩 라벨 분기용
 
 /**
  * BookingStatusBadge — 예약 상태 뱃지 묶음
  *
  * ✅ 변경 이력
+ *  - [2026-05-28 시작 전 체크인 완료 칩 표시] 'checkin-done' 칩 조건 확장
+ *    · 배경: 2026-05-12 체크인 활성 5분 전 변경 시 'checkin-done' 칩의 isAct 가드를
+ *            그대로 두어, 시작 전 체크인 완료(checkedIn=true && isFuture=true) 상태에서
+ *            "체크인 완료" 칩이 사라지는 버그 발견 (사용자 보고 2026-05-28).
+ *    · 변경: hasAny / chipList push 2곳 조건 동일하게 확장
+ *      기존: b.checkedIn && isAct
+ *      변경: b.checkedIn && (isAct || isCheckedInWaiting(b))
+ *    · isCheckedInWaiting(time.ts SSOT)에 status='confirmed' + !autoCancelled + !earlyEnded
+ *      가드가 포함되어 있어, 다른 cancel/reject 분기와 자동 배타.
+ *    · 다른 칩과의 배타성:
+ *        · countdown 칩: tl > 5 가드. 5분 전부터 체크인 가능 → 5분 전~시작 직전 체크인 시
+ *          tl <= 5 이므로 countdown 자동 미표시. 만에 하나 어드민이 10분 전 강제 체크인
+ *          마킹한 비정상 케이스에서 중복 표시 가능하나 실사용 경로 아님.
+ *        · isConfirmed 칩: !b.checkedIn 가드 있음 → 자동 배타.
+ *        · active/checkin-wait: 자동 배타 (시간/checkedIn 가드).
+ *
  *  - [2026-05-12 Figma 556:6212~6225 사용자 요청] 체크인 라벨 + 칩 색상 일괄 변경
  *    · "체크인 대기" → "체크인 대기 중" (라벨 텍스트만)
  *    · chip-checkin-wait 색상은 tokens.css에서 #FFFAB3/#111로 변경 (별도 PR)
@@ -298,7 +314,7 @@ export function BookingStatusBadge({
     (show('mine')            && isMine && !b.autoCancelled && !isRejected) ||
     (show('active')          && isAct) ||
     (show('checkin-wait')    && nci) ||
-    (show('checkin-done')    && b.checkedIn && isAct) ||
+    (show('checkin-done')    && b.checkedIn && (isAct || isCheckedInWaiting(b))) ||  // ← [2026-05-28] 시작 전 체크인 완료 케이스도 포함
     (show('past')            && isPast) ||
     (show('early-end')       && b.earlyEnded) ||
     (show('countdown')       && !isAct && !b.autoCancelled && isToday && tl > CHECKIN_EARLY_MIN && tl <= 10)  // ← [2026-05-12] tl > 0 → tl > CHECKIN_EARLY_MIN: 10~5분 전만 "곧 시작" 표시
@@ -375,7 +391,7 @@ export function BookingStatusBadge({
   //   영향: maxChips 미지정 화면(DetailModal 등)은 표시 순서만 바뀜, 모든 칩 그대로 다 보임.
   if (show('checkin-wait') && nci)
     chipList.push(<C key="checkin-wait" cls="chip-checkin-wait">체크인 대기 중</C>)
-  if (show('checkin-done') && b.checkedIn && isAct)
+  if (show('checkin-done') && b.checkedIn && (isAct || isCheckedInWaiting(b)))  // ← [2026-05-28] 시작 전 체크인 완료 케이스도 포함 (isCheckedInWaiting SSOT)
     chipList.push(<C key="checkin-done" cls="chip-success">체크인 완료</C>)
   // ⑨ 진행 중 (room color 동적 적용) ← [2026-05-12] ⑧ → ⑨로 우선순위 하향
   if (show('active') && isAct && !b.autoCancelled)

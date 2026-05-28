@@ -46,7 +46,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtRangeFull, fmtTSFull, fmtTimeFull, fmtTSRangeFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
-  DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN, CHECKIN_EARLY_MIN, isCheckinable } from '../utils/time'
+  DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN, CHECKIN_EARLY_MIN, isCheckinable, isCheckedInWaiting } from '../utils/time'  // ← [2026-05-28] isCheckedInWaiting 추가 — 시작 전 체크인 완료 미니카드 분기용
 
 // ← [2026-05-04 STEP 4] api import 정리: cancelBooking/upsertBookingAttendees 미사용
 //   · cancelBooking: STEP 4에서 함수 제거 (취소는 부모 onCancel prop 경유)
@@ -541,12 +541,17 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
             // ← [2026-05-12] cardState 분기 변경 — HomeView와 동일 패턴
             //   · "checkin" 활성 조건: isActive → isCheckinable(b) (5분 전부터 활성)
             //   · "soon"/"waiting" 라벨: "체크인 대기" → "곧 시작" (전체 라벨 통일)
+            // ← [2026-05-28] checkedInWaiting 분기 신규 추가 — HomeView와 동일 패턴
+            //   배경: 5분 전 체크인 후 checkedIn=true && isActive=false 상태가
+            //         기존 분기에서 "done"(종료)으로 잘못 폴백되어 "종료" 라벨 표시
+            //   해결: isCheckedInWaiting SSOT 헬퍼로 새 분기 추가
             const cardState: string = b.status === 'rejected'       ? "rejected"
               : b.cancelledBy === 'admin'         ? "adminCancel"
               : b.cancelledBy === 'system'        ? "noshow"
               : b.autoCancelled                   ? "cancelled"
               : b.earlyEnded                      ? "earlyEnded"
               : b.checkedIn && isActive           ? "using"
+              : isCheckedInWaiting(b)             ? "checkedInWaiting"   // ← [2026-05-28] 시작 전 체크인 완료
               : b.checkedIn                       ? "done"
               : isCheckinable(b)                  ? "checkin"   // ← [2026-05-12] 5분 전부터 활성
               : isActive                          ? "checkin"   // 진행중인데 isCheckinable=false → 폴백
@@ -563,6 +568,11 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
               pending:    {label:"승인 대기",    btnBg:"#FEF3C7", btnColor:"#92400E", disabled:true,  action:null,                    showBtn:true},
               checkin:    {label:"체크인 하세요", btnBg:"#16A34A", btnColor:"#fff",    disabled:false, action:()=>onCheckIn(b.id),     showBtn:true},  // ← [2026-05-12] 라벨 변경
               using:      {label:"조기반납",     btnBg:"#111111", btnColor:"#fff",    disabled:false, action:()=>onEarlyEnd(b.id),    showBtn:true},
+              // ← [2026-05-28] 시작 전 체크인 완료 — HomeView와 동일 패턴
+              //   · "{N}분 뒤 사용" 카운트다운 (양수일 때), 0 이하면 "곧 시작" 폴백
+              //   · MyPage 회색 톤(#F1F5F9/#94A3B8) 적용 — waiting/soon과 동일
+              //   · 상단 BookingStatusBadge가 "체크인 완료" 칩 자동 표시
+              checkedInWaiting: {label: minsUntil > 0 ? `${minsUntil}분 뒤 사용` : "곧 시작", btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true, action:null, showBtn:true},
               noshow:     {label:null,           btnBg:"",        btnColor:"",        disabled:true,  action:null,                    showBtn:false},
               done:       {label:"종료",         btnBg:"#F1F5F9", btnColor:"#94A3B8", disabled:true,  action:null,                    showBtn:true},
               earlyEnded: {label:"반납됨",       btnBg:"#EDE9FE", btnColor:"#7C3AED", disabled:true,  action:null,                    showBtn:true},  // ← [2026-05-12] 칩과 색상 통일

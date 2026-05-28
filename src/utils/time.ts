@@ -3,6 +3,19 @@ import type { Booking, ConflictResult, RoomStatus } from '../types'
 /**
  * time.ts
  * ✅ 변경 이력
+ *  - [2026-05-28 시작 전 체크인 완료 상태 SSOT 추가] isCheckedInWaiting 헬퍼 신규
+ *    · 배경: 2026-05-12 체크인 윈도우를 [start, start+10)에서 [start-5, start+10)으로
+ *            앞당겼으나, 그 결과로 새로 생긴 "체크인 완료 + 시작 전 대기"(checkedIn=true && isFuture=true)
+ *            상태에 대한 표현 분기가 BookingStatusBadge / HomeView / MyPage 3곳 모두에서 누락됨.
+ *    · 증상 (사용자 보고 2026-05-28):
+ *        ① BookingStatusBadge "체크인 완료" 칩이 isAct(시작 이후)에만 표시되어 시작 전 체크인 시 미표시
+ *        ② HomeView 미니카드 cardState가 `checkedIn ? "done"` 폴백으로 떨어져 "종료" 라벨 오표시
+ *        ③ DetailModal 버튼 분기가 폴백 경로로 가서 "예약 취소 + 예약 변경" 노출 (체크인 후인데도)
+ *    · 새 SSOT 헬퍼 isCheckedInWaiting(b):
+ *        조건: checkedIn=true && now<start_at && status='confirmed' && !autoCancelled && !earlyEnded
+ *        isCheckinable과 동일한 SSOT 패턴 — 4곳 이상 분산 위험 차단
+ *    · isCheckinable과의 배타성: isCheckinable은 !checkedIn 가드, isCheckedInWaiting은 checkedIn 가드
+ *        → 두 헬퍼는 항상 상호 배타 (동시 true 불가)
  *  - [2026-05-12 체크인 활성 5분 전으로 변경] CHECKIN_EARLY_MIN 상수 + isCheckinable 헬퍼 신규
  *    · 정책 변경: 체크인 활성 윈도우 [start, start+10분] → [start-5분, start+10분] (총 15분)
  *    · 노쇼 cutoff(start+10분)는 변동 없음 — CHECKIN_WINDOW_MIN 그대로
@@ -250,6 +263,45 @@ export function isCheckinable(b: Booking): boolean {
       && nowMs <  startMs + CHECKIN_WINDOW_MIN * 60_000
       && b.status === 'confirmed'
       && !b.checkedIn
+      && !b.autoCancelled
+      && !b.earlyEnded
+}
+
+// ─── 시작 전 체크인 완료 대기 (SSOT) ─────────────────────────────────────
+// ← [2026-05-28] 시작 전 체크인 완료 상태 표현 SSOT 신설
+//
+// 정책: "체크인 완료 + 아직 시작 전" 대기 상태
+//       isCheckinable 시점에 사용자가 체크인을 누르면, 시작 시각 도달 전까지
+//       이 상태에 머무름. isAct(진행중)와 다른 별개 라이프사이클 단계.
+//
+// 가드:
+//   ① b.start_at 존재 — 누락 시 false (방어)
+//   ② nowMs < startMs — 시작 전 (Date.now() ms 단위 비교, isCheckinable과 동일 정밀도)
+//   ③ status === 'confirmed' — pending/cancelled/rejected 차단
+//   ④ checkedIn === true — 체크인 완료
+//   ⑤ !autoCancelled — 노쇼/만료 차단 (이론상 ④와 동시 불가지만 방어)
+//   ⑥ !earlyEnded — 조기반납 차단 (이론상 시작 전에는 불가지만 방어)
+//
+// 배타성:
+//   · isCheckinable과 항상 상호 배타 (checkedIn 가드가 반대)
+//   · isAct와 배타 (isAct는 sm<=now, isCheckedInWaiting은 now<startMs)
+//
+// 사용처 (분산 위험 차단):
+//   · BookingStatusBadge: 'checkin-done' 칩 표시 조건 확장 (isAct || isCheckedInWaiting)
+//   · HomeView.cardState: 새 분기 "checkedInWaiting" (시작 전 체크인 완료 → 카운트다운 라벨)
+//   · MyPage.cardState:    동일 패턴 (소형카드)
+//
+// 주의: now 비교는 ms 단위 (isCheckinable과 동일 정밀도). 분 단위(nowMinutes/tsMin) 비교
+//       사용 시 경계(start-1초)에서 0분으로 반올림되어 isAct=true와 동시 true가 될 수 있음.
+//       ms 비교로 startMs 경계가 정확히 분리됨.
+export function isCheckedInWaiting(b: Booking): boolean {
+  if (!b.start_at) return false
+  const nowMs   = Date.now()
+  const startMs = new Date(b.start_at).getTime()
+  if (Number.isNaN(startMs)) return false   // 불완전한 booking 객체 방어
+  return b.checkedIn === true
+      && nowMs < startMs                    // 시작 전
+      && b.status === 'confirmed'
       && !b.autoCancelled
       && !b.earlyEnded
 }
