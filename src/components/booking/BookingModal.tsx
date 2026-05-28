@@ -2,6 +2,27 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-05-28] 반복예약 종료일 정책 + 어드민 시작일 선택 범위 확대
+ *      · 반복 종료일: today+1개월 → 올해 12/31 (recurPreview maxD2) — addBooking과 동기화 필수
+ *      · 시작일 선택기(maxDate): 어드민=올해 12/31(절대 권한), 비어드민=today+1개월(기존 유지)
+ *      · 데스크톱 "매일" sub 라벨: "시작일~1달" → "올해 말까지" (정책 일치)
+ *      · 주의: "매일" 선택 시 연말까지 최대 ~218건 생성 (생성 시간 길어질 수 있음, 에러 아님)
+ *
+ *  - [2026-05-28] 반복 예약 — 어드민(role==='ADMIN') 전용으로 재개방
+ *      · 배경: 2026-04-22 "12월까지 생성" 버그로 전면 비활성화 → 생성 로직(App.tsx addBooking)은
+ *              today+1개월 캡으로 이미 근본 수정됨(시뮬레이션 검증 완료). UI 잠금만 남아 있었음.
+ *      · 정책: 비어드민은 반복예약 섹션 자체를 보지 못함(단일 예약만). 어드민만 섹션 노출+사용.
+ *      · 변경점(데스크톱/모바일 각각):
+ *        1) 섹션 게이트: 모바일 `{!editBooking ...}` / 데스크톱 `{false && !editBooking ...}`
+ *           → 양쪽 모두 `{isAdmin && !editBooking ...}`
+ *        2) 옵션 disabled 해제: `isDisabled = o.val!=="NEVER"` → `isDisabled = false`
+ *        3) "기능 일시중지" 점검 배너 제거(어드민 전용 활성 기능과 모순)
+ *        4) 제출부: `recur:"NEVER"` 강제 → `recur: isAdmin ? recur : "NEVER"`
+ *           (UI는 비어드민에게 숨기지만, 제출부에서도 NEVER 강제 — 이중 방어)
+ *      · 무변경: recur/setRecur/recurPreview/canSubmit/RecurDoneModal, addBooking 생성 로직,
+ *               insertBooking(단건 insert+서버 충돌검사+exclusion constraint) 일체 그대로.
+ *      · editBooking(예약 변경) 경로는 기존대로 반복 UI 미노출 — 영향 없음.
+ *
  *  - [2026-04-29] 우측 패널 noTimeLeft 상태 안내 추가
  *      · 증상: 오후 7시 이후 모달 열면 우측에 시간·회의실이 그대로 표시됨
  *      · 원인: 우측 패널이 validTime만 체크 — noTimeLeft(오늘+슬롯 없음)를 무시
@@ -654,7 +675,10 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   const { isMobile, isTablet } = useBreakpoint();
   const { vh: vvHeight, off: vvOff } = useVisualViewport();
   const today = todayStr();
-  const maxDateObj = new Date(); maxDateObj.setMonth(maxDateObj.getMonth()+1);
+  // ← [2026-05-28] 시작일 선택 범위: 어드민=올해 12/31(절대 권한), 비어드민=today+1개월(기존 유지)
+  const maxDateObj = new Date();
+  if (isAdmin) maxDateObj.setMonth(11, 31);                  // ← 어드민: 올해 12월 31일
+  else         maxDateObj.setMonth(maxDateObj.getMonth()+1); // ← 비어드민: 기존 today+1개월
   const maxDate = objToStr(maxDateObj);
 
   const [bookingDate, setBookingDate] = useState(
@@ -872,7 +896,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   // 반복 예약 미리보기: 전체 날짜 목록 + 회의실 선택 시 충돌 날짜까지 계산
   const recurPreview = useMemo(() => {
     if (editBooking || recur === "NEVER") return { total: 1, available: 1, conflictDates: [], allDates: [] };
-    const maxD2 = new Date(); maxD2.setMonth(maxD2.getMonth() + 1);
+    // ← [2026-05-28] 반복 종료일 정책: today+1개월 → 올해 12/31 (어드민 전용, App.tsx addBooking과 동일)
+    const maxD2 = new Date(); maxD2.setMonth(11, 31); // ← 11=12월, 31일 → 올해 마지막날(연도 불변)
     const maxStr = objToStr(maxD2);
     const startDow = dateToObj(bookingDate).getDay();
     const allDates = [];
@@ -1671,26 +1696,18 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               </div>
               {/* 참석자 */}
               {AttendeeSection()}
-              {/* 반복 예약 */}
-              {/* ← [2026-04-22 HOTFIX] 반복예약 기능 임시 비활성화
-                   이유: 한 달치만 생성되어야 하는데 DB에 12월까지 생성되는 심각한 버그 발견
-                   조치: NEVER 외 옵션 disabled 처리 + 점검 중 배너 표시
-                   복구: 반복예약 로직 근본 수정 후 해제 */}
-              {!editBooking && <div>
+              {/* 반복 예약 — [2026-05-28] 어드민 전용 재개방 (게이트 isAdmin, 배너/ disabled 제거) */}
+              {isAdmin && !editBooking && <div>{/* ← [2026-05-28] !editBooking → isAdmin && !editBooking: 비어드민은 섹션 미표시 */}
                 <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:6,letterSpacing:"0.4px"}}>반복 예약</label>
-                {/* ← [2026-04-22 HOTFIX] 점검 중 안내 배너 */}
-                <div style={{padding:"8px 12px",background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:8,fontSize:11,color:"#92400E",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
-                  <AlertTriangle size={12} strokeWidth={1.8} style={{flexShrink:0}}/>
-                  <span>반복 예약은 오남용으로 사용을 일시중지합니다. 정책확정 전까지, 단일 예약만 가능합니다.</span>
-                </div>
+                {/* ← [2026-05-28] 점검 중 배너 제거 — 어드민 전용 활성 기능과 모순되므로 삭제 */}
                 <div style={{display:"flex",flexDirection:"column",gap:6}}>
                   {[
                     {val:"NEVER",      label:"반복 안함",      sub:"단일 예약"},
                     {val:"EVERY_DAY",  label:"매일",           sub:"시작일부터 매일"},
                     {val:"EVERY_WEEK", label:"매주",           sub:`매주 ${DAY_NAMES[dateToObj(bookingDate).getDay()]}요일`},
                   ].map(o=>{
-                    // ← [2026-04-22 HOTFIX] NEVER 외 disabled
-                    const isDisabled = o.val !== "NEVER";
+                    // ← [2026-05-28] 어드민 전용 섹션 — 모든 옵션 활성화 (기존: o.val!=="NEVER")
+                    const isDisabled = false;
                     return (
                     <button key={o.val} onClick={()=>{ if(!isDisabled) setRecur(o.val); }}
                       disabled={isDisabled}
@@ -1813,7 +1830,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 if(!canSubmit)return;
                 submitTimerRef.current = setTimeout(()=>setIsSubmitting(true), 250);
                 try {
-                  editBooking ? await onUpdate({...form},bookingDate) : await onSubmit({...form,recur:"NEVER"},bookingDate) /* ← [2026-04-22 HOTFIX] 반복예약 점검 중 — 강제 NEVER */;
+                  editBooking ? await onUpdate({...form},bookingDate) : await onSubmit({...form, recur: isAdmin ? recur : "NEVER"},bookingDate) /* ← [2026-05-28] 어드민만 실제 recur 전달, 비어드민은 NEVER 강제(이중 방어) */;
                 } finally {
                   if(submitTimerRef.current) clearTimeout(submitTimerRef.current);
                   setIsSubmitting(false);
@@ -2448,24 +2465,19 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 </span>
               </div>
             </Field>
-            {/* 반복 예약 — [Phase G 보충 6 2026-04-27] UI 숨김 (기능 보류 상태) */}
-            {/* ← [2026-04-22 HOTFIX] 반복예약 기능 임시 비활성화 (모바일과 동일) */}
-            {/* ⚠️ UI 복구 시: 아래 `false &&` 한 단어만 제거하면 즉시 표시됨 */}
-            {false && !editBooking && <div>
+            {/* 반복 예약 — [2026-05-28] 어드민 전용 재개방 (false 게이트 제거 → isAdmin) */}
+            {isAdmin && !editBooking && <div>{/* ← [2026-05-28] `false &&` → `isAdmin &&`: 어드민만 섹션 노출 */}
               <label style={{fontSize:13,fontWeight:600,color:"#111",display:"block",marginBottom:8}}>반복 예약</label>
-              {/* ← [2026-04-22 HOTFIX] 점검 중 안내 배너 */}
-              <div style={{padding:"8px 12px",background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:8,fontSize:12,color:"#92400E",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
-                <AlertTriangle size={14} strokeWidth={1.8} style={{flexShrink:0}}/>
-                <span>반복 예약은 오남용으로 사용을 일시중지합니다. 정책확정 전까지, 단일 예약만 가능합니다.</span>
-              </div>
+              {/* ← [2026-05-28] 점검 중 배너 제거 — 어드민 전용 활성 기능과 모순되므로 삭제 */}
               <div style={{display:"flex",gap:8}}>
                 {[
                   {val:"NEVER",      label:"반복 안함", sub:"단일"},
-                  {val:"EVERY_DAY",  label:"매일",      sub:"시작일~1달"},
+                  // ← [2026-05-28] '시작일~1달' → '올해 말까지' (정책 일치)
+                  {val:"EVERY_DAY",  label:"매일",      sub:"올해 말까지"},
                   {val:"EVERY_WEEK", label:"매주",      sub:`매주 ${DAY_NAMES[dateToObj(bookingDate).getDay()]}요일`},
                 ].map(o=>{
-                  // ← [2026-04-22 HOTFIX] NEVER 외 disabled
-                  const isDisabled = o.val !== "NEVER";
+                  // ← [2026-05-28] 어드민 전용 섹션 — 모든 옵션 활성화 (기존: o.val!=="NEVER")
+                  const isDisabled = false;
                   return (
                   <button key={o.val} onClick={()=>{ if(!isDisabled) setRecur(o.val); }}
                     disabled={isDisabled}
@@ -2608,7 +2620,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 if(!canSubmit)return;
                 submitTimerRef.current = setTimeout(()=>setIsSubmitting(true), 250);
                 try {
-                  editBooking ? await onUpdate({...form},bookingDate) : await onSubmit({...form,recur:"NEVER"},bookingDate) /* ← [2026-04-22 HOTFIX] 반복예약 점검 중 — 강제 NEVER */;
+                  editBooking ? await onUpdate({...form},bookingDate) : await onSubmit({...form, recur: isAdmin ? recur : "NEVER"},bookingDate) /* ← [2026-05-28] 어드민만 실제 recur 전달, 비어드민은 NEVER 강제(이중 방어) */;
                 } finally {
                   if(submitTimerRef.current) clearTimeout(submitTimerRef.current);
                   setIsSubmitting(false);

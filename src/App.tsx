@@ -2,6 +2,13 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-05-28] 반복예약 종료일 정책 변경 — today+1개월 → 올해 12/31 (어드민 전용)
+ *      · 대상: addBooking 반복 날짜 생성 maxDate (L744)
+ *      · 변경: maxD.setMonth(getMonth()+1) → maxD.setMonth(11, 31) (올해 12월 31일)
+ *      · 동기화: BookingModal.tsx recurPreview maxD2도 동일 변경 (미리보기=실제생성 일치 필수)
+ *      · 주의: "매일" 선택 시 연말까지 최대 ~218건 생성 — insertBooking 순차 루프이므로
+ *              생성 시간 길어질 수 있음(데이터 정합성/에러는 없음). 배치 insert 최적화는 별도 TODO.
+ *
  *  - [2026-05-04] HeaderNav 분리 (Phase 1+2 Step 4 — Phase 완료)
  *      · 대상: 헤더 가운데 Nav pills + "← 홈으로" 버튼 (~47줄 JSX)
  *      · 신규: src/components/layout/HeaderNav.tsx
@@ -741,7 +748,8 @@ function AppContent() {
       // is_admin_only 회의실은 pending 상태로 생성 (아래 isAdminOnlyRoom 변수로 처리)
 
       // ── 반복 날짜 목록 생성 ──
-      const maxD = new Date(); maxD.setMonth(maxD.getMonth() + 1);
+      // ← [2026-05-28] 반복 종료일 정책: today+1개월 → 올해 12/31 (어드민 전용 기능, recurPreview와 동일)
+      const maxD = new Date(); maxD.setMonth(11, 31); // ← 11=12월, 31일 → 올해 마지막날(연도 불변)
       const maxDateStr = objToStr(maxD);
       const targetDates = [];
       if (recur === "NEVER") {
