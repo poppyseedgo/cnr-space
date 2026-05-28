@@ -25,6 +25,7 @@ import { ModalPortal } from '../components/common/ModalPortal'
 import { UserAvatar } from '../components/common/UserAvatar'
 import { UserChip } from '../components/common/UserChip'
 import { BookingListTable } from '../components/common/BookingListTable'
+import { BookingStatusBadge } from '../components/common/BookingStatusBadge'  // ← [2026-05-28] DetailDrawer 테이블 인라인 status 판정 → 공통 컴포넌트 교체용
 // ← [2026-05-06 Admin Phase A] 좌측 사이드 네비게이션 컴포넌트 신설 (Figma node 451:3522)
 import { AdminSideNav, type AdminTabId } from '../components/layout/AdminSideNav'
 // ← [2026-05-06 Admin Phase C] 승인 관리 테이블 컴포넌트 신설 (Figma node 451:3534, Phase B 공통 컴포넌트 사용)
@@ -34,6 +35,7 @@ import { AdminApprovalTable } from '../components/common/AdminApprovalTable'
 //   변경 사유: cron ②③ 비활성화 후 markNoshow API가 status='confirmed' 유지 → 확정 룰이 더 정확
 //   영향: contaminated 데이터(status='cancelled' 시절) 제외 + 강제취소 자동 분리
 import { isNoshow } from '../utils/noshow'
+import { getBookingStatusLabel } from '../utils/bookingStatusLabel'  // ← [2026-05-28] CSV 내보내기 단일 라벨 SSOT — 옛 룰 인라인 분기 대체
 // ← [2026-05-11 Phase 4] 위젯 ② 노쇼 현황 — 카드 헤더 inline date picker용
 import { DatePickerPopup } from '../components/common/DatePickerPopup'
 
@@ -167,11 +169,13 @@ const DETAIL_META: Record<DetailType, { title: string; icon: React.ReactNode }> 
   users:    { title: '사용자 예약 현황',   icon: <Users size={16} strokeWidth={1.8}/> },
 }
 
-function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, initialSortAsc, onDetail, onClose }:
+function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, initialSortAsc, onDetail, onClose, currentUserId = '', currentUserEmail = '' }:
   { type: DetailType; rooms: Room[]; users: AppUser[]; initFrom: string; initTo: string;
     // ← [2026-05-26 카드 클릭 활성화] 진입 시 정렬 옵션 (RoomRanking vs RoomNoshow 분기용)
     initialSortKey?: string; initialSortAsc?: boolean;
-    onDetail?: (b:Booking)=>void; onClose: ()=>void }) {
+    onDetail?: (b:Booking)=>void; onClose: ()=>void;
+    // ← [2026-05-28 P4-B 패턴 일관성] BookingStatusBadge 'mine' 칩 판정용 (어드민 본인 예약 표시)
+    currentUserId?: string; currentUserEmail?: string }) {
   const [presetId, setPresetId] = useState('custom')
   const [dateFrom, setDateFrom] = useState(initFrom)
   const [dateTo,   setDateTo]   = useState(initTo)
@@ -279,7 +283,11 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
     const paged = sorted.slice((page-1)*PER, page*PER)
     const csvRows = sorted.map(b => {
       const r = rooms.find(rm => rm.room_id === b.room_id)
-      return { 회의명:b.title, 회의실:r?.room_name??'', 날짜:tsDate(b.start_at), 시작:b.start_at.slice(11,16), 종료:b.end_at.slice(11,16), 예약자:b.user, 부서:b.dept, 상태:b.autoCancelled?'취소':b.checkedIn?'완료':b.status==='pending'?'승인대기':'예정' }
+      // ← [2026-05-28] CSV 상태 라벨 SSOT 통일
+      //   기존(옛 룰): b.autoCancelled?'취소':b.checkedIn?'완료':b.status==='pending'?'승인대기':'예정'
+      //     · 노쇼/거절/사용자 취소/관리자 강제취소/기한초과 모두 미분류 → 분석 무의미
+      //   변경: getBookingStatusLabel(b) — BookingStatusBadge와 동일 우선순위, isNoshow SSOT 사용
+      return { 회의명:b.title, 회의실:r?.room_name??'', 날짜:tsDate(b.start_at), 시작:b.start_at.slice(11,16), 종료:b.end_at.slice(11,16), 예약자:b.user, 부서:b.dept, 상태:getBookingStatusLabel(b) }
     })
     return (
       <>
@@ -317,10 +325,14 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
             <tbody>
               {paged.map(b => {
                 const r = rooms.find(rm => rm.room_id === b.room_id)
-                const status = b.status==='pending'?{l:'승인대기',c:'#D97706',bg:'#FEF3C7'}:b.autoCancelled&&!b.checkedIn&&!b.earlyEnded?{l:'노쇼',c:'#DC2626',bg:'#FEF2F2'}:b.autoCancelled?{l:'취소',c:'#94A3B8',bg:'#F1F5F9'}:b.checkedIn||b.earlyEnded?{l:'완료',c:'#16A34A',bg:'#DCFCE7'}:{l:'예정',c:'#3B82F6',bg:'#EFF6FF'}
-                // ← [2026-04-24 P6-B] 예약자 이름 live (profiles.name 우선, snapshot fallback)
+                // ← [2026-05-28 SSOT 통일] 인라인 status 객체 + 인라인 아바타 박스 전부 제거
+                //   배경: 같은 파일 L36 isNoshow SSOT import해두고 인라인은 옛 룰 사용 → 노쇼 오판정
+                //         (사용자 취소·관리자 강제취소·기한초과 등이 모두 '노쇼'/'예정'으로 잘못 분류)
+                //   해결: BookingStatusBadge + UserChip 공통 컴포넌트로 교체 — BookingListTable 동일 패턴
+                // ← [2026-04-24 P6-B] 예약자 정보 live (profiles.name/avatar_url 우선, snapshot fallback)
                 const owner = (users as any[]).find(u => u.user_id === b.user_id)
                 const displayName = owner?.name ?? b.user ?? '?'
+                const avatarUrl   = (owner as any)?.avatar_url ?? null  // ← [2026-05-28] 실제 프로필 사진 표시용 (인라인 단색 박스 → UserChip)
                 return (
                   <tr key={b.id}
                     onClick={() => { onDetail?.(b) }}
@@ -331,13 +343,27 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
                     <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{r?.room_name??''}</td>
                     <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{fmtTSDateFull(b.start_at)}</td>
                     <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{fmtTSRangeFull(b.start_at,b.end_at)}</td>
+                    {/* ← [2026-05-28] 인라인 아바타 박스 → UserChip variant="sm" (BookingListTable과 동일 패턴) */}
                     <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                        <div style={{ width:22, height:22, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:500, flexShrink:0, background:'#F1EFE8', color:'#444441' }}>{(displayName ?? '?')[0]}</div>
-                        <span style={{ fontSize:12, fontWeight:500, color:'#111' }}>{displayName}</span>
-                      </div>
+                      <UserChip
+                        name={displayName}
+                        avatarUrl={avatarUrl}
+                        variant="sm"
+                      />
                     </td>
-                    <td style={{ padding:'8px 12px' }}><span style={{ background:status.bg, color:status.c, fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:999 }}>{status.l}</span></td>
+                    {/* ← [2026-05-28] 인라인 status 객체+span → BookingStatusBadge size="sm" (BookingListTable과 동일 패턴)
+                          · isAdminRoom 전달 → 에메랄드 룸 '승인완료' 칩 정확 표시
+                          · currentUserId/Email 전달 → 어드민 본인 예약 '내 예약' 칩 표시 (P4-B) */}
+                    <td style={{ padding:'8px 12px' }}>
+                      <BookingStatusBadge
+                        booking={b}
+                        room={r}
+                        isAdminRoom={!!r?.is_admin_only}
+                        size="sm"
+                        currentUserId={currentUserId}
+                        currentUserEmail={currentUserEmail}
+                      />
+                    </td>
                   </tr>
                 )
               })}
@@ -663,7 +689,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
 
         {/* ── 콘텐츠 영역 ──────────────────────────────────────────── */}
         <div style={{ minWidth: 0 /* ← overflow 안전장치 */ }}>
-      {activeTab==='dashboard' && <AdminDashboard bookings={bookings} rooms={rooms} users={users} isMobile={isMobile} onDetail={onDetail}/>}
+      {activeTab==='dashboard' && <AdminDashboard bookings={bookings} rooms={rooms} users={users} isMobile={isMobile} onDetail={onDetail} currentUserId={currentUserId} currentUserEmail={currentUserEmail}/>/* ← [2026-05-28] currentUserId/Email 전달 — DetailDrawer 내 BookingStatusBadge 'mine' 칩 판정용 */}
       {activeTab==='bookings'  && <AdminBookings  bookings={bookings} setBookings={setBookings} rooms={rooms} users={users} onForceCancel={onForceCancel} showToast={showToast} isMobile={isMobile} PER_PAGE={PER_PAGE} onDetail={onDetail}/>}{/* ← [2026-04-24 P6-B] users 추가 — 예약자 이름 live */}
       {/* ← [2026-05-06 Admin Phase C] AdminApprovals → AdminApprovalTable 교체
             · Phase B 공통 컴포넌트(DateRangeFilter / SegmentTabBar / DataTable) 사용
@@ -2674,7 +2700,8 @@ function DashboardPlaceholderCard({ height, title, subtitle, dateRange, phaseNot
 }
 
 // ─── AdminDashboard ────────────────────────────────────────────────────────────
-export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
+// ← [2026-05-28] currentUserId/currentUserEmail prop 추가 — DetailDrawer 내부 BookingStatusBadge 'mine' 칩 판정용 (P4-B 패턴)
+export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, currentUserId = '', currentUserEmail = '' }) {
   // ── [2026-05-11 Phase 3.5] 외곽 정비 — 카드별 독립 날짜 필터로 전환 ──────
   //   · 사유: Q1 결정 — 위젯 ②~⑧이 각자 dateFrom/dateTo state + own
   //            loadBookingsByRange fetch + DateDisplay picker 보유
@@ -2816,6 +2843,8 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail }) {
           initialSortAsc={cardDrawer.sortAsc}
           onDetail={onDetail}
           onClose={() => setCardDrawer(null)}
+          currentUserId={currentUserId}        /* ← [2026-05-28] BookingStatusBadge 'mine' 칩 판정용 (P4-B) */
+          currentUserEmail={currentUserEmail}  /* ← [2026-05-28] BookingStatusBadge 'mine' 칩 판정용 (P4-B) */
         />
       )}
     </div>
