@@ -2,6 +2,17 @@
  * CalendarShell.tsx — 캘린더 뷰 (Daily / Weekly / Monthly)
  *
  * ✅ 변경 이력
+ *  - [2026-06-10] DailyView '일' 뷰 타임라인 좌/우 스크롤 화살표 추가 (Figma 1308:611 / 1308:615)
+ *    · 추가: IcoTimelineLeft / IcoTimelineRight 인라인 SVG (업로드 arrow.svg / arrow_back.svg, fill #C7C7C7)
+ *    · 추가: scrollRef div를 position:relative wrapper로 감싸고 화살표 2개를 absolute 고정
+ *      (스크롤 컨테이너 내부에 두면 콘텐츠와 함께 스크롤되는 문제 → wrapper 형제로 분리)
+ *    · 화살표 스펙: 40×40, borderRadius 100, bg rgba(255,255,255,0.1), border 1px #F1F1F1,
+ *      backdrop-filter blur(10px) (반투명 글래스), 내부 16×16 아이콘 정중앙(padding 12)
+ *    · 위치: 좌 left=LW-8 / 우 right=8, 둘 다 top:50% 세로 중앙
+ *    · 기능: scrollBy(가시 타임라인폭×0.8, 최소 CW, behavior smooth) — 회의실명 컬럼(LW) 제외 폭 기준
+ *    · 표시: canLeft/canRight 상태(scrollLeft·clientWidth·scrollWidth)로 좌/우 끝 도달 시 해당 화살표 fade-out
+ *      (onScroll + ResizeObserver + window resize + 초기 스크롤 설정 직후 갱신)
+ *    · UI/표시 로직 추가만 — 기존 예약/슬롯/현재시각 인디케이터 로직·props·API 무변경
  *  - [2026-05-13 v6] Date Display fontSize 되돌림 (사용자 피드백)
  *    · fontSize: 21 → 20 (v3에서 20→21 변경했던 것을 되돌림)
  *    · fontWeight 400은 그대로 유지 (사용자 명시 지시 없음)
@@ -98,6 +109,18 @@ const IcoDpBack = () => (
 const IcoDpForward = () => (
   <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
     <path d="M12.5625 9.75L8.3125 14L8 13.6875L11.9375 9.75L8 5.8125L8.3125 5.5L12.5625 9.75Z" fill="#111111"/>
+  </svg>
+)
+// ← [2026-06-10] DailyView 타임라인 좌/우 스크롤 화살표 (업로드 arrow.svg / arrow_back.svg, Figma 1308:612 / 1308:616)
+//   · 16×16 viewBox, fill #C7C7C7 (옅은 그레이) — 원본 mask는 16×16 전체 영역이라 시각 영향 없어 path만 사용
+const IcoTimelineLeft = () => (                                                    // ← [2026-06-10] 좌측 '<' (arrow.svg)
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <path d="M10.6663 14.063L4.59961 7.99635L10.6663 1.92969L11.2329 2.49635L5.73294 7.99635L11.2329 13.4964L10.6663 14.063Z" fill="#C7C7C7"/>
+  </svg>
+)
+const IcoTimelineRight = () => (                                                   // ← [2026-06-10] 우측 '>' (arrow_back.svg)
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <path d="M5.33372 1.93698L11.4004 8.00365L5.33373 14.0703L4.76706 13.5036L10.2671 8.00365L4.76706 2.50365L5.33372 1.93698Z" fill="#C7C7C7"/>
   </svg>
 )
 // ─────────────────────────────────────────────────────────────────────────────
@@ -891,10 +914,39 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate, isToday])
 
+  // ─── [2026-06-10] 타임라인 좌/우 스크롤 화살표 ──────────────────────────────
+  //   · 표시 판정: 실제 스크롤 가능 여부(scrollLeft·clientWidth·scrollWidth) — 끝 도달 시 fade-out
+  //   · 스크롤량: 가시 타임라인폭(clientWidth - 회의실명 컬럼 LW)의 0.8배, 최소 CW(1시간), smooth
+  const [canLeft, setCanLeft]   = useState(false)                    // ← [2026-06-10] 왼쪽으로 더 스크롤 가능?
+  const [canRight, setCanRight] = useState(false)                    // ← [2026-06-10] 오른쪽으로 더 스크롤 가능?
+  const updateArrows = useCallback(() => {                           // ← [2026-06-10] 양끝 도달 여부 갱신
+    const el = scrollRef.current                                     // ← [2026-06-10]
+    if (!el) { setCanLeft(false); setCanRight(false); return }       // ← [2026-06-10]
+    setCanLeft(el.scrollLeft > 1)                                    // ← [2026-06-10] 0 초과면 왼쪽 여지 있음(±1px 오차 허용)
+    setCanRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1) // ← [2026-06-10] 오른쪽 끝 미도달
+  }, [])                                                             // ← [2026-06-10]
+  const scrollTimeline = useCallback((dir: 1 | -1) => {              // ← [2026-06-10] dir: -1 왼쪽 / +1 오른쪽
+    const el = scrollRef.current                                     // ← [2026-06-10]
+    if (!el) return                                                  // ← [2026-06-10]
+    const visibleTimelineW = Math.max(0, el.clientWidth - LW)        // ← [2026-06-10] sticky 회의실명 컬럼 제외 가시폭
+    const amount = Math.max(CW, visibleTimelineW * 0.8)              // ← [2026-06-10] 80% 이동(약간 겹침), 최소 1시간
+    el.scrollBy({ left: dir * amount, behavior: 'smooth' })          // ← [2026-06-10] 부드럽게 스크롤
+  }, [])                                                             // ← [2026-06-10]
+  useEffect(() => {                                                  // ← [2026-06-10] 마운트/리사이즈/날짜변경 시 화살표 표시 갱신
+    updateArrows()                                                   // ← [2026-06-10] 초기 1회 (초기 스크롤 effect 직후 실행 — 선언 순서 보장)
+    const el = scrollRef.current                                     // ← [2026-06-10]
+    if (!el) return                                                  // ← [2026-06-10]
+    const ro = new ResizeObserver(() => updateArrows())              // ← [2026-06-10] 컨테이너 크기 변화 감지
+    ro.observe(el)                                                   // ← [2026-06-10]
+    window.addEventListener('resize', updateArrows)                  // ← [2026-06-10]
+    return () => { ro.disconnect(); window.removeEventListener('resize', updateArrows) } // ← [2026-06-10]
+  }, [updateArrows, selectedDate])                                   // ← [2026-06-10] 날짜 변경 시 재평가
+
   // ← [2026-04-23] getRoomDot 함수 완전 삭제 — 회의실 상태 dot 표시 불필요 (요청)
 
   return (
-    <div ref={scrollRef} style={{ background: '#fff', borderRadius: 20, border: '1px solid #FFFFFF', overflowX: 'auto', overflowY: 'visible' }}>{/* ← [2026-05-13 v5] borderRadius 16→20 / [v4] border '#E2E8F0' → '#FFFFFF' (캘린더 쉘 외곽, DailyView) */}
+    <div style={{ position: 'relative' }}>{/* ← [2026-06-10] 화살표 뷰포트 고정용 relative wrapper — scrollRef(가로 스크롤) 콘텐츠와 분리 */}
+    <div ref={scrollRef} onScroll={updateArrows} style={{ background: '#fff', borderRadius: 20, border: '1px solid #FFFFFF', overflowX: 'auto', overflowY: 'visible' }}>{/* ← [2026-05-13 v5] borderRadius 16→20 / [v4] border '#E2E8F0' → '#FFFFFF' (캘린더 쉘 외곽, DailyView) ← [2026-06-10] onScroll로 화살표 표시 갱신 */}
       <div style={{ minWidth: LW + totalW, position: 'relative' }}>
 
         {/* 현재시간 인디케이터 — dot(헤더 하단 경계선) + 세로 라인만
@@ -1158,6 +1210,39 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
         })}
       </div>
       {dailyTooltipNode /* ← [2026-04-23] Daily 차단 슬롯용 커스텀 툴팁 Portal 렌더 */}
+      {/* ← [2026-06-10] scrollRef(가로 스크롤 컨테이너) 닫기 — 닫는 태그 뒤 주석은 TS JSX 파서 에러라 앞 줄에 배치 */}
+    </div>
+
+      {/* ← [2026-06-10] 좌측 스크롤 화살표 (Figma 1308:611) — 회의실명 컬럼 경계(LW-8) + 세로 중앙. 좌측 끝이면 fade-out */}
+      <button type="button" onClick={() => scrollTimeline(-1)} aria-label="이전 시간대"
+        style={{
+          position: 'absolute', left: LW - 8, top: '50%', transform: 'translateY(-50%)',  /* ← [2026-06-10] 회의실명 컬럼 경계 + 세로 중앙 */
+          width: 40, height: 40, borderRadius: 100, boxSizing: 'border-box',               /* ← [2026-06-10] Figma 40×40 / borderRadius 100 (원형) */
+          background: 'rgba(255,255,255,0.1)', border: '1px solid #F1F1F1',                 /* ← [2026-06-10] Figma 1:1 (반투명 흰 10% + #F1F1F1 1px) */
+          backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',                 /* ← [2026-06-10] 반투명 글래스 */
+          display: 'flex', alignItems: 'center', justifyContent: 'center',                  /* ← [2026-06-10] 아이콘 16 정중앙(여백 12) */
+          cursor: 'pointer', zIndex: 20,                                                     /* ← [2026-06-10] 헤더(9)/현재시각(10) 위 */
+          opacity: canLeft ? 1 : 0, pointerEvents: canLeft ? 'auto' : 'none',                /* ← [2026-06-10] 좌측 끝 도달 시 숨김 + 클릭 비활성 */
+          transition: 'opacity 0.2s ease',                                                   /* ← [2026-06-10] 부드러운 fade */
+        }}>
+        <IcoTimelineLeft />{/* ← [2026-06-10] '<' (arrow.svg) */}
+      </button>
+
+      {/* ← [2026-06-10] 우측 스크롤 화살표 (Figma 1308:615) — 가시영역 오른쪽(right 8) + 세로 중앙. 우측 끝이면 fade-out */}
+      <button type="button" onClick={() => scrollTimeline(1)} aria-label="다음 시간대"
+        style={{
+          position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',        /* ← [2026-06-10] 가시영역 오른쪽 + 세로 중앙 */
+          width: 40, height: 40, borderRadius: 100, boxSizing: 'border-box',               /* ← [2026-06-10] Figma 40×40 / borderRadius 100 (원형) */
+          background: 'rgba(255,255,255,0.1)', border: '1px solid #F1F1F1',                 /* ← [2026-06-10] Figma 1:1 (반투명 흰 10% + #F1F1F1 1px) */
+          backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',                 /* ← [2026-06-10] 반투명 글래스 */
+          display: 'flex', alignItems: 'center', justifyContent: 'center',                  /* ← [2026-06-10] 아이콘 16 정중앙(여백 12) */
+          cursor: 'pointer', zIndex: 20,                                                     /* ← [2026-06-10] 헤더(9)/현재시각(10) 위 */
+          opacity: canRight ? 1 : 0, pointerEvents: canRight ? 'auto' : 'none',              /* ← [2026-06-10] 우측 끝 도달 시 숨김 + 클릭 비활성 */
+          transition: 'opacity 0.2s ease',                                                   /* ← [2026-06-10] 부드러운 fade */
+        }}>
+        <IcoTimelineRight />{/* ← [2026-06-10] '>' (arrow_back.svg) */}
+      </button>
+      {/* ← [2026-06-10] relative wrapper(화살표 뷰포트 고정용) 닫기 — 닫는 태그 뒤 주석은 TS JSX 파서 에러라 앞 줄에 배치 */}
     </div>
   )
 }
