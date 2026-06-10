@@ -8,7 +8,7 @@
  *      (스크롤 컨테이너 내부에 두면 콘텐츠와 함께 스크롤되는 문제 → wrapper 형제로 분리)
  *    · 화살표 스펙: 40×40, borderRadius 100, bg rgba(255,255,255,0.1), border 1px #F1F1F1,
  *      backdrop-filter blur(10px) (반투명 글래스), 내부 16×16 아이콘 정중앙(padding 12)
- *    · 위치: 좌 left=LW-8 / 우 right=8, 둘 다 top:50% 세로 중앙
+ *    · 위치: 좌 left=200 / 우 right=-20, 둘 다 top:47% (translateY -50%) — 사용자 위치 조정
  *    · 기능: scrollBy(가시 타임라인폭×0.8, 최소 CW, behavior smooth) — 회의실명 컬럼(LW) 제외 폭 기준
  *    · 표시: canLeft/canRight 상태(scrollLeft·clientWidth·scrollWidth)로 좌/우 끝 도달 시 해당 화살표 fade-out
  *      (onScroll + ResizeObserver + window resize + 초기 스크롤 설정 직후 갱신)
@@ -1216,7 +1216,7 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
       {/* ← [2026-06-10] 좌측 스크롤 화살표 (Figma 1308:611) — 회의실명 컬럼 경계(LW-8) + 세로 중앙. 좌측 끝이면 fade-out */}
       <button type="button" onClick={() => scrollTimeline(-1)} aria-label="이전 시간대"
         style={{
-          position: 'absolute', left: LW - 8, top: '50%', transform: 'translateY(-50%)',  /* ← [2026-06-10] 회의실명 컬럼 경계 + 세로 중앙 */
+          position: 'absolute', left: 200, top: '47%', transform: 'translateY(-50%)',     /* ← [2026-06-10] 위치 조정: left LW-8→200, top 50%→47% (사용자 요청) */
           width: 40, height: 40, borderRadius: 100, boxSizing: 'border-box',               /* ← [2026-06-10] Figma 40×40 / borderRadius 100 (원형) */
           background: 'rgba(255,255,255,0.1)', border: '1px solid #F1F1F1',                 /* ← [2026-06-10] Figma 1:1 (반투명 흰 10% + #F1F1F1 1px) */
           backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',                 /* ← [2026-06-10] 반투명 글래스 */
@@ -1231,7 +1231,7 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
       {/* ← [2026-06-10] 우측 스크롤 화살표 (Figma 1308:615) — 가시영역 오른쪽(right 8) + 세로 중앙. 우측 끝이면 fade-out */}
       <button type="button" onClick={() => scrollTimeline(1)} aria-label="다음 시간대"
         style={{
-          position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',        /* ← [2026-06-10] 가시영역 오른쪽 + 세로 중앙 */
+          position: 'absolute', right: -20, top: '47%', transform: 'translateY(-50%)',       /* ← [2026-06-10] 위치 조정: right 8→-20, top 50%→47% (사용자 요청) */
           width: 40, height: 40, borderRadius: 100, boxSizing: 'border-box',               /* ← [2026-06-10] Figma 40×40 / borderRadius 100 (원형) */
           background: 'rgba(255,255,255,0.1)', border: '1px solid #F1F1F1',                 /* ← [2026-06-10] Figma 1:1 (반투명 흰 10% + #F1F1F1 1px) */
           backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',                 /* ← [2026-06-10] 반투명 글래스 */
