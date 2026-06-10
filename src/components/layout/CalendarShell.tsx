@@ -6,8 +6,8 @@
  *    · 추가: IcoTimelineLeft / IcoTimelineRight 인라인 SVG (업로드 arrow.svg / arrow_back.svg, fill #C7C7C7)
  *    · 추가: scrollRef div를 position:relative wrapper로 감싸고 화살표 2개를 absolute 고정
  *      (스크롤 컨테이너 내부에 두면 콘텐츠와 함께 스크롤되는 문제 → wrapper 형제로 분리)
- *    · 화살표 스펙: 40×40, borderRadius 100, bg rgba(255,255,255,0.1), border 1px #F1F1F1,
- *      backdrop-filter blur(10px) (반투명 글래스), 내부 16×16 아이콘 정중앙(padding 12)
+ *    · 화살표 스펙: 48×48, borderRadius 100, bg rgba(255,255,255,0.65), border 1px #F1F1F1,  ← [2026-06-10] 박스 40→48, bg 0.1→0.65
+ *      backdrop-filter blur(10px) (반투명 글래스), 내부 20×20 아이콘(fill #d0d3d7) 정중앙  ← [2026-06-10] 아이콘 16→20, #C7C7C7→#d0d3d7
  *    · 위치: 좌 left=200 / 우 right=-20, 둘 다 top:47% (translateY -50%) — 사용자 위치 조정
  *    · 기능: scrollBy(가시 타임라인폭×0.8, 최소 CW, behavior smooth) — 회의실명 컬럼(LW) 제외 폭 기준
  *    · 표시: canLeft/canRight 상태(scrollLeft·clientWidth·scrollWidth)로 좌/우 끝 도달 시 해당 화살표 fade-out
@@ -114,13 +114,13 @@ const IcoDpForward = () => (
 // ← [2026-06-10] DailyView 타임라인 좌/우 스크롤 화살표 (업로드 arrow.svg / arrow_back.svg, Figma 1308:612 / 1308:616)
 //   · 16×16 viewBox, fill #C7C7C7 (옅은 그레이) — 원본 mask는 16×16 전체 영역이라 시각 영향 없어 path만 사용
 const IcoTimelineLeft = () => (                                                    // ← [2026-06-10] 좌측 '<' (arrow.svg)
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-    <path d="M10.6663 14.063L4.59961 7.99635L10.6663 1.92969L11.2329 2.49635L5.73294 7.99635L11.2329 13.4964L10.6663 14.063Z" fill="#C7C7C7"/>
+  <svg width="20" height="20" viewBox="0 0 16 16" fill="none">{/* ← [2026-06-10] 크기 16→20 (viewBox 유지, 1.25배 스케일) */}
+    <path d="M10.6663 14.063L4.59961 7.99635L10.6663 1.92969L11.2329 2.49635L5.73294 7.99635L11.2329 13.4964L10.6663 14.063Z" fill="#d0d3d7"/>{/* ← [2026-06-10] fill #C7C7C7→#d0d3d7 */}
   </svg>
 )
 const IcoTimelineRight = () => (                                                   // ← [2026-06-10] 우측 '>' (arrow_back.svg)
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-    <path d="M5.33372 1.93698L11.4004 8.00365L5.33373 14.0703L4.76706 13.5036L10.2671 8.00365L4.76706 2.50365L5.33372 1.93698Z" fill="#C7C7C7"/>
+  <svg width="20" height="20" viewBox="0 0 16 16" fill="none">{/* ← [2026-06-10] 크기 16→20 (viewBox 유지, 1.25배 스케일) */}
+    <path d="M5.33372 1.93698L11.4004 8.00365L5.33373 14.0703L4.76706 13.5036L10.2671 8.00365L4.76706 2.50365L5.33372 1.93698Z" fill="#d0d3d7"/>{/* ← [2026-06-10] fill #C7C7C7→#d0d3d7 */}
   </svg>
 )
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1217,8 +1217,8 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
       <button type="button" onClick={() => scrollTimeline(-1)} aria-label="이전 시간대"
         style={{
           position: 'absolute', left: 200, top: '47%', transform: 'translateY(-50%)',     /* ← [2026-06-10] 위치 조정: left LW-8→200, top 50%→47% (사용자 요청) */
-          width: 40, height: 40, borderRadius: 100, boxSizing: 'border-box',               /* ← [2026-06-10] Figma 40×40 / borderRadius 100 (원형) */
-          background: 'rgba(255,255,255,0.1)', border: '1px solid #F1F1F1',                 /* ← [2026-06-10] Figma 1:1 (반투명 흰 10% + #F1F1F1 1px) */
+          width: 48, height: 48, borderRadius: 100, boxSizing: 'border-box',               /* ← [2026-06-10] 박스 40→48 / borderRadius 100 (원형) */
+          background: 'rgba(255,255,255,0.65)', border: '1px solid #F1F1F1',                /* ← [2026-06-10] 배경 투명도 0.1→0.65 + #F1F1F1 1px */
           backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',                 /* ← [2026-06-10] 반투명 글래스 */
           display: 'flex', alignItems: 'center', justifyContent: 'center',                  /* ← [2026-06-10] 아이콘 16 정중앙(여백 12) */
           cursor: 'pointer', zIndex: 20,                                                     /* ← [2026-06-10] 헤더(9)/현재시각(10) 위 */
@@ -1232,8 +1232,8 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
       <button type="button" onClick={() => scrollTimeline(1)} aria-label="다음 시간대"
         style={{
           position: 'absolute', right: -20, top: '47%', transform: 'translateY(-50%)',       /* ← [2026-06-10] 위치 조정: right 8→-20, top 50%→47% (사용자 요청) */
-          width: 40, height: 40, borderRadius: 100, boxSizing: 'border-box',               /* ← [2026-06-10] Figma 40×40 / borderRadius 100 (원형) */
-          background: 'rgba(255,255,255,0.1)', border: '1px solid #F1F1F1',                 /* ← [2026-06-10] Figma 1:1 (반투명 흰 10% + #F1F1F1 1px) */
+          width: 48, height: 48, borderRadius: 100, boxSizing: 'border-box',               /* ← [2026-06-10] 박스 40→48 / borderRadius 100 (원형) */
+          background: 'rgba(255,255,255,0.65)', border: '1px solid #F1F1F1',                /* ← [2026-06-10] 배경 투명도 0.1→0.65 + #F1F1F1 1px */
           backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',                 /* ← [2026-06-10] 반투명 글래스 */
           display: 'flex', alignItems: 'center', justifyContent: 'center',                  /* ← [2026-06-10] 아이콘 16 정중앙(여백 12) */
           cursor: 'pointer', zIndex: 20,                                                     /* ← [2026-06-10] 헤더(9)/현재시각(10) 위 */
