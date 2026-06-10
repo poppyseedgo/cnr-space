@@ -1,3 +1,15 @@
+/**
+ * AdminPage.tsx — 어드민 페이지 (대시보드 / 예약 / 승인 관리 / 회의실 / 사용자)
+ *
+ * ✅ 변경 이력
+ *  - [2026-06-10] 대시보드 '승인 대기' 카드(위젯 ①) 클릭 동작 변경
+ *    · 기존: setCardDrawer({ type: 'pending' }) → DetailDrawer 'pending' 오픈
+ *      문제: 드로어 기본 진입 기간(최근 30일) + 날짜모드 필터에 대기 예약이 걸려 목록이 비어 보임
+ *    · 변경: onGoApprovals() 호출 → setTab('approvals')로 '승인 관리' 메뉴 페이지로 즉시 이동
+ *      (AdminApprovalTable이 대기 건을 정상 표시 — 드로어 우회)
+ *    · 영향 파일 내: AdminView(onGoApprovals prop 전달) / AdminDashboard(시그니처 + 카드 onClick)
+ *    · 다른 카드(②노쇼 ③최근예약 ④~⑧ 등)의 DetailDrawer 동작은 그대로 보존
+ */
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react'
 import { createPortal } from 'react-dom'  // ← [2026-05-06 사이드 sticky 핫픽스] 사이드 네비를 body 직접 mount하기 위함
 import { AlertCircle, AlertTriangle, ArrowUpDown, Ban, BarChart2, Building2, Calendar, CheckCircle2, ChevronDown, Clock, Download, ImagePlus, Inbox, RefreshCw, RotateCw, Search, Trash2, Upload, Users, X } from 'lucide-react'
@@ -764,7 +776,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
 
         {/* ── 콘텐츠 영역 ──────────────────────────────────────────── */}
         <div style={{ minWidth: 0 /* ← overflow 안전장치 */ }}>
-      {activeTab==='dashboard' && <AdminDashboard bookings={bookings} rooms={rooms} users={users} isMobile={isMobile} onDetail={onDetail} currentUserId={currentUserId} currentUserEmail={currentUserEmail}/>/* ← [2026-05-28] currentUserId/Email 전달 — DetailDrawer 내 BookingStatusBadge 'mine' 칩 판정용 */}
+      {activeTab==='dashboard' && <AdminDashboard bookings={bookings} rooms={rooms} users={users} isMobile={isMobile} onDetail={onDetail} onGoApprovals={() => setTab('approvals')} currentUserId={currentUserId} currentUserEmail={currentUserEmail}/>/* ← [2026-05-28] currentUserId/Email 전달 — DetailDrawer 내 BookingStatusBadge 'mine' 칩 판정용  ← [2026-06-10] onGoApprovals 추가 — 승인 대기 카드 클릭 시 '승인 관리' 탭으로 이동 */}
       {activeTab==='bookings'  && <AdminBookings  bookings={bookings} setBookings={setBookings} rooms={rooms} users={users} onForceCancel={onForceCancel} showToast={showToast} isMobile={isMobile} PER_PAGE={PER_PAGE} onDetail={onDetail}/>}{/* ← [2026-04-24 P6-B] users 추가 — 예약자 이름 live */}
       {/* ← [2026-05-06 Admin Phase C] AdminApprovals → AdminApprovalTable 교체
             · Phase B 공통 컴포넌트(DateRangeFilter / SegmentTabBar / DataTable) 사용
@@ -2776,7 +2788,7 @@ function DashboardPlaceholderCard({ height, title, subtitle, dateRange, phaseNot
 
 // ─── AdminDashboard ────────────────────────────────────────────────────────────
 // ← [2026-05-28] currentUserId/currentUserEmail prop 추가 — DetailDrawer 내부 BookingStatusBadge 'mine' 칩 판정용 (P4-B 패턴)
-export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, currentUserId = '', currentUserEmail = '' }) {
+export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onGoApprovals = () => {}, currentUserId = '', currentUserEmail = '' }) {  // ← [2026-06-10] onGoApprovals 추가 — 승인 대기 카드 → '승인 관리' 탭 이동용
   // ── [2026-05-11 Phase 3.5] 외곽 정비 — 카드별 독립 날짜 필터로 전환 ──────
   //   · 사유: Q1 결정 — 위젯 ②~⑧이 각자 dateFrom/dateTo state + own
   //            loadBookingsByRange fetch + DateDisplay picker 보유
@@ -2839,9 +2851,10 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, cur
 
       {/* ── Row 1: 위젯 ① 승인 대기 / ② 노쇼 현황 / ③ 최근 생성된 예약 ── */}
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
-        {/* ① 승인 대기 → 승인 대기 목록 */}
+        {/* ① 승인 대기 → [2026-06-10] 드로어(type:'pending') 대신 '승인 관리' 탭으로 즉시 이동
+              (드로어 기본 30일 범위 + 날짜모드 필터에 대기 예약이 누락되어 목록이 비어 보이는 문제 회피) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'pending' })}>
+          onClick={() => onGoApprovals()}>  {/* ← [2026-06-10] setCardDrawer({ type: 'pending' }) → onGoApprovals() (승인 관리 페이지 이동) */}
           <ApprovalPendingCard count={pendingCount} />
         </div>
 
