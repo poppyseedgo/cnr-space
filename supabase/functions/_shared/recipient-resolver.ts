@@ -36,6 +36,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * 변경 이력
  * ═══════════════════════════════════════════════════════════════════════════
+ * [2026-06-12] former_booker 규칙 추가 (예약자 변경 시 원래 예약자 알림)
+ *   · ResolvedRecipients.formerBooker / ResolveInput.formerBookerUserId 추가
+ *   · former_booker 규칙은 별도 경로 — fetchBooker 재사용해 원래 예약자 1명 해석
+ *
  * [2026-04-18 P2 v1] 초기 생성
  *   · send-notification/auto-cancel-bookings의 분산 조회 통일
  *   · 이메일+인앱에서 같은 사람 2번 조회 문제 해결
@@ -77,6 +81,8 @@ export interface ResolvedRecipients {
   attendees:  Person[]               // booker_and_attendees/booker_attendees_admins일 때만. 예약자 제외
   admins:     Person[]               // admins_only/booker_attendees_admins일 때만. 예약자 제외
   removedAttendees: RemovedAttendee[] // removed_attendees 규칙일 때만
+  // ← [2026-06-12] former_booker 규칙일 때만. 원래(이전) 예약자 1명.
+  formerBooker: Person | null
 }
 
 /** resolveRecipients 입력 */
@@ -85,6 +91,8 @@ export interface ResolveInput {
   bookerUserId?: string              // booker 조회 + attendees/admins에서 예약자 제외용
   bookingId?:    string              // attendees 조회용 (booking_attendees 테이블)
   removedEmails?: string[]           // removed_attendees 규칙 시 외부 주입
+  // ← [2026-06-12] former_booker 규칙 시 원래 예약자 user_id 외부 주입
+  formerBookerUserId?: string
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -304,7 +312,7 @@ export async function resolveRecipients(
   supabase: SupabaseClient,
   input: ResolveInput,
 ): Promise<ResolvedRecipients> {
-  const { rule, bookerUserId, bookingId, removedEmails } = input
+  const { rule, bookerUserId, bookingId, removedEmails, formerBookerUserId } = input
 
   // 기본값
   const result: ResolvedRecipients = {
@@ -312,11 +320,19 @@ export async function resolveRecipients(
     attendees:        [],
     admins:           [],
     removedAttendees: [],
+    formerBooker:     null,   // ← [2026-06-12]
   }
 
   // removed_attendees는 완전 별도 경로
   if (rule === 'removed_attendees') {
     result.removedAttendees = await fetchRemovedAttendees(supabase, removedEmails ?? [])
+    return result
+  }
+
+  // ← [2026-06-12] former_booker는 완전 별도 경로 — 원래 예약자 1명만 조회
+  //   fetchBooker 재사용 (profiles에서 id로 단건 조회). 퇴사/삭제 시 null → 발송 스킵.
+  if (rule === 'former_booker') {
+    result.formerBooker = await fetchBooker(supabase, formerBookerUserId ?? '')
     return result
   }
 

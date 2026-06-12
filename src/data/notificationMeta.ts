@@ -33,6 +33,8 @@ export const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
   booking_noshow:           "#EF4444",
   booking_expired:          "#94A3B8",
   booking_updated:          "#0891B2",
+  booking_owner_changed:    "#4F46E5",  // ← [2026-06-12] 예약자 지정 — 인디고(긍정/지정)
+  booking_former_booker:    "#64748B",  // ← [2026-06-12] 예약자 해제 — 회색(중립/상실)
   checkin_reminder_10:      "#0891B2",
   checkin_required:         "#16A34A",
   checkin_warning:          "#EF4444",

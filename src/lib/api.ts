@@ -576,6 +576,52 @@ export async function adminForceCancel(id: string, adminUserId: string): Promise
   })
 }
 
+// ── 예약자(소유권) 변경 — 관리자 전용 ─────────────────────────────────────────
+// ← [2026-06-12] admin_change_booking_owner RPC 래퍼
+//   · SECURITY DEFINER RPC에 위임: admin 검증 + 미래/confirmed 가드 + 참석자 자동 제거
+//     + user_id/email/name/dept 4-스냅샷 원자 갱신 + 원래/새 예약자 정보 반환
+//   · updateBooking에 user_id를 끼워넣지 않는 이유: 시간/룸 충돌·pending 재평가 로직과
+//     완전 격리하기 위함 (소유권 변경은 단일 책임의 별도 경로)
+//   · 호출부: App.tsx의 changeBookingOwner 핸들러 (RPC 성공 후 알림 2종 발사)
+//   · 반환값을 그대로 알림 페이로드(former_booker_user_id 등) 구성에 사용
+export interface ChangeOwnerResult {
+  ok: boolean
+  old_booker: { user_id: string; email: string; name: string; dept: string }
+  new_booker: { user_id: string; email: string; name: string; dept: string }
+  removed_from_attendees: boolean
+}
+
+export async function changeBookingOwner(
+  bookingId: string,
+  newUserId: string,
+): Promise<ChangeOwnerResult> {
+  const { data, error } = await supabase.rpc('admin_change_booking_owner', {
+    p_booking_id:  bookingId,
+    p_new_user_id: newUserId,
+  })
+
+  if (error) {
+    // RPC 내부 RAISE EXCEPTION 메시지를 한글 안내로 매핑 (UI 토스트용)
+    console.error('[api] admin_change_booking_owner RPC 실패:', error.message, { bookingId, newUserId })
+    const map: Record<string, string> = {
+      UNAUTHENTICATED:     '로그인이 필요합니다.',
+      FORBIDDEN_NOT_ADMIN: '관리자만 예약자를 변경할 수 있습니다.',
+      BOOKING_NOT_FOUND:   '예약을 찾을 수 없습니다.',
+      NOT_CONFIRMED:       '확정된 예약만 예약자를 변경할 수 있습니다.',
+      NOT_FUTURE:          '시작 전 예약만 예약자를 변경할 수 있습니다.',
+      NOT_ACTIVE:          '취소·노쇼·반납된 예약은 예약자를 변경할 수 없습니다.',
+      SAME_OWNER:          '현재 예약자와 동일한 사용자입니다.',
+      NEW_OWNER_NOT_FOUND: '새 예약자 정보를 찾을 수 없습니다.',
+      NEW_OWNER_INACTIVE:  '퇴사한 사용자는 예약자로 지정할 수 없습니다.',
+      NEW_OWNER_NO_EMAIL:  '새 예약자의 이메일 정보가 없어 변경할 수 없습니다.',
+    }
+    const key = Object.keys(map).find(k => error.message.includes(k))
+    throw new Error(key ? map[key] : '예약자 변경에 실패했습니다.')
+  }
+
+  return data as ChangeOwnerResult
+}
+
 // ── 취소 ─────────────────────────────────────────────────────────────────────
 // ── 취소 ─────────────────────────────────────────────────────────────────────
 // ← [2026-04-23 HOTFIX Phase 3] status: 'cancelled' 추가
@@ -861,6 +907,7 @@ export type AuditAction =
   | 'BOOKING_CHECKIN'
   | 'BOOKING_EARLY_END'
   | 'ADMIN_FORCE_CANCEL'
+  | 'BOOKING_OWNER_CHANGED'   // ← [2026-06-12] 관리자 예약자(소유권) 변경
 
 // ── Booking 변경 diff 계산 ─────────────────────────────────────────────────
 // [2026-04-29 Phase 1] audit_log + 변경 메일 본문 비교용 단일 진실 소스

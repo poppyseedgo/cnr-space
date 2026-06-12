@@ -7,6 +7,12 @@
  * 변경 이력
  * ═══════════════════════════════════════════════════════════════════════════
  *
+ * [2026-06-12] 예약자(소유권) 변경 알림 2종 지원 (owner_changed / former_booker)
+ *   · resolveRecipients 호출에 formerBookerUserId 전달
+ *   · buildEmailItems: formerBooker 수신자 이메일 렌더 분기(role='booker') 추가
+ *   · sendInAppForAllRoles: formerBooker 인앱 발송(role='booker') 추가
+ *   · Teams colorMap/titleMap/teamsTargetTypes에 owner_changed 추가 (former_booker는 Teams 제외)
+ *
  * [2025-04-13] 초기 버전
  *   1. pending 타입 — profiles 테이블에서 admin 이메일 직접 조회 (프론트 의존 제거)
  *   2. user_email 누락 시 user_id → profiles 자동 조회
@@ -108,6 +114,7 @@ async function sendTeamsCard(type: string, booking: any): Promise<void> {
     cancelled:        'Default',
     noshow:           'Warning',
     updated:          'Default',
+    owner_changed:    'Default',   // ← [2026-06-12] 예약자 변경
     pending_expiring: 'Warning',
     pending_expired:  'Attention',
   }
@@ -121,6 +128,7 @@ async function sendTeamsCard(type: string, booking: any): Promise<void> {
     cancelled:        '❌ 예약이 취소되었습니다',
     noshow:           '⚠️ 노쇼 자동취소',
     updated:          '📝 예약이 변경되었습니다',
+    owner_changed:    '🔁 예약자가 변경되었습니다',   // ← [2026-06-12]
     pending_expiring: '⏰ 에메랄드 룸 승인 기한 10분 전',
     pending_expired:  '❌ 승인 기한 초과 — 자동 취소 처리됨',
   }
@@ -316,6 +324,24 @@ function buildEmailItems(
     })
   }
 
+  // ── former_booker (예약자 변경 시 원래 예약자) ──────────────────
+  // ← [2026-06-12] role='booker'로 렌더 — former_booker 정책의 booker 배너/제목 사용
+  //   ("회의 예약자에서 변경되었습니다"). 참석자 명단은 비움(더 이상 본인 예약 아님).
+  if (recipients.formerBooker?.email) {
+    const role = 'booker' as const
+    const html = renderEmail({
+      ...baseInput,
+      role,
+      recipientName: recipients.formerBooker.name,
+      attendeeList:  [],
+    })
+    items.push({
+      to:      recipients.formerBooker.email,
+      subject: getSubject(type, bookingData.title, role),
+      html,
+    })
+  }
+
   return items
 }
 
@@ -332,6 +358,8 @@ async function sendInAppForAllRoles(
   const attendeeIds   = recipients.attendees.map(p => p.user_id).filter(Boolean)
   const adminIds      = recipients.admins.map(p => p.user_id).filter(Boolean)
   const removedIds    = recipients.removedAttendees.map(p => p.user_id).filter(Boolean)
+  // ← [2026-06-12] former_booker 인앱 수신자 (원래 예약자 1명)
+  const formerBookerId = recipients.formerBooker?.user_id ? [recipients.formerBooker.user_id] : []
 
   // 각 역할에 맞는 제목이 정책에 있으면 INSERT, 없으면 insertInAppBulk 내부에서 자동 스킵
   const tasks: Promise<any>[] = [
@@ -340,6 +368,9 @@ async function sendInAppForAllRoles(
     insertInAppBulk(supabase, adminIds,    type, 'admin',    bookingData),
     // removed_attendees도 attendee 역할로 알림 (정책: attendee_removed만 해당)
     insertInAppBulk(supabase, removedIds,  type, 'attendee', bookingData),
+    // ← [2026-06-12] former_booker는 booker 역할로 알림 (정책: former_booker만 해당)
+    //   former_booker 정책의 inappTitleBooker("회의 예약자에서 변경되었습니다") 사용
+    insertInAppBulk(supabase, formerBookerId, type, 'booker', bookingData),
   ]
 
   await Promise.allSettled(tasks)
@@ -385,6 +416,7 @@ Deno.serve(async (req: Request) => {
     const teamsTargetTypes = [
       'created', 'pending', 'updated', 'cancelled', 'rejected',
       'approved', 'noshow', 'pending_expiring', 'pending_expired',
+      'owner_changed',   // ← [2026-06-12] 예약자 변경 (former_booker는 Teams 제외 — attendee_removed와 동일)
     ]
     if (teamsTargetTypes.includes(type)) {
       sendTeamsCard(type, booking).catch(() => {})
@@ -396,6 +428,8 @@ Deno.serve(async (req: Request) => {
       bookerUserId:  booking.user_id,
       bookingId:     booking.id,
       removedEmails: booking.removed_emails ?? [],   // attendee_removed 전용
+      // ← [2026-06-12] former_booker 전용 — 원래 예약자 user_id
+      formerBookerUserId: booking.former_booker_user_id,
     })
 
     // ── 이메일 본문용 참석자 목록 생성 ────────────────────────────────

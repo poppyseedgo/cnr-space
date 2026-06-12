@@ -246,7 +246,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from './utils/time'
 import { getFloor } from './data/floors'
-import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, markNoshow, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, buildBookingDiff, approveBooking, rejectBooking, upsertBookingAttendees, getBookingAttendees, insertNotification, adminForceCancel } from './lib/api'  // ← [2026-05-04] loadNotifications/markNotificationRead/markAllNotificationsRead/subscribeNotifications/AppNotification 제거 (NotificationBell 분리 / Phase 1+2 Step 3) — insertNotification은 sendNotification에서 사용 중이라 유지
+import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, markNoshow, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, buildBookingDiff, approveBooking, rejectBooking, upsertBookingAttendees, getBookingAttendees, insertNotification, adminForceCancel, changeBookingOwner } from './lib/api'  // ← [2026-06-12] changeBookingOwner 추가 (관리자 예약자 변경)  // ← [2026-05-04] loadNotifications/markNotificationRead/markAllNotificationsRead/subscribeNotifications/AppNotification 제거 (NotificationBell 분리 / Phase 1+2 Step 3) — insertNotification은 sendNotification에서 사용 중이라 유지
 import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView } from './components/room/HomeView'
@@ -260,6 +260,7 @@ import { ConfirmCancelModal } from './components/booking/ConfirmCancelModal'
 import { ConfirmEarlyEndModal } from './components/booking/ConfirmEarlyEndModal'   // ← [2026-04-29] 조기반납 확인 다이얼로그
 import { ConfirmRejectModal } from './components/booking/ConfirmRejectModal'       // ← [2026-04-29] 승인거절 다이얼로그
 import { ConfirmForceCancelModal } from './components/booking/ConfirmForceCancelModal' // ← [2026-04-24 P8-B] 관리자 강제취소 공통 다이얼로그
+import { ChangeOwnerModal } from './components/booking/ChangeOwnerModal'             // ← [2026-06-12] 관리자 예약자 변경 다이얼로그
 import { BookingModal } from './components/booking/BookingModal'
 import { DetailModal } from './components/booking/DetailModal'
 // ← [2026-05-04] UserAvatar import 제거 — ProfileDropdown 내부로 이동 (Phase 1+2 Step 2)
@@ -706,7 +707,7 @@ function AppContent() {
 
   // ── 이메일 알림 발송 (Fire & Forget — 실패해도 예약 로직에 영향 없음) ──
   const sendNotification = useCallback(async (
-    type: 'created' | 'updated' | 'cancelled' | 'noshow' | 'pending' | 'approved' | 'rejected' | 'attendee_removed' | 'early_end',
+    type: 'created' | 'updated' | 'cancelled' | 'noshow' | 'pending' | 'approved' | 'rejected' | 'attendee_removed' | 'early_end' | 'owner_changed' | 'former_booker',  // ← [2026-06-12] owner_changed/former_booker 추가
     booking: any,
   ) => {
     try {
@@ -1191,6 +1192,76 @@ function AppContent() {
       },
     })
   }, [bookings, adminForceCancelBooking])
+
+  // ── [2026-06-12] 관리자 예약자(소유권) 변경 핸들러 ──────────────────────
+  //   호출: ChangeOwnerModal onConfirm(newUserId) → handleChangeOwner(bookingId, newUserId)
+  //   흐름: changeBookingOwner RPC(admin 검증+가드+참석자 자동제거+4스냅샷 원자 갱신)
+  //        → 낙관적 UI 갱신 → 알림 2종 발사(attendee_removed 패턴과 동일)
+  //   알림: ① owner_changed(새 예약자+참석자, Edge가 갱신된 user_id로 해석)
+  //        ② former_booker(원래 예약자, payload.former_booker_user_id로 해석)
+  const handleChangeOwner = useCallback(async (bookingId: string, newUserId: string) => {
+    const prev = bookings.find(b => b.id === bookingId)            // ← 변경 전 예약 스냅샷
+    if (!prev) { showToast('예약을 찾을 수 없습니다.', 'error'); return }
+    try {
+      // RPC — 실패 시 throw (api.ts에서 한글 메시지로 매핑됨)
+      const res = await changeBookingOwner(bookingId, newUserId)  // ← { old_booker, new_booker, removed_from_attendees }
+
+      const room     = rooms.find(r => r.room_id === prev.room_id)
+      const roomName = room?.room_name ?? room?.room_name_ko ?? String(prev.room_id) + 'F'  // ← 알림 본문용 회의실명
+      const newEmailLower = (res.new_booker.email ?? '').trim().toLowerCase()              // ← 참석자 제거 비교용
+
+      // 낙관적 UI: 예약자 4-스냅샷 교체 + 새 예약자가 참석자였으면 목록에서 제거
+      setBookings(prevList => prevList.map(b => {
+        if (b.id !== bookingId) return b                          // ← 대상 예약만 수정
+        const nextAttendees = res.removed_from_attendees           // ← RPC가 참석자 제거했으면 로컬도 동기화
+          ? (b.attendees ?? []).filter(a => (a.email ?? '').trim().toLowerCase() !== newEmailLower)
+          : b.attendees
+        return {
+          ...b,
+          user_id:    res.new_booker.user_id,                     // ← 새 예약자 UUID
+          user_email: res.new_booker.email,                      // ← 새 예약자 이메일 (isBooker email 경로)
+          user:       res.new_booker.name,                       // ← 표시용 이름 스냅샷
+          dept:       res.new_booker.dept,                       // ← 표시용 부서 스냅샷
+          attendees:  nextAttendees,                             // ← 참석자 자동 제거 반영
+        }
+      }))
+      setModal(null)                                              // ← 모달 닫기
+      showToast('예약자가 변경되었습니다.')
+
+      // ── 알림 ① owner_changed → 새 예약자 + 참석자 ────────────────
+      //   Edge resolver가 갱신된 user_id로 새 예약자/참석자 해석 (DB 이미 커밋됨)
+      sendNotification('owner_changed', {
+        ...prev,
+        user_id:   res.new_booker.user_id,                       // ← [필수] 새 예약자 — resolver 수신자 해석 기준
+        user_name: res.new_booker.name,
+        user_dept: res.new_booker.dept,
+        room_name: roomName,
+      })
+
+      // ── 알림 ② former_booker → 원래 예약자 ──────────────────────
+      //   payload.former_booker_user_id로 resolver가 원래 예약자 1명 해석
+      sendNotification('former_booker', {
+        ...prev,
+        former_booker_user_id: res.old_booker.user_id,           // ← [필수] 원래 예약자 — resolver former_booker 규칙
+        user_name: res.new_booker.name,                          // 본문은 현재(새) 예약자 기준 표시
+        user_dept: res.new_booker.dept,
+        room_name: roomName,
+      })
+
+      // ── 감사 로그 (실패해도 흐름 유지) ─────────────────────────────
+      insertAuditLog({
+        action: 'BOOKING_OWNER_CHANGED', entityType: 'booking', entityId: bookingId,
+        actorName: currentUser,
+        beforeData: { user_id: res.old_booker.user_id, user_name: res.old_booker.name },
+        afterData:  { user_id: res.new_booker.user_id, user_name: res.new_booker.name },
+      }).catch(() => {})
+    } catch (err: any) {
+      // 실패 시 서버 상태로 원복
+      const latest = await loadBookings()
+      setBookings(latest)
+      showToast(err?.message ?? '예약자 변경에 실패했습니다.', 'error')
+    }
+  }, [bookings, rooms, showToast, sendNotification, currentUser])  // ← 의존성: 핸들러 내부 참조값
 
   const updateBooking = useCallback(async (form, date, originalId) => {
     if (!form.room_id || !form.title.trim() || timeToMin(form.start) >= timeToMin(form.end)) {
@@ -1771,7 +1842,7 @@ function AppContent() {
                    원인: setModal({data:b}) 시점 박제. bookings state 갱신되어도 modal.data는 React state 아님
                    해결: bookings에서 id로 매번 다시 찾아 전달 — Realtime/markNoshow 직후 자동 re-render
                    짝 배포: lib/api.ts cancelBooking Layer 1 가드 (DB 단 차폐) */}
-            {modal.type==="detail"      && <DetailModal booking={bookings.find(b=>b.id===modal.data?.id) ?? modal.data} onClose={()=>setModal(null)} onCheckIn={checkIn} onCancel={confirmAndCancelBooking} onEdit={(b)=>setModal({type:"edit",data:b})} onEarlyEnd={confirmAndEarlyEnd} currentUser={currentUser} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} isAdmin={isAdmin} onApprove={approvePendingBooking} onReject={confirmAndRejectBooking} onForceCancel={confirmAndAdminForceCancel} />}{/* ← [2026-04-29] onEarlyEnd={confirmAndEarlyEnd} 추가 */}
+            {modal.type==="detail"      && <DetailModal booking={bookings.find(b=>b.id===modal.data?.id) ?? modal.data} onClose={()=>setModal(null)} onCheckIn={checkIn} onCancel={confirmAndCancelBooking} onEdit={(b)=>setModal({type:"edit",data:b})} onEarlyEnd={confirmAndEarlyEnd} currentUser={currentUser} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} isAdmin={isAdmin} onApprove={approvePendingBooking} onReject={confirmAndRejectBooking} onForceCancel={confirmAndAdminForceCancel} onChangeOwner={(b)=>setModal({type:"changeOwner",data:b})} />}{/* ← [2026-06-12] onChangeOwner 추가 — 관리자 예약자 변경 모달 오픈 *//* ← [2026-04-29] onEarlyEnd={confirmAndEarlyEnd} 추가 */}
             {modal.type==="bookingDone" && <BookingDoneModal booking={modal.data} onClose={()=>setModal(null)} rooms={rooms} users={users} />}
             {modal.type==="recurDone"    && <RecurDoneModal data={modal.data} users={users} onClose={()=>setModal(null)} />}{/* ← [2026-05-28] users 전달 — 예약자/참석자 live 표시 */}
             {/* ← [P2 v8 신규] 예약 취소 확인 다이얼로그 */}
@@ -1801,6 +1872,14 @@ function AppContent() {
               booking={modal.data.booking}
               room={rooms.find((r: any) => r.room_id === modal.data.booking.room_id)}
               onConfirm={modal.data.onConfirm}
+              onClose={()=>setModal(null)}
+            />}
+            {/* ← [2026-06-12] 관리자 예약자 변경 모달 — DetailModal onChangeOwner로 진입 */}
+            {modal.type==="changeOwner" && <ChangeOwnerModal
+              booking={modal.data}
+              room={rooms.find((r: any) => r.room_id === modal.data.room_id)}
+              users={users}
+              onConfirm={(newUserId: string)=>handleChangeOwner(modal.data.id, newUserId)}
               onClose={()=>setModal(null)}
             />}
           {modal.type==="roomDetail"  && <RoomDetailModal room={modal.data} bookings={bookings} users={users} onClose={()=>setModal(null)} onBook={(status)=>{

@@ -135,6 +135,7 @@ export type ModalState =
   | { type: 'new'; prefill: Partial<BookingForm> & { date?: string; room_id?: number } }
   | { type: 'detail'; data: Booking }
   | { type: 'edit'; data: Booking }
+  | { type: 'changeOwner'; data: Booking }  // ← [2026-06-12] 관리자 예약자 변경 모달
   | { type: 'bookingDone'; data: Booking }
   | { type: 'recurDone'; data: RecurDoneData }
   | { type: 'roomDetail'; data: Room }

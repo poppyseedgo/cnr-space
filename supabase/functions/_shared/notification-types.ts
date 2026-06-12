@@ -13,6 +13,13 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * 변경 이력
  * ═══════════════════════════════════════════════════════════════════════════
+ * [2026-06-12] 예약자(소유권) 변경 알림 2종 추가 (관리자 전용)
+ *   · NotificationType: owner_changed, former_booker
+ *   · RecipientRule: former_booker (원래 예약자 1명)
+ *   · owner_changed: 새 예약자(booker)+참석자(attendee), DB 갱신 후 발사 → resolver 자동 해석
+ *     문구 정책 — 새 예약자에겐 "변경" 대신 "지정" 표현("회의 예약자로 지정되었습니다")
+ *   · former_booker: 원래 예약자에게만, role='booker'로 렌더(send-notification), 회색 처리
+ *
  * [2026-04-17 P2 v1] 초기 생성
  *   · 기존 send-notification의 10개 type + checkin 3개 + daily 1개 = 총 14개 통합
  *   · 이모지 제거, 업무적 말머리 적용 ([예약확정], [자동취소] 등)
@@ -59,6 +66,9 @@ export type NotificationType =
   // 예약 변경
   | 'updated'                 // 예약 정보 변경
   | 'attendee_removed'        // 참석자 제거됨 (제거 대상자에게)
+  // ← [2026-06-12] 예약자(소유권) 변경 — 관리자 전용 기능
+  | 'owner_changed'           // 예약자 변경됨 (새 예약자 + 참석자에게 발송)
+  | 'former_booker'           // 예약자에서 변경됨 (원래 예약자에게만 발송)
   // 예약 취소/거절
   | 'cancelled'               // 취소 (사용자/관리자 공통 — admin_force flag로 구분)
   | 'rejected'                // 관리자 거절
@@ -89,6 +99,7 @@ export type RecipientRule =
   | 'admins_only'              // 관리자 전원
   | 'booker_attendees_admins'  // 3자 모두 (pending, pending_expired)
   | 'removed_attendees'        // 제거된 참석자 (attendee_removed 전용)
+  | 'former_booker'            // ← [2026-06-12] 원래 예약자 1명 (former_booker 전용)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 3. 헤더 색상 체계 (5색)
@@ -283,8 +294,51 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
   },
 
   // ──────────────────────────────────────────────────────────────────────
-  // 취소/거절
+  // 예약자(소유권) 변경 — 관리자 전용 (← [2026-06-12] 신규)
   // ──────────────────────────────────────────────────────────────────────
+  //   관리자가 DetailModal에서 예약자를 다른 사용자로 변경하면 App.tsx가
+  //   2종 알림을 동시 발사 (attendee_removed 패턴과 동일):
+  //     · owner_changed → 새 예약자(booker) + 참석자(attendee)   [DB 갱신 후 발사]
+  //     · former_booker → 원래 예약자(payload.former_booker_user_id로 해석)
+  //   문구 정책(고지 확정): 새 예약자에겐 "변경"이 아닌 "지정" 표현 사용
+  //   (그 사람은 원래 이 예약과 무관했으므로 "예약자로 지정"이 정확)
+
+  owner_changed: {
+    subjectTag:         '[예약자변경]',
+    headerLabel:        '회의 예약자로 지정되었습니다',
+    headerColor:        COLORS.INDIGO,
+    recipients:         'booker_and_attendees',  // DB 갱신 후 발사 → resolver가 새 예약자+참석자 해석
+    inappType:          'booking_owner_changed',
+    inappTitleBooker:   '회의 예약자로 지정되었습니다',          // 새 예약자 (확정 문구 #3)
+    inappTitleAttendee: '참석 회의의 예약자가 변경되었습니다',   // 참석자
+    inappTitleAdmin:    '',
+    contextBanner: {
+      booker:   { ...BANNER_PRESETS.info, title: '관리자가 회원님을 이 회의의 예약자로 지정했습니다.', body: '이제 회원님이 이 예약의 예약자입니다. 마이페이지에서 확인 및 관리할 수 있습니다.' },
+      attendee: { ...BANNER_PRESETS.info, title: '참석 예정 회의의 예약자가 변경되었습니다.',           body: '회의 일정·장소·참석자는 변동이 없습니다.' },
+    },
+    // CTA 공통 규칙: 해당 예약 모달 직접 오픈
+    cta: {
+      booker:   CTA_BOOKING_DETAIL,
+      attendee: CTA_BOOKING_DETAIL,
+    },
+    isCancelledStyle: false,
+  },
+
+  former_booker: {
+    subjectTag:         '[예약자변경]',
+    headerLabel:        '회의 예약자에서 변경되었습니다',
+    headerColor:        COLORS.GRAY,
+    recipients:         'former_booker',          // payload.former_booker_user_id 1명 해석
+    inappType:          'booking_former_booker',
+    inappTitleBooker:   '회의 예약자에서 변경되었습니다',   // formerBooker는 role='booker'로 렌더됨
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '',
+    contextBanner: {
+      booker: { ...BANNER_PRESETS.neutral, title: '관리자에 의해 이 회의의 예약자가 다른 사용자로 변경되었습니다.', body: '회원님은 더 이상 이 예약의 예약자가 아닙니다.' },
+    },
+    cta:                null,                       // 더 이상 본인 예약이 아니므로 CTA 없음 (attendee_removed와 동일)
+    isCancelledStyle:   true,                       // 회색 처리 (소유권 상실)
+  },
 
   cancelled: {
     subjectTag:         '[예약취소]',

@@ -16,6 +16,11 @@ import { isMyBooking } from '../../utils/bookingOwnership'  // ← [2026-04-24 P
  * BookingDetailModal (export name: DetailModal)
  *
  * ✅ 변경 이력
+ *  - [2026-06-12] 관리자 "예약자 변경" 버튼 추가 (onChangeOwner prop)
+ *    · 노출: Admin·타인 + Admin·본인의 "미래 + confirmed" 분기 (확정 정책 #4: 본인 예약 포함)
+ *    · BtnChangeOwner(secondary) → onChangeOwner(b)로 ChangeOwnerModal 오픈
+ *    · 에메랄드 승인룸도 예약자 변경 허용(룸/시간 불변) — BtnEdit만 isApprovedAdminRoom 제외 유지
+ *    · 임박(시작 10분 이내 showCheckinWait/체크인 활성) 분기에는 미노출 (UI 혼잡 회피)
  *  - [2026-05-16] 날짜 필드에 요일 풀네임 표시 (사용자 요청)
  *    · 표시 형식: "2026년 5월 27일" → "2026년 5월 27일 수요일"
  *    · 헬퍼: fmtTSDateFull → fmtTSDateFullWithDayFull 교체
@@ -140,7 +145,7 @@ function fmtDuration(startISO: string, endISO: string): string {
   return `${m}분`
 }
 
-export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarlyEnd=null,currentUser, currentUserId='', currentUserEmail='', rooms:rp=[], users:up=[], isAdmin=false, onApprove=null, onReject=null, onForceCancel=null}: any) {  // ← [2026-04-29] onEarlyEnd 추가 — 체크인 완료 후 조기반납 버튼용  // ← [2026-04-24 P1-hotfix] currentUserEmail 추가 — MyPage 방식 참석자 판정용
+export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarlyEnd=null,currentUser, currentUserId='', currentUserEmail='', rooms:rp=[], users:up=[], isAdmin=false, onApprove=null, onReject=null, onForceCancel=null, onChangeOwner=null}: any) {  // ← [2026-06-12] onChangeOwner 추가 — 관리자 예약자 변경 버튼용  // ← [2026-04-29] onEarlyEnd 추가 — 체크인 완료 후 조기반납 버튼용  // ← [2026-04-24 P1-hotfix] currentUserEmail 추가 — MyPage 방식 참석자 판정용
   const { isMobile } = useBreakpoint();
 
   /* ── [2026-05-14] body 스크롤 가능 힌트 (하단 그라데이션 fade) ─────────────────
@@ -473,6 +478,10 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
         // onClose() 없음 — confirmAndEarlyEnd가 setModal('confirmEarlyEnd')로 모달 교체하는 구조
         // onClose() 같이 호출 시 React 18 배칭으로 setModal(null)이 마지막 적용 → 다이얼로그 소멸
         const BtnEarlyEnd = () => <Button variant="primary" flex onClick={()=>onEarlyEnd(b.id)}>조기반납</Button>
+        // ← [2026-06-12] 예약자 변경 버튼 (관리자 전용, 미래+confirmed)
+        //   onClose() 없음 — onChangeOwner가 setModal('changeOwner')로 모달 교체 (BtnForce 동일 패턴)
+        //   변경(BtnEdit)과 구분: secondary 스타일로 시각 분리
+        const BtnChangeOwner = () => <Button variant="secondary" flex onClick={()=>onChangeOwner(b)}>예약자 변경</Button>
 
         // ── [2026-05-12] "곧 시작" 비활성 버튼 표시 조건 ──────────────
         //   isFuture(시작 전) + tl > CHECKIN_EARLY_MIN(5분) + tl <= 10 (10~5분 전) + confirmed(승인된) + 미취소/미체크인
@@ -492,8 +501,9 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
         if (isAdmin && !isOwner) {
           // pending → 닫기 + 거절 + 승인
           if (adminCanApprove) return btnWrap(<><BtnClose />{onReject&&<BtnReject />}{onApprove&&<BtnApprove />}</>)
-          // confirmed 미래 → 닫기 + 변경 + 강제취소
-          if (b.status === 'confirmed' && isFuture) return btnWrap(<><BtnClose />{onEdit&&!isApprovedAdminRoom&&<BtnEdit />}{onForceCancel&&<BtnForce />}</>)
+          // confirmed 미래 → 닫기 + 변경 + 예약자 변경 + 강제취소
+          //   ← [2026-06-12] BtnChangeOwner 추가 (미래+confirmed, 에메랄드 승인룸도 예약자 변경은 허용 — 룸/시간 불변)
+          if (b.status === 'confirmed' && isFuture) return btnWrap(<><BtnClose />{onEdit&&!isApprovedAdminRoom&&<BtnEdit />}{onChangeOwner&&<BtnChangeOwner />}{onForceCancel&&<BtnForce />}</>)
           // 진행중 → 닫기 + 강제취소
           if (isAct) return btnWrap(<><BtnClose />{onForceCancel&&<BtnForce />}</>)
           return btnWrap(<BtnClose />)
@@ -512,8 +522,9 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
           // ← [2026-05-12] 10~5분 전 confirmed → 취소 + 변경 + "곧 시작"(비활성)
           //   에메랄드룸은 변경 불가 → 취소 + 곧시작만
           if (showCheckinWait) return btnWrap(<><BtnCancel />{!isApprovedAdminRoom&&<BtnEdit />}<BtnCheckinWait /></>)
-          // 미래 confirmed → 변경 + 취소 (승인완료 에메랄드룸은 취소만)
-          if (isFuture && b.status === 'confirmed') return btnWrap(<><BtnCancel />{!isApprovedAdminRoom&&<BtnEdit />}</>)
+          // 미래 confirmed → 변경 + 예약자 변경 + 취소 (승인완료 에메랄드룸은 변경 제외, 예약자 변경은 허용)
+          //   ← [2026-06-12] BtnChangeOwner 추가 (관리자 본인 예약도 변경 가능 — 확정 정책 #4)
+          if (isFuture && b.status === 'confirmed') return btnWrap(<><BtnCancel />{!isApprovedAdminRoom&&<BtnEdit />}{onChangeOwner&&<BtnChangeOwner />}</>)
           return btnWrap(<BtnClose />)
         }
 
