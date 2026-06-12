@@ -23,6 +23,7 @@
 
 export const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
   booking_created:          "#16A34A",
+  booking_created_on_behalf:"#16A34A",  // ← [2026-06-12] 대리 예약 — 생성 계열 그린
   booking_pending:          "#D97706",
   booking_approved:         "#16A34A",
   booking_rejected:         "#DC2626",

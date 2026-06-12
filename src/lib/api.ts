@@ -347,12 +347,25 @@ export async function saveBookings(bookings: Booking[]): Promise<void> {
 }
 
 // ── 단건 생성 ────────────────────────────────────────────────────────────────
-export async function insertBooking(booking: Booking): Promise<Booking> {
+// ← [2026-06-12] 대리 예약 지원: booker override 파라미터 추가
+//   · 미지정(기존 호출) → 로그인 사용자(auth.getUser)가 예약자 (동작 100% 동일)
+//   · 지정(관리자 대리 예약) → 명시한 user_id/email로 예약자 저장
+//   · RLS 확인 결과 bookings_insert with_check = auth.role()='authenticated' 뿐 →
+//     타인 user_id INSERT가 RLS에 막히지 않음 (SECURITY DEFINER RPC 불필요)
+//   · user_name/user_dept는 booking.user/booking.dept(폼 주입)에서 그대로 옴 — 호출부가 요청자 값으로 세팅
+export async function insertBooking(
+  booking: Booking,
+  booker?: { user_id: string; email: string },   // ← 대리 예약 시 예약자 명시 지정
+): Promise<Booking> {
   if (!isSupabaseEnabled) {
     localSaveBookings([...localGetBookings(), booking])
     return booking
   }
   const { data: { user } } = await supabase.auth.getUser()
+
+  // 예약자 결정: override 있으면 그 값, 없으면 로그인 사용자
+  const bookerUserId = booker?.user_id ?? user?.id ?? ''      // ← [대리예약] override 우선
+  const bookerEmail  = booker?.email  ?? user?.email ?? ''    // ← [대리예약] override 우선
 
   // 서버사이드 충돌 검사
   const { data: conflict } = await supabase.rpc('check_booking_conflict', {
@@ -363,7 +376,7 @@ export async function insertBooking(booking: Booking): Promise<Booking> {
 
   const { data, error } = await supabase
     // ← [2026-04-24 P3-2] user.email도 함께 전달 — bookings.user_email 컬럼에 저장 (isBooker OR 판정용)
-    .from('bookings').insert(bookingToRow(booking, user?.id ?? '', user?.email ?? '')).select().single()
+    .from('bookings').insert(bookingToRow(booking, bookerUserId, bookerEmail)).select().single()  // ← [2026-06-12] booker override 반영
 
   if (error) {
     // DB Exclusion Constraint 위반 (23P01) — 동시 요청으로 인한 더블부킹 차단
@@ -908,6 +921,7 @@ export type AuditAction =
   | 'BOOKING_EARLY_END'
   | 'ADMIN_FORCE_CANCEL'
   | 'BOOKING_OWNER_CHANGED'   // ← [2026-06-12] 관리자 예약자(소유권) 변경
+  | 'BOOKING_CREATED_ON_BEHALF'  // ← [2026-06-12] 관리자 대리 예약 생성
 
 // ── Booking 변경 diff 계산 ─────────────────────────────────────────────────
 // [2026-04-29 Phase 1] audit_log + 변경 메일 본문 비교용 단일 진실 소스

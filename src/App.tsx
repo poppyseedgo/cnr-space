@@ -707,7 +707,7 @@ function AppContent() {
 
   // ── 이메일 알림 발송 (Fire & Forget — 실패해도 예약 로직에 영향 없음) ──
   const sendNotification = useCallback(async (
-    type: 'created' | 'updated' | 'cancelled' | 'noshow' | 'pending' | 'approved' | 'rejected' | 'attendee_removed' | 'early_end' | 'owner_changed' | 'former_booker',  // ← [2026-06-12] owner_changed/former_booker 추가
+    type: 'created' | 'updated' | 'cancelled' | 'noshow' | 'pending' | 'approved' | 'rejected' | 'attendee_removed' | 'early_end' | 'owner_changed' | 'former_booker' | 'created_on_behalf',  // ← [2026-06-12] created_on_behalf 추가 (대리 예약)
     booking: any,
   ) => {
     try {
@@ -739,7 +739,9 @@ function AppContent() {
     try {
       const d     = date || selectedDate;
       const fStart = timeToMin(form.start), fEnd = timeToMin(form.end);
-      const recur  = form.recur || "NEVER"; // "NEVER" | "EVERY_DAY" | "EVERY_WEEK"
+      // ← [2026-06-12] 대리 예약 대상(요청자). 어드민 + bookerOverride 있을 때만. 대리 예약은 단건만(되풀이 불가).
+      const onBehalf = (isAdmin && form.bookerOverride) ? form.bookerOverride : null;
+      const recur  = onBehalf ? "NEVER" : (form.recur || "NEVER"); // "NEVER" | "EVERY_DAY" | "EVERY_WEEK"
 
       // ── 기본 유효성 ──
       if (!form.room_id || !form.title.trim() || fStart >= fEnd) {
@@ -810,11 +812,11 @@ function AppContent() {
           attendees:    form.attendees || [],
           start_at:     makeTZ(td, form.start),
           end_at:       makeTZ(td, form.end),
-          user:         currentUser,
-          dept:         currentDept,
+          user:         onBehalf ? onBehalf.name : currentUser,   // ← [2026-06-12 대리예약] 요청자 이름
+          dept:         onBehalf ? onBehalf.dept : currentDept,   // ← [2026-06-12 대리예약] 요청자 부서
           checkedIn:    false,
           autoCancelled:false,
-          status:       isAdminOnlyRoom ? 'pending' : 'confirmed',
+          status:       onBehalf ? 'confirmed' : (isAdminOnlyRoom ? 'pending' : 'confirmed'),  // ← [2026-06-12 대리예약] 관리자 권한으로 즉시 확정(에메랄드 포함)
           createdAt,
           recurGroupId,  // null이면 단건, 값이 있으면 반복 그룹
         };
@@ -831,7 +833,7 @@ function AppContent() {
       // ── Supabase 저장 ──
       try {
         for (const nb of newBookings) {
-          await insertBooking(nb);
+          await insertBooking(nb, onBehalf ? { user_id: onBehalf.user_id, email: onBehalf.email } : undefined);  // ← [2026-06-12 대리예약] 예약자 override 전달
         }
       } catch (err: any) {
         showToast(err.message ?? "예약 저장에 실패했습니다.", "error");
@@ -849,20 +851,34 @@ function AppContent() {
         setModal({ type: "bookingDone", data: newBookings[0] });
         // 이메일 알림 발송
         const createdRoom = rooms.find(r => r.room_id === newBookings[0].room_id)
-        const notifType = isAdminOnlyRoom ? 'pending' : 'created'
-        const notifPayload = {
-          ...newBookings[0],
-          user_id:    authUser?.user_id ?? '',
-          user_name:  currentUser,
-          user_email: authUser?.email ?? '',
-          user_dept:  currentDept,
-          room_name:  createdRoom?.room_name ?? createdRoom?.room_name_ko ?? String(newBookings[0].room_id) + 'F',
-        }
-        if (isAdminOnlyRoom) {
-          // 승인 요청 — admin emails는 Edge Fn이 DB에서 직접 조회
-          sendNotification('pending', notifPayload)
+        const roomNameForNotif = createdRoom?.room_name ?? createdRoom?.room_name_ko ?? String(newBookings[0].room_id) + 'F'
+        if (onBehalf) {
+          // ← [2026-06-12 대리예약] 요청자+참석자에게 'created_on_behalf' — 대리 생성한 관리자 정보 포함
+          sendNotification('created_on_behalf', {
+            ...newBookings[0],
+            user_id:      onBehalf.user_id,                 // 예약자 = 요청자 (resolver 수신자 해석 기준)
+            user_name:    onBehalf.name,
+            user_email:   onBehalf.email,
+            user_dept:    onBehalf.dept,
+            admin_name:   currentUser,                      // 대리 생성한 관리자 (이메일 "대리 예약" 행)
+            admin_avatar: (authUser as any)?.avatar_url ?? null,
+            room_name:    roomNameForNotif,
+          })
         } else {
-          sendNotification('created', notifPayload)
+          const notifPayload = {
+            ...newBookings[0],
+            user_id:    authUser?.user_id ?? '',
+            user_name:  currentUser,
+            user_email: authUser?.email ?? '',
+            user_dept:  currentDept,
+            room_name:  roomNameForNotif,
+          }
+          if (isAdminOnlyRoom) {
+            // 승인 요청 — admin emails는 Edge Fn이 DB에서 직접 조회
+            sendNotification('pending', notifPayload)
+          } else {
+            sendNotification('created', notifPayload)
+          }
         }
       } else {
         setModal({ type: "recurDone", data: {
@@ -893,16 +909,20 @@ function AppContent() {
       //   결과: notifications 테이블에 같은 알림이 2번 INSERT되던 중복 문제 해결
       for (const bk of newBookings) {
         insertAuditLog({
-          action: 'BOOKING_CREATED', entityType: 'booking', entityId: bk.id,
-          actorName: currentUser,
-          afterData: { title: bk.title, room_id: bk.room_id, start_at: bk.start_at, end_at: bk.end_at }
+          // ← [2026-06-12 대리예약] onBehalf면 전용 action + 요청자/관리자 정보 기록 (관리자 화면 노출용)
+          action: onBehalf ? 'BOOKING_CREATED_ON_BEHALF' : 'BOOKING_CREATED', entityType: 'booking', entityId: bk.id,
+          actorName: currentUser,  // 대리 생성한 관리자
+          afterData: onBehalf
+            ? { title: bk.title, room_id: bk.room_id, start_at: bk.start_at, end_at: bk.end_at,
+                booker_user_id: onBehalf.user_id, booker_name: onBehalf.name, booker_dept: onBehalf.dept, on_behalf_by: currentUser }
+            : { title: bk.title, room_id: bk.room_id, start_at: bk.start_at, end_at: bk.end_at }
         }).catch(() => {})
       }
       return true;
     } finally {
       setIsSubmitting(false);
     }
-  }, [bookings, selectedDate, currentUser, currentDept, showToast, isSubmitting, isAdmin]);
+  }, [bookings, selectedDate, currentUser, currentDept, showToast, isSubmitting, isAdmin, rooms, authUser, sendNotification]);  // ← [2026-06-12] rooms/authUser/sendNotification 의존성 추가
 
   const checkIn = useCallback(async (id) => {
     // pending 상태면 체크인 불가

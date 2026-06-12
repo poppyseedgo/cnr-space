@@ -62,6 +62,7 @@
 export type NotificationType =
   // 예약 생성
   | 'created'                 // 일반 룸 예약 확정
+  | 'created_on_behalf'       // ← [2026-06-12] 관리자 대리 예약 (요청자+참석자에게)
   | 'pending'                 // 에메랄드 승인 요청 접수
   // 예약 변경
   | 'updated'                 // 예약 정보 변경
@@ -228,6 +229,31 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
     inappTitleAdmin:    '',
     contextBanner:      null,
     // ← [P2 v7] CTA 공통 규칙: 해당 예약 모달 직접 오픈
+    cta: {
+      booker:   CTA_BOOKING_DETAIL,
+      attendee: CTA_BOOKING_DETAIL,
+    },
+    isCancelledStyle: false,
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // 대리 예약 — 관리자가 다른 사용자를 예약자로 지정해 생성 (← [2026-06-12] 신규)
+  // ──────────────────────────────────────────────────────────────────────
+  //   recipients: 요청자(booker) + 참석자. 이메일 "처리자" 행에 대리 생성한 관리자 표시
+  //   (email-templates.ts L417 조건에 created_on_behalf 추가 + admin_name/admin_avatar 전달)
+  created_on_behalf: {
+    subjectTag:         '[대리예약]',
+    headerLabel:        '관리자가 대신 예약했습니다',
+    headerColor:        COLORS.INDIGO,
+    recipients:         'booker_and_attendees',
+    inappType:          'booking_created_on_behalf',
+    inappTitleBooker:   '관리자가 회원님을 대신해 예약했습니다',
+    inappTitleAttendee: '회의 참석자로 초대되었습니다',
+    inappTitleAdmin:    '',
+    contextBanner: {
+      booker:   { ...BANNER_PRESETS.info, title: '관리자가 회원님을 대신하여 회의실을 예약했습니다.', body: '회원님이 이 예약의 예약자입니다. 마이페이지에서 확인 및 관리할 수 있습니다.' },
+      attendee: { ...BANNER_PRESETS.info, title: '회의 참석자로 초대되었습니다.' },
+    },
     cta: {
       booker:   CTA_BOOKING_DETAIL,
       attendee: CTA_BOOKING_DETAIL,

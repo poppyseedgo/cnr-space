@@ -726,6 +726,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       end:        defEnd,
       memo:       "",
       attendees:  [],
+      bookerOverride: null,  // ← [2026-06-12] 대리 예약 대상(요청자). null=본인 예약
     };
   });
   const pickerRef    = useRef(null);
@@ -744,6 +745,10 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   const [graphUsers,    setGraphUsers]    = useState<AppUser[]>([]);
   const [isSearching,   setIsSearching]   = useState(false);
   const [searchedQuery, setSearchedQuery] = useState("");
+  // ← [2026-06-12] 대리 예약 — 어드민 전용 예약자 피커 검색 상태
+  const [bookerQ,     setBookerQ]     = useState("");
+  const [bookerFocus, setBookerFocus] = useState(false);
+  const bookerRef = useRef<HTMLDivElement>(null);
 
   // [2026-04-17 Step 3] 참석자 검색: DB 호출 → 메모리 필터링으로 전환
   // ────────────────────────────────────────────────────────────────────
@@ -798,6 +803,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                     || (pickerRef2.current && pickerRef2.current.contains(e.target));
       if(!inPicker) setShowPicker(false);
       if(attendeeRef.current && !attendeeRef.current.contains(e.target)) setAttendeeFocus(false);
+      if(bookerRef.current && !bookerRef.current.contains(e.target)) setBookerFocus(false);  // ← [2026-06-12] 예약자 피커 외부 클릭 닫기
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
@@ -1085,6 +1091,111 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       </div>
     </div>
   );
+
+  // ── [2026-06-12] 대리 예약 — 어드민 전용 예약자 피커 섹션 ───────────────────
+  //   기본값: 본인(currentUser) 예약. "다른 사람으로 지정"하면 form.bookerOverride에 요청자 저장.
+  //   요청자 선택 시 단건만 생성됨(되풀이 불가) — addBooking에서 recur 강제 NEVER.
+  //   검색: usersProp 메모리 필터(AttendeeSection 동일 패턴, DB 호출 0회).
+  const bookerSuggestions = (() => {
+    const q = bookerQ.trim().toLowerCase();
+    if (q.length < 1) return [] as AppUser[];
+    return (usersProp as AppUser[])
+      .filter(u => {
+        if (currentUserEmail && u.email === currentUserEmail) return false;  // 본인 제외(기본값이 본인)
+        if (u.is_active === false) return false;                              // 퇴사자 제외
+        if (!u.email) return false;                                           // user_email NOT NULL — 이메일 없는 사용자 제외
+        const name  = (u.name  ?? '').toLowerCase();
+        const email = (u.email ?? '').toLowerCase();
+        const dept  = (u.dept  ?? '').toLowerCase();
+        return name.includes(q) || email.includes(q) || dept.includes(q);
+      })
+      .slice(0, 8);
+  })();
+
+  const pickBooker = (u: AppUser) => {                  // ← 요청자 선택
+    set("bookerOverride", { user_id: u.user_id, name: u.name, email: u.email, dept: u.dept ?? '', avatar_url: (u as any).avatar_url ?? null });
+    setBookerQ("");
+    setBookerFocus(false);
+  };
+  const clearBooker = () => set("bookerOverride", null); // ← 본인으로 되돌리기
+
+  const BookerSection = () => {
+    const ov = (form as any).bookerOverride;
+    return (
+      <div>
+        <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:6,letterSpacing:"0.4px"}}>
+          예약자 <span style={{fontWeight:400,color:"#CBD5E1"}}>(관리자 · 대리 예약)</span>
+        </label>
+
+        {ov ? (
+          /* 대리 대상 선택됨 */
+          <>
+            <div style={{display:"flex",alignItems:"center",gap:10,background:"#EEF2FF",border:"1px solid #C7D2FE",
+              borderRadius:10,padding:"10px 12px"}}>
+              <UserAvatar name={ov.name} avatarUrl={ov.avatar_url ?? null} size={32} />
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:600,color:"#111111"}}>{ov.name}</div>
+                <div style={{fontSize:11,color:"#6366F1"}}>{ov.dept}{ov.dept && ov.email ? " · " : ""}{ov.email}</div>
+              </div>
+              <button onClick={clearBooker} type="button"
+                style={{fontSize:12,fontWeight:600,color:"#4F46E5",background:"transparent",border:0,cursor:"pointer",flexShrink:0}}>
+                본인으로
+              </button>
+            </div>
+            <div style={{marginTop:6,fontSize:11,color:"#64748B",lineHeight:1.5}}>
+              이 사용자를 예약자로 지정해 대신 예약합니다. 대리 예약은 단건만 생성됩니다.
+            </div>
+          </>
+        ) : (
+          /* 기본: 본인 + 다른 사람 검색 */
+          <>
+            <div style={{display:"flex",alignItems:"center",gap:10,background:"#F8FAFC",border:"1px solid #E2E8F0",
+              borderRadius:10,padding:"10px 12px",marginBottom:8}}>
+              <UserAvatar name={currentUser} avatarUrl={null} size={28} />
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:600,color:"#111111"}}>{currentUser} <span style={{fontSize:11,fontWeight:400,color:"#94A3B8"}}>(본인)</span></div>
+              </div>
+            </div>
+            <div ref={bookerRef} style={{position:"relative"}}>
+              <input
+                value={bookerQ}
+                onChange={e=>{setBookerQ(e.target.value);setBookerFocus(true);}}
+                onFocus={()=>setBookerFocus(true)}
+                placeholder="다른 사람을 예약자로 지정 (이름/부서 검색)"
+                style={{width:"100%",background:"#F8FAFC",border:`1px solid ${bookerFocus?"#6366F1":"#E2E8F0"}`,
+                  borderRadius:10,color:"#111111",padding:"10px 14px",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+              {bookerFocus && bookerSuggestions.length > 0 && (
+                <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:400,
+                  background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
+                  boxShadow:"0 8px 24px rgba(0,0,0,0.10)",overflow:"hidden"}}>
+                  {bookerSuggestions.map(u => (
+                    <div key={u.user_id} onClick={()=>pickBooker(u)}
+                      style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",cursor:"pointer",borderBottom:"1px solid #F8FAFC"}}
+                      onMouseEnter={e=>(e.currentTarget.style.background="#F8FAFC")}
+                      onMouseLeave={e=>(e.currentTarget.style.background="#fff")}>
+                      <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={28} />
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:600,color:"#111111"}}>{u.name}</div>
+                        <div style={{fontSize:11,color:"#94A3B8"}}>{u.dept} · {u.email}</div>
+                      </div>
+                      <span style={{fontSize:11,color:"#CBD5E1",flexShrink:0}}>지정</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {bookerFocus && bookerQ.trim().length > 0 && bookerSuggestions.length === 0 && (
+                <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:400,
+                  background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
+                  padding:"12px 14px",fontSize:12,color:"#94A3B8",boxShadow:"0 8px 24px rgba(0,0,0,0.08)"}}>
+                  검색 결과가 없습니다
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
 
   // ── 시간 버튼 picker 단계: "start" | "end"
   const [timePickerStep, setTimePickerStep] = useState("start");
@@ -1696,6 +1807,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               </div>
               {/* 참석자 */}
               {AttendeeSection()}
+              {/* 예약자(대리) — [2026-06-12] 어드민 전용, 생성 시에만 */}
+              {isAdmin && !editBooking && BookerSection()}
               {/* 반복 예약 — [2026-05-28] 어드민 전용 재개방 (게이트 isAdmin, 배너/ disabled 제거) */}
               {isAdmin && !editBooking && <div>{/* ← [2026-05-28] !editBooking → isAdmin && !editBooking: 비어드민은 섹션 미표시 */}
                 <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:6,letterSpacing:"0.4px"}}>반복 예약</label>
@@ -2465,6 +2578,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 </span>
               </div>
             </Field>
+            {/* 예약자(대리) — [2026-06-12] 어드민 전용, 생성 시에만 */}
+            {isAdmin && !editBooking && BookerSection()}
             {/* 반복 예약 — [2026-05-28] 어드민 전용 재개방 (false 게이트 제거 → isAdmin) */}
             {isAdmin && !editBooking && <div>{/* ← [2026-05-28] `false &&` → `isAdmin &&`: 어드민만 섹션 노출 */}
               <label style={{fontSize:13,fontWeight:600,color:"#111",display:"block",marginBottom:8}}>반복 예약</label>

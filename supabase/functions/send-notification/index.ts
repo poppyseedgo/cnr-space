@@ -108,6 +108,7 @@ async function sendTeamsCard(type: string, booking: any): Promise<void> {
 
   const colorMap: Record<string, string> = {
     created:          'Good',
+    created_on_behalf:'Good',     // ← [2026-06-12] 대리 예약
     pending:          'Warning',
     approved:         'Good',
     rejected:         'Attention',
@@ -122,6 +123,7 @@ async function sendTeamsCard(type: string, booking: any): Promise<void> {
 
   const titleMap: Record<string, string> = {
     created:          '✅ 새 예약이 생성되었습니다',
+    created_on_behalf:'✅ 관리자 대리 예약이 생성되었습니다',   // ← [2026-06-12]
     pending:          '📋 에메랄드 룸 승인 요청',
     approved:         '✅ 예약이 승인되었습니다',
     rejected:         '❌ 예약이 거절되었습니다',
@@ -417,6 +419,7 @@ Deno.serve(async (req: Request) => {
       'created', 'pending', 'updated', 'cancelled', 'rejected',
       'approved', 'noshow', 'pending_expiring', 'pending_expired',
       'owner_changed',   // ← [2026-06-12] 예약자 변경 (former_booker는 Teams 제외 — attendee_removed와 동일)
+      'created_on_behalf',  // ← [2026-06-12] 대리 예약
     ]
     if (teamsTargetTypes.includes(type)) {
       sendTeamsCard(type, booking).catch(() => {})

@@ -419,6 +419,11 @@ function renderInfoCard(input: EmailRenderInput): string {
     rows.push(renderInfoRow('처리자', renderUserRow(input.booking.admin_name, '', input.booking.admin_avatar, suffix)))
   }
 
+  // ← [2026-06-12] 대리 예약자 행 — 대신 예약한 관리자 표시
+  if (input.type === 'created_on_behalf' && input.booking.admin_name) {
+    rows.push(renderInfoRow('대리 예약', renderUserRow(input.booking.admin_name, '', input.booking.admin_avatar, '(관리자)')))
+  }
+
   return `<tr><td style="padding:${D.SECTION_GAP} 0;">` +
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rows.join('')}</table>` +
   `</td></tr>`
