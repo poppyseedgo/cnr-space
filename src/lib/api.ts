@@ -1479,3 +1479,75 @@ export async function manualDepartUser(
 
   return { cancelledCount }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 방문로그(Visitor Log) 관리 API — Phase 5
+// ───────────────────────────────────────────────────────────────────────────
+// 게이트: 모든 호출이 서버(RPC/Edge)에서 visitor_verify_access(ADMIN·활성 AND 2차 비번)로 재검증됨.
+// pw는 UI 잠금해제 후 메모리 state로 유지하며 매 호출에 첨부 (stateless 검증).
+// 이미지는 Storage 경로만 오고, signed URL은 visitorSignedUrls로 생성.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const VISITOR_BUCKET = 'visitor-signatures'
+
+export interface VisitorLog {
+  id:            string
+  purpose:       string
+  card_no:       number | null
+  returned:      boolean
+  returned_at:   string | null
+  visited_at:    string
+  name_img_path: string
+  org_img_path:  string
+  sig_img_path:  string
+}
+
+// 2차 비번 검증 (잠금해제) — true/false 반환 (예외 없음)
+export async function visitorVerifyAccess(pw: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('visitor_verify_access', { p_pw: pw })
+  if (error) throw new Error(error.message)
+  return data === true
+}
+
+// 전체 기록 조회 (ADMIN + 2차 비번). 잘못된 비번이면 서버가 FORBIDDEN throw.
+export async function visitorListLogs(pw: string): Promise<VisitorLog[]> {
+  const { data, error } = await supabase.rpc('visitor_admin_list_logs', { p_pw: pw })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as VisitorLog[]
+}
+
+// 카드 반납 처리. 실제 처리 시 true.
+export async function visitorReturnCard(pw: string, id: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('visitor_admin_return_card', { p_pw: pw, p_id: id })
+  if (error) throw new Error(error.message)
+  return data === true
+}
+
+// 기록 삭제 (Storage 파일 + DB 행 원자 삭제) — Edge Function. 관리자 세션 토큰 첨부.
+export async function visitorDeleteLog(pw: string, id: string): Promise<void> {
+  const url = import.meta.env.VITE_SUPABASE_URL as string
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token ?? ''
+  const res = await fetch(`${url}/functions/v1/visitor-admin-delete`, {
+    method:  'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ pw, id }),
+  })
+  const j = await res.json().catch(() => ({}))
+  if (!res.ok || !j.ok) throw new Error(j?.error ?? `삭제 실패 (HTTP ${res.status})`)
+}
+
+// 여러 경로 → signed URL 일괄 생성 (경로→URL 맵). 만료 10분.
+export async function visitorSignedUrls(paths: string[]): Promise<Record<string, string>> {
+  const uniq = Array.from(new Set(paths.filter(Boolean)))
+  if (uniq.length === 0) return {}
+  const { data, error } = await supabase.storage
+    .from(VISITOR_BUCKET)
+    .createSignedUrls(uniq, 600)
+  if (error) throw new Error(error.message)
+  const map: Record<string, string> = {}
+  for (const item of data ?? []) {
+    if (item.path && item.signedUrl) map[item.path] = item.signedUrl
+  }
+  return map
+}

@@ -42,6 +42,7 @@ import { BookingStatusBadge } from '../components/common/BookingStatusBadge'  //
 import { AdminSideNav, type AdminTabId } from '../components/layout/AdminSideNav'
 // ← [2026-05-06 Admin Phase C] 승인 관리 테이블 컴포넌트 신설 (Figma node 451:3534, Phase B 공통 컴포넌트 사용)
 import { AdminApprovalTable } from '../components/common/AdminApprovalTable'
+import { VisitorLogPanel } from '../components/common/VisitorLogPanel'  // ← [2026-07-10] 방문로그 관리 패널
 // ← [2026-05-11 Phase 2] isNoshow 통일 — utils/noshow.ts SSOT 사용
 //   기존 분산: L186 / L783 / L1073 (모두 옛 autoCancelled 룰)
 //   변경 사유: cron ②③ 비활성화 후 markNoshow API가 status='confirmed' 유지 → 확정 룰이 더 정확
@@ -673,7 +674,7 @@ function AggTable({ rows, cols, onExport, onRowClick, onHeaderClick, activeSortK
 // ← [2026-05-06 Admin Phase C] currentUserId/currentUserEmail 추가 — AdminApprovalTable 내 BookingStatusBadge 판정용
 // ← [2026-05-06 사이드 sticky 핫픽스] headerHeight 추가 — 사이드 네비 fixed top 위치 계산용
 export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject, onForceCancel, onDetail, currentUserId = '', currentUserEmail = '', headerHeight = 0 }) {
-  const TABS = ['dashboard','bookings','approvals','rooms','users']
+  const TABS = ['dashboard','bookings','approvals','rooms','users','visitors']  // ← [2026-07-10] visitors(방문 기록) 추가
   const getTabFromHash = () => {
     const hash = window.location.hash.replace('#', '')
     if (hash.startsWith('admin-booking-')) return 'approvals'  // 딥링크: 승인 관리 탭으로
@@ -787,6 +788,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
       {activeTab==='approvals' && <AdminApprovalTable bookings={bookings} rooms={rooms} users={users} currentUserId={currentUserId} currentUserEmail={currentUserEmail} onApprove={onApprove} onReject={onReject} onDetail={onDetail} onCsvClick={() => showToast('CSV 다운로드 기능은 추후 구현 예정입니다.', 'info')}/>}
       {activeTab==='rooms'     && <AdminRooms     showToast={showToast} isMobile={isMobile}/>}
       {activeTab==='users'     && <AdminUsers     users={users} setUsers={setUsers} rooms={rooms} showToast={showToast} isMobile={isMobile}/>}{/* ← [2026-05-26] rooms prop 추가 — 노쇼 현황 DetailDrawer 드릴다운에서 회의실 이름 표시용 */}
+      {activeTab==='visitors'  && <VisitorLogPanel showToast={showToast} isMobile={isMobile}/>}{/* ← [2026-07-10] 방문로그 관리 (2차 비번 잠금 → 조회/반납/삭제/Excel) */}
         </div>
       </div>
     </>

@@ -52,11 +52,12 @@ import {
   DualScreenIcon,
   AsteriskIcon,
   BooksIcon,
+  VisitorLogIcon,   // ← [2026-07-10] 방문 기록 메뉴 아이콘
 } from '../icons/AdminMenuIcons'
 
 // ─── 활성 탭 ID (외부 export — 라우팅용) ────────────────────────────────────
 //   ※ AdminPage.tsx의 TABS 배열·setTab과 동기화. 비활성 메뉴는 여기 포함 안 됨.
-export type AdminTabId = 'dashboard' | 'approvals' | 'bookings' | 'users' | 'rooms'
+export type AdminTabId = 'dashboard' | 'approvals' | 'bookings' | 'users' | 'rooms' | 'visitors'  // ← [2026-07-10] visitors(방문 기록) 추가
 
 // ─── 메뉴 ID (내부 전용) ─────────────────────────────────────────────────────
 //   · 활성 5개 + 비활성 2개 = 7개
@@ -78,6 +79,7 @@ const MENU_ITEMS: MenuItem[] = [
   { id: 'bookings',  label: '예약 관리',   icon: <ScheduleIcon     /> },
   { id: 'users',     label: '사용자 관리', icon: <AccountCircleIcon/> },
   { id: 'rooms',     label: '회의실 관리', icon: <DualScreenIcon   /> },
+  { id: 'visitors',  label: '방문 기록',   icon: <VisitorLogIcon   /> },  // ← [2026-07-10] 방문로그 관리
   // ── [2026-05-11 Phase 1 신규] 비활성 메뉴 2개 (Figma 542:2227 / 542:2230) ──
   { id: 'resources', label: '자원 관리',   icon: <AsteriskIcon     />, disabled: true },
   { id: 'books',     label: '도서 관리',   icon: <BooksIcon        />, disabled: true },

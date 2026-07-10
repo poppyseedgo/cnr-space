@@ -110,3 +110,20 @@ export function BooksIcon({ size = 24 }: IconProps) {
     </svg>
   )
 }
+
+// ─── 8. visitor_log (방문 기록) ──────────────────────────────────────────────
+//   [2026-07-10] 방문로그 메뉴용. 신규 메뉴(Figma 미지정)라 stroke 스타일 아이콘.
+//   클립보드 + 서명 squiggle. currentColor 상속(활성/비활성 색 자동).
+//   추후 Figma에서 Material 아이콘 확정 시 교체 가능.
+export function VisitorLogIcon({ size = 24 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect x="5" y="4" width="14" height="17" rx="2" stroke="currentColor" strokeWidth="1.4" />
+      <rect x="9" y="2.6" width="6" height="3" rx="1" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M8.5 9h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M8.5 11.6h4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M8 16.2c.8-1.3 1.6-1.3 2 0s1.2 1.3 1.7 0 1-.8 3-.4"
+            stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
