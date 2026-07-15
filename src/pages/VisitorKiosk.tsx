@@ -1,20 +1,13 @@
 /**
- * VisitorKiosk.tsx — 방문 등록 키오스크 (공개 라우트 /visit)
+ * VisitorKiosk.tsx — 방문 등록 키오스크 (공개 라우트 /visit)  [텍스트 전용 개편]
  *
- * ✅ 설계 (2026-07-10, Phase 3)
- *  - 동료가 만든 단일 HTML(visitor-log-secure.html)의 "방문" 폼만 React로 이식.
- *    · 제거: 방문 기록 탭 / 관리자 비밀번호 게이트 / 직접 INSERT / RPC / Excel
- *            → 기록 관리는 Space 관리자 대시보드(Phase 5)로 이관
- *  - 익명 공개: 로그인 불필요. main.tsx가 /visit 경로에서 AuthProvider·로그인 게이트를
- *    거치지 않고 이 컴포넌트를 단독 렌더 (App과 분리된 트리).
- *  - 저장: 직접 Supabase INSERT → visitor-submit Edge Function 호출로 전환.
- *    · Edge Function이 service_role로 Storage 업로드 + visitor_logs INSERT를 원자 처리.
- *    · 익명 클라이언트는 테이블/버킷에 직접 접근하지 않음.
- *  - 디자인: 원본 aesthetic 보존 (Inter/Noto Sans KR, 캔버스 필기 3종, 고정 저장 바,
- *            성공 모달, 토스트). 스타일은 .vk- 접두어로 스코프.
- *  - 로고: 원본 base64 → public/visitor-logo.png 로 추출해 참조.
- *
- * 환경변수: VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY (게이트웨이 통과용 anon 키)
+ * ✅ 정책 (2026-07-10)
+ *  - 이름/소속 = 텍스트 입력 (이미지 처리 없음).
+ *      · 소속: 기존 소속 자동완성(visitor_org_suggest) — 없으면 직접 입력.
+ *  - 서명 = 캔버스 필기 → PNG (동의 증빙). 유일한 이미지.
+ *  - 카드 필수(1~10). 사용 중(미반납) 카드는 비활성화(visitor_cards_in_use).
+ *      · 동시 제출로 중복되면 서버가 CARD_IN_USE(409) → 안내 + 사용중 목록 갱신.
+ *  - 저장: visitor-submit Edge Function (익명). 서명만 Storage 업로드 + DB INSERT.
  */
 
 import { useRef, useState, useEffect, useImperativeHandle, forwardRef } from 'react'
@@ -24,99 +17,69 @@ const SB_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 const PURPOSES = ['점검', '미팅', '기타'] as const
 
-// ─── 필기/서명 캔버스 패드 ────────────────────────────────────────────────
-//   부모가 ref로 getData()(비었으면 null) / reset() 호출.
-interface SigPadHandle {
-  getData: () => string | null
-  reset:   () => void
-}
-interface SigPadProps {
-  placeholder: string
-  tall?:       boolean   // 서명은 tall(150px), 이름/소속은 short(72px)
+// 익명 RPC 호출 (anon key)
+async function rpc<T>(name: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${SB_URL}/rest/v1/rpc/${name}`, {
+    method:  'POST',
+    headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}`, 'Content-Type': 'application/json' },
+    body:    JSON.stringify(body ?? {}),
+  })
+  if (!res.ok) throw new Error(`rpc ${name} ${res.status}`)
+  return res.json() as Promise<T>
 }
 
-const SigPad = forwardRef<SigPadHandle, SigPadProps>(({ placeholder, tall }, ref) => {
+// ─── 서명 캔버스 패드 ────────────────────────────────────────────────────────
+interface SigPadHandle { getData: () => string | null; reset: () => void }
+
+const SigPad = forwardRef<SigPadHandle, { placeholder: string }>(({ placeholder }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const hasRef    = useRef(false)          // 획이 있는지 (렌더 밖 즉시 참조용)
-  const [empty, setEmpty] = useState(true) // placeholder 표시용 state
+  const hasRef    = useRef(false)
+  const [empty, setEmpty] = useState(true)
 
-  // ── 캔버스 초기화 + 그리기 이벤트 (마운트 1회) ──
   useEffect(() => {
-    const cv  = canvasRef.current
-    if (!cv) return
+    const cv = canvasRef.current; if (!cv) return
     const ctx = cv.getContext('2d')!
     let drawing = false
-
-    // DPR 대응 리사이즈 — 표시폭 기준으로 내부 해상도 스케일
     const resize = () => {
-      const r   = cv.getBoundingClientRect()
-      const dpr = window.devicePixelRatio || 2
-      cv.width  = r.width  * dpr
-      cv.height = r.height * dpr
-      ctx.scale(dpr, dpr)
-      ctx.lineCap  = 'round'
-      ctx.lineJoin = 'round'
-      ctx.lineWidth   = 1.6
-      ctx.strokeStyle = '#222'
+      const r = cv.getBoundingClientRect(); const dpr = window.devicePixelRatio || 2
+      cv.width = r.width * dpr; cv.height = r.height * dpr
+      ctx.scale(dpr, dpr); ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+      ctx.lineWidth = 1.6; ctx.strokeStyle = '#222'
     }
     resize()
-
     const pos = (e: MouseEvent | TouchEvent) => {
       const r = cv.getBoundingClientRect()
       const t = (e as TouchEvent).touches ? (e as TouchEvent).touches[0] : (e as MouseEvent)
       return { x: t.clientX - r.left, y: t.clientY - r.top }
     }
-    const start = (e: MouseEvent | TouchEvent) => {
-      e.preventDefault(); drawing = true
-      const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y)
-    }
-    const move = (e: MouseEvent | TouchEvent) => {
-      if (!drawing) return
-      e.preventDefault()
-      const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke()
-      if (!hasRef.current) { hasRef.current = true; setEmpty(false) }
-    }
-    const end = () => { drawing = false }
-
-    cv.addEventListener('mousedown', start)
-    cv.addEventListener('mousemove', move)
-    cv.addEventListener('mouseup', end)
-    cv.addEventListener('mouseleave', end)
+    const start = (e: MouseEvent | TouchEvent) => { e.preventDefault(); drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y) }
+    const move  = (e: MouseEvent | TouchEvent) => { if (!drawing) return; e.preventDefault(); const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); if (!hasRef.current) { hasRef.current = true; setEmpty(false) } }
+    const end   = () => { drawing = false }
+    cv.addEventListener('mousedown', start); cv.addEventListener('mousemove', move)
+    cv.addEventListener('mouseup', end); cv.addEventListener('mouseleave', end)
     cv.addEventListener('touchstart', start, { passive: false })
-    cv.addEventListener('touchmove', move, { passive: false })
-    cv.addEventListener('touchend', end)
-
-    // 빈 상태에서만 리사이즈 재적용 (그린 뒤 리사이즈하면 내용 지워지므로)
+    cv.addEventListener('touchmove', move, { passive: false }); cv.addEventListener('touchend', end)
     const onResize = () => { if (!hasRef.current) resize() }
     window.addEventListener('resize', onResize)
-
     return () => {
-      cv.removeEventListener('mousedown', start)
-      cv.removeEventListener('mousemove', move)
-      cv.removeEventListener('mouseup', end)
-      cv.removeEventListener('mouseleave', end)
-      cv.removeEventListener('touchstart', start)
-      cv.removeEventListener('touchmove', move)
-      cv.removeEventListener('touchend', end)
-      window.removeEventListener('resize', onResize)
+      cv.removeEventListener('mousedown', start); cv.removeEventListener('mousemove', move)
+      cv.removeEventListener('mouseup', end); cv.removeEventListener('mouseleave', end)
+      cv.removeEventListener('touchstart', start); cv.removeEventListener('touchmove', move)
+      cv.removeEventListener('touchend', end); window.removeEventListener('resize', onResize)
     }
   }, [])
 
   const clear = () => {
     const cv = canvasRef.current; if (!cv) return
-    cv.getContext('2d')!.clearRect(0, 0, cv.width, cv.height)
-    hasRef.current = false; setEmpty(true)
+    cv.getContext('2d')!.clearRect(0, 0, cv.width, cv.height); hasRef.current = false; setEmpty(true)
   }
-
   useImperativeHandle(ref, () => ({
-    getData: () => (hasRef.current && canvasRef.current)
-      ? canvasRef.current.toDataURL('image/png')
-      : null,
+    getData: () => (hasRef.current && canvasRef.current) ? canvasRef.current.toDataURL('image/png') : null,
     reset: clear,
   }))
 
   return (
-    <div className={`vk-canvas-box ${tall ? 'tall' : 'short'}`}>
+    <div className="vk-canvas-box tall">
       <canvas ref={canvasRef} />
       <span className={`vk-cv-ph ${empty ? '' : 'hidden'}`}>{placeholder}</span>
       <button type="button" className="vk-cv-clear" onClick={clear}>지우기</button>
@@ -127,53 +90,76 @@ SigPad.displayName = 'SigPad'
 
 // ─── 키오스크 본체 ────────────────────────────────────────────────────────
 export function VisitorKiosk() {
-  const nameRef = useRef<SigPadHandle>(null)
-  const orgRef  = useRef<SigPadHandle>(null)
-  const sigRef  = useRef<SigPadHandle>(null)
+  const sigRef = useRef<SigPadHandle>(null)
 
+  const [name, setName]       = useState('')
+  const [org, setOrg]         = useState('')
   const [purpose, setPurpose] = useState('')
-  const [cardNo,  setCardNo]  = useState('')       // '' = 미대여
-  const [submitting, setSubmitting] = useState(false)
-  const [showDone,   setShowDone]   = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
+  const [cardNo, setCardNo]   = useState('')
+  const [usedCards, setUsedCards] = useState<number[]>([])
 
-  const showToast = (msg: string) => {
-    setToast(msg); setTimeout(() => setToast(null), 2500)
+  const [orgSug, setOrgSug]   = useState<string[]>([])
+  const [showSug, setShowSug] = useState(false)
+  const orgTimer = useRef<number | undefined>(undefined)
+
+  const [submitting, setSubmitting] = useState(false)
+  const [showDone, setShowDone]     = useState(false)
+  const [toast, setToast]           = useState<string | null>(null)
+  const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2500) }
+
+  // 사용 중 카드 로드
+  const loadUsedCards = async () => {
+    try { setUsedCards(await rpc<number[]>('visitor_cards_in_use')) } catch { /* 무시 */ }
   }
+  useEffect(() => { loadUsedCards() }, [])
+
+  // 소속 자동완성 (디바운스 250ms)
+  const onOrgChange = (v: string) => {
+    setOrg(v)
+    if (orgTimer.current) window.clearTimeout(orgTimer.current)
+    const q = v.trim()
+    if (!q) { setOrgSug([]); setShowSug(false); return }
+    orgTimer.current = window.setTimeout(async () => {
+      try {
+        const list = await rpc<string[]>('visitor_org_suggest', { p_q: q })
+        setOrgSug(list); setShowSug(list.length > 0)
+      } catch { setOrgSug([]); setShowSug(false) }
+    }, 250)
+  }
+  const pickOrg = (v: string) => { setOrg(v); setShowSug(false); setOrgSug([]) }
 
   const handleSubmit = async () => {
-    const n = nameRef.current?.getData() ?? null
-    const o = orgRef.current?.getData()  ?? null
-    const s = sigRef.current?.getData()  ?? null
-
-    if (!n) { alert('이름을 작성해 주세요.'); return }
-    if (!o) { alert('소속을 작성해 주세요.'); return }
-    if (!purpose) { alert('방문 목적을 선택해 주세요.'); return }
-    if (!s) { alert('서명을 해주세요.'); return }
+    const sig = sigRef.current?.getData() ?? null
+    if (!name.trim())    { alert('이름을 입력해 주세요.'); return }
+    if (!org.trim())     { alert('소속을 입력해 주세요.'); return }
+    if (!purpose)        { alert('방문 목적을 선택해 주세요.'); return }
+    if (!cardNo)         { alert('Visitor Card를 선택해 주세요.'); return }
+    if (!sig)            { alert('서명을 해주세요.'); return }
 
     setSubmitting(true)
     try {
       const res = await fetch(`${SB_URL}/functions/v1/visitor-submit`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${SB_ANON}`,
-          'apikey':        SB_ANON,
-          'Content-Type':  'application/json',
-        },
-        body: JSON.stringify({
-          name_img: n,
-          org_img:  o,
-          sig_img:  s,
-          purpose,
-          card_no:  cardNo === '' ? null : Number(cardNo),
+        method:  'POST',
+        headers: { Authorization: `Bearer ${SB_ANON}`, apikey: SB_ANON, 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          name_text: name.trim(), org_text: org.trim(), sig_img: sig,
+          purpose, card_no: Number(cardNo),
         }),
       })
       const data = await res.json().catch(() => ({}))
+
+      if (res.status === 409 && data?.error === 'CARD_IN_USE') {
+        showToast(`Card #${data.card_no}는 방금 사용 중이 되었습니다. 다른 카드를 선택해 주세요.`)
+        setCardNo(''); await loadUsedCards()
+        return
+      }
       if (!res.ok || !data.ok) throw new Error(data?.error ?? `HTTP ${res.status}`)
 
-      // 초기화 + 성공 모달
-      nameRef.current?.reset(); orgRef.current?.reset(); sigRef.current?.reset()
-      setPurpose(''); setCardNo('')
+      // 성공 초기화
+      setName(''); setOrg(''); setPurpose(''); setCardNo('')
+      setOrgSug([]); setShowSug(false)
+      sigRef.current?.reset()
+      await loadUsedCards()          // 방금 대여한 카드 반영
       setShowDone(true)
     } catch (e) {
       console.error('[visitor-kiosk] 제출 실패:', e)
@@ -187,7 +173,6 @@ export function VisitorKiosk() {
     <div className="vk-root">
       <style>{VK_STYLES}</style>
 
-      {/* 헤더 */}
       <div className="vk-header">
         <img className="vk-logo" src="/visitor-logo.png" alt="C&R Research" />
         <div className="vk-htext">
@@ -196,18 +181,32 @@ export function VisitorKiosk() {
         </div>
       </div>
 
-      {/* 폼 */}
       <div className="vk-form-wrap">
         <div className="vk-section-label">방문객 정보</div>
 
         <div className="vk-field">
           <label>이름 <span className="vk-req">*</span></label>
-          <SigPad ref={nameRef} placeholder="이름을 작성해 주세요" />
+          <input className="vk-input" value={name} maxLength={60}
+                 placeholder="이름을 입력해 주세요"
+                 onChange={e => setName(e.target.value)} />
         </div>
 
         <div className="vk-field">
           <label>소속 <span className="vk-req">*</span></label>
-          <SigPad ref={orgRef} placeholder="소속을 작성해 주세요" />
+          <div className="vk-ac">
+            <input className="vk-input" value={org} maxLength={60}
+                   placeholder="소속을 입력하면 검색됩니다"
+                   onChange={e => onOrgChange(e.target.value)}
+                   onFocus={() => { if (orgSug.length) setShowSug(true) }}
+                   onBlur={() => setTimeout(() => setShowSug(false), 150)} />
+            {showSug && (
+              <div className="vk-sug">
+                {orgSug.map(s => (
+                  <div key={s} className="vk-sug-item" onMouseDown={() => pickOrg(s)}>{s}</div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="vk-field">
@@ -219,11 +218,13 @@ export function VisitorKiosk() {
         </div>
 
         <div className="vk-field">
-          <label>Visitor Card No.</label>
+          <label>Visitor Card No. <span className="vk-req">*</span></label>
           <select className="vk-select" value={cardNo} onChange={e => setCardNo(e.target.value)}>
-            <option value="">선택하지 않음</option>
-            {Array.from({ length: 10 }, (_, i) => i + 1).map(n =>
-              <option key={n} value={n}>{n}</option>)}
+            <option value="">선택해 주세요</option>
+            {Array.from({ length: 10 }, (_, i) => i + 1).map(n => {
+              const used = usedCards.includes(n)
+              return <option key={n} value={n} disabled={used}>{n}{used ? ' (사용 중)' : ''}</option>
+            })}
           </select>
         </div>
 
@@ -231,7 +232,7 @@ export function VisitorKiosk() {
 
         <div className="vk-field">
           <div className="vk-section-label">서명</div>
-          <SigPad ref={sigRef} placeholder="서명해 주세요" tall />
+          <SigPad ref={sigRef} placeholder="서명해 주세요" />
         </div>
 
         <div className="vk-version">
@@ -240,14 +241,12 @@ export function VisitorKiosk() {
         </div>
       </div>
 
-      {/* 고정 저장 바 */}
       <div className="vk-submit-area">
         <button className="vk-submit-btn" onClick={handleSubmit} disabled={submitting}>
           {submitting ? '저장 중...' : '저장하기'}
         </button>
       </div>
 
-      {/* 성공 모달 */}
       {showDone && (
         <div className="vk-modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowDone(false) }}>
           <div className="vk-modal-box">
@@ -259,13 +258,12 @@ export function VisitorKiosk() {
         </div>
       )}
 
-      {/* 토스트 */}
       {toast && <div className="vk-toast show">{toast}</div>}
     </div>
   )
 }
 
-// ─── 스코프 스타일 (.vk- 접두어) — 원본 aesthetic 보존 ──────────────────────
+// ─── 스코프 스타일 ──────────────────────────────────────────────────────────
 const VK_STYLES = `
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;600&display=swap');
 .vk-root{--bg:#fff;--surface:#fafafa;--text:#111;--text-2:#666;--text-3:#999;--line:#eee;--line-2:#e0e0e0;--danger:#cc3333;--success:#22883a;--radius:14px;
@@ -281,13 +279,19 @@ const VK_STYLES = `
 .vk-field{margin-bottom:28px}
 .vk-field label{display:block;font-size:12px;font-weight:500;color:var(--text-2);margin-bottom:8px;letter-spacing:.3px}
 .vk-req{color:var(--danger);margin-left:2px}
+.vk-input{width:100%;padding:14px 16px;font-family:inherit;font-size:15px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);color:var(--text)}
+.vk-input:focus{outline:none;border-color:var(--text)}
 .vk-select{width:100%;padding:14px 16px;font-family:inherit;font-size:15px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);color:var(--text);-webkit-appearance:none;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='%23999'%3E%3Cpath d='M5 6L0 0h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 16px center;padding-right:40px}
 .vk-select:focus{outline:none;border-color:var(--text)}
+.vk-ac{position:relative}
+.vk-sug{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1px solid var(--line-2);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.08);z-index:30;overflow:hidden;max-height:220px;overflow-y:auto}
+.vk-sug-item{padding:12px 16px;font-size:14px;cursor:pointer;border-bottom:1px solid var(--line)}
+.vk-sug-item:last-child{border-bottom:none}
+.vk-sug-item:hover{background:var(--surface)}
 .vk-canvas-box{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;transition:border-color .15s}
 .vk-canvas-box:focus-within{border-color:var(--text)}
 .vk-canvas-box canvas{display:block;width:100%;cursor:crosshair;touch-action:none}
-.vk-canvas-box.short canvas{height:72px}
 .vk-canvas-box.tall canvas{height:150px}
 .vk-cv-ph{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#ccc;font-size:13px;pointer-events:none;transition:opacity .2s}
 .vk-cv-ph.hidden{opacity:0}
@@ -305,6 +309,6 @@ const VK_STYLES = `
 .vk-modal-box h3{font-size:16px;font-weight:600;margin-bottom:6px}
 .vk-modal-box p{font-size:13px;color:var(--text-3);margin-bottom:24px}
 .vk-modal-ok{padding:12px 40px;font-family:inherit;font-size:14px;font-weight:600;color:#fff;background:var(--text);border:none;border-radius:var(--radius);cursor:pointer}
-.vk-toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:12px 24px;border-radius:10px;font-size:13px;font-weight:500;z-index:200;opacity:0;transition:opacity .3s}
+.vk-toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:12px 24px;border-radius:10px;font-size:13px;font-weight:500;z-index:200;opacity:0;transition:opacity .3s;max-width:90%;text-align:center}
 .vk-toast.show{opacity:1}
 `

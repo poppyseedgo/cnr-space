@@ -1491,15 +1491,15 @@ export async function manualDepartUser(
 const VISITOR_BUCKET = 'visitor-signatures'
 
 export interface VisitorLog {
-  id:            string
-  purpose:       string
-  card_no:       number | null
-  returned:      boolean
-  returned_at:   string | null
-  visited_at:    string
-  name_img_path: string
-  org_img_path:  string
-  sig_img_path:  string
+  id:           string
+  purpose:      string
+  card_no:      number | null
+  returned:     boolean
+  returned_at:  string | null
+  visited_at:   string
+  name_text:    string
+  org_text:     string
+  sig_img_path: string
 }
 
 // 2차 비번 검증 (잠금해제) — true/false 반환 (예외 없음)
