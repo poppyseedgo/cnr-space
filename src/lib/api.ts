@@ -1493,13 +1493,21 @@ const VISITOR_BUCKET = 'visitor-signatures'
 export interface VisitorLog {
   id:           string
   purpose:      string
-  card_no:      number | null
+  visitor_memo: string | null
+  card_no:      string | null   // 카드 라벨(text)
   returned:     boolean
   returned_at:  string | null
   visited_at:   string
   name_text:    string
   org_text:     string
+  admin_memo:   string | null
   sig_img_path: string
+}
+
+export interface VisitorCard {
+  label:      string
+  in_use:     boolean
+  created_at: string
 }
 
 // 2차 비번 검증 (잠금해제) — true/false 반환 (예외 없음)
@@ -1550,4 +1558,31 @@ export async function visitorSignedUrls(paths: string[]): Promise<Record<string,
     if (item.path && item.signedUrl) map[item.path] = item.signedUrl
   }
   return map
+}
+
+// ─── 방문로그: 카드 관리 + 메모 (Step 4) ────────────────────────────────────
+
+// 카드 목록(사용중 여부 포함)
+export async function visitorListCards(pw: string): Promise<VisitorCard[]> {
+  const { data, error } = await supabase.rpc('visitor_admin_list_cards', { p_pw: pw })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as VisitorCard[]
+}
+
+// 카드 추가
+export async function visitorAddCard(pw: string, label: string): Promise<void> {
+  const { error } = await supabase.rpc('visitor_admin_add_card', { p_pw: pw, p_label: label })
+  if (error) throw new Error(error.message)
+}
+
+// 카드 삭제 (사용중이면 서버가 예외 → CARD_IN_USE)
+export async function visitorDeleteCard(pw: string, label: string): Promise<void> {
+  const { error } = await supabase.rpc('visitor_admin_delete_card', { p_pw: pw, p_label: label })
+  if (error) throw new Error(error.message)
+}
+
+// 어드민 메모 저장
+export async function visitorSetMemo(pw: string, id: string, memo: string): Promise<void> {
+  const { error } = await supabase.rpc('visitor_admin_set_memo', { p_pw: pw, p_id: id, p_memo: memo })
+  if (error) throw new Error(error.message)
 }
