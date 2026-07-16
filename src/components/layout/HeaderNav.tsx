@@ -154,13 +154,17 @@ export function HeaderNav({ view, onSetView, isMobile, dark }: HeaderNavProps) {
     );
   }
 
-  // mypage/admin 모드: "← 홈으로" 버튼
+  // mypage/admin/library 모드: "← 홈으로" 버튼
+  const pageLabel = view === "mypage" ? "My Page"
+                  : view === "admin"   ? "Admin"
+                  : view === "library" ? "도서관"
+                  : view
   return (
     <div style={{display:"flex",alignItems:"center",gap:8,justifyContent:"center"}}>
       <button className="btn" onClick={()=>onSetView("home")}
         style={{background:"#F3F4F8",color:"#64748B",padding:"6px 14px",fontSize:12,borderRadius:999,
           display:"flex",alignItems:"center",gap:5}}>
-        ← <span style={{fontWeight:600}}>{view==="mypage"?"My Page":"Admin"}</span>에서 홈으로
+        ← <span style={{fontWeight:600}}>{pageLabel}</span>에서 홈으로
       </button>
     </div>
   );

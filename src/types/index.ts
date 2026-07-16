@@ -190,4 +190,44 @@ export type CalViewType = 'timeline' | 'week' | 'day' | 'month' | 'list'
 
 // ─── App View 타입 ───────────────────────────────────────────────────────────────
 
-export type AppView = 'home' | 'calendar' | 'mypage' | 'admin'
+export type AppView = 'home' | 'calendar' | 'mypage' | 'admin' | 'library'  // ← [2026-07-16] library 추가
+
+// ─── 도서관 모듈 타입 ─────────────────────────────────────────────────────────
+
+export interface BookCategory {
+  id:         number
+  name:       string
+  parent_id:  number | null
+  sort_order: number
+}
+
+export interface BookCheckout {
+  id:              string   // uuid
+  book_id:         number
+  user_id:         string   // uuid
+  checkout_at:     string
+  due_at:          string
+  returned_at:     string | null
+  extension_count: number
+  status:          'active' | 'returned' | 'overdue' | 'lost'
+  notes:           string | null
+  created_at:      string
+  updated_at:      string
+}
+
+export interface Book {
+  id:          number
+  category_id: number | null
+  title:       string
+  author:      string | null
+  publisher:   string | null
+  isbn:        string | null
+  cover_url:   string | null
+  status:      'available' | 'borrowed' | 'maintenance' | 'lost'
+  notes:       string | null
+  acquired_at: string | null
+  created_at:  string
+  updated_at:  string
+  category?:        BookCategory | null
+  active_checkout?: BookCheckout | null
+}

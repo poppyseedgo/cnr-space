@@ -250,6 +250,7 @@ import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBo
 import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView } from './components/room/HomeView'
+import { LibraryPage } from './pages/LibraryPage'  // ← [2026-07-16] 도서관 모듈 추가
 import { RoomDetailModal } from './components/room/RoomDetailModal'
 import { CalendarSkeleton, MyPageSkeleton, AdminSkeleton } from './components/skeleton'
 import { initGlobalRipple } from './hooks/useGlobalRipple'
@@ -343,7 +344,7 @@ function AppContent() {
     const saved = sessionStorage.getItem('cnr_deeplink')
     if (saved?.startsWith('admin-booking-')) return 'admin'
     if (saved?.startsWith('booking-')) return 'home'  // ← [2026-05-12] mypage → home
-    return ['home','calendar','mypage','admin'].includes(hash) ? hash : 'home'
+    return ['home','calendar','mypage','admin','library'].includes(hash) ? hash : 'home'  // ← [2026-07-16] library 추가
   }
   const [view, setViewState] = useState<string>(getViewFromHash);
   const setView = (v: string) => {
@@ -1829,6 +1830,7 @@ function AppContent() {
       {/* ← [2026-05-06 Admin Phase C] currentUserId/currentUserEmail 전달 — AdminApprovalTable 내 BookingStatusBadge 판정용 */}
       {/* ← [2026-05-06 사이드 sticky 핫픽스] headerHeight 전달 — 사이드 네비 fixed 위치 계산용 (헤더와 동일 패턴) */}
       {view==="admin" && <LazyErrorBoundary><Suspense fallback={<AdminSkeleton />}><AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={confirmAndAdminForceCancel} onDetail={b=>setModal({type:'detail',data:b})} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} headerHeight={headerHeight} /></Suspense></LazyErrorBoundary>}
+      {view==="library" && <LibraryPage isAdmin={isAdmin} users={users} authUserId={authUser?.user_id ?? ''} showToast={showToast} />}{/* ← [2026-07-16] 도서관 모듈 추가 */}
 
       {/* ── Modals ── */}
       {modal && (
