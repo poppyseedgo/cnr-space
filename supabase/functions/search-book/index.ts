@@ -23,6 +23,14 @@
  *           UPDATE 실패 시에도 다음 호출이 upsert로 안전하게 재시도 가능
  *
  * Changelog:
+ *   [2026-07-16 v3] 표지 최대 해상도 저장 (화질 개선)
+ *     - 카카오 thumbnail은 R120x174(120×174px)로 강제 축소된 URL이라 저화질.
+ *     - toHiResCover(): thumbnail URL의 fname= 원본 URL(최대 해상도)을 추출하여 저장.
+ *       · fname 원본 예: http://t1.daumcdn.net/lbook/image/5477653?... (리사이즈 없는 원본)
+ *       · http→https 승격 시도
+ *     - normalizeKakaoBook에 cover_hires 필드 추가 (검색 결과에도 고화질 URL 노출)
+ *     - uploadCoverImage: 고화질 URL 우선 다운로드, 실패 시 원본 thumbnail로 폴백(견고성)
+ *
  *   [2026-05-14 v2] published_at → acquired_at 매핑 제거 (의미 오류 수정)
  *     - acquired_at은 "회사가 책을 입수한 날짜" 컬럼이므로 카카오 출판일과 다른 컬럼
  *     - 출판일 정보가 필요해지면 별도 컬럼(books.published_at)을 추후 추가 예정
@@ -98,7 +106,8 @@ interface NormalizedBook {
   author:       string
   publisher:    string
   isbn:         string
-  thumbnail:    string
+  thumbnail:    string          // 저화질 축소본 (검색 미리보기 카드용 — 빠름)
+  cover_hires:  string          // ← [v3] 최대 해상도 원본 URL (Storage 저장용)
   contents:     string
   published_at: string | null
   kakao_url:    string
@@ -138,14 +147,44 @@ function pickIsbn(rawIsbn: string): string {
   return isbn13 ?? parts[0] ?? ''
 }
 
+// ── 최대 해상도 표지 URL 도출 ────────────────────────────────────────────────
+// ← [v3] 카카오 thumbnail 은 R120x174 로 강제 축소된 CDN URL.
+//   구조: https://search1.kakaocdn.net/thumb/R120x174.q85/?fname=<원본URL(인코딩)>
+//   전략:
+//     1) fname= 의 원본 URL 추출 → 리사이즈 없는 최대 해상도 (진짜 원본)
+//        · http→https 승격 (t1.daumcdn.net 등은 https 지원)
+//     2) fname 없으면 리사이즈 규격만 확대 (R120x174 → R500x0: 폭 500 고정, 비율 유지)
+//     3) 파싱 불가 시 원본 문자열 그대로 반환
+function toHiResCover(url: string): string {
+  if (!url) return url
+  try {
+    const u = new URL(url)
+
+    // 1) 카카오 CDN 썸네일이면 fname 원본 추출
+    if (u.hostname.endsWith('kakaocdn.net') && u.searchParams.has('fname')) {
+      const origin = u.searchParams.get('fname')
+      if (origin && origin.length > 0) {
+        return origin.replace(/^http:\/\//i, 'https://')
+      }
+    }
+
+    // 2) fname 이 없으면 리사이즈 규격만 확대
+    return url.replace(/\/thumb\/[A-Za-z]\d+x\d+(\.[a-z0-9]+)?\//i, '/thumb/R500x0.q90/')
+  } catch {
+    return url
+  }
+}
+
 // ── 카카오 응답 → 프론트에서 다루기 쉬운 형태로 정규화 ─────────────────────
 function normalizeKakaoBook(d: KakaoBookRaw): NormalizedBook {
+  const thumb = d.thumbnail ?? ''
   return {
     title:        d.title ?? '',
     author:       (d.authors ?? []).join(', '),
     publisher:    d.publisher ?? '',
     isbn:         pickIsbn(d.isbn ?? ''),
-    thumbnail:    d.thumbnail ?? '',
+    thumbnail:    thumb,                 // 저화질 (미리보기용)
+    cover_hires:  toHiResCover(thumb),   // ← [v3] 고화질 (저장용)
     contents:     d.contents ?? '',
     published_at: d.datetime ? d.datetime.slice(0, 10) : null,
     kakao_url:    d.url ?? '',
@@ -153,10 +192,19 @@ function normalizeKakaoBook(d: KakaoBookRaw): NormalizedBook {
 }
 
 // ── 이미지 fetch → Supabase Storage 업로드 → public URL 반환 ──────────────
-async function uploadCoverImage(bookId: number, thumbnailUrl: string): Promise<string> {
-  const imgRes = await fetch(thumbnailUrl)
+// ← [v3] 고화질(원본) URL 우선 다운로드, 실패 시 저화질 thumbnail 로 폴백.
+//   sourceUrl 은 검색 결과의 thumbnail(저화질) 또는 cover_hires(고화질) 어느 쪽이 와도
+//   내부에서 toHiResCover 로 재도출하므로 항상 최대 해상도를 시도한다.
+async function uploadCoverImage(bookId: number, sourceUrl: string): Promise<string> {
+  const hiResUrl = toHiResCover(sourceUrl)  // ← [v3] 항상 고화질 재도출
+
+  let imgRes = await fetch(hiResUrl)
+  // ← [v3] 고화질 실패(404/hotlink 차단 등) → 원본 저화질 썸네일로 폴백
+  if (!imgRes.ok && hiResUrl !== sourceUrl) {
+    imgRes = await fetch(sourceUrl)
+  }
   if (!imgRes.ok) {
-    throw new Error(`이미지 다운로드 실패 (${imgRes.status}): ${thumbnailUrl}`)
+    throw new Error(`이미지 다운로드 실패 (${imgRes.status}): ${hiResUrl}`)
   }
 
   const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
@@ -276,9 +324,16 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: `book_id ${bookId} 없음` }, 404)
       }
 
+      // ← [v3] cover_hires(고화질)가 있으면 우선, 없으면 thumbnail.
+      //   uploadCoverImage 내부에서 다시 toHiResCover 를 적용하므로 어느 쪽이 와도 안전.
+      const coverSource: string =
+        (typeof kakao.cover_hires === 'string' && kakao.cover_hires.length > 0)
+          ? kakao.cover_hires
+          : (typeof kakao.thumbnail === 'string' ? kakao.thumbnail : '')
+
       let coverUrl: string | undefined = undefined
-      if (kakao.thumbnail && typeof kakao.thumbnail === 'string' && kakao.thumbnail.length > 0) {
-        coverUrl = await uploadCoverImage(bookId, kakao.thumbnail)
+      if (coverSource.length > 0) {
+        coverUrl = await uploadCoverImage(bookId, coverSource)
       }
 
       // UPDATE 필드 구성 (값이 있는 것만 UPDATE — 부분 보강 지원)

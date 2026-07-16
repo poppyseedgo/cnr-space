@@ -534,6 +534,18 @@ function BookEditModal({
                 {kakaoLoading ? '...' : '검색'}
               </button>
             </div>
+            {/* ← [v3] 검색 중 움직이는 로딩 표시 (카카오 API 응답 지연 대응) */}
+            {kakaoLoading && (
+              <div style={{ marginTop: 8, padding: '14px 12px', display: 'flex',
+                alignItems: 'center', justifyContent: 'center', gap: 10,
+                background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
+                <span style={{ width: 16, height: 16, borderRadius: '50%',
+                  border: '2px solid #CBD5E1', borderTopColor: '#334155',
+                  display: 'inline-block',
+                  animation: 'spin 0.7s linear infinite' }} />{/* index.css @keyframes spin (transform 기반, GPU) */}
+                <span style={{ fontSize: 13, color: '#475569' }}>도서를 검색 중입니다...</span>
+              </div>
+            )}
             {kakaoError && (
               <div style={{ marginTop: 4, padding: '6px 10px', background: '#FEF2F2',
                 border: '1px solid #FECACA', borderRadius: 6, fontSize: 12, color: '#DC2626' }}>

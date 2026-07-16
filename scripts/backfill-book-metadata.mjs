@@ -117,6 +117,7 @@ const args = {
   threshold: 0.9,
   bookId:    null,
   delayMs:   100,
+  force:     false,   // ← [v3] cover_url 있어도 전체 재처리 (저화질 → 고화질 재적용)
 }
 
 function printHelp() {
@@ -127,12 +128,15 @@ function printHelp() {
   --apply               실제로 DB에 적용 (없으면 DRY RUN)
   --threshold <0.0~1.0> auto_apply 임계값 (기본: 0.9)
   --book-id <int>       특정 도서만 처리 (단일 테스트용)
+  --force               cover_url 이 이미 있어도 전체 재처리 (저화질 → 고화질 재적용)
   --delay-ms <int>      요청 사이 대기 시간 ms (기본: 100)
   --help                도움말
 
 예시:
-  node scripts/backfill-book-metadata.mjs                       # 전체 DRY RUN
-  node scripts/backfill-book-metadata.mjs --apply                # 전체 실제 적용
+  node scripts/backfill-book-metadata.mjs                       # cover 없는 것만 DRY RUN
+  node scripts/backfill-book-metadata.mjs --apply                # cover 없는 것만 실제 적용
+  node scripts/backfill-book-metadata.mjs --force                # 전체 재처리 DRY RUN
+  node scripts/backfill-book-metadata.mjs --force --apply         # 전체 고화질 재적용
   node scripts/backfill-book-metadata.mjs --book-id 7 --apply    # 1건만 테스트 적용
   node scripts/backfill-book-metadata.mjs --threshold 0.85 --apply  # 더 공격적
 `)
@@ -141,6 +145,7 @@ function printHelp() {
 for (let i = 2; i < process.argv.length; i++) {
   const a = process.argv[i]
   if      (a === '--apply')     args.apply     = true
+  else if (a === '--force')     args.force     = true   // ← [v3]
   else if (a === '--threshold') args.threshold = parseFloat(process.argv[++i])
   else if (a === '--book-id')   args.bookId    = parseInt(process.argv[++i])
   else if (a === '--delay-ms')  args.delayMs   = parseInt(process.argv[++i])
@@ -243,10 +248,12 @@ async function loadBooks() {
   if (args.bookId) {
     // 단일 도서: cover_url 있어도 처리 (재적용 시나리오)
     url += `&id=eq.${args.bookId}`
-  } else {
+  } else if (!args.force) {
     // 전체: cover_url 없는 것만 (idempotent)
     url += `&cover_url=is.null`
   }
+  // ← [v3] --force: cover_url 필터 없이 전체 재처리
+  //   apply 는 Storage upsert + cover_url(?v=timestamp) 갱신이라 재적용 안전(멱등).
 
   const res = await fetch(url, {
     headers: {
