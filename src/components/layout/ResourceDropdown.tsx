@@ -63,6 +63,7 @@ import { useState, useEffect, useRef } from 'react'
 
 interface ResourceDropdownProps {
   dark: boolean;
+  onSetView?: (v: string) => void;  // ← [2026-07-16] 메뉴 항목 클릭 시 뷰 전환 콜백
 }
 
 // ── 아이콘 SVG (사용자 제공 1:1) ───────────────────────────────────────────────
@@ -107,7 +108,7 @@ const IcoBook = () => (
 // [2026-05-13 v8] 인라인 컴포넌트 제거 — open 상태 동적 활용 위해 트리거 JSX 내부로 이동
 //   참고 SegmentTabBar L153~156 (전체 회의실 드롭다운과 동일 이펙트)
 
-export function ResourceDropdown({ dark }: ResourceDropdownProps) {
+export function ResourceDropdown({ dark, onSetView }: ResourceDropdownProps) {  // ← [2026-07-16] onSetView 추가
   const [open, setOpen] = useState(false)
   const [hover, setHover] = useState(false)                                  // ← [2026-05-13 v11] hover 배경 변화 (마우스 + 터치 통합)
   const [iconIdx, setIconIdx] = useState(0)                                  // ← [2026-05-13 v11] 좌측 아이콘 교차 (0:zoom 1:pointer 2:book)
@@ -134,11 +135,12 @@ export function ResourceDropdown({ dark }: ResourceDropdownProps) {
     return () => window.clearInterval(id)
   }, [])                                                                      /* ← [v14] [open] → [] (마운트 시 한 번만 설정, open 무관하게 항상 작동) */
 
-  // 메뉴 항목 정의 — 기능은 추후 구현 (onClick 미연결, e.preventDefault)
-  const MENU_ITEMS: { key: string; icon: JSX.Element; label: string }[] = [
-    { key: 'zoom',    icon: <IcoZoom />,    label: 'ZOOM 예약' },
-    { key: 'pointer', icon: <IcoPointer />, label: '포인터 대여' },
-    { key: 'book',    icon: <IcoBook />,    label: '도서 대여' },
+  // 메뉴 항목 정의 — view: 연결된 뷰 키 (null이면 미구현)
+  // ← [2026-07-16] book → 'library' view 연결 완료; zoom/pointer는 추후 구현
+  const MENU_ITEMS: { key: string; icon: JSX.Element; label: string; view: string | null }[] = [
+    { key: 'zoom',    icon: <IcoZoom />,    label: 'ZOOM 예약',  view: null      },
+    { key: 'pointer', icon: <IcoPointer />, label: '포인터 대여', view: null      },
+    { key: 'book',    icon: <IcoBook />,    label: '도서 대여',  view: 'library' },
   ]
 
   return (
@@ -226,20 +228,32 @@ export function ResourceDropdown({ dark }: ResourceDropdownProps) {
           }}
         >
           {MENU_ITEMS.map((item, i) => {
-            const isLast = i === MENU_ITEMS.length - 1
+            const isLast    = i === MENU_ITEMS.length - 1
+            const isLinked  = !!item.view  // ← [2026-07-16] view 연결 여부
             return (
-              <div
+              <button                                                    /* ← [2026-07-16] div → button (클릭 가능) */
                 key={item.key}
                 role="menuitem"
-                aria-disabled="true"                                   /* ← 기능 미작동 명시 */
+                aria-disabled={!isLinked}
+                disabled={!isLinked}
+                onClick={() => {                                         /* ← [2026-07-16] onClick 연결 */
+                  if (isLinked && item.view && onSetView) {
+                    onSetView(item.view)
+                    setOpen(false)
+                  }
+                }}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                  padding: '10px 12px',
-                  borderBottom: isLast ? 'none' : '1px solid #F9FCFF', /* Figma 1:1 */
+                  padding: '10px 12px', width: '100%',
+                  borderBottom: isLast ? 'none' : '1px solid #F9FCFF',
                   overflow: 'hidden',
-                  cursor: 'default',                                    /* ← 기능 비활성화 - 손가락 커서 X */
+                  background: 'transparent',
+                  cursor: isLinked ? 'pointer' : 'default',             /* ← [2026-07-16] 연결 여부에 따라 커서 분기 */
+                  opacity: isLinked ? 1 : 0.45,                         /* ← [2026-07-16] 미구현 항목 dim */
+                  transition: 'background 0.12s',
                 }}
-                /* ⚠️ onClick 미연결 — 추후 기능 구현 시 연결 */
+                onMouseEnter={e => { if (isLinked) (e.currentTarget as HTMLElement).style.background = '#F5F9FF' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   {item.icon}
@@ -252,7 +266,7 @@ export function ResourceDropdown({ dark }: ResourceDropdownProps) {
                     userSelect: 'none',
                   }}>{item.label}</span>
                 </div>
-              </div>
+              </button>
             )
           })}
         </div>

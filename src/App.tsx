@@ -499,7 +499,7 @@ function AppContent() {
     }
     // 최초 로그인(hash 없을 때)만 홈으로 이동, 새로고침 시 현재 hash 유지
     const currentHash = window.location.hash.replace('#', '');
-    const isValidHash = ['home','calendar','mypage','admin'].includes(currentHash)
+    const isValidHash = ['home','calendar','mypage','admin','library'].includes(currentHash)  // ← [2026-07-16] library 추가
       || currentHash.startsWith('admin-tab-')
       || currentHash.startsWith('admin-booking-')
       || currentHash.startsWith('booking-')
@@ -1737,7 +1737,7 @@ function AppContent() {
                   · 트리거 클릭 시 메뉴 펼침/닫힘 작동 (외부 클릭 close 포함)
                   · 메뉴 항목(ZOOM 예약/포인터 대여/도서 대여) onClick 미연결 — 추후 구현
                   · 데스크탑에서만 노출 (모바일은 헤더 공간 확보 위해 숨김) */}
-              {!isMobile && <ResourceDropdown dark={dark} />}
+              {!isMobile && <ResourceDropdown dark={dark} onSetView={setView} />}{/* ← [2026-07-16] onSetView 연결 — 도서 대여 → #library */}
 
               {/* 알림 벨 */}
               {/* ← [2026-05-04] 알림 벨 + 패널 → NotificationBell 컴포넌트로 분리 (Phase 1+2 Step 3)
