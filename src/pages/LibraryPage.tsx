@@ -442,7 +442,7 @@ function BookEditModal({
 }: {
   book: Book | null   // null = 신규
   categories: BookCategory[]
-  onSave: (form: EditForm) => void
+  onSave: (form: EditForm, kakaoItem?: any) => void  // ← [fix-img] kakaoItem 추가
   onClose: () => void
   loading: boolean
 }) {
@@ -458,22 +458,27 @@ function BookEditModal({
     notes:       book?.notes       ?? '',
     cover_url:   book?.cover_url   ?? '',
   }))
-  const [kakaoQ,       setKakaoQ]       = useState('')
-  const [kakaoResults, setKakaoResults] = useState<any[]>([])
-  const [kakaoLoading, setKakaoLoading] = useState(false)
+  const [kakaoQ,           setKakaoQ]           = useState('')
+  const [kakaoResults,     setKakaoResults]     = useState<any[]>([])
+  const [kakaoLoading,     setKakaoLoading]     = useState(false)
+  const [pendingKakaoItem, setPendingKakaoItem] = useState<any>(null)  // ← [fix-img]
+  const [kakaoError,       setKakaoError]       = useState<string | null>(null)  // ← [fix-api]
 
   const up = (k: keyof EditForm, v: string) => setForm(p => ({ ...p, [k]: v }))
 
   async function searchKakao() {
     if (!kakaoQ.trim()) return
     setKakaoLoading(true)
+    setKakaoError(null)  // ← [fix-api] 이전 오류 초기화
     try {
       const { data, error } = await supabase.functions.invoke('search-book', {
         body: { action: 'search', query: kakaoQ },
       })
       if (error) throw error
-      setKakaoResults(data?.documents ?? [])
-    } catch {
+      setKakaoResults(data?.books ?? [])  // ← [fix-api] Edge Function 응답 키: 'books' (not 'documents')
+    } catch (e: any) {
+      // ← [fix-api] 오류 사용자에게 표시 (silent fail 제거)
+      setKakaoError(e?.message ?? '카카오 검색 실패')
       setKakaoResults([])
     } finally {
       setKakaoLoading(false)
@@ -481,15 +486,22 @@ function BookEditModal({
   }
 
   function applyKakao(item: any) {
+    // ← [fix-api] Edge Function search가 정규화한 형식:
+    //   item.author    (string, authors[] join 완료)
+    //   item.isbn      (string, ISBN13 이미 선택됨)
+    //   item.title     (string, HTML 태그 이미 제거됨)
+    //   item.thumbnail (string, Kakao CDN URL)
     setForm(p => ({
       ...p,
-      title:     p.title || item.title?.replace(/(<([^>]+)>)/gi, '') || '',
-      author:    item.authors?.join(', ') ?? '',
+      title:     p.title || item.title || '',
+      author:    item.author    ?? '',
       publisher: item.publisher ?? '',
-      isbn:      (item.isbn ?? '').split(' ').pop() ?? '',
+      isbn:      item.isbn      ?? '',
       cover_url: item.thumbnail ?? '',
     }))
+    setPendingKakaoItem(item)  // ← [fix-img]
     setKakaoResults([])
+    setKakaoError(null)
     setKakaoQ('')
   }
 
@@ -522,6 +534,12 @@ function BookEditModal({
                 {kakaoLoading ? '...' : '검색'}
               </button>
             </div>
+            {kakaoError && (
+              <div style={{ marginTop: 4, padding: '6px 10px', background: '#FEF2F2',
+                border: '1px solid #FECACA', borderRadius: 6, fontSize: 12, color: '#DC2626' }}>
+                ⚠️ {kakaoError}
+              </div>
+            )}
             {kakaoResults.length > 0 && (
               <div style={{ border: '1px solid #E2E8F0', borderRadius: 8, marginTop: 4, overflow: 'hidden' }}>
                 {kakaoResults.slice(0, 5).map((item, i) => (
@@ -534,10 +552,10 @@ function BookEditModal({
                     )}
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 500 }}>
-                        {item.title?.replace(/(<([^>]+)>)/gi, '')}
+                        {item.title}{/* ← [fix-api] HTML 이미 제거됨 */}
                       </div>
                       <div style={{ fontSize: 11, color: '#64748B' }}>
-                        {item.authors?.join(', ')} · {item.publisher}
+                        {item.author} · {item.publisher}{/* ← [fix-api] author (string), not authors[] */}
                       </div>
                     </div>
                   </button>
@@ -604,8 +622,16 @@ function BookEditModal({
             </div>
           </div>
 
-          {/* 상태 (신규 등록 시 없음) */}
-          {!isNew && (
+          {/* 대여중 상태 안내 */}
+          {!isNew && book?.status === 'borrowed' && (
+            <div style={{ background: '#FEF9C3', border: '1px solid #FEF08A',
+              borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#713F12' }}>
+              📌 대여중인 도서입니다. 상태 변경은 카드의 [반납 처리] 버튼을 이용하세요.
+            </div>
+          )}
+
+          {/* 상태 버튼 - 신규·대여중 제외 */}
+          {!isNew && book?.status !== 'borrowed' && (
             <div>
               <label style={LABEL_STYLE}>상태</label>
               <div style={{ display: 'flex', gap: 6 }}>
@@ -640,7 +666,7 @@ function BookEditModal({
             </button>
             <button className="btn"
               disabled={!form.title.trim() || loading}
-              onClick={() => onSave(form)}
+              onClick={() => onSave(form, pendingKakaoItem ?? undefined)}
               style={{ flex: 2, background: form.title.trim() ? '#000' : '#E2E8F0',
                 color: form.title.trim() ? '#fff' : '#94A3B8',
                 padding: '10px 0', borderRadius: 8, fontSize: 14, fontWeight: 600 }}>
@@ -1004,7 +1030,23 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
 
   // ─── 도서 저장 (추가/편집) ───────────────────────────────────────────────────
 
-  async function handleSaveBook(form: EditForm) {
+  // ── 카카오 표지 → Supabase Storage 영구 저장 ──────────────────────────────
+  // [fix-img] Kakao CDN URL은 외부 도메인 <img> 차단됨
+  //   → Edge Function 'apply' 액션으로 Storage book-covers/{book_id}에 업로드
+  //   → books.cover_url이 Storage URL로 업데이트됨 (reload 후 반영)
+  async function applyKakaoToStorage(bookId: number, kakaoItem: any): Promise<void> {
+    try {
+      const { error } = await supabase.functions.invoke('search-book', {
+        body: { action: 'apply', book_id: bookId, kakao: kakaoItem },
+      })
+      if (error) console.warn('[Library] 표지 Storage 저장 실패:', error.message)
+      // 실패해도 책 정보 저장은 완료 — 표지만 없음
+    } catch (e) {
+      console.warn('[Library] 표지 Storage 저장 오류:', e)
+    }
+  }
+
+  async function handleSaveBook(form: EditForm, kakaoItem?: any) {
     if (!editModal) return
     setActionLoading(true)
     const isNew = editModal.book === null
@@ -1014,28 +1056,45 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
       author:      form.author.trim() || null,
       publisher:   form.publisher.trim() || null,
       isbn:        form.isbn.trim() || null,
-      cover_url:   form.cover_url.trim() || null,
+      // [fix-img] cover_url은 kakaoItem이 있을 때 null로 초기화
+      //   → applyKakaoToStorage() 호출 후 Edge Function이 Storage URL로 업데이트
+      //   → kakaoItem 없을 때만 form.cover_url (수동 입력 URL) 사용
+      cover_url:   kakaoItem ? null : (form.cover_url.trim() || null),
       category_id: form.category_id ? parseInt(form.category_id) : null,
-      acquired_at: form.acquired_at || null,
+      acquired_at: form.acquired_at ? `${form.acquired_at}-01` : null,  // ← [fix①]
       notes:       form.notes.trim() || null,
       updated_at:  new Date().toISOString(),
     }
     if (isNew) {
       payload.status = 'available'
     } else {
-      payload.status = form.status
+      // ← [fix②] borrowed 상태는 status 변경 불가
+      if (editModal.book?.status !== 'borrowed') {
+        payload.status = form.status
+      }
     }
 
     try {
       if (isNew) {
-        const { error } = await supabase.from('books').insert(payload)
+        // INSERT → 생성된 id 받아서 cover 처리
+        const { data: inserted, error } = await supabase
+          .from('books').insert(payload).select('id').single()
         if (error) throw error
         showToast('도서를 추가했습니다.', 'success')
+        // [fix-img] 카카오 표지 있으면 Storage 업로드 (비동기, 완료 대기)
+        if (kakaoItem && inserted?.id) {
+          await applyKakaoToStorage(inserted.id, kakaoItem)
+        }
       } else {
+        const bookId = editModal.book!.id
         const { error } = await supabase.from('books')
-          .update(payload).eq('id', editModal.book!.id)
+          .update(payload).eq('id', bookId)
         if (error) throw error
         showToast('도서 정보를 수정했습니다.', 'success')
+        // [fix-img] 카카오 표지 변경된 경우 Storage 업로드
+        if (kakaoItem) {
+          await applyKakaoToStorage(bookId, kakaoItem)
+        }
       }
       setEditModal(null)
       await load()
@@ -1051,6 +1110,18 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
   async function handleDelete(book: Book) {
     setActionLoading(true)
     try {
+      // ← [fix③] FK 제약 방지: 대여 이력(반납 포함) 있으면 삭제 차단
+      const { count, error: cErr } = await supabase
+        .from('book_checkouts')
+        .select('id', { count: 'exact', head: true })
+        .eq('book_id', book.id)
+      if (cErr) throw cErr
+      if ((count ?? 0) > 0) {
+        showToast('대여 이력이 있는 도서는 삭제할 수 없습니다. 상태를 "분실"로 변경하세요.', 'warning')
+        setDeleteConfirm(null)
+        setActionLoading(false)
+        return
+      }
       const { error } = await supabase.from('books').delete().eq('id', book.id)
       if (error) throw error
       showToast('도서를 삭제했습니다.', 'success')
@@ -1081,7 +1152,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
             publisher:   r.publisher,
             isbn:        r.isbn,
             category_id: r.category_id,
-            acquired_at: r.acquired_at,
+            acquired_at: r.acquired_at ? (r.acquired_at.length === 7 ? `${r.acquired_at}-01` : r.acquired_at) : null,  // ← [fix①] YYYY-MM → YYYY-MM-01
             notes:       r.notes,
             status:      'available',
           }))
