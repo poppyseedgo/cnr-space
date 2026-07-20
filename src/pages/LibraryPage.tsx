@@ -35,7 +35,7 @@ import { BookCheckoutModal } from '../components/library/BookCheckoutModal'
 // ← [2026-07-20] Figma 73:831 Home list — 리스트 UI 토큰/카드/칩 SSOT
 import {
   LT, SearchIcon, BooksLogoMark, BookGridCard, GenreChip, HeroCta, HeroStat,
-  HERO_FONT_SB,
+  HERO_FONT_SB, isNewBook, todayKST,
 } from '../components/library/libraryListShared'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import { BookRequestModal }  from '../components/library/BookRequestModal'
@@ -74,6 +74,7 @@ interface Book {
   status:      'available' | 'borrowed' | 'maintenance' | 'lost'
   notes:       string | null
   acquired_at: string | null
+  new_until:   string | null   // ← [2026-07-20] ⭐NEW⭐ 노출 종료일
   created_at:  string
   updated_at:  string
   category?:   BookCategory | null
@@ -86,6 +87,9 @@ interface EditForm {
   isbn:        string
   category_id: string
   acquired_at: string
+  /** ← [2026-07-20] ⭐NEW⭐ — 체크 여부와 노출 종료일('YYYY-MM-DD') */
+  is_new:      boolean
+  new_until:   string
   status:      'available' | 'maintenance' | 'lost'
   notes:       string
   cover_url:   string
@@ -107,7 +111,7 @@ const BORROW_DAYS         = 7
 
 const EMPTY_FORM: EditForm = {
   title: '', author: '', publisher: '', isbn: '',
-  category_id: '', acquired_at: '', status: 'available',
+  category_id: '', acquired_at: '', is_new: false, new_until: '', status: 'available',
   notes: '', cover_url: '',
 }
 
@@ -115,6 +119,28 @@ const EMPTY_FORM: EditForm = {
 
 function isOverdue(dueAt: string): boolean {
   return new Date(dueAt) < new Date()
+}
+
+// ── [2026-07-20] ⭐NEW⭐ 종료일 프리셋용 KST 날짜 유틸 ────────────────────────
+//   'YYYY-MM-DD' 문자열을 직접 만든다. new Date('YYYY-MM-DD') 는 UTC 자정으로
+//   해석돼 KST 에서 하루 밀리므로 파싱을 거치지 않는다.
+
+/** 이번 달 말일 (KST) */
+function endOfThisMonthKST(): string {
+  const today = todayKST()                    // 'YYYY-MM-DD'
+  const y = +today.slice(0, 4)
+  const m = +today.slice(5, 7)
+  // Date(y, m, 0) = m월의 마지막 날 (월 인덱스가 0-based라 m 은 다음 달)
+  const last = new Date(y, m, 0).getDate()
+  return `${y}-${String(m).padStart(2, '0')}-${String(last).padStart(2, '0')}`
+}
+
+/** 오늘(KST) + n일 */
+function addDaysKST(n: number): string {
+  const today = todayKST()
+  const d = new Date(+today.slice(0, 4), +today.slice(5, 7) - 1, +today.slice(8, 10))
+  d.setDate(d.getDate() + n)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 // CSV 행 파싱
@@ -161,6 +187,8 @@ function BookEditModal({
     isbn:        book?.isbn        ?? '',
     category_id: book?.category_id ? String(book.category_id) : '',
     acquired_at: book?.acquired_at ?? '',
+    is_new:      !!book?.new_until,
+    new_until:   book?.new_until?.slice(0, 10) ?? '',
     status:      (book?.status === 'borrowed' ? 'available' : book?.status) ?? 'available',
     notes:       book?.notes       ?? '',
     cover_url:   book?.cover_url   ?? '',
@@ -339,6 +367,73 @@ function BookEditModal({
               <input type="month" value={form.acquired_at} onChange={e => up('acquired_at', e.target.value)}
                 style={INPUT_STYLE} />
             </div>
+          </div>
+
+          {/* ── ⭐NEW⭐ 라벨 ────────────────────────────────────────────────
+              [2026-07-20] 신규.
+              예전에는 구매연월이 이번 달이면 자동으로 붙었다. 관리자가 제어할
+              수 없었고 월이 바뀌면 일제히 사라졌다. 이제 노출 종료일을 직접
+              지정한다(books.new_until). 종료일이 지나면 스스로 내려간다. */}
+          <div style={{
+            border: '1px solid #E2E8F0', borderRadius: 8, padding: '10px 12px',
+            background: form.is_new ? '#F8FAFC' : '#fff',
+          }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={form.is_new}
+                onChange={e => {
+                  const on = e.target.checked
+                  // 켤 때 종료일이 비어 있으면 이번 달 말일을 기본값으로 채운다.
+                  // (기존 자동 동작과 같은 기간이라 운영 감각이 바뀌지 않는다)
+                  setForm(f => ({
+                    ...f,
+                    is_new: on,
+                    new_until: on ? (f.new_until || endOfThisMonthKST()) : f.new_until,
+                  }))
+                }}
+                style={{ width: 16, height: 16, cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>
+                ⭐NEW⭐ 신규 도서로 표시
+              </span>
+            </label>
+
+            {form.is_new && (
+              <div style={{ marginTop: 10 }}>
+                <label style={LABEL_STYLE}>노출 종료일</label>
+                <input
+                  type="date"
+                  value={form.new_until}
+                  min={todayKST()}
+                  onChange={e => up('new_until', e.target.value)}
+                  style={INPUT_STYLE}
+                />
+                <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                  {([['이번 달 말', endOfThisMonthKST()],
+                     ['+2주', addDaysKST(14)],
+                     ['+1개월', addDaysKST(30)]] as const).map(([label, val]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      className="btn"
+                      onClick={() => up('new_until', val)}
+                      style={{
+                        padding: '4px 10px', borderRadius: 6, fontSize: 11,
+                        border: '1px solid #E2E8F0',
+                        background: form.new_until === val ? '#111' : '#fff',
+                        color:      form.new_until === val ? '#fff' : '#475569',
+                      }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 6 }}>
+                  이 날짜까지 목록 카드에 라벨이 표시되고 ⭐NEW⭐ 필터에 잡힙니다.
+                  지나면 자동으로 사라집니다.
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 대여중 상태 안내 */}
@@ -702,10 +797,9 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
     }
     // 카테고리 / 신규
     if (filterCategory === 'NEW') {
-      // 이번 달 취득분 (libraryListShared.newBadgeLabel 과 동일 기준)
-      const now = new Date()
-      const ym  = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-      list = list.filter(b => (b.acquired_at ?? '').slice(0, 7) === ym)
+      // ← [2026-07-20] 카드 뱃지와 완전히 같은 판정을 쓴다 (isNewBook 이 SSOT).
+      //   예전에는 여기서 '이번 달 취득분'을 따로 계산해 뱃지와 어긋날 수 있었다.
+      list = list.filter(b => isNewBook(b))
     } else if (filterCategory !== 'ALL') {
       list = list.filter(b => b.category_id === filterCategory)
     }
@@ -936,6 +1030,8 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
       cover_url:   kakaoItem ? null : (form.cover_url.trim() || null),
       category_id: form.category_id ? parseInt(form.category_id) : null,
       acquired_at: form.acquired_at ? `${form.acquired_at}-01` : null,  // ← [fix①]
+      // ← [2026-07-20] 체크 해제 시 반드시 null 로 덮어써야 라벨이 실제로 내려간다
+      new_until:   form.is_new && form.new_until ? form.new_until : null,
       notes:       form.notes.trim() || null,
       updated_at:  new Date().toISOString(),
     }
@@ -1027,6 +1123,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
             isbn:        r.isbn,
             category_id: r.category_id,
             acquired_at: r.acquired_at ? (r.acquired_at.length === 7 ? `${r.acquired_at}-01` : r.acquired_at) : null,  // ← [fix①] YYYY-MM → YYYY-MM-01
+            new_until:   null,   // ← [2026-07-20] 일괄 등록은 NEW 미지정 (등록 후 편집에서 개별 설정)
             notes:       r.notes,
             status:      'available',
           }))

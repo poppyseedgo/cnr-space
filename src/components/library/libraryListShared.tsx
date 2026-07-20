@@ -76,6 +76,8 @@ export interface CardBook {
   status:      'available' | 'borrowed' | 'maintenance' | 'lost'
   cover_url:   string | null
   acquired_at: string | null
+  /** ⭐NEW⭐ 노출 종료일 (date, KST). NULL = 표시 안 함 */
+  new_until:   string | null
 }
 
 /** 카드가 읽는 대여 필드 */
@@ -239,17 +241,48 @@ export function statusBadgeConfig(status: CardBook['status'] | 'overdue') {
   }
 }
 
+// ─── ⭐NEW⭐ 판정 (SSOT) ────────────────────────────────────────────────────
+//
+// ← [2026-07-20] 설계 변경
+//
+//   변경 전: acquired_at 이 "이번 달"이면 자동으로 NEW.
+//            → 관리자가 켜고 끌 수 없고, 월이 바뀌면 일괄 소멸했다.
+//            게다가 같은 판정을 카드 뱃지와 목록 필터가 **따로** 구현해서
+//            한쪽만 고치면 "뱃지는 뜨는데 NEW 필터에는 안 잡히는" 불일치가 났다.
+//
+//   변경 후: books.new_until (date) 하나가 단일 진실 소스.
+//            뱃지와 필터 모두 아래 isNewBook() 만 호출한다. 중복 없음.
+
+/** 오늘 날짜 (KST, 'YYYY-MM-DD') — 서버/브라우저 타임존과 무관하게 고정 */
+export function todayKST(): string {
+  // en-CA 로케일은 YYYY-MM-DD 형식을 준다
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date())
+}
+
 /**
- * 신규 도서 판정 — acquired_at('YYYY-MM' 또는 'YYYY-MM-DD')이 이번 달이면 신규.
- * Figma 문구 "7월 신규 도서" 의 '7월'은 고정값이 아니라 취득월이다.
+ * NEW 노출 여부 — new_until 이 오늘(KST) 이상이면 노출.
+ * 'YYYY-MM-DD' 는 사전순 == 시간순이라 문자열 비교로 충분하다
+ * (Date 로 파싱하면 UTC 자정 해석 때문에 KST 에서 하루 밀린다).
  */
-export function newBadgeLabel(acquiredAt: string | null): string | null {
-  if (!acquiredAt) return null
-  const m = /^(\d{4})-(\d{2})/.exec(acquiredAt)
-  if (!m) return null
-  const now = new Date()
-  if (+m[1] !== now.getFullYear() || +m[2] !== now.getMonth() + 1) return null
-  return `${+m[2]}월 신규 도서`
+export function isNewBook(book: Pick<CardBook, 'new_until'>): boolean {
+  if (!book.new_until) return false
+  return book.new_until.slice(0, 10) >= todayKST()
+}
+
+/**
+ * 카드 뱃지 문구.
+ *   · 취득월이 이번 달이면 Figma 원안대로 "N월 신규 도서"
+ *   · 그 외(과거 입고분을 수동으로 띄운 경우 등)는 "신규 도서"
+ *     — 5월 입고를 7월에 띄우면서 "5월 신규 도서"라 쓰면 오히려 오해를 준다.
+ */
+export function newBadgeLabel(book: Pick<CardBook, 'new_until' | 'acquired_at'>): string | null {
+  if (!isNewBook(book)) return null
+  const m = /^(\d{4})-(\d{2})/.exec(book.acquired_at ?? '')
+  if (m) {
+    const today = todayKST()
+    if (m[1] === today.slice(0, 4) && m[2] === today.slice(5, 7)) return `${+m[2]}월 신규 도서`
+  }
+  return '신규 도서'
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -299,7 +332,7 @@ export function BookGridCard({
 
   const displayStatus = (isOverdueStatus ? 'overdue' : book.status) as CardBook['status'] | 'overdue'
   const badge   = statusBadgeConfig(displayStatus)
-  const newLbl  = newBadgeLabel(book.acquired_at)
+  const newLbl  = newBadgeLabel(book)
   const held    = book.status === 'borrowed' && !!checkout   // 대여중/연체 = 메타 노출
   const dimmed  = book.status !== 'available'
 

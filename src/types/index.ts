@@ -226,6 +226,9 @@ export interface Book {
   status:      'available' | 'borrowed' | 'maintenance' | 'lost'
   notes:       string | null
   acquired_at: string | null
+  /** ← [2026-07-20] ⭐NEW⭐ 노출 종료일(date, KST). NULL = 표시 안 함
+   *   판정은 libraryListShared.isNewBook() 이 SSOT */
+  new_until:   string | null
   created_at:  string
   updated_at:  string
   category?:        BookCategory | null
