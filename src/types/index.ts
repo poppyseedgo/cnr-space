@@ -318,4 +318,9 @@ export type ExtendErrorCode =
   | 'NOT_ACTIVE'
   | 'ALREADY_EXTENDED'
   | 'OVERDUE'
+  // ← [2026-07-20] 연체일이 1회 연장 기일(7일)을 넘겨 연장 불가
+  //   'OVERDUE' 는 구 정책(연체=무조건 불가) 잔재로 남겨 둔다.
+  //   parseExtendError 에서 반드시 이 코드를 'OVERDUE' 보다 먼저 검사해야 한다
+  //   (문자열 includes 매칭이라 'OVERDUE_TOO_LONG' 안에 'OVERDUE' 가 포함됨).
+  | 'OVERDUE_TOO_LONG'
   | 'UNKNOWN'

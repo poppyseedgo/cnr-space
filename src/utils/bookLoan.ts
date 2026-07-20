@@ -25,6 +25,20 @@ export const EXTEND_DAYS = 7
 export const MAX_EXTENSION = 1
 
 /**
+ * 연체 상태에서 연장이 허용되는 최대 연체일수 (← [2026-07-20] 정책 변경)
+ *
+ * 정책: "연체 중에도 연장 가능. 단 연체일이 1회 연장 기일을 넘기면 불가"
+ *
+ * 근거 (임시방편이 아닌 구조적 이유):
+ *   연장은 due_at + 7일이다. 연체 d일 시점에 연장하면 잔여일수는 (7 - d)가 된다.
+ *   d > 7 이면 새 due_at 이 여전히 과거 → 연장하자마자 다시 연체 상태가 되어
+ *   연장이라는 행위 자체가 무의미해진다. 따라서 상한은 EXTEND_DAYS 와
+ *   같을 수밖에 없고, 별도 매직넘버를 두지 않고 EXTEND_DAYS 를 참조한다.
+ *   (d === 7 은 새 반납일이 '오늘' — 잔여 0일이지만 허용이 정책)
+ */
+export const OVERDUE_EXTEND_GRACE_DAYS = EXTEND_DAYS
+
+/**
  * 반납예정일까지 남은 일수 (자정 기준, 정수)
  *   0  = 오늘까지
  *   양수 = N일 남음
@@ -80,12 +94,16 @@ export function loanDisplayStatus(loan: MyBookLoan, now: Date = new Date()): Loa
 /**
  * 연장 가능 여부 — 서버 RPC 검증 조건과 동일하게 클라에서도 선판정
  *   (버튼 비활성화용. 최종 강제는 서버 RPC가 담당)
- *   조건: active · 미연장(count < 1) · 미연체
+ *   조건: active · 미연장(count < 1) · 연체 7일 이내
+ *
+ * ← [2026-07-20] 정책 변경: "연체=무조건 불가" → "연체 7일까지 허용"
+ *   서버 RPC(extend_book_checkout)의 OVERDUE_TOO_LONG 조건과 반드시 일치시킬 것.
  */
 export function canExtend(loan: MyBookLoan, now: Date = new Date()): boolean {
   if (loan.status !== 'active')                return false
   if (loan.extension_count >= MAX_EXTENSION)   return false
-  if (daysUntilDue(loan.due_at, now) < 0)      return false
+  // 연체일수 = -daysUntilDue. 이 값이 유예 한도를 넘으면 불가.
+  if (-daysUntilDue(loan.due_at, now) > OVERDUE_EXTEND_GRACE_DAYS) return false
   return true
 }
 
@@ -97,8 +115,10 @@ export function extendBlockedReason(loan: MyBookLoan, now: Date = new Date()): s
   if (loan.status === 'returned')              return '반납완료'
   if (loan.status === 'lost')                  return '분실'
   if (loan.status !== 'active')                return '연장 불가'
-  if (daysUntilDue(loan.due_at, now) < 0)      return '연체·반납요망'
+  // ← [2026-07-20] 연장완료 판정을 연체 판정보다 앞으로 이동.
+  //   연체이면서 이미 연장한 건은 "연장완료"가 더 정확한 사유다.
   if (loan.extension_count >= MAX_EXTENSION)   return '연장완료'
+  if (-daysUntilDue(loan.due_at, now) > OVERDUE_EXTEND_GRACE_DAYS) return '연체·반납요망'
   return null
 }
 

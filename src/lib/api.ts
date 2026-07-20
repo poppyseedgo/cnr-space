@@ -1630,8 +1630,12 @@ export async function fetchMyBookLoans(userId: string): Promise<MyBookLoan[]> {
 
 /** 연장 RPC 에러 메시지 → 코드 매핑 (Postgres RAISE EXCEPTION 메시지 기반) */
 function parseExtendError(message: string): ExtendErrorCode {
+  // ← [2026-07-20] 순서 주의: includes 매칭이므로 긴 코드를 먼저 검사해야 한다.
+  //   'OVERDUE_TOO_LONG' 메시지는 'OVERDUE' 도 포함하므로,
+  //   'OVERDUE' 가 앞에 있으면 항상 잘못된 코드로 매핑된다.
   const codes: ExtendErrorCode[] = [
-    'CHECKOUT_NOT_FOUND', 'NOT_OWNER', 'NOT_ACTIVE', 'ALREADY_EXTENDED', 'OVERDUE',
+    'CHECKOUT_NOT_FOUND', 'NOT_OWNER', 'NOT_ACTIVE', 'ALREADY_EXTENDED',
+    'OVERDUE_TOO_LONG', 'OVERDUE',
   ]
   const hit = codes.find(c => message.includes(c))
   return hit ?? 'UNKNOWN'
@@ -1689,6 +1693,9 @@ export function extendErrorMessage(code: ExtendErrorCode): string {
     case 'NOT_OWNER':          return '본인 대여만 연장할 수 있습니다'
     case 'NOT_ACTIVE':         return '이미 반납된 도서입니다'
     case 'ALREADY_EXTENDED':   return '이미 연장한 도서입니다 (연장은 1회만 가능)'
+    // ← [2026-07-20] 연체 7일 초과 — 연장해도 반납일이 과거라 무의미하므로 차단
+    case 'OVERDUE_TOO_LONG':   return '연체 7일이 지나 연장할 수 없습니다. 도서를 반납해주세요'
+    // 구 정책(연체=무조건 불가) 잔재. 서버에서 더 이상 발생하지 않지만 방어적으로 유지
     case 'OVERDUE':            return '연체 중에는 연장할 수 없습니다. 반납 후 다시 대여해주세요'
     default:                   return '연장에 실패했습니다. 잠시 후 다시 시도해주세요'
   }

@@ -815,7 +815,7 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
       booker: {
         ...BANNER_PRESETS.danger,
         title: '반납 예정일이 지났습니다. 도서를 반납해 주세요.',
-        body:  '연체 중에는 연장 신청이 불가하며, 관리자에게 도서를 전달하면 반납 처리됩니다.',
+        body:  '연체 7일 이내라면 마이페이지에서 연장(1회, 7일)을 신청할 수 있습니다. 반납은 관리자에게 도서를 전달하면 처리됩니다.',
       },
     },
     cta: { booker: CTA_MY_LOANS_WARN },
