@@ -47,8 +47,8 @@
  *    재현했다. 픽셀 단위 일치가 필요하면 원본 SVG 를 전달받아 교체할 것.
  */
 
-import { useState } from 'react'
-import type { ReactNode } from 'react'
+import { useState, useEffect } from 'react'
+import type { ReactNode, CSSProperties } from 'react'
 import { fmtDueShortKo } from '../../utils/bookLoan'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -163,13 +163,53 @@ export const LT = {
   searchGap:    20,   // 검색바 요소 간격 (Figma 1339:1178 — rev1 10 → 20)
   chipRowPadY:  24,   // Hero 하단 장르 칩 행 상하 여백 (Figma 1339:1306)
 
-  cardGapFree:  16,   // 대여가능 카드 내부 gap (Figma 83:336)
-  cardGapHeld:  12,   // 대여중/연체 카드 내부 gap (Figma 1334:566)
+  //  ← [2026-07-20 rev3] 카드 본문이 '표지 + 제목' 으로 단순해지면서
+  //     상태별 gap 구분이 사라졌다. 호버 프레임 두 종 모두 gap 12.
+  cardGap:      12,   // Figma 1344:1539 / 1344:1552
+
+  //  호버 오버레이 (Figma 1344:1568 / 1344:1544 / 1344:1549)
+  hoverMetaH:   125,                        // 대여 정보 패널 고정 높이
+  hoverPanelBg: 'rgba(255,255,255,0.35)',   // + backdrop-blur 5px
 
   dimmedCover:  0.3,  // 대여중/연체 표지 불투명도
 
-  danger:       '#F75D5F',   // 호버 오버레이 '삭제' 배경 (Figma 1340:1333)
+  danger:       '#F75D5F',   // 호버 오버레이 '삭제' 배경 (Figma 1344:1555)
 } as const
+
+/**
+ * 호버 오버레이 버튼 공통 스타일 — Figma 1344:1545 / 1547 / 1550 / 1560
+ *   px16 py12 · radius 0 · 14px Regular · lineHeight 1.4 · flex 1
+ *   배경/글자색만 호출부에서 덮어쓴다.
+ */
+const HOVER_BTN: CSSProperties = {
+  flex: 1, minWidth: 0, border: 'none', cursor: 'pointer', borderRadius: 0,
+  padding: '12px 16px', fontFamily: 'inherit',
+  fontSize: 14, fontWeight: 400, lineHeight: 1.4,
+}
+
+/**
+ * 이 기기가 진짜 hover 를 지원하는가.
+ *
+ * ← [2026-07-20 rev3] CTA 를 호버 영역으로 옮기면서 필요해졌다.
+ *   터치 기기는 hover 이벤트가 없거나(또는 탭 후 잔류) 신뢰할 수 없어서,
+ *   hover 로만 CTA 를 열면 모바일에서 대여 버튼을 누를 방법이 사라진다.
+ *   (hover: none) 이면 오버레이를 항상 펼쳐 둔다.
+ */
+function useCanHover(): boolean {
+  const [can, setCan] = useState(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(hover: hover)').matches
+      : true,
+  )
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const mq = window.matchMedia('(hover: hover)')
+    const onChange = () => setCan(mq.matches)
+    mq.addEventListener?.('change', onChange)
+    return () => mq.removeEventListener?.('change', onChange)
+  }, [])
+  return can
+}
 
 const FONT_M = 500   // Pretendard Medium
 const FONT_R = 400   // Pretendard Regular
@@ -364,9 +404,8 @@ export function BookGridCard({
   //  표지 원본 비율을 잰 뒤 결정되는 맞춤 방식.
   //  onLoad 전에는 contain(안전측) — 로드 후 잘림이 임계값 이내면 cover 로 승격.
   const [coverFit, setCoverFit] = useState<'cover' | 'contain'>('contain')
-  // ← [2026-07-20] 편집/삭제는 카드 하단 고정이 아니라 표지 호버 오버레이로 이동
-  //   (Figma 1340:1332). 터치 기기는 hover 가 없으므로 focus-within 도 함께 사용.
-  const [hovered, setHovered] = useState(false)
+  const [hovered, setHovered]   = useState(false)
+  const canHover = useCanHover()
 
   const displayStatus = (isOverdueStatus ? 'overdue' : book.status) as CardBook['status'] | 'overdue'
   const badge   = statusBadgeConfig(displayStatus)
@@ -374,15 +413,18 @@ export function BookGridCard({
   const held    = book.status === 'borrowed' && !!checkout   // 대여중/연체 = 메타 노출
   const dimmed  = book.status !== 'available'
 
-  // Figma: 대여가능 16px / 대여중·연체 12px
-  const innerGap = held ? LT.cardGapHeld : LT.cardGapFree
-
-  const showActions = isAdmin && hovered
+  // ← [2026-07-20 rev3] 오버레이 노출 조건
+  //
+  //   hover 로만 열면 터치 기기에서 CTA 에 영영 접근할 수 없다.
+  //   (CTA 가 카드 하단 흐름에 있을 때는 문제가 없었지만, 이제 호버 영역으로
+  //    옮겼으므로 hover 가 없는 기기에서는 대여 자체가 불가능해진다.)
+  //   → (hover: none) 기기에서는 항상 펼쳐 둔다.
+  const overlayOpen = !canHover || hovered
 
   return (
     <div
       style={{
-        display: 'flex', flexDirection: 'column', gap: innerGap,
+        display: 'flex', flexDirection: 'column', gap: LT.cardGap,
         alignItems: 'flex-start', width: '100%',
       }}
       onMouseEnter={() => setHovered(true)}
@@ -393,7 +435,7 @@ export function BookGridCard({
         if (!e.currentTarget.contains(e.relatedTarget as Node)) setHovered(false)
       }}
     >
-      {/* ── 표지 영역 (h 280 / radius 0) — 뱃지·액션 오버레이의 기준 박스 ── */}
+      {/* ══ 표지 영역 — 뱃지·메타·CTA·편집/삭제 오버레이의 기준 박스 ══ */}
       <div style={{ position: 'relative', width: '100%', flexShrink: 0 }}>
         <div style={{
           width: '100%', aspectRatio: LT.coverRatio, overflow: 'hidden',
@@ -418,8 +460,7 @@ export function BookGridCard({
             : <CoverFallback title={book.title} />}
         </div>
 
-        {/* 뱃지 행 (Figma 1339:1259 — left 8 / top 7.3 / right 8 / space-between)
-            NEW 가 없으면 상태 뱃지만 우측 정렬 (Figma 1339:1329). */}
+        {/* ── 뱃지 행 (Figma 1344:1562 — left 8 / top 7.3 / right 8) ────── */}
         <div style={{
           position: 'absolute', left: 8, right: 8, top: 7.3,
           display: 'flex', alignItems: 'center',
@@ -430,45 +471,136 @@ export function BookGridCard({
           <ListBadge bg={badge.bg}>{badge.label}</ListBadge>
         </div>
 
-        {/* 편집/삭제 오버레이 (Figma 1340:1332 — 표지 하단 / padding 8 / gap 8)
-            ← [2026-07-20] 카드 하단 고정 → 표지 호버로 이동.
-            레이아웃 높이에 영향을 주지 않도록 absolute 로 띄운다
-            (기존처럼 흐름에 두면 관리자 화면만 카드 높이가 달라진다). */}
-        {isAdmin && (
+        {/* ── 대여 정보 패널 (Figma 1344:1568) ────────────────────────────
+            left/right 8 · top 41.3 · height 125 · padding 8
+            배경 rgba(255,255,255,.35) + backdrop-blur 5px
+            표지 위에 겹치므로 반투명 유리판으로 처리한다. */}
+        {held && checkout && (
           <div style={{
-            position: 'absolute', left: 0, right: 0, bottom: 0,
-            display: 'flex', gap: 8, alignItems: 'center', padding: 8,
-            opacity: showActions ? 1 : 0,
-            visibility: showActions ? 'visible' : 'hidden',
+            position: 'absolute', left: 8, right: 8, top: 41.3,
+            height: LT.hoverMetaH, padding: 8, boxSizing: 'border-box',
+            display: 'flex', flexDirection: 'column',
+            background: LT.hoverPanelBg,
+            backdropFilter: 'blur(5px)', WebkitBackdropFilter: 'blur(5px)',
+            fontSize: 14, fontWeight: FONT_R, lineHeight: 1.5,
+            opacity: overlayOpen ? 1 : 0,
+            visibility: overlayOpen ? 'visible' : 'hidden',
             transition: 'opacity 0.15s',
+            pointerEvents: 'none',
+          }}>
+            {/* 상태 + 대여자 */}
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center', minWidth: 0 }}>
+              <span style={{
+                color: isOverdueStatus ? LT.metaOverdue : LT.metaBusy, flexShrink: 0,
+              }}>
+                {isOverdueStatus ? '연체' : '대여'}
+              </span>
+              {/* 부서명이 폭을 넘기면 말줄임. 이름은 식별 정보라 축약하지 않는다.
+                  flex 자식은 min-width:auto 가 기본이라 minWidth:0 이 없으면
+                  ellipsis 가 동작하지 않는다 — 부모/자식 모두 지정. */}
+              <span style={{
+                display: 'flex', gap: 4, alignItems: 'center',
+                padding: '2px 0', minWidth: 0, flex: 1,
+              }}>
+                <span style={{ color: LT.black, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  {borrower?.name ?? '알 수 없음'}
+                </span>
+                {borrower?.dept && (
+                  <span
+                    title={borrower.dept}
+                    style={{
+                      color: LT.metaDept, minWidth: 0, flex: 1,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                    {borrower.dept}
+                  </span>
+                )}
+              </span>
+            </div>
+
+            {/* 반납기한 — Figma 라벨 '반납일'/'2026/7/20' 에서 기한 표기로 변경
+                (배포 완료된 문구 정책 유지) */}
+            <div style={{
+              display: 'flex', gap: 4, alignItems: 'center',
+              padding: '2px 0', color: LT.black, whiteSpace: 'nowrap',
+            }}>
+              <span>반납기한</span>
+              <span>{checkout.due_at ? `${fmtDueShortKo(checkout.due_at)} 이내` : '-'}</span>
+            </div>
+          </div>
+        )}
+
+        {/* ── CTA + 편집/삭제 (Figma 1344:1549 / 1344:1544) ───────────────
+            표지 하단 기준으로 쌓는다.
+              편집/삭제 : bottom 0, padding 8, gap 8      (높이 60)
+              CTA       : 그 바로 위, 좌우 padding 8만    (높이 44)
+            Figma 는 top 176.3 / 220.3 절대값으로 그려져 있지만 그건 표지
+            280px 고정 기준이다. 우리 표지는 비율 박스(≈364px)라 top 값을
+            그대로 쓰면 어긋난다 → 하단 기준으로 환산해 배치한다.
+            (썸네일 사이즈 정책은 요청대로 손대지 않음) */}
+        <div style={{
+          position: 'absolute', left: 0, right: 0, bottom: 0,
+          display: 'flex', flexDirection: 'column',
+          opacity: overlayOpen ? 1 : 0,
+          visibility: overlayOpen ? 'visible' : 'hidden',
+          transition: 'opacity 0.15s',
+        }}>
+          {/* CTA */}
+          <div style={{
+            display: 'flex', alignItems: 'center',
+            // 아래 편집/삭제 행이 padding 8 로 하단 여백을 만든다.
+            // 관리자가 아니면 그 행이 없으므로 여기서 하단 8 을 준다.
+            padding: isAdmin ? '0 8px' : '0 8px 8px',
           }}>
             {book.status === 'available' && (
               <button
-                onClick={onDelete}
-                tabIndex={showActions ? 0 : -1}
-                style={{
-                  flex: 1, minWidth: 0, border: 'none', cursor: 'pointer', borderRadius: 0,
-                  padding: '12px 16px', background: LT.danger, color: LT.white,
-                  fontSize: 14, fontWeight: FONT_R, lineHeight: 1.4, fontFamily: 'inherit',
-                }}>
-                삭제
+                onClick={onCheckout}
+                tabIndex={overlayOpen ? 0 : -1}
+                style={{ ...HOVER_BTN, background: LT.black, color: LT.white }}>
+                {isAdmin ? '대여 등록' : '대여 신청'}
               </button>
             )}
-            <button
-              onClick={onEdit}
-              tabIndex={showActions ? 0 : -1}
-              style={{
-                flex: 1, minWidth: 0, border: 'none', cursor: 'pointer', borderRadius: 0,
-                padding: '12px 16px', background: LT.white, color: LT.black,
-                fontSize: 14, fontWeight: FONT_R, lineHeight: 1.4, fontFamily: 'inherit',
-              }}>
-              편집
-            </button>
+            {book.status === 'borrowed' && checkout && isAdmin && (
+              <button
+                onClick={onReturn}
+                tabIndex={overlayOpen ? 0 : -1}
+                style={{ ...HOVER_BTN, background: LT.badgeBusy, color: LT.black }}>
+                반납 처리
+              </button>
+            )}
           </div>
-        )}
+
+          {/* 편집 / 삭제 */}
+          {isAdmin && (
+            <div style={{
+              display: 'flex', gap: 8, alignItems: 'center', padding: 8,
+            }}>
+              {/* 삭제는 대여 이력이 걸리지 않는 available 에서만.
+                  Figma 는 대여중 카드에도 삭제를 그려 두었지만, 대여 기록이
+                  남은 도서를 지우면 book_checkouts 가 고아가 된다. 기존 가드 유지. */}
+              {book.status === 'available' && (
+                <button
+                  onClick={onDelete}
+                  tabIndex={overlayOpen ? 0 : -1}
+                  style={{ ...HOVER_BTN, background: LT.danger, color: LT.white }}>
+                  삭제
+                </button>
+              )}
+              <button
+                onClick={onEdit}
+                tabIndex={overlayOpen ? 0 : -1}
+                style={{ ...HOVER_BTN, background: LT.white, color: LT.black }}>
+                편집
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* ── 제목 (Figma 1339:1265 — 20px Regular / 1.25 / #1E1E1E) ────── */}
+      {/* ══ 제목 (Figma 1344:1543 — 20px Regular / 1.25 / #1E1E1E) ══
+          ← [2026-07-20 rev3] 카드 본문에는 표지와 제목만 남는다.
+            메타·CTA·편집/삭제가 전부 호버 오버레이로 올라가면서
+            카드 높이가 상태와 무관하게 일정해졌다(그리드 행 정렬 개선). */}
       <p style={{
         margin: 0, width: '100%',
         fontSize: 20, fontWeight: FONT_R, lineHeight: 1.25, color: LT.ink,
@@ -478,83 +610,6 @@ export function BookGridCard({
       }}>
         {book.title}
       </p>
-
-      {/* ── 메타 (대여중/연체일 때만) — Figma 1334:699 ──────────────────
-          gap 4 / 14px Regular / lineHeight 1.5 */}
-      {held && checkout && (
-        <div style={{
-          display: 'flex', flexDirection: 'column', gap: 4,
-          width: '100%', fontSize: 14, fontWeight: FONT_R, lineHeight: 1.5,
-        }}>
-          {/* 상태 + 대여자 */}
-          <div style={{ display: 'flex', gap: 4, alignItems: 'center', minWidth: 0 }}>
-            <span style={{
-              color: isOverdueStatus ? LT.metaOverdue : LT.metaBusy, flexShrink: 0,
-            }}>
-              {isOverdueStatus ? '연체' : '대여'}
-            </span>
-            {/* ← [2026-07-20] 부서명이 카드 폭을 넘기면 말줄임.
-                이름은 축약하지 않고(식별 정보) 부서만 줄인다.
-                flex 자식은 min-width:auto 가 기본이라 minWidth:0 이 없으면
-                ellipsis 가 동작하지 않는다 — 부모/자식 모두 지정. */}
-            <span style={{
-              display: 'flex', gap: 4, alignItems: 'center',
-              padding: '2px 0', minWidth: 0, flex: 1,
-            }}>
-              <span style={{ color: LT.black, flexShrink: 0, whiteSpace: 'nowrap' }}>
-                {borrower?.name ?? '알 수 없음'}
-              </span>
-              {borrower?.dept && (
-                <span
-                  title={borrower.dept}
-                  style={{
-                    color: LT.metaDept, minWidth: 0, flex: 1,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>
-                  {borrower.dept}
-                </span>
-              )}
-            </span>
-          </div>
-
-          {/* 반납기한 — Figma 라벨 '반납일'/'2026/7/20' 에서 기한 표기로 변경 */}
-          <div style={{
-            display: 'flex', gap: 4, alignItems: 'center',
-            padding: '2px 0', color: LT.black, whiteSpace: 'nowrap',
-          }}>
-            <span>반납기한</span>
-            <span>{checkout.due_at ? `${fmtDueShortKo(checkout.due_at)} 이내` : '-'}</span>
-          </div>
-        </div>
-      )}
-
-      {/* ── CTA (full width / py16 / radius 0 / 16px) ───────────────────── */}
-      {book.status === 'available' && (
-        <button
-          onClick={onCheckout}
-          style={{
-            width: '100%', border: 'none', cursor: 'pointer',
-            padding: '16px 0', background: LT.black, color: LT.white,
-            fontSize: 16, fontWeight: FONT_R, lineHeight: 1.5,
-            fontFamily: 'inherit', borderRadius: 0,
-          }}>
-          {isAdmin ? '대여 등록' : '대여 신청'}
-        </button>
-      )}
-
-      {book.status === 'borrowed' && checkout && isAdmin && (
-        <button
-          onClick={onReturn}
-          style={{
-            width: '100%', border: 'none', cursor: 'pointer',
-            padding: '16px 0', background: LT.badgeBusy, color: LT.black,
-            fontSize: 16, fontWeight: FONT_M, lineHeight: 1.5,
-            fontFamily: 'inherit', borderRadius: 0,
-          }}>
-          반납 처리
-        </button>
-      )}
-
     </div>
   )
 }
