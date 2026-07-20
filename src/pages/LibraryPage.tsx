@@ -1382,7 +1382,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
               display: 'grid',
               gridTemplateColumns: `repeat(${isMobile ? 2 : LT.cardCols}, minmax(0, 1fr))`,
               columnGap: isMobile ? 12 : LT.colGap,
-              rowGap: isMobile ? 20 : LT.colGap,
+              rowGap: isMobile ? 20 : LT.rowGap,
               alignItems: 'start',
             }}>
               {filteredBooks.map(book => {
