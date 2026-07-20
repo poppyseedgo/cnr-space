@@ -1118,14 +1118,6 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
             </div>
           </div>
 
-          {/* 안내문 (Figma 98:65 — 20px / lineHeight 1.5 / 2줄) */}
-          <div style={{
-            fontSize: isMobile ? 15 : 20, fontWeight: 400, lineHeight: 1.5, color: LT.ink,
-          }}>
-            <div>대여기간 {BORROW_DAYS}일, 연장 {BORROW_DAYS}일 총 {BORROW_DAYS * 2}일 가능</div>
-            <div>1층 안내 데스크에서 신청 또는 대여신청 요청 후 승인</div>
-          </div>
-
           {/* 통계 + 검색 (Figma 1332:520 — gap 40 / items-end) */}
           <div style={{
             display: 'flex', width: '100%',

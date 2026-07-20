@@ -123,7 +123,28 @@ export const LT = {
   colGap:       24,   // 카드 간 gap (Figma 1339:1205)
   cardW:        251,  // 5열 기준 (1352 - 24*4) / 5 = 251.2
   cardCols:     5,    // 데스크톱 열 수
-  coverH:       280,
+
+  // ── 표지 박스 (← [2026-07-20] 잘림 해결) ──────────────────────────────
+  //
+  //  문제(근본 원인):
+  //    Figma 는 표지를 251×280 고정으로 그렸다. 비율이 1:1.12 로 거의 정사각인데
+  //    실제 책 표지는 1:1.4 ~ 1:1.5 다. object-fit:cover 로 채우면
+  //    세로가 20~26% 잘려 나간다(제목/저자가 날아감).
+  //    → 높이를 px 로 고정한 것 자체가 원인이므로 '비율 박스'로 바꾼다.
+  //
+  //  해법:
+  //    1) 박스를 aspect-ratio 로 정의 → 카드 폭이 변해도 비율 유지,
+  //       같은 행 카드 높이가 항상 일치(그리드 정렬 유지).
+  //    2) object-fit: contain → 원본을 절대 자르지 않는다.
+  //       비율이 다른 표지는 여백이 생기므로 중립 배경을 깐다.
+  //
+  //  비율을 바꾸고 싶으면 coverRatio 한 줄만 고치면 된다.
+  //    '1 / 1.45' → 표준 단행본 (권장, 여백 최소)
+  //    '3 / 4'    → 여백 더 적지만 세로 긴 표지에 위아래 여백
+  //    '2 / 3'    → 세로 긴 표지 우선
+  coverRatio:   '1 / 1.45',
+  coverFit:     'contain' as const,   // 'cover' 로 바꾸면 다시 잘림
+  coverBg:      '#F5F6F8',
 
   searchGap:    20,   // 검색바 요소 간격 (Figma 1339:1178 — rev1 10 → 20)
   chipRowPadY:  24,   // Hero 하단 장르 칩 행 상하 여백 (Figma 1339:1306)
@@ -239,7 +260,7 @@ export function newBadgeLabel(acquiredAt: string | null): string | null {
 function CoverFallback({ title }: { title: string }) {
   return (
     <div style={{
-      width: '100%', height: LT.coverH, background: '#F1F3F5',
+      width: '100%', height: '100%', background: LT.coverBg,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: '0 16px', boxSizing: 'border-box',
     }}>
@@ -304,15 +325,19 @@ export function BookGridCard({
       {/* ── 표지 영역 (h 280 / radius 0) — 뱃지·액션 오버레이의 기준 박스 ── */}
       <div style={{ position: 'relative', width: '100%', flexShrink: 0 }}>
         <div style={{
-          width: '100%', height: LT.coverH, overflow: 'hidden',
-          opacity: dimmed ? LT.dimmedCover : 1,
+          width: '100%', aspectRatio: LT.coverRatio, overflow: 'hidden',
+          background: LT.coverBg, opacity: dimmed ? LT.dimmedCover : 1,
         }}>
           {book.cover_url && !imgErr
             ? <img
                 src={book.cover_url}
                 alt={book.title}
                 onError={() => setImgErr(true)}
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                style={{
+                  width: '100%', height: '100%',
+                  objectFit: LT.coverFit,   // contain — 원본 잘림 없음
+                  display: 'block',
+                }}
               />
             : <CoverFallback title={book.title} />}
         </div>
