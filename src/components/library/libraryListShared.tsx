@@ -49,7 +49,6 @@
 
 import { useState, useEffect } from 'react'
 import type { ReactNode, CSSProperties } from 'react'
-import { UserAvatar } from '../common/UserAvatar'
 import { fmtDueShortKo } from '../../utils/bookLoan'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -74,6 +73,8 @@ import { fmtDueShortKo } from '../../utils/bookLoan'
 /** 카드가 읽는 도서 필드 */
 export interface CardBook {
   title:       string
+  /** ← [2026-07-20] 제목 아래 14px 회색 작가명 (Figma 1345:1820) */
+  author:      string | null
   status:      'available' | 'borrowed' | 'maintenance' | 'lost'
   cover_url:   string | null
   acquired_at: string | null
@@ -90,8 +91,6 @@ export interface CardCheckout {
 export interface CardBorrower {
   name?:       string | null
   dept?:       string | null
-  /** ← [2026-07-20] 카드 대여자 행 아바타 (AppUser.avatar_url) */
-  avatar_url?: string | null
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -174,9 +173,6 @@ export const LT = {
   //  ← [2026-07-20 rev3] 카드 본문이 '표지 + 제목' 으로 단순해지면서
   //     상태별 gap 구분이 사라졌다. 호버 프레임 두 종 모두 gap 12.
   cardGap:      12,   // Figma 1344:1539 / 1344:1552
-
-  //  대여자 행 아바타 크기 — 본문 14px 텍스트에 맞춘 20px
-  metaAvatar:   20,
 
   dimmedCover:  0.3,  // 대여중/연체 표지 불투명도
 
@@ -551,30 +547,47 @@ export function BookGridCard({
         </div>
       </div>
 
-      {/* ══ 제목 (Figma 1344:1543 — 20px Regular / 1.25 / #1E1E1E) ══
-          ← [2026-07-20 rev3] 카드 본문에는 표지와 제목만 남는다.
-            메타·CTA·편집/삭제가 전부 호버 오버레이로 올라가면서
-            카드 높이가 상태와 무관하게 일정해졌다(그리드 행 정렬 개선). */}
-      <p style={{
-        margin: 0, width: '100%',
-        fontSize: 20, fontWeight: FONT_R, lineHeight: 1.25, color: LT.ink,
-        wordBreak: 'keep-all',
-        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-        overflow: 'hidden',
+      {/* ══ 제목 + 작가 (Figma 1345:1825 — flex-col / gap 4 / lineHeight 1.25) ══
+            제목  20px Regular  #111
+            작가  14px Regular  #A1A4AF   ← [2026-07-20 rev5] 신규
+          author 가 비어 있는 도서(CSV 일괄 등록분 등)는 행 자체를 그리지 않는다.
+          빈 줄을 넣으면 카드마다 높이가 달라져 그리드 행이 어긋난다. */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: 4,
+        width: '100%', minWidth: 0,
       }}>
-        {book.title}
-      </p>
+        <p style={{
+          margin: 0, width: '100%',
+          fontSize: 20, fontWeight: FONT_R, lineHeight: 1.25, color: LT.ink,
+          wordBreak: 'keep-all',
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+        }}>
+          {book.title}
+        </p>
+        {book.author && (
+          <p
+            title={book.author}
+            style={{
+              margin: 0, width: '100%',
+              fontSize: 14, fontWeight: FONT_R, lineHeight: 1.25, color: LT.metaDept,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+            {book.author}
+          </p>
+        )}
+      </div>
 
       {/* ══ 대여자 / 반납기한 — 대여중·연체일 때만 (Figma 1344:1568 내용) ══
           ← [2026-07-20 rev4] 표지 호버 오버레이 → 카드 본문으로 원복.
             gap 4 · 14px Regular · lineHeight 1.5
-            아바타는 공용 UserAvatar 재사용(이미지 없으면 이니셜 폴백). */}
+            ← [2026-07-20 rev5] 아바타 제거 (Figma 1344:1809 에 아바타 없음). */}
       {held && checkout && (
         <div style={{
           display: 'flex', flexDirection: 'column', gap: 4,
           width: '100%', fontSize: 14, fontWeight: FONT_R, lineHeight: 1.5,
         }}>
-          {/* 상태 + 아바타 + 대여자 */}
+          {/* 상태 + 대여자 */}
           <div style={{ display: 'flex', gap: 4, alignItems: 'center', minWidth: 0 }}>
             <span style={{
               color: isOverdueStatus ? LT.metaOverdue : LT.metaBusy, flexShrink: 0,
@@ -588,11 +601,6 @@ export function BookGridCard({
               display: 'flex', gap: 4, alignItems: 'center',
               padding: '2px 0', minWidth: 0, flex: 1,
             }}>
-              <UserAvatar
-                name={borrower?.name ?? '?'}
-                avatarUrl={borrower?.avatar_url}
-                size={LT.metaAvatar}
-              />
               <span style={{ color: LT.black, flexShrink: 0, whiteSpace: 'nowrap' }}>
                 {borrower?.name ?? '알 수 없음'}
               </span>
