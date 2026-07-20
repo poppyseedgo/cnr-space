@@ -1,0 +1,227 @@
+// @ts-nocheck
+/**
+ * book-due-reminder / index.ts
+ * 도서 반납 리마인더 — 매일 09:00 KST 발송 (반납 1일 전 / 당일 / 연체)
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 스케줄
+ * ═══════════════════════════════════════════════════════════════════════════
+ *   Cron: '0 0 * * *'   (UTC 00:00 = KST 09:00)
+ *
+ *   ※ 기존 daily-reminder는 '0 22 * * *' (UTC 22:00 = KST 07:00).
+ *      본 함수는 09:00 KST 이므로 UTC 00:00 이며 날짜가 같은 날로 유지된다
+ *      (KST 09:00 = 같은 날 UTC 00:00). 검증 완료.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * KST 혼동 방지 설계 (이 함수의 핵심)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 문제:
+ *   due_at 은 "대여시각 + 7일" 이라 시각 성분(예: 14:37)을 갖는다.
+ *   만약 "due_at > now()" 같은 시각 비교로 D-day를 판정하면
+ *   cron 실행 시각(09:00)과 due_at 시각의 대소에 따라
+ *   같은 날짜인데도 발송/미발송이 갈리는 경계 버그가 생긴다.
+ *
+ * 해결 (근본):
+ *   모든 판정을 "KST 날짜(YYYY-MM-DD) 단위"로만 수행한다.
+ *     dDiff = KST날짜(due_at) - KST날짜(실행시점)
+ *       dDiff === 1  → book_due_tomorrow  (반납 1일 전)
+ *       dDiff === 0  → book_due_today     (반납 당일)
+ *       dDiff <   0  → book_overdue       (연체중, 매일 반복)
+ *   시각 성분은 판정에 일절 관여하지 않으므로 몇 시에 대여했든 결과가 동일하다.
+ *
+ *   KST 날짜 도출은 프로젝트 표준 패턴을 따른다:
+ *     new Date(ts + 9h) 후 getUTC*  → UTC 기준으로 읽되 +9h 만큼 밀어 KST 벽시계를 얻음
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 중복 발송 방지
+ * ═══════════════════════════════════════════════════════════════════════════
+ *   · due_tomorrow / due_today: 대여 1건당 각 1회만 발송돼야 한다.
+ *     book_checkouts.notified_due_tomorrow / notified_due_today (date 컬럼)에
+ *     "발송한 KST 날짜"를 기록하고, 같은 날짜면 skip.
+ *     → cron 재실행/수동 호출해도 중복 발송되지 않음 (멱등)
+ *   · overdue: 매일 1회 반복 발송이 정책이므로
+ *     notified_overdue_on 에 마지막 발송 KST 날짜를 기록하고 날짜가 다를 때만 발송.
+ *
+ *   연장(extend)이 일어나면 due_at 이 미래로 밀리므로
+ *   RPC에서 위 3개 컬럼을 NULL로 초기화한다 → 새 due_at 기준으로 다시 알림 발송.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 발송 경로
+ * ═══════════════════════════════════════════════════════════════════════════
+ *   send-notification Edge Function 호출 (이메일 + 인앱 동시 처리)
+ *   payload: { type, book_checkout_id, ... } → 도서관 알림은 recipients='book_borrower'
+ *
+ * Deploy:
+ *   supabase functions deploy book-due-reminder --no-verify-jwt
+ */
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CORS — 인라인 정의
+// ─────────────────────────────────────────────────────────────────────────────
+//   ← [2026-07-20 fix] 기존 코드는 '../_shared/cors.ts' 를 import 했으나
+//     이 저장소에는 해당 파일이 존재하지 않는다(_shared 는 notification-types /
+//     email-templates / email-sender / notification-inapp / recipient-resolver /
+//     zoom-oauth 6개뿐). 그래서 번들 단계에서
+//     "Module not found .../_shared/cors.ts" 로 배포가 400 실패했다.
+//
+//   근본 정정: 이 프로젝트의 실제 컨벤션은 "함수마다 corsHeaders 인라인"이다
+//   (search-users / send-notification / create-zoom-meeting / search-book /
+//    visitor-* / auto-cancel-bookings 등 기존 함수 전부 동일).
+//   없는 공유 모듈을 새로 만들어 이 함수만 다른 방식을 쓰게 하면 컨벤션이
+//   두 갈래로 갈라지므로, 기존 방식에 맞춰 인라인으로 정정한다.
+const corsHeaders = {
+  'Access-Control-Allow-Origin':  '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+const SUPABASE_URL      = Deno.env.get('SUPABASE_URL')!
+const SERVICE_ROLE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KST 유틸 — 판정의 SSOT
+// ─────────────────────────────────────────────────────────────────────────────
+
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000
+
+const pad = (n: number) => String(n).padStart(2, '0')
+
+/** ISO/timestamp → KST 기준 'YYYY-MM-DD' */
+function kstDateStr(ts: string | number | Date): string {
+  const ms = ts instanceof Date ? ts.getTime()
+           : typeof ts === 'number' ? ts
+           : new Date(ts).getTime()
+  const k = new Date(ms + KST_OFFSET_MS)
+  return `${k.getUTCFullYear()}-${pad(k.getUTCMonth() + 1)}-${pad(k.getUTCDate())}`
+}
+
+/** KST 날짜 기준 자정 epoch(ms) — 날짜 차이 계산용 (시각 성분 완전 제거) */
+function kstDayEpoch(ts: string | number | Date): number {
+  const ms = ts instanceof Date ? ts.getTime()
+           : typeof ts === 'number' ? ts
+           : new Date(ts).getTime()
+  const k = new Date(ms + KST_OFFSET_MS)
+  return Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate())
+}
+
+/** due_at 이 실행시점 기준 며칠 남았는지 (KST 날짜 단위, 음수=연체) */
+function dueDayDiff(dueAt: string, nowMs: number): number {
+  return (kstDayEpoch(dueAt) - kstDayEpoch(nowMs)) / 86400000
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
+  const nowMs    = Date.now()
+  const todayKST = kstDateStr(nowMs)
+
+  try {
+    // ── 대여중(active) 건 전체 조회 ─────────────────────────────────────────
+    //   연체 건도 status='active' 로 남아 있으므로(자동 전환 배치 없음) 함께 조회.
+    const { data: rows, error } = await supabase
+      .from('book_checkouts')
+      .select(`
+        id, user_id, due_at, extension_count,
+        notified_due_tomorrow, notified_due_today, notified_overdue_on,
+        books ( title, author )
+      `)
+      .eq('status', 'active')
+
+    if (error) throw new Error(`대여 목록 조회 실패: ${error.message}`)
+
+    if (!rows || rows.length === 0) {
+      return json({ success: true, message: '대여중 도서 없음', date: todayKST, sent: 0 })
+    }
+
+    let sent = 0, skipped = 0
+    const results: any[] = []
+
+    for (const r of rows) {
+      const diff = dueDayDiff(r.due_at, nowMs)
+
+      // 발송 대상 타입 판정 (KST 날짜 단위 — 시각 무관)
+      let type: string | null = null
+      let dedupeColumn: string | null = null
+
+      if (diff === 1) {
+        type = 'book_due_tomorrow'
+        dedupeColumn = 'notified_due_tomorrow'
+      } else if (diff === 0) {
+        type = 'book_due_today'
+        dedupeColumn = 'notified_due_today'
+      } else if (diff < 0) {
+        type = 'book_overdue'
+        dedupeColumn = 'notified_overdue_on'   // 매일 1회 반복
+      }
+
+      if (!type) { skipped++; continue }   // 아직 여유 (D-2 이상)
+
+      // ── 중복 발송 방지: 이미 오늘(KST) 발송했으면 skip ────────────────────
+      const already = r[dedupeColumn!]
+      if (already && kstDateStr(already) === todayKST) {
+        skipped++
+        results.push({ id: r.id, type, status: 'skip_already_sent' })
+        continue
+      }
+
+      // ── 발송 (이메일 + 인앱 동시) ─────────────────────────────────────────
+      //   ← [2026-07-20 fix] send-notification 은 { type, booking } 형태만 받는다
+      //     (핸들러 첫 줄: const { type, booking } = payload → 없으면 400).
+      //     기존 코드는 필드를 최상위에 평평하게 보내 100% 400 실패했다.
+      //     MyBookLoans.tsx 의 book_extended 호출과 동일한 형태로 통일한다.
+      const bookTitle = Array.isArray(r.books) ? r.books[0]?.title : r.books?.title
+
+      const { error: sendErr } = await supabase.functions.invoke('send-notification', {
+        body: {
+          type,
+          booking: {
+            id:              r.id,                 // book_checkouts.id
+            title:           bookTitle ?? '(제목 없음)',   // 메일 타이틀 = 도서명
+            user_id:         r.user_id,            // → recipients(book_borrower) 해석 키
+            book_title:      bookTitle ?? '(제목 없음)',
+            due_at:          r.due_at,
+            due_date_kst:    kstDateStr(r.due_at), // 이미 KST로 계산된 문자열
+            days_overdue:    diff < 0 ? Math.abs(diff) : 0,
+            extension_count: r.extension_count ?? 0,
+          },
+        },
+      })
+
+      if (sendErr) {
+        results.push({ id: r.id, type, status: 'send_failed', error: sendErr.message })
+        continue
+      }
+
+      // ── 발송 성공 기록 (멱등 보장) ────────────────────────────────────────
+      await supabase
+        .from('book_checkouts')
+        .update({ [dedupeColumn!]: todayKST })
+        .eq('id', r.id)
+
+      sent++
+      results.push({ id: r.id, type, status: 'sent', dDiff: diff })
+    }
+
+    console.log(`[book-due-reminder] ${todayKST} KST 09:00 — 발송 ${sent}건 / 스킵 ${skipped}건`)
+
+    return json({ success: true, date: todayKST, sent, skipped, results })
+
+  } catch (e) {
+    console.error('[book-due-reminder] 오류:', e)
+    return json({ success: false, error: String(e?.message ?? e) }, 500)
+  }
+})
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
+}

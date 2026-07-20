@@ -89,6 +89,20 @@ export type NotificationType =
   | 'early_end'               // 회의실 조기 반납 ← [P2 v7] 2026-04-19 신규
   // 일일 리마인더
   | 'daily_reminder'          // 매일 07:00 KST 당일 예약 안내
+  // ── 도서관 (← [2026-07-20] 신규) ─────────────────────────────────────
+  //   수신자는 항상 대여자 본인 1명(book_borrower). 참석자/관리자 개념 없음.
+  //   스케줄형 3종(due_tomorrow/due_today/overdue)은 매일 09:00 KST 발송.
+  | 'book_borrowed'           // 대여 확정 (관리자가 대여 등록한 즉시)
+  | 'book_extended'           // 연장 완료 (사용자 연장 신청 직후)
+  | 'book_due_tomorrow'       // 반납 1일 전 09:00 KST
+  | 'book_due_today'          // 반납 당일 09:00 KST
+  | 'book_overdue'            // 연체중 09:00 KST (매일 반복)
+
+  // ── 도서 대여 신청/승인 (← [2026-07-22] 신규) ────────────────────────
+  //   에메랄드룸 승인 패턴 준용. 신청은 관리자 전원에게, 승인/거절은 신청자에게.
+  | 'book_requested'          // 대여 신청 접수 → 관리자 전원
+  | 'book_request_approved'   // 신청 승인 → 신청자 (확정 반납일 안내)
+  | 'book_request_rejected'   // 신청 거절 → 신청자 (사유 포함)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 2. 수신자 규칙
@@ -101,6 +115,7 @@ export type RecipientRule =
   | 'booker_attendees_admins'  // 3자 모두 (pending, pending_expired)
   | 'removed_attendees'        // 제거된 참석자 (attendee_removed 전용)
   | 'former_booker'            // ← [2026-06-12] 원래 예약자 1명 (former_booker 전용)
+  | 'book_borrower'            // ← [2026-07-20] 도서 대여자 본인 1명 (도서관 알림 전용)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 3. 헤더 색상 체계 (5색)
@@ -207,6 +222,15 @@ const CTA_CHECKIN        = { label: '체크인하러 가기',   urlTemplate: '{A
 const CTA_NEW            = { label: '새 예약 만들기',    urlTemplate: '{APP_URL}',                            color: COLORS.INDIGO }
 const CTA_APP_ROOT       = { label: '예약 확인하기',     urlTemplate: '{APP_URL}',                            color: COLORS.INDIGO }
 const CTA_ADMIN_APPR     = { label: '지금 승인 처리하기', urlTemplate: '{APP_URL}#admin-booking-{BOOKING_ID}', color: COLORS.AMBER  }
+
+// ← [2026-07-20] 도서관 CTA — 마이페이지 '내 대여' 탭으로 딥링크
+//   · #myloans : MyPage 진입 + 조회 세그먼트 탭을 '도서 대여'로 자동 선택
+//   · 도서관 알림은 특정 예약(BOOKING_ID)이 아니므로 예약 딥링크 스킴을 쓰지 않는다
+const CTA_MY_LOANS       = { label: '내 대여 확인하기', urlTemplate: '{APP_URL}#myloans', color: COLORS.INDIGO }
+const CTA_MY_LOANS_EXT   = { label: '연장하러 가기',    urlTemplate: '{APP_URL}#myloans', color: COLORS.CYAN   }
+const CTA_MY_LOANS_WARN  = { label: '대여 현황 확인',   urlTemplate: '{APP_URL}#myloans', color: COLORS.RED    }
+// ← [2026-07-22] 도서 대여 신청 승인 — 관리자용 / 신청자용
+const CTA_BOOK_APPROVE   = { label: '신청 승인하러 가기', urlTemplate: '{APP_URL}#library', color: COLORS.AMBER  }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 7. 정책 정의 — 이벤트별 전체 매트릭스
@@ -611,6 +635,190 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
       booker:   CTA_APP_ROOT,  // ← [2026-04-29] 예약자 CTA 추가
       attendee: CTA_APP_ROOT,
     },
+    isCancelledStyle: false,
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // 도서관 (← [2026-07-20] 신규)
+  // ──────────────────────────────────────────────────────────────────────
+  //
+  // 수신자 정책:
+  //   · 전 5종 모두 recipients='book_borrower' — 대여자 본인 1명에게만.
+  //     도서 대여는 참석자/관리자 공유 개념이 없으므로 booker 역할로만 렌더한다.
+  //     (inappTitleBooker만 채우고 attendee/admin은 빈 문자열)
+  //
+  // 발송 타이밍:
+  //   · book_borrowed  — 관리자가 대여 등록한 즉시 (이벤트 기반)
+  //   · book_extended  — 사용자가 연장 신청한 직후 (이벤트 기반)
+  //   · book_due_tomorrow / book_due_today / book_overdue
+  //       매일 09:00 KST = UTC 00:00 → cron '0 0 * * *' (book-due-reminder)
+  //       KST '날짜 단위'로 D-day를 계산해 정확히 1회씩만 발송한다.
+  //
+  // 문구 정책:
+  //   · 도서 제목이 곧 제목 슬롯({title})에 들어간다 (회의 제목 자리 재사용)
+  //   · 반납은 관리자에게 전달하는 오프라인 행위이므로 "반납해 주세요" 안내만 하고
+  //     앱 내 반납 CTA는 제공하지 않는다 (연장 CTA만 유효)
+
+  // ── 대여 신청/승인 (← [2026-07-22]) ──────────────────────────────────
+  //   book_requested 만 수신자가 관리자 전원(admins_only)이다.
+  //   나머지 2종은 신청자 본인(book_borrower).
+  book_requested: {
+    subjectTag:         '[대여신청]',
+    headerLabel:        '도서 대여 신청이 접수되었습니다',
+    headerColor:        COLORS.AMBER,
+    recipients:         'admins_only',
+    inappType:          'book_requested',
+    inappTitleBooker:   '',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '도서 대여 신청이 접수되었습니다',
+    contextBanner: {
+      admin: {
+        ...BANNER_PRESETS.warning,
+        title: '승인 대기 중인 도서 대여 신청이 있습니다.',
+        body:  '도서관 화면에서 승인 또는 거절 처리해 주세요. 승인 시점에 반납 예정일이 확정됩니다.',
+      },
+    },
+    cta: { admin: CTA_BOOK_APPROVE },
+    isCancelledStyle: false,
+  },
+
+  book_request_approved: {
+    subjectTag:         '[대여승인]',
+    headerLabel:        '도서 대여 신청이 승인되었습니다',
+    headerColor:        COLORS.INDIGO,   // ← COLORS에 GREEN 없음(INDIGO=긍정/확정)
+    recipients:         'book_borrower',
+    inappType:          'book_request_approved',
+    inappTitleBooker:   '도서 대여 신청이 승인되었습니다',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '',
+    contextBanner: {
+      booker: {
+        ...BANNER_PRESETS.success,
+        title: '대여가 확정되었습니다.',
+        body:  '반납 예정일은 승인 시점을 기준으로 확정됩니다. 연장은 1회(7일)까지 마이페이지에서 신청할 수 있습니다.',
+      },
+    },
+    cta: { booker: CTA_MY_LOANS },
+    isCancelledStyle: false,
+  },
+
+  book_request_rejected: {
+    subjectTag:         '[대여거절]',
+    headerLabel:        '도서 대여 신청이 거절되었습니다',
+    headerColor:        COLORS.RED,
+    recipients:         'book_borrower',
+    inappType:          'book_request_rejected',
+    inappTitleBooker:   '도서 대여 신청이 거절되었습니다',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '',
+    contextBanner: {
+      booker: {
+        ...BANNER_PRESETS.danger,
+        title: '신청하신 도서 대여가 거절되었습니다.',
+        body:  '거절 사유는 본문에 표시됩니다. 문의는 도서관 관리자에게 해주세요.',
+      },
+    },
+    cta: { booker: CTA_MY_LOANS },
+    isCancelledStyle: true,
+  },
+
+  book_borrowed: {
+    subjectTag:         '[도서대여]',
+    headerLabel:        '도서가 대여되었습니다',
+    headerColor:        COLORS.INDIGO,
+    recipients:         'book_borrower',
+    inappType:          'book_borrowed',
+    inappTitleBooker:   '도서가 대여되었습니다',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '',
+    contextBanner: {
+      booker: {
+        ...BANNER_PRESETS.info,
+        title: '도서 대여가 완료되었습니다.',
+        body:  '반납 예정일까지 반납해 주세요. 연장은 1회(7일)까지 마이페이지에서 신청할 수 있습니다.',
+      },
+    },
+    cta: { booker: CTA_MY_LOANS },
+    isCancelledStyle: false,
+  },
+
+  book_extended: {
+    subjectTag:         '[대여연장]',
+    headerLabel:        '대여 기간이 연장되었습니다',
+    headerColor:        COLORS.INDIGO,
+    recipients:         'book_borrower',
+    inappType:          'book_extended',
+    inappTitleBooker:   '대여 기간이 연장되었습니다',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '',
+    contextBanner: {
+      booker: {
+        ...BANNER_PRESETS.success,
+        title: '대여 기간이 7일 연장되었습니다.',
+        body:  '연장은 1회만 가능하며, 변경된 반납 예정일까지 반납해 주세요.',
+      },
+    },
+    cta: { booker: CTA_MY_LOANS },
+    isCancelledStyle: false,
+  },
+
+  book_due_tomorrow: {
+    subjectTag:         '[반납예정]',
+    headerLabel:        '내일이 도서 반납 예정일입니다',
+    headerColor:        COLORS.CYAN,
+    recipients:         'book_borrower',
+    inappType:          'book_due_tomorrow',
+    inappTitleBooker:   '내일이 도서 반납 예정일입니다',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '',
+    contextBanner: {
+      booker: {
+        ...BANNER_PRESETS.info,
+        title: '내일까지 도서를 반납해 주세요.',
+        body:  '더 필요하시면 오늘 중 마이페이지에서 연장(1회, 7일)을 신청할 수 있습니다.',
+      },
+    },
+    cta: { booker: CTA_MY_LOANS_EXT },
+    isCancelledStyle: false,
+  },
+
+  book_due_today: {
+    subjectTag:         '[반납당일]',
+    headerLabel:        '오늘이 도서 반납 예정일입니다',
+    headerColor:        COLORS.AMBER,
+    recipients:         'book_borrower',
+    inappType:          'book_due_today',
+    inappTitleBooker:   '오늘이 도서 반납 예정일입니다',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '',
+    contextBanner: {
+      booker: {
+        ...BANNER_PRESETS.warning,
+        title: '오늘까지 도서를 반납해 주세요.',
+        body:  '반납은 관리자에게 도서를 전달하면 처리됩니다. 오늘이 지나면 연체 처리됩니다.',
+      },
+    },
+    cta: { booker: CTA_MY_LOANS_EXT },
+    isCancelledStyle: false,
+  },
+
+  book_overdue: {
+    subjectTag:         '[연체안내]',
+    headerLabel:        '도서 반납이 연체되었습니다',
+    headerColor:        COLORS.RED,
+    recipients:         'book_borrower',
+    inappType:          'book_overdue',
+    inappTitleBooker:   '도서 반납이 연체되었습니다',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '',
+    contextBanner: {
+      booker: {
+        ...BANNER_PRESETS.danger,
+        title: '반납 예정일이 지났습니다. 도서를 반납해 주세요.',
+        body:  '연체 중에는 연장 신청이 불가하며, 관리자에게 도서를 전달하면 반납 처리됩니다.',
+      },
+    },
+    cta: { booker: CTA_MY_LOANS_WARN },
     isCancelledStyle: false,
   },
 }

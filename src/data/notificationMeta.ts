@@ -49,6 +49,11 @@ export const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
   book_due_tomorrow:        "#D97706",  // 반납 1일 전 — 앰버
   book_due_today:           "#EA580C",  // 반납 당일 — 주황
   book_overdue:             "#DC2626",  // 연체중 — 빨강
+
+  // ── 대여 신청/승인 (← [2026-07-22]) ────────────────────────────────────
+  book_requested:           "#D97706",  // 신청 접수(승인 대기) — 앰버
+  book_request_approved:    "#16A34A",  // 승인 — 그린(생성/확정 계열)
+  book_request_rejected:    "#DC2626",  // 거절 — 빨강
 };
 
 /** type별 색상 반환 (등록되지 않은 type은 fallback 회색) */

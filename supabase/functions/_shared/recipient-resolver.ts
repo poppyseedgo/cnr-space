@@ -36,6 +36,11 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * 변경 이력
  * ═══════════════════════════════════════════════════════════════════════════
+ * [2026-07-20] book_borrower 규칙 구현 (도서관 알림 5종 수신자 해석)
+ *   · ResolvedRecipients.bookBorrower / ResolveInput.borrowerUserId 추가
+ *   · 기존에 send-notification 이 recipients.bookBorrower 를 참조했으나
+ *     resolver 에 구현이 없어 항상 undefined → 도서 알림 이메일·인앱 전부 무발송
+ *
  * [2026-06-12] former_booker 규칙 추가 (예약자 변경 시 원래 예약자 알림)
  *   · ResolvedRecipients.formerBooker / ResolveInput.formerBookerUserId 추가
  *   · former_booker 규칙은 별도 경로 — fetchBooker 재사용해 원래 예약자 1명 해석
@@ -83,6 +88,10 @@ export interface ResolvedRecipients {
   removedAttendees: RemovedAttendee[] // removed_attendees 규칙일 때만
   // ← [2026-06-12] former_booker 규칙일 때만. 원래(이전) 예약자 1명.
   formerBooker: Person | null
+  // ← [2026-07-20] book_borrower 규칙일 때만. 도서 대여자 본인 1명.
+  //   send-notification / notification-types 는 이 필드를 이미 참조하고 있었으나
+  //   resolver 에 구현이 없어 항상 undefined 였다 → 도서 알림 전 5종이 무발송이었음.
+  bookBorrower: Person | null
 }
 
 /** resolveRecipients 입력 */
@@ -93,6 +102,8 @@ export interface ResolveInput {
   removedEmails?: string[]           // removed_attendees 규칙 시 외부 주입
   // ← [2026-06-12] former_booker 규칙 시 원래 예약자 user_id 외부 주입
   formerBookerUserId?: string
+  // ← [2026-07-20] book_borrower 규칙 시 도서 대여자 user_id 외부 주입
+  borrowerUserId?: string
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -312,7 +323,7 @@ export async function resolveRecipients(
   supabase: SupabaseClient,
   input: ResolveInput,
 ): Promise<ResolvedRecipients> {
-  const { rule, bookerUserId, bookingId, removedEmails, formerBookerUserId } = input
+  const { rule, bookerUserId, bookingId, removedEmails, formerBookerUserId, borrowerUserId } = input
 
   // 기본값
   const result: ResolvedRecipients = {
@@ -321,6 +332,7 @@ export async function resolveRecipients(
     admins:           [],
     removedAttendees: [],
     formerBooker:     null,   // ← [2026-06-12]
+    bookBorrower:     null,   // ← [2026-07-20]
   }
 
   // removed_attendees는 완전 별도 경로
@@ -333,6 +345,15 @@ export async function resolveRecipients(
   //   fetchBooker 재사용 (profiles에서 id로 단건 조회). 퇴사/삭제 시 null → 발송 스킵.
   if (rule === 'former_booker') {
     result.formerBooker = await fetchBooker(supabase, formerBookerUserId ?? '')
+    return result
+  }
+
+  // ← [2026-07-20] book_borrower 도 완전 별도 경로 — 도서 대여자 1명만 조회
+  //   도서 알림에는 참석자/관리자 개념이 없으므로 attendees/admins 조회를 하지 않는다.
+  //   borrowerUserId 가 비어 있으면 bookerUserId 로 폴백한다
+  //   (send-notification 은 booking.user_id 를 양쪽에 모두 넘기므로 안전망).
+  if (rule === 'book_borrower') {
+    result.bookBorrower = await fetchBooker(supabase, borrowerUserId || bookerUserId || '')
     return result
   }
 

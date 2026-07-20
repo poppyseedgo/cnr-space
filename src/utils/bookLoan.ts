@@ -40,7 +40,18 @@ export function daysUntilDue(dueAt: string, now: Date = new Date()): number {
 
 /** 연체 여부 (LibraryPage isOverdue 와 동일 기준: 예정일이 지났는가) */
 export function isLoanOverdue(loan: MyBookLoan, now: Date = new Date()): boolean {
+  // pending/rejected/cancelled 는 대여가 아니므로 연체 대상이 아니다 (← [2026-07-22])
   return loan.status === 'active' && daysUntilDue(loan.due_at, now) < 0
+}
+
+/** 승인 대기중인 신청인가 (← [2026-07-22]) */
+export function isPendingRequest(loan: MyBookLoan): boolean {
+  return loan.status === 'pending'
+}
+
+/** 신청 취소 가능 여부 — 본인의 pending 만 (← [2026-07-22]) */
+export function canCancelRequest(loan: MyBookLoan): boolean {
+  return loan.status === 'pending'
 }
 
 /**
@@ -49,6 +60,11 @@ export function isLoanOverdue(loan: MyBookLoan, now: Date = new Date()): boolean
  *   active 는 due_at 기준으로 overdue / due_soon / active 로 세분화.
  */
 export function loanDisplayStatus(loan: MyBookLoan, now: Date = new Date()): LoanDisplayStatus {
+  // ← [2026-07-22] 신청/승인 플로우 상태는 due_at 과 무관하게 그대로 표시
+  //   pending 은 아직 대여가 아니므로 D-day/연체 판정 대상이 아니다.
+  if (loan.status === 'pending')   return 'pending'
+  if (loan.status === 'rejected')  return 'rejected'
+  if (loan.status === 'cancelled') return 'cancelled'
   if (loan.status === 'returned') return 'returned'
   if (loan.status === 'lost')     return 'lost'
 
@@ -75,6 +91,9 @@ export function canExtend(loan: MyBookLoan, now: Date = new Date()): boolean {
 
 /** 연장 불가 사유 (버튼 라벨/툴팁용). 연장 가능하면 null */
 export function extendBlockedReason(loan: MyBookLoan, now: Date = new Date()): string | null {
+  if (loan.status === 'pending')               return '승인 대기중'   // ← [2026-07-22]
+  if (loan.status === 'rejected')              return '거절됨'        // ← [2026-07-22]
+  if (loan.status === 'cancelled')             return '신청취소'      // ← [2026-07-22]
   if (loan.status === 'returned')              return '반납완료'
   if (loan.status === 'lost')                  return '분실'
   if (loan.status !== 'active')                return '연장 불가'
@@ -107,6 +126,9 @@ export function previewExtendedDue(dueAt: string): string {
 /** 표시 상태별 뱃지 색상/라벨 (기존 LibraryPage 토큰 체계와 동일 계열) */
 export function loanStatusStyle(s: LoanDisplayStatus): { bg: string; color: string; label: string } {
   switch (s) {
+    case 'pending':   return { bg: '#FEF3C7', color: '#B45309', label: '승인 대기중' }   // ← [2026-07-22]
+    case 'rejected':  return { bg: '#FEF2F2', color: '#DC2626', label: '거절됨' }        // ← [2026-07-22]
+    case 'cancelled': return { bg: '#F1F5F9', color: '#64748B', label: '신청취소' }      // ← [2026-07-22]
     case 'active':   return { bg: '#EFF6FF', color: '#1D4ED8', label: '대여중' }
     case 'due_soon': return { bg: '#FFF7ED', color: '#C2410C', label: '반납임박' }
     case 'overdue':  return { bg: '#FEF2F2', color: '#DC2626', label: '연체중' }

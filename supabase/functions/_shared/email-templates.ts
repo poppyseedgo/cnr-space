@@ -99,6 +99,13 @@ export interface EmailBookingData {
   cancel_reason?: string
   reject_reason?: string
   recur_label?:   string         // 반복 설명 (예: "매주 수요일 · 5회 반복")
+
+  // ── 도서관 알림 전용 (← [2026-07-20]) ─────────────────────────────────
+  //   도서 알림에는 회의실/시작·종료 시각 개념이 없다.
+  //   book_title 이 있으면 renderInfoCard 가 도서 포맷으로 분기한다.
+  book_title?:    string         // 도서명
+  due_date_kst?:  string         // 반납예정일 (KST 'YYYY-MM-DD' 문자열)
+  days_overdue?:  number         // 연체 일수 (book_overdue 전용)
 }
 
 export interface EmailCreatorInfo {
@@ -169,6 +176,26 @@ function fmtDate(ts: string): string {
   const days = ['일','월','화','수','목','금','토']
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${kst.getUTCFullYear()}년 ${pad(kst.getUTCMonth()+1)}월 ${pad(kst.getUTCDate())}일 (${days[kst.getUTCDay()]})`
+}
+
+/**
+ * ← [2026-07-20] 이미 KST로 계산된 'YYYY-MM-DD' 문자열 전용 포맷터
+ *
+ * fmtDate()에 넣으면 안 되는 이유(근본):
+ *   new Date('2026-07-27')는 UTC 자정으로 파싱된다. 거기에 fmtDate가 +9h를 또
+ *   더하면 KST 오전 9시가 되어 우연히 날짜는 맞지만, 이는 "이미 KST인 값에
+ *   KST 오프셋을 재적용"하는 이중 변환이다. 경계값에서 하루가 밀 수 있다.
+ *   따라서 문자열을 파싱하지 않고 그대로 분해해서 표시한다.
+ */
+function fmtKstDateStr(ymd: string | undefined | null): string {
+  if (!ymd) return ''
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(ymd))
+  if (!m) return String(ymd)
+  const [, y, mo, d] = m
+  const days = ['일','월','화','수','목','금','토']
+  // 요일 계산만 UTC 기준으로 수행 (오프셋 개입 없음 → 안전)
+  const dow = days[new Date(Date.UTC(+y, +mo - 1, +d)).getUTCDay()]
+  return `${y}년 ${mo}월 ${d}일 (${dow})`
 }
 
 function fmtTime(ts: string | undefined | null): string {
@@ -362,6 +389,34 @@ function renderInfoCard(input: EmailRenderInput): string {
   const creatorAvatar = input.creatorInfo?.avatar_url ?? null
 
   const rows: string[] = []
+
+  // ── 도서관 알림 분기 (← [2026-07-20]) ──────────────────────────────────
+  //   회의 알림은 DATE/TIME/ROOM 3행이 고정이지만, 도서 알림에는 그 값이 없다.
+  //   분기 없이 통과시키면 DATE는 빈 값, TIME은 "— - —", ROOM은 빈 행이 되어
+  //   메일 본문이 깨진다. 도서 전용 행으로 대체한다.
+  //   (도서명은 이미 renderTitleSection 이 booking.title 로 크게 렌더하므로 중복 제외)
+  if (input.booking.book_title) {
+    const dueStr = escapeHtml(fmtKstDateStr(input.booking.due_date_kst))
+    if (dueStr) {
+      // iOS Mail 자동 링크화 방지 — 회의 DATE 행과 동일 처리
+      rows.push(renderInfoRow(
+        '반납예정',
+        `<a href="#" style="color:${C.TEXT};text-decoration:none;pointer-events:none;cursor:default;">${dueStr}</a>`,
+        { nowrap: true },
+      ))
+    }
+
+    const od = input.booking.days_overdue ?? 0
+    if (od > 0) {
+      rows.push(renderInfoRow('연체', `${escapeHtml(String(od))}일 경과`, { nowrap: true }))
+    }
+
+    rows.push(renderInfoRow('대여자', renderUserRow(creatorName, creatorDept, creatorAvatar)))
+
+    return `<tr><td style="padding:${D.SECTION_GAP} 0;">` +
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rows.join('')}</table>` +
+    `</td></tr>`
+  }
 
   // DATE
   // ← [P2 v4] iOS Mail 자동 링크화 방지용 <a> 래핑 (color 강제 + pointer-events 차단)

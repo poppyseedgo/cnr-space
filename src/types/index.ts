@@ -255,19 +255,63 @@ export interface MyBookLoan {
   returned_at:      string | null
   extension_count:  number   // 0 | 1 (DB CHECK <= 1)
   last_extended_at: string | null
-  status:           'active' | 'returned' | 'overdue' | 'lost'
+  status:           BookCheckoutStatus
   book:             MyBookLoanBook | null
+  // ── 신청/승인 플로우 (← [2026-07-22]) ────────────────────────────────
+  requested_at?:      string | null
+  processed_at?:      string | null
+  processed_by_name?: string | null
+  reject_reason?:     string | null
+  notes?:             string | null
+}
+
+/** book_checkouts.status — 20260722 마이그레이션으로 pending/rejected/cancelled 추가 */
+export type BookCheckoutStatus =
+  | 'pending'    // 대여 신청(관리자 승인 대기)
+  | 'active'     // 대여중
+  | 'returned'   // 반납완료
+  | 'overdue'    // 연체 (DB 자동전환 배치는 없음 — 표시는 due_at 기준)
+  | 'lost'       // 분실
+  | 'rejected'   // 관리자 거절
+  | 'cancelled'  // 신청자 취소
+
+/** 대여 신청 1건 + 도서/신청자 정보 (관리자 승인 패널용) */
+export interface BookRequest extends MyBookLoan {
+  /** 신청자 user_id — MyBookLoan(본인 전용)에는 없으므로 여기서 추가 */
+  user_id:    string
+  user_name?: string | null
+  user_dept?: string | null
 }
 
 /** 화면 표시용 파생 상태 (DB status + due_at 기준 클라 계산) */
 export type LoanDisplayStatus =
+  | 'pending'   // 승인 대기중 (← [2026-07-22])
   | 'active'    // 대여중 (여유)
   | 'due_soon'  // 반납임박 (D-2 이내)
   | 'overdue'   // 연체중
   | 'returned'  // 반납완료
   | 'lost'      // 분실
+  | 'rejected'  // 거절됨 (← [2026-07-22])
+  | 'cancelled' // 신청취소 (← [2026-07-22])
 
 /** 연장 RPC 실패 코드 (extend_book_checkout) */
+/** 대여 등록/신청/승인 RPC 실패 코드 (← [2026-07-22]) */
+export type CheckoutErrorCode =
+  | 'NOT_AUTHENTICATED'
+  | 'NOT_ADMIN'
+  | 'NOT_OWNER'
+  | 'NO_BORROWER'
+  | 'NO_BOOKS'
+  | 'NOTES_TOO_LONG'
+  | 'REASON_TOO_LONG'
+  | 'LIMIT_EXCEEDED'
+  | 'ALREADY_REQUESTED'
+  | 'BOOK_NOT_AVAILABLE'
+  | 'BOOK_NOT_FOUND'
+  | 'REQUEST_NOT_FOUND'
+  | 'NOT_PENDING'
+  | 'UNKNOWN'
+
 export type ExtendErrorCode =
   | 'CHECKOUT_NOT_FOUND'
   | 'NOT_OWNER'

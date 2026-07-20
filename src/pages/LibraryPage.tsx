@@ -26,6 +26,15 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
+// ← [2026-07-22] 대여 등록/신청/승인 — 모든 상태 전이는 RPC 경유
+import {
+  adminCheckoutBooks, requestBookCheckout, approveBookRequest, rejectBookRequest,
+  fetchPendingBookRequests, checkoutErrorMessage,
+} from '../lib/api'
+import { BookCheckoutModal } from '../components/library/BookCheckoutModal'
+import { BookRequestModal }  from '../components/library/BookRequestModal'
+import { BookRequestPanel }  from '../components/library/BookRequestPanel'
+import type { BookRequest } from '../types'
 import type { AppUser, ToastType } from '../types'
 
 // ─── 로컬 타입 ────────────────────────────────────────────────────────────────
@@ -260,6 +269,21 @@ function BookCard({
         )}
       </div>
 
+      {/* ← [2026-07-22] 일반 사용자용 대여 신청 버튼
+          · Admin 은 아래 관리자 블록에서 "대여 등록"(즉시 확정)
+          · 일반 사용자는 "대여 신청"(pending → 관리자 승인) */}
+      {!isAdmin && book.status === 'available' && (
+        <div style={{ padding: '8px 12px 12px' }}>
+          <button
+            className="btn"
+            onClick={() => onCheckout(book)}
+            style={{ width: '100%', background: '#000', color: '#fff',
+              padding: '7px 0', borderRadius: 8, fontSize: 13, fontWeight: 500 }}>
+            대여 신청
+          </button>
+        </div>
+      )}
+
       {/* 관리자 버튼 */}
       {isAdmin && (
         <div style={{ padding: '8px 12px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -310,130 +334,9 @@ function BookCard({
   )
 }
 
-// ─── CheckoutModal ────────────────────────────────────────────────────────────
-
-function CheckoutModal({
-  book, users, activeCheckouts, onConfirm, onClose, loading,
-}: {
-  book: Book
-  users: AppUser[]
-  activeCheckouts: BookCheckout[]
-  onConfirm: (userId: string) => void
-  onClose: () => void
-  loading: boolean
-}) {
-  const [q, setQ] = useState('')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-
-  // 2권 이미 대여중인 사용자 제외
-  const userBorrowCount = useMemo(() => {
-    const map: Record<string, number> = {}
-    activeCheckouts.forEach(c => { map[c.user_id] = (map[c.user_id] ?? 0) + 1 })
-    return map
-  }, [activeCheckouts])
-
-  const filtered = useMemo(() => {
-    if (!q.trim()) return []
-    const lower = q.toLowerCase()
-    return users.filter(u =>
-      u.is_active !== false &&
-      (u.name.toLowerCase().includes(lower) || u.dept?.toLowerCase().includes(lower) || u.employee_id?.includes(lower))
-    ).slice(0, 8)
-  }, [q, users])
-
-  const selectedUser = users.find(u => u.user_id === selectedId)
-
-  return (
-    <div style={OVERLAY_STYLE} onClick={onClose}>
-      <div style={{ ...MODAL_STYLE, maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-        <div style={MODAL_HEADER_STYLE}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 16 }}>대여 등록</div>
-            <div style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>📖 {book.title}</div>
-          </div>
-          <button className="btn" onClick={onClose} style={CLOSE_BTN_STYLE}>✕</button>
-        </div>
-
-        <div style={{ padding: '0 20px 20px' }}>
-          <label style={LABEL_STYLE}>대여자 검색</label>
-          <input
-            autoFocus
-            value={q}
-            onChange={e => { setQ(e.target.value); setSelectedId(null) }}
-            placeholder="이름, 부서, 사번으로 검색..."
-            style={INPUT_STYLE}
-          />
-
-          {/* 검색 결과 */}
-          {filtered.length > 0 && !selectedId && (
-            <div style={{ border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden', marginTop: 4 }}>
-              {filtered.map(u => {
-                const cnt = userBorrowCount[u.user_id] ?? 0
-                const maxed = cnt >= MAX_BORROW_PER_USER
-                return (
-                  <button
-                    key={u.user_id}
-                    disabled={maxed}
-                    onClick={() => { setSelectedId(u.user_id); setQ(u.name) }}
-                    style={{
-                      width: '100%', textAlign: 'left', padding: '10px 14px',
-                      background: maxed ? '#FAFAFA' : '#fff',
-                      opacity: maxed ? 0.5 : 1,
-                      borderBottom: '1px solid #F1F5F9',
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      cursor: maxed ? 'not-allowed' : 'pointer',
-                    }}>
-                    <span>
-                      <span style={{ fontWeight: 500, fontSize: 13 }}>{u.name}</span>
-                      <span style={{ fontSize: 12, color: '#64748B', marginLeft: 6 }}>{u.dept}</span>
-                    </span>
-                    {maxed && (
-                      <span style={{ fontSize: 11, color: '#DC2626' }}>최대 {MAX_BORROW_PER_USER}권</span>
-                    )}
-                    {!maxed && cnt > 0 && (
-                      <span style={{ fontSize: 11, color: '#94A3B8' }}>{cnt}권 대여중</span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-
-          {/* 선택된 유저 */}
-          {selectedUser && (
-            <div style={{ marginTop: 12, padding: '10px 14px', background: '#F0FDF4',
-              borderRadius: 8, border: '1px solid #BBF7D0' }}>
-              <div style={{ fontWeight: 600, fontSize: 13 }}>✅ {selectedUser.name}</div>
-              <div style={{ fontSize: 12, color: '#64748B' }}>
-                {selectedUser.dept} · 현재 {userBorrowCount[selectedUser.user_id] ?? 0}권 대여중
-              </div>
-              <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>
-                반납 예정일: {(() => { const d = new Date(); d.setDate(d.getDate() + BORROW_DAYS); return `${d.getMonth()+1}/${d.getDate()}` })()}
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            <button className="btn" onClick={onClose}
-              style={{ flex: 1, background: '#F1F5F9', color: '#374151',
-                padding: '10px 0', borderRadius: 8, fontSize: 14 }}>
-              취소
-            </button>
-            <button
-              className="btn"
-              disabled={!selectedId || loading}
-              onClick={() => selectedId && onConfirm(selectedId)}
-              style={{ flex: 2, background: selectedId ? '#000' : '#E2E8F0',
-                color: selectedId ? '#fff' : '#94A3B8',
-                padding: '10px 0', borderRadius: 8, fontSize: 14, fontWeight: 600 }}>
-              {loading ? '처리중...' : '대여 등록'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
+// ─── CheckoutModal 제거됨 [2026-07-22] ──────────────────────────────────────
+//   → src/components/library/BookCheckoutModal.tsx (Admin, 복수 도서 + RPC)
+//   → src/components/library/BookRequestModal.tsx  (사용자 신청)
 
 // ─── BookEditModal ────────────────────────────────────────────────────────────
 
@@ -903,6 +806,22 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
 
   // ── Modal State ──
   const [checkoutModal,  setCheckoutModal]  = useState<Book | null>(null)
+  // ← [2026-07-22] Admin 대여 등록(책 미선택 진입) / 사용자 대여 신청 / 승인 대기
+  const [checkoutOpen,   setCheckoutOpen]   = useState(false)   // 헤더 진입(빈 상태)
+  const [requestModal,   setRequestModal]   = useState<Book | null>(null)
+  const [pendingReqs,    setPendingReqs]    = useState<BookRequest[]>([])
+  const [reqLoading,     setReqLoading]     = useState(false)
+  const [reqBusyId,      setReqBusyId]      = useState<string | null>(null)
+  const [myHeldCount,    setMyHeldCount]    = useState(0)        // 본인 보유(active+pending)
+  const [heldCountByUser, setHeldCountByUser] = useState<Record<string, number>>({})
+
+  // ← [2026-07-22] 로그인 사용자 정보 — 신청 모달 아바타 / 승인 처리자 이름 기록용
+  //   프로필은 항상 users(live)에서 조회 (스냅샷 금지 원칙)
+  const me = useMemo(
+    () => users.find(u => u.user_id === authUserId) ?? null,
+    [users, authUserId]
+  )
+  const currentUserName = me?.name ?? null
   const [editModal,      setEditModal]      = useState<{ book: Book | null } | null>(null)
   const [importModal,    setImportModal]    = useState(false)
   const [actionLoading,  setActionLoading]  = useState(false)
@@ -927,19 +846,29 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
         .order('sort_order')
       if (cErr) throw cErr
 
-      // 3. 활성 대여 (관리자만 조회 가능)
-      let checkouts: BookCheckout[] = []
-      if (isAdmin) {
-        const { data: coData } = await supabase
-          .from('book_checkouts')
-          .select('id, book_id, user_id, checkout_at, due_at, returned_at, status, notes')
-          .eq('status', 'active')
-        checkouts = (coData ?? []) as BookCheckout[]
-      }
+      // 3. 대여기록 (active + pending)
+      //   ← [2026-07-22] 변경점 2가지
+      //     · pending 포함 — 1인 한도는 "대여중 + 신청대기" 합산이므로 카운트에 필요
+      //     · isAdmin 조건 제거 — 일반 사용자도 "본인" 보유 권수를 알아야 신청 한도를 계산할 수 있다.
+      //       RLS(book_checkouts_select_self_or_admin)가 비관리자에겐 본인 행만 반환하므로 안전하다.
+      const { data: coData } = await supabase
+        .from('book_checkouts')
+        .select('id, book_id, user_id, checkout_at, due_at, returned_at, status, notes')
+        .in('status', ['active', 'pending'])
+      const allCheckouts = (coData ?? []) as BookCheckout[]
+
+      // 카드에 표시할 대여자 정보는 'active' 만 (pending 은 아직 대여가 아님)
+      const checkouts = allCheckouts.filter(c => c.status === 'active')
+
+      // 보유 권수 맵 (active + pending 합산)
+      const heldMap: Record<string, number> = {}
+      allCheckouts.forEach(c => { heldMap[c.user_id] = (heldMap[c.user_id] ?? 0) + 1 })
 
       setBooks((booksData ?? []) as Book[])
       setCategories((catData ?? []) as BookCategory[])
       setActiveCheckouts(checkouts)
+      setHeldCountByUser(heldMap)
+      setMyHeldCount(heldMap[authUserId] ?? 0)
     } catch (e: any) {
       showToast('도서 목록을 불러올 수 없습니다.', 'error')
     } finally {
@@ -948,6 +877,8 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
   }
 
   useEffect(() => { load() }, [isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
+  // ← [2026-07-22] 관리자만 승인 대기 목록 조회
+  useEffect(() => { loadPendingRequests() }, [isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── 필터링 ────────────────────────────────────────────────────────────────
 
@@ -977,38 +908,157 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
 
   // ─── 대여 등록 ──────────────────────────────────────────────────────────────
 
-  async function handleCheckout(userId: string) {
-    if (!checkoutModal) return
+  // ── [Admin] 대여 등록 — admin_checkout_books RPC (여러 권 단일 트랜잭션)
+  //   기존 개별 INSERT+UPDATE 방식은 N권 처리 시 부분 실패로
+  //   "책은 borrowed 인데 대여기록 없음" 유령 데이터가 생겨 RPC 로 이관했다.
+  async function handleCheckout(userId: string, bookIds: number[], notes: string) {
     setActionLoading(true)
     try {
-      const dueAt = new Date()
-      dueAt.setDate(dueAt.getDate() + BORROW_DAYS)
+      const res = await adminCheckoutBooks(userId, bookIds, notes)
+      if (!res.ok) {
+        showToast(checkoutErrorMessage(res.code ?? 'UNKNOWN', res.detail), 'error')
+        await load()
+        return
+      }
 
-      // 1. INSERT checkout
-      const { error: cErr } = await supabase
-        .from('book_checkouts')
-        .insert({
-          book_id:     checkoutModal.id,
-          user_id:     userId,
-          due_at:      dueAt.toISOString(),
-          status:      'active',
-        })
-      if (cErr) throw cErr
+      // 대여 확정 알림 — 여러 권이어도 1통 (스팸 방지)
+      const titles = bookIds
+        .map(id => books.find(b => b.id === id)?.title)
+        .filter(Boolean) as string[]
+      const label = titles.length > 1 ? `${titles[0]} 외 ${titles.length - 1}권` : (titles[0] ?? '')
+      const due   = res.rows?.[0]?.due_at
 
-      // 2. UPDATE book status
-      const { error: bErr } = await supabase
-        .from('books')
-        .update({ status: 'borrowed', updated_at: new Date().toISOString() })
-        .eq('id', checkoutModal.id)
-      if (bErr) throw bErr
+      supabase.functions.invoke('send-notification', {
+        body: {
+          type: 'book_borrowed',
+          booking: {
+            id:         res.rows?.[0]?.id ?? '',
+            title:      label,
+            user_id:    userId,
+            book_title: label,
+            due_at:     due,
+            due_date_kst: due ? String(due).slice(0, 10) : undefined,
+          },
+        },
+      }).catch(err => console.warn('[library] 대여 알림 발송 실패:', err))
 
-      showToast('대여 등록 완료', 'success')
+      showToast(`대여 등록 완료 (${bookIds.length}권)`, 'success')
       setCheckoutModal(null)
+      setCheckoutOpen(false)
       await load()
     } catch (e: any) {
       showToast(`대여 등록 실패: ${e.message}`, 'error')
     } finally {
       setActionLoading(false)
+    }
+  }
+
+  // ── [사용자] 대여 신청 — request_book_checkout RPC (pending 생성)
+  async function handleRequest(bookIds: number[], notes: string) {
+    setActionLoading(true)
+    try {
+      const res = await requestBookCheckout(bookIds, notes)
+      if (!res.ok) {
+        showToast(checkoutErrorMessage(res.code ?? 'UNKNOWN', res.detail), 'error')
+        return
+      }
+      const title = books.find(b => b.id === bookIds[0])?.title ?? ''
+
+      // 관리자 전원에게 승인 요청 알림 (recipients='admins_only')
+      supabase.functions.invoke('send-notification', {
+        body: {
+          type: 'book_requested',
+          booking: {
+            id:         res.rows?.[0]?.id ?? '',
+            title,
+            user_id:    authUserId,
+            book_title: title,
+          },
+        },
+      }).catch(err => console.warn('[library] 신청 알림 발송 실패:', err))
+
+      showToast('대여 신청이 접수되었습니다. 관리자 승인 후 확정됩니다.', 'success')
+      setRequestModal(null)
+      await load()
+    } catch (e: any) {
+      showToast(`대여 신청 실패: ${e.message}`, 'error')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // ── [Admin] 승인 대기 목록 로드
+  async function loadPendingRequests() {
+    if (!isAdmin) return
+    setReqLoading(true)
+    try {
+      setPendingReqs(await fetchPendingBookRequests())
+    } catch {
+      /* 목록 실패는 화면 전체를 막지 않는다 */
+    } finally {
+      setReqLoading(false)
+    }
+  }
+
+  // ── [Admin] 신청 승인 — 승인 시점 기준으로 반납일이 재계산된다
+  async function handleApprove(req: BookRequest) {
+    setReqBusyId(req.id)
+    try {
+      const res = await approveBookRequest(req.id, currentUserName)
+      if (!res.ok) {
+        showToast(checkoutErrorMessage(res.code ?? 'UNKNOWN', res.detail), 'error')
+        await loadPendingRequests(); await load()
+        return
+      }
+      const due = res.rows?.[0]?.due_at
+      supabase.functions.invoke('send-notification', {
+        body: {
+          type: 'book_request_approved',
+          booking: {
+            id:         req.id,
+            title:      req.book?.title ?? '',
+            user_id:    req.user_id,
+            book_title: req.book?.title ?? '',
+            due_at:     due,
+            due_date_kst: due ? String(due).slice(0, 10) : undefined,
+          },
+        },
+      }).catch(err => console.warn('[library] 승인 알림 발송 실패:', err))
+
+      showToast('대여 신청을 승인했습니다', 'success')
+      await loadPendingRequests(); await load()
+    } finally {
+      setReqBusyId(null)
+    }
+  }
+
+  // ── [Admin] 신청 거절 (사유 기록)
+  async function handleReject(req: BookRequest, reason: string) {
+    setReqBusyId(req.id)
+    try {
+      const res = await rejectBookRequest(req.id, reason, currentUserName)
+      if (!res.ok) {
+        showToast(checkoutErrorMessage(res.code ?? 'UNKNOWN', res.detail), 'error')
+        await loadPendingRequests()
+        return
+      }
+      supabase.functions.invoke('send-notification', {
+        body: {
+          type: 'book_request_rejected',
+          booking: {
+            id:         req.id,
+            title:      req.book?.title ?? '',
+            user_id:    req.user_id,
+            book_title: req.book?.title ?? '',
+            reject_reason: reason,
+          },
+        },
+      }).catch(err => console.warn('[library] 거절 알림 발송 실패:', err))
+
+      showToast('대여 신청을 거절했습니다', 'success')
+      await loadPendingRequests()
+    } finally {
+      setReqBusyId(null)
     }
   }
 
@@ -1221,6 +1271,12 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
             {/* 관리자 액션 버튼 */}
             {isAdmin && (
               <div style={{ display: 'flex', gap: 8 }}>
+                {/* ← [2026-07-22] 책 미선택 진입 (Figma 1335:994) */}
+                <button className="btn" onClick={() => setCheckoutOpen(true)}
+                  style={{ background: 'rgba(255,255,255,0.12)', color: '#fff',
+                    padding: '8px 14px', borderRadius: 8, fontSize: 13, border: '1px solid rgba(255,255,255,0.2)' }}>
+                  📕 대여 등록
+                </button>
                 <button className="btn" onClick={() => setImportModal(true)}
                   style={{ background: 'rgba(255,255,255,0.12)', color: '#fff',
                     padding: '8px 14px', borderRadius: 8, fontSize: 13, border: '1px solid rgba(255,255,255,0.2)' }}>
@@ -1311,7 +1367,22 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
 
       {/* ── 도서 그리드 ── */}
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 24px' }}>
-        {loading ? (
+        {/* ← [2026-07-22] 관리자 승인 대기 패널 (선착순) */}
+      {isAdmin && pendingReqs.length > 0 && (
+        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '16px 16px 0' }}>
+          <BookRequestPanel
+            requests={pendingReqs}
+            users={users}
+            loading={reqLoading}
+            busyId={reqBusyId}
+            onApprove={handleApprove}
+            onReject={handleReject}
+            onRefresh={loadPendingRequests}
+          />
+        </div>
+      )}
+
+      {loading ? (
           <div style={{ textAlign: 'center', padding: 60, color: '#94A3B8' }}>
             <div style={{ fontSize: 32, marginBottom: 8 }}>📚</div>
             <div>도서 목록 불러오는 중...</div>
@@ -1344,7 +1415,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
                     borrower={borrower}
                     isAdmin={isAdmin}
                     isOverdueStatus={overdue}
-                    onCheckout={setCheckoutModal}
+                    onCheckout={b => isAdmin ? setCheckoutModal(b) : setRequestModal(b)}  /* ← [2026-07-22] 권한별 분기 */
                     onReturn={(b, c) => handleReturn(b, c)}
                     onEdit={b => setEditModal({ book: b })}
                     onDelete={setDeleteConfirm}
@@ -1358,15 +1429,32 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
 
       {/* ── 모달들 ── */}
 
-      {/* 대여 등록 모달 */}
-      {checkoutModal && (
-        <CheckoutModal
-          book={checkoutModal}
+      {/* ← [2026-07-22] 대여 등록 모달 (Admin) — 책 카드 진입 / 헤더 진입 공용 */}
+      {isAdmin && (checkoutModal || checkoutOpen) && (
+        <BookCheckoutModal
+          initialBook={checkoutModal}
+          books={books}
           users={users}
-          activeCheckouts={activeCheckouts}
-          onConfirm={handleCheckout}
-          onClose={() => setCheckoutModal(null)}
+          heldCountByUser={heldCountByUser}
+          maxBorrow={MAX_BORROW_PER_USER}
+          borrowDays={BORROW_DAYS}
           loading={actionLoading}
+          onClose={() => { setCheckoutModal(null); setCheckoutOpen(false) }}
+          onSubmit={handleCheckout}
+        />
+      )}
+
+      {/* ← [2026-07-22] 대여 신청 모달 (일반 사용자) */}
+      {!isAdmin && requestModal && (
+        <BookRequestModal
+          book={requestModal}
+          me={me}
+          heldCount={myHeldCount}
+          maxBorrow={MAX_BORROW_PER_USER}
+          borrowDays={BORROW_DAYS}
+          loading={actionLoading}
+          onClose={() => setRequestModal(null)}
+          onSubmit={handleRequest}
         />
       )}
 

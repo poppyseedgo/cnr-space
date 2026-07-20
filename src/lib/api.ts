@@ -108,7 +108,8 @@
 
 import { supabase, isSupabaseEnabled } from './supabase'
 import type { Booking, Room, AppUser, Feature, AttendeeRef,
-  MyBookLoan, ExtendErrorCode } from '../types'  // ← [2026-07-18] 마이페이지 내 대여
+  MyBookLoan, ExtendErrorCode,
+  CheckoutErrorCode, BookRequest } from '../types'  // ← [2026-07-18] 내 대여 / [2026-07-22] 대여신청
 
 // ── UTC → KST 변환 ───────────────────────────────────────────────────────────
 // Supabase가 UTC ISO 문자열로 반환하므로 앱 기준인 KST로 보정
@@ -1691,4 +1692,168 @@ export function extendErrorMessage(code: ExtendErrorCode): string {
     case 'OVERDUE':            return '연체 중에는 연장할 수 없습니다. 반납 후 다시 대여해주세요'
     default:                   return '연장에 실패했습니다. 잠시 후 다시 시도해주세요'
   }
+}
+
+// ─── 도서 대여 등록 / 신청 / 승인 (← [2026-07-22]) ───────────────────────────
+// 설계 원칙:
+//   · 모든 상태 전이는 SECURITY DEFINER RPC 경유. 클라이언트 직접 INSERT/UPDATE 금지.
+//     (RLS 도 20260722 마이그레이션에서 "사용자는 pending INSERT만" 으로 제한됨)
+//   · 여러 권 등록/신청은 서버에서 단일 트랜잭션 처리 → 부분 실패 없음
+//   · 실패는 throw 대신 코드로 반환 → 호출부에서 한글 토스트 매핑
+
+/** RPC 에러 메시지 → 코드 파싱 (LIMIT_EXCEEDED:2:2 같은 접미사 포함 형태 지원) */
+function parseCheckoutError(message: string): { code: CheckoutErrorCode; detail?: string } {
+  const codes: CheckoutErrorCode[] = [
+    'NOT_AUTHENTICATED', 'NOT_ADMIN', 'NOT_OWNER', 'NO_BORROWER', 'NO_BOOKS',
+    'NOTES_TOO_LONG', 'REASON_TOO_LONG', 'LIMIT_EXCEEDED', 'ALREADY_REQUESTED',
+    'BOOK_NOT_AVAILABLE', 'BOOK_NOT_FOUND', 'REQUEST_NOT_FOUND', 'NOT_PENDING',
+  ]
+  const hit = codes.find(c => message.includes(c))
+  if (!hit) return { code: 'UNKNOWN' }
+  // "LIMIT_EXCEEDED:2:2" / "BOOK_NOT_AVAILABLE:12:구의 증명" → 뒤쪽 상세 추출
+  const m = message.match(new RegExp(hit + ':([^\\s]*(?:\\s[^\\s]*)*)'))
+  return { code: hit, detail: m?.[1] }
+}
+
+/** 대여 등록/신청 실패 코드 → 사용자 안내 문구 */
+export function checkoutErrorMessage(code: CheckoutErrorCode, detail?: string): string {
+  switch (code) {
+    case 'NOT_AUTHENTICATED':  return '로그인이 필요합니다'
+    case 'NOT_ADMIN':          return '대여 등록/승인 권한이 없습니다'
+    case 'NOT_OWNER':          return '본인 신청만 취소할 수 있습니다'
+    case 'NO_BORROWER':        return '대여자를 선택해주세요'
+    case 'NO_BOOKS':           return '도서를 선택해주세요'
+    case 'NOTES_TOO_LONG':     return '메모는 100자까지 입력할 수 있습니다'
+    case 'REASON_TOO_LONG':    return '거절 사유는 200자까지 입력할 수 있습니다'
+    case 'ALREADY_REQUESTED':  return '이미 신청한 도서입니다'
+    case 'BOOK_NOT_FOUND':     return '도서 정보를 찾을 수 없습니다'
+    case 'REQUEST_NOT_FOUND':  return '신청 정보를 찾을 수 없습니다'
+    case 'NOT_PENDING':        return '이미 처리된 신청입니다'
+    case 'LIMIT_EXCEEDED': {
+      // detail = "현재:한도"
+      const [held, max] = (detail ?? '').split(':')
+      return max
+        ? `대여·신청 합계 ${max}권까지 가능합니다 (현재 ${held}권)`
+        : '대여 가능 권수를 초과했습니다'
+    }
+    case 'BOOK_NOT_AVAILABLE': {
+      // detail = "id:제목"
+      const title = (detail ?? '').split(':').slice(1).join(':')
+      return title
+        ? `"${title}" 은(는) 이미 대여 중입니다. 목록을 새로고침해주세요`
+        : '이미 대여 중인 도서가 포함되어 있습니다'
+    }
+    default:                   return '처리에 실패했습니다. 잠시 후 다시 시도해주세요'
+  }
+}
+
+export interface CheckoutResult {
+  ok:    boolean
+  rows?: MyBookLoan[]
+  code?: CheckoutErrorCode
+  detail?: string
+}
+
+/** RPC 반환 행 → MyBookLoan 정규화 (books 조인 없음 → book 은 호출부에서 채움) */
+function toLoanRow(r: any): MyBookLoan {
+  return {
+    id:                r.id,
+    book_id:           r.book_id,
+    checkout_at:       r.checkout_at,
+    due_at:            r.due_at,
+    returned_at:       r.returned_at ?? null,
+    extension_count:   r.extension_count ?? 0,
+    last_extended_at:  r.last_extended_at ?? null,
+    status:            r.status,
+    book:              null,
+    requested_at:      r.requested_at ?? null,
+    processed_at:      r.processed_at ?? null,
+    processed_by_name: r.processed_by_name ?? null,
+    reject_reason:     r.reject_reason ?? null,
+    notes:             r.notes ?? null,
+  }
+}
+
+/** [Admin] 도서 대여 등록 — 여러 권 동시, 단일 트랜잭션 */
+export async function adminCheckoutBooks(
+  userId: string, bookIds: number[], notes?: string | null
+): Promise<CheckoutResult> {
+  const { data, error } = await supabase.rpc('admin_checkout_books', {
+    p_user_id:  userId,
+    p_book_ids: bookIds,
+    p_notes:    notes ?? null,
+  })
+  if (error) return { ok: false, ...parseCheckoutError(error.message ?? '') }
+  return { ok: true, rows: (data ?? []).map(toLoanRow) }
+}
+
+/** [사용자] 도서 대여 신청 — pending 생성 */
+export async function requestBookCheckout(
+  bookIds: number[], notes?: string | null
+): Promise<CheckoutResult> {
+  const { data, error } = await supabase.rpc('request_book_checkout', {
+    p_book_ids: bookIds,
+    p_notes:    notes ?? null,
+  })
+  if (error) return { ok: false, ...parseCheckoutError(error.message ?? '') }
+  return { ok: true, rows: (data ?? []).map(toLoanRow) }
+}
+
+/** [Admin] 신청 승인 — pending → active (승인 시점 기준 반납일 재계산) */
+export async function approveBookRequest(
+  checkoutId: string, adminName?: string | null
+): Promise<CheckoutResult> {
+  const { data, error } = await supabase.rpc('admin_approve_book_request', {
+    p_checkout_id: checkoutId,
+    p_admin_name:  adminName ?? null,
+  })
+  if (error) return { ok: false, ...parseCheckoutError(error.message ?? '') }
+  const r = Array.isArray(data) ? data[0] : data
+  return r ? { ok: true, rows: [toLoanRow(r)] } : { ok: false, code: 'UNKNOWN' }
+}
+
+/** [Admin] 신청 거절 — pending → rejected (사유 기록) */
+export async function rejectBookRequest(
+  checkoutId: string, reason: string, adminName?: string | null
+): Promise<CheckoutResult> {
+  const { data, error } = await supabase.rpc('admin_reject_book_request', {
+    p_checkout_id: checkoutId,
+    p_reason:      reason,
+    p_admin_name:  adminName ?? null,
+  })
+  if (error) return { ok: false, ...parseCheckoutError(error.message ?? '') }
+  const r = Array.isArray(data) ? data[0] : data
+  return r ? { ok: true, rows: [toLoanRow(r)] } : { ok: false, code: 'UNKNOWN' }
+}
+
+/** [본인] 신청 취소 — pending → cancelled */
+export async function cancelBookRequest(checkoutId: string): Promise<CheckoutResult> {
+  const { data, error } = await supabase.rpc('cancel_book_request', {
+    p_checkout_id: checkoutId,
+  })
+  if (error) return { ok: false, ...parseCheckoutError(error.message ?? '') }
+  const r = Array.isArray(data) ? data[0] : data
+  return r ? { ok: true, rows: [toLoanRow(r)] } : { ok: false, code: 'UNKNOWN' }
+}
+
+/** [Admin] 승인 대기 신청 목록 (선착순 정렬) */
+export async function fetchPendingBookRequests(): Promise<BookRequest[]> {
+  const { data, error } = await supabase
+    .from('book_checkouts')
+    .select(`
+      id, book_id, user_id, checkout_at, due_at, returned_at,
+      extension_count, last_extended_at, status, notes,
+      requested_at, processed_at, processed_by_name, reject_reason,
+      books ( title, author, publisher, cover_url )
+    `)
+    .eq('status', 'pending')
+    .order('requested_at', { ascending: true })   // 선착순
+
+  if (error) throw new Error(error.message)
+
+  return (data ?? []).map((r: any): BookRequest => ({
+    ...toLoanRow(r),
+    user_id: r.user_id,
+    book: Array.isArray(r.books) ? (r.books[0] ?? null) : (r.books ?? null),
+  } as BookRequest))
 }

@@ -1,0 +1,4 @@
+project_id = "jjzcqpbwkkujttwxksvy"
+ 
+[functions.book-due-reminder]
+verify_jwt = false

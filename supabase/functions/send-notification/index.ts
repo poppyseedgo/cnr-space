@@ -487,6 +487,12 @@ Deno.serve(async (req: Request) => {
       cancel_reason: booking.cancel_reason,
       reject_reason: booking.reject_reason,
       recur_label:   booking.recur_label,
+      // ← [2026-07-20] 도서관 알림 전용 필드
+      //   이 3개가 있으면 email-templates 가 회의(DATE/TIME/ROOM) 대신
+      //   도서(반납예정/연체) 포맷으로 인포카드를 렌더한다.
+      book_title:    booking.book_title,
+      due_date_kst:  booking.due_date_kst,
+      days_overdue:  booking.days_overdue,
     }
 
     const recurBookings: { start_at: string; end_at: string }[] = booking.recurBookings ?? []
@@ -510,6 +516,11 @@ Deno.serve(async (req: Request) => {
       room_name: bookingData.room_name,
       start_at:  bookingData.start_at,
       user_name: bookingData.user_name,
+      // ← [2026-07-20] 도서관 알림 전용 — buildInAppBody 의 도서 분기 입력.
+      //   누락 시 body 가 "제목 · · " 형태로 빈 구분자만 남는다.
+      book_title:   bookingData.book_title,
+      due_date_kst: bookingData.due_date_kst,
+      days_overdue: bookingData.days_overdue,
     }
     // 인앱 알림은 이메일과 독립적으로 진행 (await하지 않고 Promise.allSettled 안에서)
     await sendInAppForAllRoles(type as NotificationType, inAppBooking, recipients)
