@@ -231,3 +231,47 @@ export interface Book {
   category?:        BookCategory | null
   active_checkout?: BookCheckout | null
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [2026-07-18] 마이페이지 '내 대여' — 조회 + 연장신청
+//   · book_checkouts + books 조인 결과 (본인 대여만, RLS로 보장)
+//   · 표시 상태(대여중/반납임박/연체/반납완료/분실)는 utils/bookLoan.ts 에서 파생
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 대여 목록에 함께 조인되는 도서 정보 (필요 컬럼만) */
+export interface MyBookLoanBook {
+  title:     string
+  author:    string | null
+  publisher: string | null
+  cover_url: string | null
+}
+
+/** 마이페이지 '내 대여' 행 (book_checkouts × books) */
+export interface MyBookLoan {
+  id:               string   // checkout uuid
+  book_id:          number
+  checkout_at:      string
+  due_at:           string
+  returned_at:      string | null
+  extension_count:  number   // 0 | 1 (DB CHECK <= 1)
+  last_extended_at: string | null
+  status:           'active' | 'returned' | 'overdue' | 'lost'
+  book:             MyBookLoanBook | null
+}
+
+/** 화면 표시용 파생 상태 (DB status + due_at 기준 클라 계산) */
+export type LoanDisplayStatus =
+  | 'active'    // 대여중 (여유)
+  | 'due_soon'  // 반납임박 (D-2 이내)
+  | 'overdue'   // 연체중
+  | 'returned'  // 반납완료
+  | 'lost'      // 분실
+
+/** 연장 RPC 실패 코드 (extend_book_checkout) */
+export type ExtendErrorCode =
+  | 'CHECKOUT_NOT_FOUND'
+  | 'NOT_OWNER'
+  | 'NOT_ACTIVE'
+  | 'ALREADY_EXTENDED'
+  | 'OVERDUE'
+  | 'UNKNOWN'

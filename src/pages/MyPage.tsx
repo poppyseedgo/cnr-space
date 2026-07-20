@@ -63,6 +63,8 @@ import { UserAvatar } from '../components/common/UserAvatar'
 //   · Icons.tsx의 MailIcon export 자체는 유지 (향후 재사용 가능성)
 // ← [2026-05-04 STEP 4] BookingListTable → MyBookingTable로 교체 (Admin은 BookingListTable 그대로 유지)
 import { MyBookingTable } from '../components/common/MyBookingTable'
+// ← [2026-07-18] 마이페이지 '내 대여' — 도서 대여 조회 + 연장(1회 +7일)
+import { MyBookLoans } from '../components/library/MyBookLoans'
 import { Button } from '../components/common/Button' 
 import { isNoshow } from '../utils/noshow'  // ← [2026-05-11 Phase 2] isNoshow SSOT 통일 (기존 isNoshowBooking 별칭 사용)
 
@@ -80,6 +82,11 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   // 전체 내 예약 기록 (마이페이지 전용 — 기간 제한 없이)
   const [allMyBookings, setAllMyBookings] = useState<Booking[]>([]);
   const [allLoading, setAllLoading] = useState(false);
+
+  // ← [2026-07-18] 조회 섹션 세그먼트 탭: 회의실 예약 ↔ 도서 대여
+  //   · 기본값 'room' — 기존 동작(회의실 조회) 그대로 보존
+  //   · 'book' 선택 시 MyBookLoans (도서 대여 조회 + 연장) 렌더
+  const [queryTab, setQueryTab] = useState<'room' | 'book'>('room');
 
   // 딥링크 처리: #booking-{id} 로 진입 시 해당 예약 모달 자동 오픈
   useEffect(() => {
@@ -441,10 +448,42 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
           color:'#111',                                    // ← Figma: #111
           lineHeight:1.5,                                  // ← Figma: leading 1.5
           whiteSpace:'nowrap',
-        }}>나의 예약 조회</div>{/* ← [2026-05-06] "기간별 예약 조회" → "나의 예약 조회" */}
+        }}>{queryTab === 'room' ? '나의 예약 조회' : '나의 대여 조회'}</div>{/* ← [2026-07-18] 탭에 따라 제목 전환 */}
 
+        {/* ── [2026-07-18] 세그먼트 탭: 회의실 예약 ↔ 도서 대여 ──────────────
+            · 기존 회의실 조회 동작은 그대로 유지 (기본 탭 'room')
+            · 도서 탭은 MyBookLoans가 자체 fetch/연장 처리 */}
+        <div style={{ display:'flex', gap:6, padding:4, background:'#F1F5F9',
+          borderRadius:12, width:'fit-content' }}>
+          {([['room','회의실 예약'],['book','도서 대여']] as const).map(([key,label]) => (
+            <button
+              key={key}
+              onClick={() => setQueryTab(key)}
+              style={{
+                padding:'8px 18px', borderRadius:9, border:'none', fontSize:13,
+                fontWeight: queryTab === key ? 600 : 500,
+                background:  queryTab === key ? '#fff' : 'transparent',
+                color:       queryTab === key ? '#111' : '#64748B',
+                boxShadow:   queryTab === key ? '0 1px 3px rgba(15,23,42,0.08)' : 'none',
+                cursor:'pointer',
+              }}
+            >{label}</button>
+          ))}
+        </div>
+
+        {/* ── 도서 대여 탭 ─────────────────────────────────────────────── */}
+        {queryTab === 'book' && (
+          <MyBookLoans
+            authUserId={authUserId}
+            showToast={showToast}
+            isMobile={isMobile}
+          />
+        )}
+
+        {/* ── 회의실 예약 탭 (기존) ────────────────────────────────────── */}
         {/* MyBookingTable — 모든 필터/탭/테이블/페이지네이션 자체 관리 */}
         {/* ← [2026-05-07] CSV 버튼 제거 + 회의실 필터 추가 (MyBookingTable 내부에서 처리) */}
+        {queryTab === 'room' && (
         <MyBookingTable
           bookings={allMyBookings}
           rooms={allRooms}
@@ -454,6 +493,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
           onDetail={onDetail}
           loading={allLoading}
         />
+        )}{/* ← [2026-07-18] queryTab === 'room' 조건부 닫기 */}
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════

@@ -39,6 +39,16 @@ export const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
   checkin_reminder_10:      "#0891B2",
   checkin_required:         "#16A34A",
   checkin_warning:          "#EF4444",
+
+  // ── 도서관 (← [2026-07-20] 신규) ────────────────────────────────────────
+  //   · 대여/연장 = 인디고 계열(긍정·확정)
+  //   · 반납 임박 = 앰버(주의) → 당일 = 주황(강한 주의) → 연체 = 빨강(경고)
+  //     단계가 올라갈수록 색이 강해져 벨 목록에서 긴급도가 한눈에 구분된다.
+  book_borrowed:            "#4F46E5",  // 대여 확정 — 인디고
+  book_extended:            "#4F46E5",  // 연장 완료 — 인디고
+  book_due_tomorrow:        "#D97706",  // 반납 1일 전 — 앰버
+  book_due_today:           "#EA580C",  // 반납 당일 — 주황
+  book_overdue:             "#DC2626",  // 연체중 — 빨강
 };
 
 /** type별 색상 반환 (등록되지 않은 type은 fallback 회색) */

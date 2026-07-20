@@ -51,6 +51,13 @@ export interface InAppBookingData {
   room_name:  string
   start_at:   string
   user_name?: string             // 관리자 수신 시 "신청자" 표시용
+
+  // ── 도서관 전용 (← [2026-07-20]) ──────────────────────────────────────
+  //   도서 알림은 회의실/시작시각 개념이 없어 위 필드로는 본문을 만들 수 없다.
+  //   아래 필드가 있으면 buildInAppBody가 도서 포맷으로 렌더한다.
+  book_title?:   string          // 도서명
+  due_date_kst?: string          // 반납예정일 (KST 'YYYY-MM-DD')
+  days_overdue?: number          // 연체 일수 (book_overdue 전용)
 }
 
 /** 단일 INSERT 입력 */
@@ -98,6 +105,25 @@ function fmtTimeKST(ts: string): string {
  *   · admin:           "주간 회의 · 2F Emerald · 신청자: 송보람 · 2026년 4월 22일 오후 2:00"
  */
 export function buildInAppBody(booking: InAppBookingData, role: 'booker' | 'attendee' | 'admin'): string {
+  // ── 도서관 알림 분기 (← [2026-07-20]) ────────────────────────────────────
+  //   도서 알림에는 회의실/시작시각이 없으므로 회의실 포맷을 그대로 쓰면
+  //   "제목 · · " 처럼 빈 구분자만 남는다. 도서 전용 포맷으로 렌더한다.
+  //     · 대여/연장/D-1/당일: "도서명 · 반납예정 2026-07-27"
+  //     · 연체:               "도서명 · 3일 연체 (반납예정 2026-07-20)"
+  //   날짜는 due_date_kst(이미 KST로 계산된 문자열)를 그대로 쓴다.
+  //   여기서 재변환하면 타임존 이중 적용으로 날짜가 밀릴 수 있다.
+  if (booking.book_title) {
+    const name = booking.book_title
+    const due  = booking.due_date_kst ?? ''
+    const od   = booking.days_overdue ?? 0
+
+    if (od > 0) {
+      const tail = due ? ` (반납예정 ${due})` : ''
+      return `${name} · ${od}일 연체${tail}`
+    }
+    return due ? `${name} · 반납예정 ${due}` : name
+  }
+
   const title   = booking.title ?? ''
   const room    = booking.room_name ?? ''
   const date    = fmtDateKST(booking.start_at)

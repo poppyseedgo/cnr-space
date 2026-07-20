@@ -107,7 +107,8 @@
  */
 
 import { supabase, isSupabaseEnabled } from './supabase'
-import type { Booking, Room, AppUser, Feature, AttendeeRef } from '../types'
+import type { Booking, Room, AppUser, Feature, AttendeeRef,
+  MyBookLoan, ExtendErrorCode } from '../types'  // ← [2026-07-18] 마이페이지 내 대여
 
 // ── UTC → KST 변환 ───────────────────────────────────────────────────────────
 // Supabase가 UTC ISO 문자열로 반환하므로 앱 기준인 KST로 보정
@@ -1585,4 +1586,109 @@ export async function visitorDeleteCard(pw: string, label: string): Promise<void
 export async function visitorSetMemo(pw: string, id: string, memo: string): Promise<void> {
   const { error } = await supabase.rpc('visitor_admin_set_memo', { p_pw: pw, p_id: id, p_memo: memo })
   if (error) throw new Error(error.message)
+}
+
+// ─── 마이페이지 '내 대여' (도서 대여 조회 + 연장) ───────────────────────────
+// [2026-07-18] 스코프: 조회 + 연장신청 (반납/분실 전이는 관리자 전용)
+//   · 조회: RLS(book_checkouts_select_self_or_admin)가 본인 건만 반환.
+//           방어적으로 user_id 필터도 명시.
+//   · 연장: 반드시 RPC(extend_book_checkout) 경유.
+//           클라이언트가 book_checkouts를 직접 UPDATE하면 due_at 임의 조작이
+//           가능하므로, 본인·active·미연장·미연체 검증과 정확한 +7일 적용은
+//           서버(SECURITY DEFINER)에서만 수행한다.
+
+/** 내 도서 대여 목록 조회 (최신 대여순, 도서 정보 조인) */
+export async function fetchMyBookLoans(userId: string): Promise<MyBookLoan[]> {
+  if (!userId) return []
+
+  const { data, error } = await supabase
+    .from('book_checkouts')
+    .select(`
+      id, book_id, checkout_at, due_at, returned_at,
+      extension_count, last_extended_at, status,
+      books ( title, author, publisher, cover_url )
+    `)
+    .eq('user_id', userId)
+    .order('checkout_at', { ascending: false })
+
+  if (error) throw new Error(error.message)
+
+  // supabase 조인 결과의 books 는 객체 또는 배열로 올 수 있어 정규화
+  return (data ?? []).map((r: any): MyBookLoan => ({
+    id:               r.id,
+    book_id:          r.book_id,
+    checkout_at:      r.checkout_at,
+    due_at:           r.due_at,
+    returned_at:      r.returned_at ?? null,
+    extension_count:  r.extension_count ?? 0,
+    last_extended_at: r.last_extended_at ?? null,
+    status:           r.status,
+    book: Array.isArray(r.books) ? (r.books[0] ?? null) : (r.books ?? null),
+  }))
+}
+
+/** 연장 RPC 에러 메시지 → 코드 매핑 (Postgres RAISE EXCEPTION 메시지 기반) */
+function parseExtendError(message: string): ExtendErrorCode {
+  const codes: ExtendErrorCode[] = [
+    'CHECKOUT_NOT_FOUND', 'NOT_OWNER', 'NOT_ACTIVE', 'ALREADY_EXTENDED', 'OVERDUE',
+  ]
+  const hit = codes.find(c => message.includes(c))
+  return hit ?? 'UNKNOWN'
+}
+
+/**
+ * 대여 연장 (1회, +7일) — 서버 RPC 경유
+ * 성공: { ok:true, row }  /  실패: { ok:false, code }
+ * 예외를 throw 하지 않고 코드로 반환 → 호출부에서 한글 토스트 매핑
+ *
+ * ← [2026-07-20 fix] 반환 타입을 판별 유니온에서 단일 타입으로 변경.
+ *   이 프로젝트는 tsconfig 의 strict(=strictNullChecks) 가 false 라
+ *   `ok: true | false` 리터럴이 boolean 으로 뭉개져 if(!res.ok) 안에서도
+ *   유니온이 좁혀지지 않는다(TS2339: Property 'code' does not exist...).
+ *   호출부에서 좁히기에 의존하지 않도록 두 필드를 모두 옵셔널로 갖는
+ *   단일 결과 타입으로 계약을 정리한다.
+ */
+export interface ExtendResult {
+  ok:    boolean
+  row?:  MyBookLoan       // ok === true 일 때 존재
+  code?: ExtendErrorCode  // ok === false 일 때 존재
+}
+
+export async function extendBookCheckout(checkoutId: string): Promise<ExtendResult> {
+  const { data, error } = await supabase.rpc('extend_book_checkout', {
+    p_checkout_id: checkoutId,
+  })
+
+  if (error) return { ok: false, code: parseExtendError(error.message ?? '') }
+
+  // RPC는 갱신된 book_checkouts 행을 반환 (books 조인 없음 → book은 호출부에서 유지)
+  const r: any = Array.isArray(data) ? data[0] : data
+  if (!r) return { ok: false, code: 'UNKNOWN' }
+
+  return {
+    ok: true,
+    row: {
+      id:               r.id,
+      book_id:          r.book_id,
+      checkout_at:      r.checkout_at,
+      due_at:           r.due_at,
+      returned_at:      r.returned_at ?? null,
+      extension_count:  r.extension_count ?? 0,
+      last_extended_at: r.last_extended_at ?? null,
+      status:           r.status,
+      book:             null,
+    },
+  }
+}
+
+/** 연장 실패 코드 → 사용자 안내 문구 */
+export function extendErrorMessage(code: ExtendErrorCode): string {
+  switch (code) {
+    case 'CHECKOUT_NOT_FOUND': return '대여 정보를 찾을 수 없습니다'
+    case 'NOT_OWNER':          return '본인 대여만 연장할 수 있습니다'
+    case 'NOT_ACTIVE':         return '이미 반납된 도서입니다'
+    case 'ALREADY_EXTENDED':   return '이미 연장한 도서입니다 (연장은 1회만 가능)'
+    case 'OVERDUE':            return '연체 중에는 연장할 수 없습니다. 반납 후 다시 대여해주세요'
+    default:                   return '연장에 실패했습니다. 잠시 후 다시 시도해주세요'
+  }
 }

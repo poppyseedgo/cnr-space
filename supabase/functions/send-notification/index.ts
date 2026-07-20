@@ -344,6 +344,26 @@ function buildEmailItems(
     })
   }
 
+  // ── book_borrower (도서 대여자 본인) ────────────────────────────
+  // ← [2026-07-20] role='booker'로 렌더 — 도서관 정책의 booker 배너/CTA 사용
+  //   도서 알림은 참석자/관리자가 없어 이 1명이 유일한 수신자다.
+  //   ← [2026-07-20 fix] 기존 코드가 renderEmail 없이 잘못된 형태로 push 하고
+  //     괄호가 깨져 있어 배포 불가 상태였음. 다른 수신자 분기와 동일 구조로 정정.
+  if (recipients.bookBorrower?.email) {
+    const role = 'booker' as const
+    const html = renderEmail({
+      ...baseInput,
+      role,
+      recipientName: recipients.bookBorrower.name,
+      attendeeList:  [],
+    })
+    items.push({
+      to:      recipients.bookBorrower.email,
+      subject: getSubject(type, bookingData.title, role),
+      html,
+    })
+  }
+
   return items
 }
 
@@ -362,6 +382,8 @@ async function sendInAppForAllRoles(
   const removedIds    = recipients.removedAttendees.map(p => p.user_id).filter(Boolean)
   // ← [2026-06-12] former_booker 인앱 수신자 (원래 예약자 1명)
   const formerBookerId = recipients.formerBooker?.user_id ? [recipients.formerBooker.user_id] : []
+  // ← [2026-07-20] book_borrower 인앱 수신자 (도서 대여자 1명)
+  const bookBorrowerId = recipients.bookBorrower?.user_id ? [recipients.bookBorrower.user_id] : []
 
   // 각 역할에 맞는 제목이 정책에 있으면 INSERT, 없으면 insertInAppBulk 내부에서 자동 스킵
   const tasks: Promise<any>[] = [
@@ -373,6 +395,8 @@ async function sendInAppForAllRoles(
     // ← [2026-06-12] former_booker는 booker 역할로 알림 (정책: former_booker만 해당)
     //   former_booker 정책의 inappTitleBooker("회의 예약자에서 변경되었습니다") 사용
     insertInAppBulk(supabase, formerBookerId, type, 'booker', bookingData),
+    // ← [2026-07-20] 도서 대여자는 booker 역할로 알림 (도서관 정책은 inappTitleBooker만 사용)
+    insertInAppBulk(supabase, bookBorrowerId, type, 'booker', bookingData),
   ]
 
   await Promise.allSettled(tasks)
@@ -433,6 +457,9 @@ Deno.serve(async (req: Request) => {
       removedEmails: booking.removed_emails ?? [],   // attendee_removed 전용
       // ← [2026-06-12] former_booker 전용 — 원래 예약자 user_id
       formerBookerUserId: booking.former_booker_user_id,
+      // ← [2026-07-20] book_borrower 전용 — 도서 대여자 user_id
+      //   도서 알림 payload는 booking 슬롯에 도서 정보를 담아 보낸다(booking.user_id = 대여자).
+      borrowerUserId: booking.user_id,
     })
 
     // ── 이메일 본문용 참석자 목록 생성 ────────────────────────────────
