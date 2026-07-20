@@ -49,6 +49,7 @@
 
 import { useState, useEffect } from 'react'
 import type { ReactNode, CSSProperties } from 'react'
+import { UserAvatar } from '../common/UserAvatar'
 import { fmtDueShortKo } from '../../utils/bookLoan'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -87,8 +88,10 @@ export interface CardCheckout {
 
 /** 카드가 읽는 대여자 필드 */
 export interface CardBorrower {
-  name?: string | null
-  dept?: string | null
+  name?:       string | null
+  dept?:       string | null
+  /** ← [2026-07-20] 카드 대여자 행 아바타 (AppUser.avatar_url) */
+  avatar_url?: string | null
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -172,9 +175,8 @@ export const LT = {
   //     상태별 gap 구분이 사라졌다. 호버 프레임 두 종 모두 gap 12.
   cardGap:      12,   // Figma 1344:1539 / 1344:1552
 
-  //  호버 오버레이 (Figma 1344:1568 / 1344:1544 / 1344:1549)
-  hoverMetaH:   125,                        // 대여 정보 패널 고정 높이
-  hoverPanelBg: 'rgba(255,255,255,0.35)',   // + backdrop-blur 5px
+  //  대여자 행 아바타 크기 — 본문 14px 텍스트에 맞춘 20px
+  metaAvatar:   20,
 
   dimmedCover:  0.3,  // 대여중/연체 표지 불투명도
 
@@ -476,64 +478,11 @@ export function BookGridCard({
           <ListBadge bg={badge.bg}>{badge.label}</ListBadge>
         </div>
 
-        {/* ── 대여 정보 패널 (Figma 1344:1568) ────────────────────────────
-            left/right 8 · top 41.3 · height 125 · padding 8
-            배경 rgba(255,255,255,.35) + backdrop-blur 5px
-            표지 위에 겹치므로 반투명 유리판으로 처리한다. */}
-        {held && checkout && (
-          <div style={{
-            position: 'absolute', left: 8, right: 8, top: 41.3,
-            height: LT.hoverMetaH, padding: 8, boxSizing: 'border-box',
-            display: 'flex', flexDirection: 'column',
-            background: LT.hoverPanelBg,
-            backdropFilter: 'blur(5px)', WebkitBackdropFilter: 'blur(5px)',
-            fontSize: 14, fontWeight: FONT_R, lineHeight: 1.5,
-            opacity: overlayOpen ? 1 : 0,
-            visibility: overlayOpen ? 'visible' : 'hidden',
-            transition: 'opacity 0.15s',
-            pointerEvents: 'none',
-          }}>
-            {/* 상태 + 대여자 */}
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center', minWidth: 0 }}>
-              <span style={{
-                color: isOverdueStatus ? LT.metaOverdue : LT.metaBusy, flexShrink: 0,
-              }}>
-                {isOverdueStatus ? '연체' : '대여'}
-              </span>
-              {/* 부서명이 폭을 넘기면 말줄임. 이름은 식별 정보라 축약하지 않는다.
-                  flex 자식은 min-width:auto 가 기본이라 minWidth:0 이 없으면
-                  ellipsis 가 동작하지 않는다 — 부모/자식 모두 지정. */}
-              <span style={{
-                display: 'flex', gap: 4, alignItems: 'center',
-                padding: '2px 0', minWidth: 0, flex: 1,
-              }}>
-                <span style={{ color: LT.black, flexShrink: 0, whiteSpace: 'nowrap' }}>
-                  {borrower?.name ?? '알 수 없음'}
-                </span>
-                {borrower?.dept && (
-                  <span
-                    title={borrower.dept}
-                    style={{
-                      color: LT.metaDept, minWidth: 0, flex: 1,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                    {borrower.dept}
-                  </span>
-                )}
-              </span>
-            </div>
-
-            {/* 반납기한 — Figma 라벨 '반납일'/'2026/7/20' 에서 기한 표기로 변경
-                (배포 완료된 문구 정책 유지) */}
-            <div style={{
-              display: 'flex', gap: 4, alignItems: 'center',
-              padding: '2px 0', color: LT.black, whiteSpace: 'nowrap',
-            }}>
-              <span>반납기한</span>
-              <span>{checkout.due_at ? `${fmtDueShortKo(checkout.due_at)} 이내` : '-'}</span>
-            </div>
-          </div>
-        )}
+        {/* ← [2026-07-20 rev4] 대여 정보 패널(Figma 1344:1568, 표지 위 반투명
+            오버레이)은 제거하고 카드 본문 아래로 원복했다.
+            호버로만 보이면 목록에서 누가 빌렸는지 한눈에 훑을 수 없어
+            관리 화면의 기본 용도(대여 현황 파악)를 깎아먹는다.
+            CTA·편집/삭제는 요청대로 호버 영역에 그대로 둔다. */}
 
         {/* ── CTA + 편집/삭제 (Figma 1344:1549 / 1344:1544) ───────────────
             표지 하단 기준으로 쌓는다.
@@ -615,6 +564,62 @@ export function BookGridCard({
       }}>
         {book.title}
       </p>
+
+      {/* ══ 대여자 / 반납기한 — 대여중·연체일 때만 (Figma 1344:1568 내용) ══
+          ← [2026-07-20 rev4] 표지 호버 오버레이 → 카드 본문으로 원복.
+            gap 4 · 14px Regular · lineHeight 1.5
+            아바타는 공용 UserAvatar 재사용(이미지 없으면 이니셜 폴백). */}
+      {held && checkout && (
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 4,
+          width: '100%', fontSize: 14, fontWeight: FONT_R, lineHeight: 1.5,
+        }}>
+          {/* 상태 + 아바타 + 대여자 */}
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center', minWidth: 0 }}>
+            <span style={{
+              color: isOverdueStatus ? LT.metaOverdue : LT.metaBusy, flexShrink: 0,
+            }}>
+              {isOverdueStatus ? '연체' : '대여'}
+            </span>
+            {/* 부서명이 폭을 넘기면 말줄임. 이름은 식별 정보라 축약하지 않는다.
+                flex 자식은 min-width:auto 가 기본이라 minWidth:0 이 없으면
+                ellipsis 가 동작하지 않는다 — 부모/자식 모두 지정. */}
+            <span style={{
+              display: 'flex', gap: 4, alignItems: 'center',
+              padding: '2px 0', minWidth: 0, flex: 1,
+            }}>
+              <UserAvatar
+                name={borrower?.name ?? '?'}
+                avatarUrl={borrower?.avatar_url}
+                size={LT.metaAvatar}
+              />
+              <span style={{ color: LT.black, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                {borrower?.name ?? '알 수 없음'}
+              </span>
+              {borrower?.dept && (
+                <span
+                  title={borrower.dept}
+                  style={{
+                    color: LT.metaDept, minWidth: 0, flex: 1,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                  {borrower.dept}
+                </span>
+              )}
+            </span>
+          </div>
+
+          {/* 반납기한 — Figma 라벨 '반납일'/'2026/7/20' 에서 기한 표기로 변경
+              (배포 완료된 문구 정책 유지) */}
+          <div style={{
+            display: 'flex', gap: 4, alignItems: 'center',
+            padding: '2px 0', color: LT.black, whiteSpace: 'nowrap',
+          }}>
+            <span>반납기한</span>
+            <span>{checkout.due_at ? `${fmtDueShortKo(checkout.due_at)} 이내` : '-'}</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
