@@ -13,6 +13,7 @@
  */
 
 import type { CSSProperties, ReactNode } from 'react'
+import { fmtDueFullKo, dueNoticeFull, dueDateFrom } from '../../utils/bookLoan'
 
 // ── Figma 토큰 ───────────────────────────────────────────────────────────────
 export const BM = {
@@ -170,29 +171,32 @@ export function MemoField({ value, onChange }: { value: string; onChange: (v: st
   )
 }
 
-// ── 대여일/반납일 표시 ───────────────────────────────────────────────────────
-const DAYS = ['일', '월', '화', '수', '목', '금', '토']
+// ── 대여일/반납기한 표시 ─────────────────────────────────────────────────────
+//
+// ← [2026-07-20] 문구 정책 변경
+//   반납일은 "그 날 반납"이 아니라 "대여일 기준 7일 이내 반납"이므로
+//   시점 표기("2026년 7월 27일 월요일")를 기한 표기로 바꾼다.
+//   라벨도 '반납일' → '반납기한'.
+//
+//   날짜 포맷은 utils/bookLoan.ts 로 일원화했다. 기존 fmtFullDate 는
+//   외부 호출부 호환을 위해 재수출만 유지한다.
 
-/** 'YYYY년 M월 D일 요일' (Figma 표기) */
-export function fmtFullDate(d: Date): string {
-  return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 ${DAYS[d.getDay()]}요일`
-}
+export { fmtDueFullKo as fmtFullDate } from '../../utils/bookLoan'
 
 export function DateRows({ borrowDays, noteText }: { borrowDays: number; noteText?: string }) {
   const start = new Date()
-  const due   = new Date()
-  due.setDate(due.getDate() + borrowDays)
+  const due   = dueDateFrom(start, borrowDays)
   return (
     <>
       <Field label="대여일" required>
         <span style={{ fontSize: 16, fontWeight: 500, color: BM.valueColor }}>
-          {fmtFullDate(start)}
+          {fmtDueFullKo(start)}
         </span>
       </Field>
-      <Field label="반납일" required>
+      <Field label="반납기한" required>
         <div>
           <span style={{ fontSize: 16, fontWeight: 500, color: BM.valueColor }}>
-            {fmtFullDate(due)}
+            {dueNoticeFull(due)}
           </span>
           {noteText && (
             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{noteText}</div>

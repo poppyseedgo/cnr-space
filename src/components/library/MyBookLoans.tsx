@@ -4,7 +4,7 @@
  * [2026-07-18] 신규
  *
  * 스코프 (확정):
- *   · 조회: 본인 대여 현황 / 반납예정일 / D-day / 대여 이력
+ *   · 조회: 본인 대여 현황 / 반납기한 / D-day / 대여 이력
  *   · 연장: 1회 +7일, 서버 RPC(extend_book_checkout) 경유
  *   · 반납/분실 전이는 관리자 전용 → 사용자 화면엔 안내 문구만 (버튼 없음)
  *
@@ -25,6 +25,7 @@ import { fetchMyBookLoans, extendBookCheckout, extendErrorMessage,
 import {
   loanDisplayStatus, loanStatusStyle, canExtend, extendBlockedReason,
   ddayLabel, fmtLoanDate, previewExtendedDue, EXTEND_DAYS,
+  dueNoticeShort, fmtDueFullKo, fmtDueShortKo,   // ← [2026-07-20] 반납기한 표기 SSOT
 } from '../../utils/bookLoan'
 import type { MyBookLoan } from '../../types'
 
@@ -140,7 +141,7 @@ export function MyBookLoans({ authUserId, showToast, isMobile = false }: Props) 
         },
       }).catch(err => console.warn('[myloans] 연장 알림 발송 실패:', err))
 
-      showToast(`연장되었습니다 (반납예정 ${fmtLoanDate(updated.due_at)})`)
+      showToast(`연장되었습니다 · ${dueNoticeShort(updated.due_at)}`)
     } catch (e: any) {
       showToast(e?.message ?? '연장에 실패했습니다')
     } finally {
@@ -203,7 +204,7 @@ export function MyBookLoans({ authUserId, showToast, isMobile = false }: Props) 
             ))}
           </div>
           <div style={{ marginTop: 8, fontSize: 12, color: '#94A3B8', lineHeight: 1.6 }}>
-            관리자 승인 후 대여가 확정됩니다. 반납 예정일은 승인 시점 기준으로 다시 계산됩니다.
+            관리자 승인 후 대여가 확정됩니다. 반납기한은 승인 시점 기준으로 다시 계산됩니다.
           </div>
         </section>
       )}
@@ -233,7 +234,7 @@ export function MyBookLoans({ authUserId, showToast, isMobile = false }: Props) 
           <div style={{ marginTop: 10, padding: '10px 12px', background: '#F8FAFC',
             border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 12, color: '#64748B',
             lineHeight: 1.6 }}>
-            반납은 도서를 관리자에게 전달하면 처리됩니다. 연장은 1회({EXTEND_DAYS}일)만 가능합니다.
+            반납기한 이내에 도서를 관리자에게 전달하면 반납 처리됩니다. 연장은 1회({EXTEND_DAYS}일)만 가능합니다.
           </div>
         )}
       </section>
@@ -342,7 +343,7 @@ function ActiveLoanCard({ loan, isMobile, extending, onExtendClick }: {
           {[loan.book?.author, loan.book?.publisher].filter(Boolean).join(' · ') || '—'}
         </div>
         <div style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>
-          대여 {fmtLoanDate(loan.checkout_at)} · 반납예정 {fmtLoanDate(loan.due_at)}
+          대여 {fmtLoanDate(loan.checkout_at)} · {dueNoticeShort(loan.due_at)}
         </div>
       </div>
 
@@ -446,9 +447,12 @@ function ExtendConfirmModal({ loan, onCancel, onConfirm }: {
       >
         <div style={{ fontSize: 16, fontWeight: 700, color: '#111' }}>대여 연장</div>
         <div style={{ fontSize: 13, color: '#475569', marginTop: 10, lineHeight: 1.7 }}>
-          <b style={{ color: '#111' }}>{loan.book?.title ?? '이 도서'}</b>의 반납예정일이<br />
-          <b>{fmtLoanDate(loan.due_at)}</b> → <b style={{ color: '#1D4ED8' }}>{fmtLoanDate(newDue)}</b> 로 연장됩니다.
-          <div style={{ marginTop: 8, fontSize: 12, color: '#94A3B8' }}>
+          <b style={{ color: '#111' }}>{loan.book?.title ?? '이 도서'}</b>의 반납기한이<br />
+          <b>{fmtDueShortKo(loan.due_at)}</b> → <b style={{ color: '#1D4ED8' }}>{fmtDueShortKo(newDue)}</b> 로 연장됩니다.
+          <div style={{ marginTop: 8, fontSize: 12, color: '#111', fontWeight: 600 }}>
+            {fmtDueFullKo(newDue)} 이내 반납하세요
+          </div>
+          <div style={{ marginTop: 6, fontSize: 12, color: '#94A3B8' }}>
             연장은 1회만 가능하며, 이후에는 반납해야 합니다.
           </div>
         </div>

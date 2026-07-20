@@ -18,7 +18,7 @@
  * ✅ 대여 규칙
  *  - 1인 동시 2권 제한
  *  - 대여 기간: 대여일 기준 +7일 (due_at 자동 계산)
- *  - 대여/반납: 관리자가 오프라인 후 앱에 기록
+ *  - 대여/반납: 관리자가 오프라인 후 앱에 기록 (반납기한 = 대여일 + 7일 이내)
  *
  * ✅ 변경 이력
  *  - [2026-07-16] 최초 작성
@@ -32,6 +32,12 @@ import {
   fetchPendingBookRequests, checkoutErrorMessage,
 } from '../lib/api'
 import { BookCheckoutModal } from '../components/library/BookCheckoutModal'
+// ← [2026-07-20] Figma 73:831 Home list — 리스트 UI 토큰/카드/칩 SSOT
+import {
+  LT, SearchIcon, BooksLogoMark, BookGridCard, GenreChip, HeroCta, HeroStat,
+  HERO_FONT_SB,
+} from '../components/library/libraryListShared'
+import { useBreakpoint } from '../hooks/useBreakpoint'
 import { BookRequestModal }  from '../components/library/BookRequestModal'
 import { BookRequestPanel }  from '../components/library/BookRequestPanel'
 import type { BookRequest } from '../types'
@@ -111,16 +117,6 @@ function isOverdue(dueAt: string): boolean {
   return new Date(dueAt) < new Date()
 }
 
-function formatDue(dueAt: string): string {
-  const d = new Date(dueAt)
-  return `${d.getMonth() + 1}/${d.getDate()}`
-}
-
-function formatAcquired(acquired: string | null): string {
-  if (!acquired) return ''
-  return acquired.slice(0, 7) // "YYYY-MM"
-}
-
 // CSV 행 파싱
 function parseCSV(text: string): string[][] {
   return text.trim().split('\n').map(row => {
@@ -137,202 +133,10 @@ function parseCSV(text: string): string[][] {
   })
 }
 
-// ─── BookCard ─────────────────────────────────────────────────────────────────
-
-function StatusBadge({ status, dueAt }: { status: Book['status'] | 'overdue'; dueAt?: string }) {
-  const configs = {
-    available:   { bg: 'var(--color-available-bg)',  color: 'var(--color-available-text)',  label: '대여가능' },
-    borrowed:    { bg: 'var(--color-busy-bg)',        color: 'var(--color-busy-text)',        label: '대여중' },
-    overdue:     { bg: 'var(--color-danger-bg)',      color: 'var(--color-danger-text)',      label: '연체중' },
-    maintenance: { bg: 'var(--color-neutral-bg)',     color: 'var(--color-neutral-text)',     label: '정비중' },
-    lost:        { bg: 'var(--color-expired-bg)',     color: 'var(--color-expired-text)',     label: '분실' },
-  }
-  const cfg = configs[status] ?? configs.available
-  return (
-    <span className="chip chip--xs" style={{ background: cfg.bg, color: cfg.color }}>
-      {cfg.label}{dueAt && status === 'overdue' ? ` (${formatDue(dueAt)}까지)` : ''}
-    </span>
-  )
-}
-
-function CoverPlaceholder({ title }: { title: string }) {
-  const colors = ['#DBEAFE','#D1FAE5','#FCE7F3','#FEF3C7','#EDE9FE','#FFEDD5']
-  const idx = title.charCodeAt(0) % colors.length
-  return (
-    <div style={{
-      width: '100%', aspectRatio: '3/4',
-      background: colors[idx],
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      borderRadius: 8, gap: 8,
-    }}>
-      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="1.5">
-        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-      </svg>
-      <span style={{ fontSize: 11, color: '#94A3B8', textAlign: 'center', padding: '0 8px', wordBreak: 'keep-all' }}>
-        {title.slice(0, 10)}
-      </span>
-    </div>
-  )
-}
-
-function BookCard({
-  book, checkout, borrower, isAdmin, isOverdueStatus,
-  onCheckout, onReturn, onEdit, onDelete,
-}: {
-  book: Book
-  checkout?: BookCheckout | null
-  borrower?: AppUser
-  isAdmin: boolean
-  isOverdueStatus: boolean
-  onCheckout: (b: Book) => void
-  onReturn: (b: Book, c: BookCheckout) => void
-  onEdit: (b: Book) => void
-  onDelete: (b: Book) => void
-}) {
-  const [imgErr, setImgErr] = useState(false)
-  const displayStatus = isOverdueStatus ? 'overdue' : book.status as any
-
-  return (
-    <div style={{
-      background: '#fff',
-      borderRadius: 12,
-      boxShadow: 'var(--shadow-card)',
-      overflow: 'hidden',
-      display: 'flex',
-      flexDirection: 'column',
-      transition: 'box-shadow 0.15s',
-    }}
-    onMouseEnter={e => (e.currentTarget.style.boxShadow = 'var(--shadow-card-lg)')}
-    onMouseLeave={e => (e.currentTarget.style.boxShadow = 'var(--shadow-card)')}>
-      {/* 표지 */}
-      <div style={{ padding: 12, paddingBottom: 8 }}>
-        {book.cover_url && !imgErr ? (
-          <img
-            src={book.cover_url}
-            alt={book.title}
-            onError={() => setImgErr(true)}
-            style={{ width: '100%', aspectRatio: '3/4', objectFit: 'cover', borderRadius: 8 }}
-          />
-        ) : (
-          <CoverPlaceholder title={book.title} />
-        )}
-      </div>
-
-      {/* 정보 */}
-      <div style={{ padding: '0 12px', flex: 1 }}>
-        {/* 상태 뱃지 */}
-        <div style={{ marginBottom: 6 }}>
-          <StatusBadge
-            status={displayStatus}
-            dueAt={checkout?.due_at}
-          />
-        </div>
-        {/* 제목 */}
-        <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.4, marginBottom: 2,
-          overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical', wordBreak: 'keep-all' }}>
-          {book.title}
-        </div>
-        {/* 저자·출판사 */}
-        <div style={{ fontSize: 11, color: '#64748B', marginBottom: 4 }}>
-          {[book.author, book.publisher].filter(Boolean).join(' · ')}
-        </div>
-        {/* 카테고리 */}
-        {book.category && (
-          <span style={{ fontSize: 10, background: '#F1F5F9', color: '#64748B',
-            padding: '2px 6px', borderRadius: 4, display: 'inline-block', marginBottom: 4 }}>
-            {book.category.name}
-          </span>
-        )}
-        {/* 취득연월 */}
-        {book.acquired_at && (
-          <div style={{ fontSize: 10, color: '#94A3B8', marginBottom: 4 }}>
-            {formatAcquired(book.acquired_at)} 구매
-          </div>
-        )}
-        {/* 대여자 정보 (관리자) */}
-        {isAdmin && checkout && (
-          <div style={{ fontSize: 11, padding: '4px 8px', background: '#F8FAFC',
-            borderRadius: 6, marginBottom: 4 }}>
-            <span style={{ color: '#374151', fontWeight: 500 }}>
-              {borrower?.name ?? '알 수 없음'}
-            </span>
-            <span style={{ color: '#94A3B8' }}> · {borrower?.dept ?? ''}</span>
-            <br/>
-            <span style={{ color: isOverdueStatus ? '#DC2626' : '#64748B', fontSize: 10 }}>
-              반납예정 {checkout.due_at ? formatDue(checkout.due_at) : '-'}
-              {isOverdueStatus && ' ⚠️ 연체'}
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* ← [2026-07-22] 일반 사용자용 대여 신청 버튼
-          · Admin 은 아래 관리자 블록에서 "대여 등록"(즉시 확정)
-          · 일반 사용자는 "대여 신청"(pending → 관리자 승인) */}
-      {!isAdmin && book.status === 'available' && (
-        <div style={{ padding: '8px 12px 12px' }}>
-          <button
-            className="btn"
-            onClick={() => onCheckout(book)}
-            style={{ width: '100%', background: '#000', color: '#fff',
-              padding: '7px 0', borderRadius: 8, fontSize: 13, fontWeight: 500 }}>
-            대여 신청
-          </button>
-        </div>
-      )}
-
-      {/* 관리자 버튼 */}
-      {isAdmin && (
-        <div style={{ padding: '8px 12px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {/* 대여가능 → 대여관리 */}
-          {book.status === 'available' && (
-            <button
-              className="btn"
-              onClick={() => onCheckout(book)}
-              style={{ width: '100%', background: '#000', color: '#fff',
-                padding: '7px 0', borderRadius: 8, fontSize: 13, fontWeight: 500 }}>
-              대여 등록
-            </button>
-          )}
-          {/* 대여중/연체 → 반납 */}
-          {book.status === 'borrowed' && checkout && (
-            <button
-              className="btn"
-              onClick={() => onReturn(book, checkout)}
-              style={{ width: '100%',
-                background: isOverdueStatus ? 'var(--color-danger-bg)' : 'var(--color-available-bg)',
-                color: isOverdueStatus ? 'var(--color-danger-text)' : 'var(--color-available-text)',
-                padding: '7px 0', borderRadius: 8, fontSize: 13, fontWeight: 500 }}>
-              반납 처리
-            </button>
-          )}
-          {/* 편집·삭제 */}
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              className="btn"
-              onClick={() => onEdit(book)}
-              style={{ flex: 1, background: '#F8FAFC', color: '#374151',
-                padding: '5px 0', borderRadius: 6, fontSize: 11 }}>
-              ✏️ 편집
-            </button>
-            {book.status === 'available' && (
-              <button
-                className="btn"
-                onClick={() => onDelete(book)}
-                style={{ flex: 1, background: '#FEE2E2', color: '#DC2626',
-                  padding: '5px 0', borderRadius: 6, fontSize: 11 }}>
-                🗑️ 삭제
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+// ─── BookCard 제거됨 [2026-07-20] ───────────────────────────────────────────
+//   Figma 73:831 Home list 반영으로 카드/뱃지/표지 렌더가 전면 교체됐다.
+//   → src/components/library/libraryListShared.tsx 의 BookGridCard 사용.
+//   StatusBadge / CoverPlaceholder / formatDue / formatAcquired 도 함께 이관·정리.
 
 // ─── CheckoutModal 제거됨 [2026-07-22] ──────────────────────────────────────
 //   → src/components/library/BookCheckoutModal.tsx (Admin, 복수 도서 + RPC)
@@ -801,7 +605,8 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
 
   // ── UI State ──
   const [searchQ,        setSearchQ]        = useState('')
-  const [filterCategory, setFilterCategory] = useState<number | 'ALL'>('ALL')
+  // ← [2026-07-20] Figma 103:70 '⭐NEW⭐' 칩 — 이번 달 취득 도서만
+  const [filterCategory, setFilterCategory] = useState<number | 'ALL' | 'NEW'>('ALL')
   const [filterStatus,   setFilterStatus]   = useState<'all' | 'available' | 'borrowed'>('all')
 
   // ── Modal State ──
@@ -893,8 +698,13 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
         b.publisher?.toLowerCase().includes(q)
       )
     }
-    // 카테고리
-    if (filterCategory !== 'ALL') {
+    // 카테고리 / 신규
+    if (filterCategory === 'NEW') {
+      // 이번 달 취득분 (libraryListShared.newBadgeLabel 과 동일 기준)
+      const now = new Date()
+      const ym  = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+      list = list.filter(b => (b.acquired_at ?? '').slice(0, 7) === ym)
+    } else if (filterCategory !== 'ALL') {
       list = list.filter(b => b.category_id === filterCategory)
     }
     // 상태
@@ -1245,6 +1055,8 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
   }, [activeCheckouts])
 
   // 통계
+  const { isMobile } = useBreakpoint()   // ← [2026-07-20] Figma 1400 데스크톱 기준 → 모바일 대응
+
   const stats = useMemo(() => ({
     total:     books.length,
     available: books.filter(b => b.status === 'available').length,
@@ -1255,176 +1067,201 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
   }), [books, activeCheckouts, isAdmin])
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F8FAFC', paddingBottom: 60 }}>
-      {/* ── 헤더 배너 ── */}
-      <div style={{
-        background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-        padding: '32px 24px 24px',
-        color: '#fff',
-      }}>
-        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-            <div>
-              <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.5px' }}>📚 도서관</div>
-              <div style={{ fontSize: 14, color: '#94A3B8', marginTop: 4 }}>CNR Research 사내 도서관</div>
+    <div style={{ minHeight: '100vh', background: LT.white, paddingBottom: 60 }}>
+      <div style={{ maxWidth: LT.pageMax, margin: '0 auto' }}>
+
+        {/* ══════════════════════════════════════════════════════════════════
+            Hero — Figma 73:834
+              padding 24 / gap 40 / radius 24
+            ══════════════════════════════════════════════════════════════════ */}
+        <section style={{
+          display: 'flex', flexDirection: 'column',
+          gap: isMobile ? 24 : LT.heroGap,
+          padding: LT.pagePad, borderRadius: LT.heroRadius, background: LT.white,
+        }}>
+
+          {/* 로고 ↔ CTA 그룹 (Figma 1333:565 — space-between) */}
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+            gap: 16, width: '100%', flexWrap: 'wrap',
+          }}>
+            {/* 로고 (Figma 73:835 — gap 12 / items-end) */}
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+              <BooksLogoMark scale={isMobile ? 0.55 : 1} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, justifyContent: 'center' }}>
+                <span style={{ fontSize: isMobile ? 13 : 16, lineHeight: 1, color: LT.black, whiteSpace: 'nowrap' }}>
+                  씨엔알리서치 사내 도서관
+                </span>
+                <span style={{ fontSize: isMobile ? 16 : 20, lineHeight: 1, color: LT.black, whiteSpace: 'nowrap' }}>
+                  C&amp;R BOOKS
+                </span>
+              </div>
             </div>
-            {/* 관리자 액션 버튼 */}
+
+            {/* CTA (Figma 1332:557 — gap 8) */}
             {isAdmin && (
-              <div style={{ display: 'flex', gap: 8 }}>
-                {/* ← [2026-07-22] 책 미선택 진입 (Figma 1335:994) */}
-                <button className="btn" onClick={() => setCheckoutOpen(true)}
-                  style={{ background: 'rgba(255,255,255,0.12)', color: '#fff',
-                    padding: '8px 14px', borderRadius: 8, fontSize: 13, border: '1px solid rgba(255,255,255,0.2)' }}>
-                  📕 대여 등록
-                </button>
-                <button className="btn" onClick={() => setImportModal(true)}
-                  style={{ background: 'rgba(255,255,255,0.12)', color: '#fff',
-                    padding: '8px 14px', borderRadius: 8, fontSize: 13, border: '1px solid rgba(255,255,255,0.2)' }}>
-                  📥 일괄 등록
-                </button>
-                <button className="btn" onClick={() => setEditModal({ book: null })}
-                  style={{ background: '#fff', color: '#111',
-                    padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
-                  + 도서 추가
-                </button>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <HeroCta primary onClick={() => setCheckoutOpen(true)}>대여 등록</HeroCta>
+                <HeroCta onClick={() => setEditModal({ book: null })}>도서 추가</HeroCta>
+                <HeroCta onClick={() => setImportModal(true)}>일괄 등록</HeroCta>
               </div>
             )}
           </div>
 
-          {/* 통계 */}
-          <div style={{ display: 'flex', gap: 20, marginTop: 20, flexWrap: 'wrap' }}>
-            {[
-              { label: '전체', val: stats.total,     color: '#94A3B8' },
-              { label: '대여가능', val: stats.available, color: '#34D399' },
-              { label: '대여중', val: stats.borrowed,  color: '#F472B6' },
-              ...(isAdmin && stats.overdue > 0
-                ? [{ label: '연체중 ⚠️', val: stats.overdue, color: '#F87171' }]
-                : []),
-            ].map(s => (
-              <div key={s.label} style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 22, fontWeight: 700, color: s.color }}>{s.val}</div>
-                <div style={{ fontSize: 11, color: '#64748B' }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ── 필터 바 ── */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #F1F5F9', padding: '12px 24px' }}>
-        <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          {/* 검색 */}
-          <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
-            <svg style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }}
-              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-            </svg>
-            <input
-              value={searchQ}
-              onChange={e => setSearchQ(e.target.value)}
-              placeholder="제목, 저자, 출판사 검색..."
-              style={{ ...INPUT_STYLE, paddingLeft: 34 }}
-            />
+          {/* 안내문 (Figma 98:65 — 20px / lineHeight 1.5 / 2줄) */}
+          <div style={{
+            fontSize: isMobile ? 15 : 20, fontWeight: 400, lineHeight: 1.5, color: LT.ink,
+          }}>
+            <div>대여기간 {BORROW_DAYS}일, 연장 {BORROW_DAYS}일 총 {BORROW_DAYS * 2}일 가능</div>
+            <div>1층 안내 데스크에서 신청 또는 대여신청 요청 후 승인</div>
           </div>
 
-          {/* 상태 필터 */}
-          <div style={{ display: 'flex', gap: 4, background: '#F1F5F9', padding: 3, borderRadius: 8 }}>
-            {([['all','전체'], ['available','대여가능'], ['borrowed','대여중']] as const).map(([v, l]) => (
-              <button key={v} className="btn" onClick={() => setFilterStatus(v)}
-                style={{
-                  padding: '5px 12px', borderRadius: 6, fontSize: 12,
-                  background: filterStatus === v ? '#fff' : 'transparent',
-                  color: filterStatus === v ? '#111' : '#64748B',
-                  fontWeight: filterStatus === v ? 600 : 400,
-                  boxShadow: filterStatus === v ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                }}>
-                {l}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* 카테고리 탭 (스크롤) */}
-        {categories.length > 0 && (
-          <div style={{ maxWidth: 1100, margin: '10px auto 0', overflowX: 'auto', display: 'flex', gap: 6 }}>
-            <button className="btn" onClick={() => setFilterCategory('ALL')}
-              style={{ padding: '4px 12px', borderRadius: 20, fontSize: 12, whiteSpace: 'nowrap',
-                background: filterCategory === 'ALL' ? '#111' : '#F1F5F9',
-                color: filterCategory === 'ALL' ? '#fff' : '#374151', fontWeight: 500 }}>
-              전체
-            </button>
-            {categories.map(c => (
-              <button key={c.id} className="btn" onClick={() => setFilterCategory(c.id)}
-                style={{ padding: '4px 12px', borderRadius: 20, fontSize: 12, whiteSpace: 'nowrap',
-                  background: filterCategory === c.id ? '#111' : '#F1F5F9',
-                  color: filterCategory === c.id ? '#fff' : '#374151', fontWeight: 500 }}>
-                {c.name}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* ── 도서 그리드 ── */}
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 24px' }}>
-        {/* ← [2026-07-22] 관리자 승인 대기 패널 (선착순) */}
-      {isAdmin && pendingReqs.length > 0 && (
-        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '16px 16px 0' }}>
-          <BookRequestPanel
-            requests={pendingReqs}
-            users={users}
-            loading={reqLoading}
-            busyId={reqBusyId}
-            onApprove={handleApprove}
-            onReject={handleReject}
-            onRefresh={loadPendingRequests}
-          />
-        </div>
-      )}
-
-      {loading ? (
-          <div style={{ textAlign: 'center', padding: 60, color: '#94A3B8' }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>📚</div>
-            <div>도서 목록 불러오는 중...</div>
-          </div>
-        ) : filteredBooks.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 60, color: '#94A3B8' }}>
-            <div style={{ fontSize: 40, marginBottom: 8 }}>🔍</div>
-            <div style={{ fontWeight: 600 }}>도서가 없습니다</div>
-            <div style={{ fontSize: 13, marginTop: 4 }}>검색어나 필터를 바꿔보세요</div>
-          </div>
-        ) : (
-          <>
-            <div style={{ fontSize: 13, color: '#64748B', marginBottom: 14 }}>
-              {filteredBooks.length}권
+          {/* 통계 + 검색 (Figma 1332:520 — gap 40 / items-end) */}
+          <div style={{
+            display: 'flex', width: '100%',
+            gap: isMobile ? 20 : LT.heroGap,
+            flexDirection: isMobile ? 'column' : 'row',
+            alignItems: isMobile ? 'stretch' : 'flex-end',
+          }}>
+            {/* 통계 (Figma 1332:515 — gap 32) */}
+            <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start', flexShrink: 0 }}>
+              <HeroStat label="전체 도서" value={stats.total}     valueColor={LT.black}      labelWeight={HERO_FONT_SB} />
+              <HeroStat label="대여가능"  value={stats.available} valueColor={LT.statAvail} />
+              <HeroStat label="대여중"    value={stats.borrowed}  valueColor={LT.statBusy} />
+              {isAdmin && stats.overdue > 0 && (
+                <HeroStat label="연체중" value={stats.overdue} valueColor={LT.metaOverdue} />
+              )}
             </div>
+
+            {/* 검색 (Figma 1328:394 — flex 1 / gap 10 / py 12 / border-bottom #111) */}
             <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
-              gap: 16,
+              flex: 1, minWidth: 0, display: 'flex', gap: 10, alignItems: 'center',
+              padding: '12px 0', borderBottom: `1px solid ${LT.underline}`,
             }}>
-              {filteredBooks.map(book => {
-                const checkout = checkoutMap[book.id] ?? null
-                const borrower = checkout ? users.find(u => u.user_id === checkout.user_id) : undefined
-                const overdue  = checkout ? isOverdue(checkout.due_at) : false
-                return (
-                  <BookCard
-                    key={book.id}
-                    book={book}
-                    checkout={checkout}
-                    borrower={borrower}
-                    isAdmin={isAdmin}
-                    isOverdueStatus={overdue}
-                    onCheckout={b => isAdmin ? setCheckoutModal(b) : setRequestModal(b)}  /* ← [2026-07-22] 권한별 분기 */
-                    onReturn={(b, c) => handleReturn(b, c)}
-                    onEdit={b => setEditModal({ book: b })}
-                    onDelete={setDeleteConfirm}
-                  />
-                )
-              })}
+              <SearchIcon />
+
+              {/* 상태 필터 (Figma 1334:633 '전체' pill — px16 py8 / radius 24 / 16px) */}
+              <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                {([['all', '전체'], ['available', '대여가능'], ['borrowed', '대여중']] as const).map(([v, l]) => (
+                  <button key={v} onClick={() => setFilterStatus(v)} style={{
+                    padding: '8px 16px', borderRadius: 24, border: 'none', cursor: 'pointer',
+                    fontFamily: 'inherit', fontSize: 16, fontWeight: 400, lineHeight: 1.5,
+                    whiteSpace: 'nowrap',
+                    background: filterStatus === v ? LT.black : 'transparent',
+                    color:      filterStatus === v ? LT.white : LT.ink,
+                  }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+
+              <input
+                value={searchQ}
+                onChange={e => setSearchQ(e.target.value)}
+                placeholder="도서 제목, 저자, 출판사 검색"
+                className="lib-search-input"
+                style={{
+                  flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent',
+                  fontFamily: 'inherit', fontSize: isMobile ? 16 : 24, fontWeight: 400,
+                  lineHeight: 1.5, letterSpacing: '-0.456px', color: LT.ink,
+                }}
+              />
+              <style>{`.lib-search-input::placeholder{color:${LT.placeholder};}`}</style>
             </div>
-          </>
-        )}
+          </div>
+        </section>
+
+        {/* ══════════════════════════════════════════════════════════════════
+            본문 — Figma 73:883 (GNB 320 + gap 24 + 그리드 1008)
+            ══════════════════════════════════════════════════════════════════ */}
+        <div style={{
+          display: 'flex', gap: LT.colGap, alignItems: 'flex-start',
+          padding: `0 ${LT.pagePad}px`,
+          flexDirection: isMobile ? 'column' : 'row',
+        }}>
+
+          {/* ── GNB 장르 칩 (Figma 103:67 — wrap / gap 10) ── */}
+          <aside style={{
+            width: isMobile ? '100%' : LT.gnbW, flexShrink: 0, paddingTop: LT.pagePad,
+          }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              <GenreChip active={filterCategory === 'ALL'} onClick={() => setFilterCategory('ALL')}>
+                전체 장르
+              </GenreChip>
+              <GenreChip active={filterCategory === 'NEW'} onClick={() => setFilterCategory('NEW')}>
+                ⭐NEW⭐
+              </GenreChip>
+              {categories.map(c => (
+                <GenreChip
+                  key={c.id}
+                  active={filterCategory === c.id}
+                  onClick={() => setFilterCategory(c.id)}>
+                  {c.name}
+                </GenreChip>
+              ))}
+            </div>
+          </aside>
+
+          {/* ── 카드 그리드 (Figma 82:53 — 4열 / gap 24 / py 24) ── */}
+          <main style={{ flex: 1, minWidth: 0, padding: `${LT.pagePad}px 0` }}>
+
+            {/* 관리자 승인 대기 패널 (선착순) */}
+            {isAdmin && pendingReqs.length > 0 && (
+              <div style={{ marginBottom: LT.colGap }}>
+                <BookRequestPanel
+                  requests={pendingReqs}
+                  users={users}
+                  loading={reqLoading}
+                  busyId={reqBusyId}
+                  onApprove={handleApprove}
+                  onReject={handleReject}
+                  onRefresh={loadPendingRequests}
+                />
+              </div>
+            )}
+
+            {loading ? (
+              <div style={{ padding: 60, textAlign: 'center', fontSize: 16, color: LT.metaDept }}>
+                도서 목록 불러오는 중...
+              </div>
+            ) : filteredBooks.length === 0 ? (
+              <div style={{ padding: 60, textAlign: 'center' }}>
+                <div style={{ fontSize: 16, fontWeight: 500, color: LT.ink }}>도서가 없습니다</div>
+                <div style={{ fontSize: 14, marginTop: 6, color: LT.metaDept }}>
+                  검색어나 필터를 바꿔보세요
+                </div>
+              </div>
+            ) : (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? 150 : LT.cardW}px, 1fr))`,
+                columnGap: LT.colGap,
+                rowGap: LT.colGap,
+                alignItems: 'start',
+              }}>
+                {filteredBooks.map(book => {
+                  const checkout = checkoutMap[book.id] ?? null
+                  const borrower = checkout ? users.find(u => u.user_id === checkout.user_id) : undefined
+                  const overdue  = checkout ? isOverdue(checkout.due_at) : false
+                  return (
+                    <BookGridCard
+                      key={book.id}
+                      book={book}
+                      checkout={checkout}
+                      borrower={borrower}
+                      isAdmin={isAdmin}
+                      isOverdueStatus={overdue}
+                      onCheckout={() => isAdmin ? setCheckoutModal(book) : setRequestModal(book)}
+                      onReturn={() => { if (checkout) handleReturn(book, checkout) }}
+                      onEdit={() => setEditModal({ book })}
+                      onDelete={() => setDeleteConfirm(book)}
+                    />
+                  )
+                })}
+              </div>
+            )}
+          </main>
+        </div>
       </div>
 
       {/* ── 모달들 ── */}

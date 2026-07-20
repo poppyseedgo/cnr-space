@@ -130,7 +130,7 @@ export function BookCheckoutModal({
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px 16px' }}>
 
           {/* ── 책 (복수 선택) ─────────────────────────────────────────── */}
-          <Field label="책" align="flex-start">
+          <Field label="책" required align="flex-start">
             <div style={{ flex: 1, minWidth: 0 }}>
               {selectedBooks.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
@@ -268,7 +268,7 @@ export function BookCheckoutModal({
             </div>
           </Field>
 
-          {/* ── 대여일 / 반납일 ────────────────────────────────────────── */}
+          {/* ── 대여일 / 반납기한 ──────────────────────────────────────── */}
           <DateRows borrowDays={borrowDays} />
 
           {/* ── 메모 ───────────────────────────────────────────────────── */}

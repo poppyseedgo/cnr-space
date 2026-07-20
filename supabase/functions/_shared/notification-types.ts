@@ -656,6 +656,9 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
   //
   // 문구 정책:
   //   · 도서 제목이 곧 제목 슬롯({title})에 들어간다 (회의 제목 자리 재사용)
+  //   · 반납일은 "그 날 반납"이 아니라 "대여일 기준 7일 이내 반납"이 정책이다.
+  //     따라서 전 문구를 시점('~까지')이 아닌 기한('~ 이내') 표기로 통일한다.
+  //     ← [2026-07-20] 프론트 utils/bookLoan.ts 문구와 반드시 함께 유지할 것.
   //   · 반납은 관리자에게 전달하는 오프라인 행위이므로 "반납해 주세요" 안내만 하고
   //     앱 내 반납 CTA는 제공하지 않는다 (연장 CTA만 유효)
 
@@ -675,7 +678,7 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
       admin: {
         ...BANNER_PRESETS.warning,
         title: '승인 대기 중인 도서 대여 신청이 있습니다.',
-        body:  '도서관 화면에서 승인 또는 거절 처리해 주세요. 승인 시점에 반납 예정일이 확정됩니다.',
+        body:  '도서관 화면에서 승인 또는 거절 처리해 주세요. 승인 시점에 반납기한이 확정됩니다.',
       },
     },
     cta: { admin: CTA_BOOK_APPROVE },
@@ -695,7 +698,7 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
       booker: {
         ...BANNER_PRESETS.success,
         title: '대여가 확정되었습니다.',
-        body:  '반납 예정일은 승인 시점을 기준으로 확정됩니다. 연장은 1회(7일)까지 마이페이지에서 신청할 수 있습니다.',
+        body:  '반납기한은 승인 시점을 기준으로 확정됩니다. 아래 반납기한 이내에 반납해 주세요. 연장은 1회(7일)까지 마이페이지에서 신청할 수 있습니다.',
       },
     },
     cta: { booker: CTA_MY_LOANS },
@@ -735,7 +738,7 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
       booker: {
         ...BANNER_PRESETS.info,
         title: '도서 대여가 완료되었습니다.',
-        body:  '반납 예정일까지 반납해 주세요. 연장은 1회(7일)까지 마이페이지에서 신청할 수 있습니다.',
+        body:  '아래 반납기한 이내에 반납해 주세요. 연장은 1회(7일)까지 마이페이지에서 신청할 수 있습니다.',
       },
     },
     cta: { booker: CTA_MY_LOANS },
@@ -755,7 +758,7 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
       booker: {
         ...BANNER_PRESETS.success,
         title: '대여 기간이 7일 연장되었습니다.',
-        body:  '연장은 1회만 가능하며, 변경된 반납 예정일까지 반납해 주세요.',
+        body:  '연장은 1회만 가능하며, 변경된 반납기한 이내에 반납해 주세요.',
       },
     },
     cta: { booker: CTA_MY_LOANS },
@@ -763,18 +766,18 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
   },
 
   book_due_tomorrow: {
-    subjectTag:         '[반납예정]',
-    headerLabel:        '내일이 도서 반납 예정일입니다',
+    subjectTag:         '[반납기한]',
+    headerLabel:        '도서 반납기한이 내일까지입니다',
     headerColor:        COLORS.CYAN,
     recipients:         'book_borrower',
     inappType:          'book_due_tomorrow',
-    inappTitleBooker:   '내일이 도서 반납 예정일입니다',
+    inappTitleBooker:   '도서 반납기한이 내일까지입니다',
     inappTitleAttendee: '',
     inappTitleAdmin:    '',
     contextBanner: {
       booker: {
         ...BANNER_PRESETS.info,
-        title: '내일까지 도서를 반납해 주세요.',
+        title: '내일 이내에 도서를 반납해 주세요.',
         body:  '더 필요하시면 오늘 중 마이페이지에서 연장(1회, 7일)을 신청할 수 있습니다.',
       },
     },
@@ -784,17 +787,17 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
 
   book_due_today: {
     subjectTag:         '[반납당일]',
-    headerLabel:        '오늘이 도서 반납 예정일입니다',
+    headerLabel:        '도서 반납기한이 오늘까지입니다',
     headerColor:        COLORS.AMBER,
     recipients:         'book_borrower',
     inappType:          'book_due_today',
-    inappTitleBooker:   '오늘이 도서 반납 예정일입니다',
+    inappTitleBooker:   '도서 반납기한이 오늘까지입니다',
     inappTitleAttendee: '',
     inappTitleAdmin:    '',
     contextBanner: {
       booker: {
         ...BANNER_PRESETS.warning,
-        title: '오늘까지 도서를 반납해 주세요.',
+        title: '오늘 이내에 도서를 반납해 주세요.',
         body:  '반납은 관리자에게 도서를 전달하면 처리됩니다. 오늘이 지나면 연체 처리됩니다.',
       },
     },
@@ -814,7 +817,7 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
     contextBanner: {
       booker: {
         ...BANNER_PRESETS.danger,
-        title: '반납 예정일이 지났습니다. 도서를 반납해 주세요.',
+        title: '반납기한이 지났습니다. 도서를 반납해 주세요.',
         body:  '연체 7일 이내라면 마이페이지에서 연장(1회, 7일)을 신청할 수 있습니다. 반납은 관리자에게 도서를 전달하면 처리됩니다.',
       },
     },

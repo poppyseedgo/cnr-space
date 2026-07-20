@@ -128,6 +128,63 @@ export function fmtLoanDate(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()}`
 }
 
+// ─── 반납기한 표기 SSOT (← [2026-07-20]) ─────────────────────────────────────
+//
+// 정책: 반납일은 "그 날 반납"이 아니라 "대여일 기준 7일 이내 반납"이다.
+//   따라서 화면·알림 어디서도 "반납예정 7/27" 처럼 시점으로 표기하지 않고
+//   "2026년 7월 27일 월요일 이내 반납" 처럼 기한으로 표기한다.
+//
+// 이 파일에 모아두는 이유:
+//   기존에 날짜 포맷이 bookModalShared(fmtFullDate) / LibraryPage(formatDue) /
+//   MyBookLoans(fmtLoanDate) 세 곳에 흩어져 있어 문구 정책이 바뀔 때마다
+//   누락이 발생했다. 표기 규칙을 한 곳으로 모아 SSOT로 둔다.
+//
+// ※ Edge Function(_shared/email-templates.ts, notification-inapp.ts)은
+//   Deno 런타임이라 이 파일을 import 할 수 없다. 그쪽에도 동일 포맷이 존재하며,
+//   문구를 바꿀 때는 반드시 양쪽을 함께 수정해야 한다.
+
+const WEEKDAYS_KO = ['일', '월', '화', '수', '목', '금', '토']
+
+/** Date | ISO | 'YYYY-MM-DD' → Date (문자열 날짜는 로컬 자정으로 파싱) */
+function toDate(v: Date | string): Date {
+  if (v instanceof Date) return v
+  // 'YYYY-MM-DD' 를 new Date() 에 그대로 넣으면 UTC 자정으로 파싱되어
+  // KST(+9) 환경에서 날짜가 하루 밀린다. 명시적으로 로컬 자정으로 만든다.
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v)
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3])
+  return new Date(v)
+}
+
+/** '2026년 7월 27일 월요일' */
+export function fmtDueFullKo(v: Date | string): string {
+  const d = toDate(v)
+  return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 ${WEEKDAYS_KO[d.getDay()]}요일`
+}
+
+/** '7월 27일(월)' — 카드/테이블 등 좁은 영역용 */
+export function fmtDueShortKo(v: Date | string): string {
+  const d = toDate(v)
+  return `${d.getMonth() + 1}월 ${d.getDate()}일(${WEEKDAYS_KO[d.getDay()]})`
+}
+
+/** '2026년 7월 27일 월요일 이내 반납하세요' — 안내 문구 전문 */
+export function dueNoticeFull(v: Date | string): string {
+  return `${fmtDueFullKo(v)} 이내 반납하세요`
+}
+
+/** '7월 27일(월) 이내 반납' — 좁은 영역용 축약 안내 */
+export function dueNoticeShort(v: Date | string): string {
+  return `${fmtDueShortKo(v)} 이내 반납`
+}
+
+/** 대여일 → 반납기한 Date (대여일 + EXTEND_DAYS) */
+export function dueDateFrom(checkoutAt: Date | string, days: number = EXTEND_DAYS): Date {
+  const d = toDate(checkoutAt)
+  const due = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  due.setDate(due.getDate() + days)
+  return due
+}
+
 /** D-day 라벨: 'D-3' / 'D-day' / '3일 연체' */
 export function ddayLabel(dueAt: string, now: Date = new Date()): string {
   const d = daysUntilDue(dueAt, now)

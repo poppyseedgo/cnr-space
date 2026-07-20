@@ -98,6 +98,23 @@ function fmtTimeKST(ts: string): string {
 }
 
 /**
+ * ← [2026-07-20] 이미 KST로 계산된 'YYYY-MM-DD' → '7월 27일(월)'
+ *
+ * new Date(ymd) 로 파싱하면 UTC 자정이 되고, 이 파일의 다른 헬퍼처럼 +9h 를
+ * 더하면 "이미 KST인 값에 KST 오프셋 재적용"이라 경계에서 하루가 밀 수 있다.
+ * 문자열을 파싱하지 않고 분해해서 쓴다. (요일만 UTC 기준으로 계산 — 오프셋 무관)
+ */
+function fmtDueShortKo(ymd: string | undefined | null): string {
+  if (!ymd) return ''
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(ymd))
+  if (!m) return String(ymd)
+  const [, y, mo, d] = m
+  const days = ['일','월','화','수','목','금','토']
+  const dow = days[new Date(Date.UTC(+y, +mo - 1, +d)).getUTCDay()]
+  return `${+mo}월 ${+d}일(${dow})`
+}
+
+/**
  * 인앱 알림 body 문자열 생성 (일관 포맷)
  *
  * 예시:
@@ -108,8 +125,10 @@ export function buildInAppBody(booking: InAppBookingData, role: 'booker' | 'atte
   // ── 도서관 알림 분기 (← [2026-07-20]) ────────────────────────────────────
   //   도서 알림에는 회의실/시작시각이 없으므로 회의실 포맷을 그대로 쓰면
   //   "제목 · · " 처럼 빈 구분자만 남는다. 도서 전용 포맷으로 렌더한다.
-  //     · 대여/연장/D-1/당일: "도서명 · 반납예정 2026-07-27"
-  //     · 연체:               "도서명 · 3일 연체 (반납예정 2026-07-20)"
+  //     · 대여/연장/D-1/당일: "도서명 · 7월 27일(월) 이내 반납"
+  //     · 연체:               "도서명 · 3일 연체 (7월 20일(월) 마감)"
+  //   ← [2026-07-20] 반납일은 "그 날 반납"이 아니라 "7일 이내 반납"이 정책이라
+  //     시점 표기를 기한 표기로 바꿨다. 프론트 utils/bookLoan.ts 와 동일 문구.
   //   날짜는 due_date_kst(이미 KST로 계산된 문자열)를 그대로 쓴다.
   //   여기서 재변환하면 타임존 이중 적용으로 날짜가 밀릴 수 있다.
   if (booking.book_title) {
@@ -117,11 +136,12 @@ export function buildInAppBody(booking: InAppBookingData, role: 'booker' | 'atte
     const due  = booking.due_date_kst ?? ''
     const od   = booking.days_overdue ?? 0
 
+    const dueShort = fmtDueShortKo(due)
     if (od > 0) {
-      const tail = due ? ` (반납예정 ${due})` : ''
+      const tail = dueShort ? ` (${dueShort} 마감)` : ''
       return `${name} · ${od}일 연체${tail}`
     }
-    return due ? `${name} · 반납예정 ${due}` : name
+    return dueShort ? `${name} · ${dueShort} 이내 반납` : name
   }
 
   const title   = booking.title ?? ''

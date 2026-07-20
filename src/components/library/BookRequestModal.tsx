@@ -8,7 +8,7 @@
  *   · 타이틀 "도서 대여 신청" / 확인 버튼 "대여 신청"
  *   · 책: 카드에서 진입한 1권 prefilled (검색 없음)
  *   · 대여자: 로그인 사용자 본인 고정 (아바타 chip, 변경 불가)
- *   · 대여일/반납일: 예상값 — 실제 값은 관리자 승인 시점에 확정된다
+ *   · 대여일/반납기한: 예상값 — 실제 값은 관리자 승인 시점에 확정된다
  *     (승인이 늦어지면 대여기간이 줄어드는 문제를 막기 위해 서버가 승인 시각 기준으로 재계산)
  *
  * 저장: request_book_checkout RPC → status='pending' 생성
@@ -54,7 +54,7 @@ export function BookRequestModal({
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px 16px' }}>
 
           {/* ── 책 (prefilled, 변경 불가) ──────────────────────────────── */}
-          <Field label="책">
+          <Field label="책" required>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
               {book.cover_url && (
                 <div style={{ width: 28, height: 38, borderRadius: 4, overflow: 'hidden',
@@ -80,10 +80,10 @@ export function BookRequestModal({
               : <span style={{ fontSize: 14, color: '#94A3B8' }}>사용자 정보를 불러오는 중입니다…</span>}
           </Field>
 
-          {/* ── 대여일 / 반납일 (예상값) ───────────────────────────────── */}
+          {/* ── 대여일 / 반납기한 (예상값) ─────────────────────────────── */}
           <DateRows
             borrowDays={borrowDays}
-            noteText="관리자 승인 시점을 기준으로 확정됩니다"
+            noteText="관리자 승인 시점을 기준으로 기한이 확정됩니다"
           />
 
           {/* ── 메모 ───────────────────────────────────────────────────── */}

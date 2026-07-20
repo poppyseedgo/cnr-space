@@ -195,7 +195,9 @@ function fmtKstDateStr(ymd: string | undefined | null): string {
   const days = ['일','월','화','수','목','금','토']
   // 요일 계산만 UTC 기준으로 수행 (오프셋 개입 없음 → 안전)
   const dow = days[new Date(Date.UTC(+y, +mo - 1, +d)).getUTCDay()]
-  return `${y}년 ${mo}월 ${d}일 (${dow})`
+  // ← [2026-07-20] 표기 통일: 'NNNN년 N월 N일 O요일' (0 패딩 없음)
+  //   프론트 utils/bookLoan.ts 의 fmtDueFullKo 와 동일 포맷.
+  return `${y}년 ${+mo}월 ${+d}일 ${dow}요일`
 }
 
 function fmtTime(ts: string | undefined | null): string {
@@ -399,9 +401,11 @@ function renderInfoCard(input: EmailRenderInput): string {
     const dueStr = escapeHtml(fmtKstDateStr(input.booking.due_date_kst))
     if (dueStr) {
       // iOS Mail 자동 링크화 방지 — 회의 DATE 행과 동일 처리
+      // ← [2026-07-20] "그 날 반납"이 아니라 "그 날 이내 반납"이 정책이므로
+      //   라벨과 값 모두 기한 표기로 통일한다.
       rows.push(renderInfoRow(
-        '반납예정',
-        `<a href="#" style="color:${C.TEXT};text-decoration:none;pointer-events:none;cursor:default;">${dueStr}</a>`,
+        '반납기한',
+        `<a href="#" style="color:${C.TEXT};text-decoration:none;pointer-events:none;cursor:default;">${dueStr} 이내</a>`,
         { nowrap: true },
       ))
     }
