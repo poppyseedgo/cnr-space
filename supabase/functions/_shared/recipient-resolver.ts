@@ -92,6 +92,20 @@ export interface ResolvedRecipients {
   //   send-notification / notification-types 는 이 필드를 이미 참조하고 있었으나
   //   resolver 에 구현이 없어 항상 undefined 였다 → 도서 알림 전 5종이 무발송이었음.
   bookBorrower: Person | null
+
+  // ← [2026-07-20] 예약/대여의 **주체**. 수신자 규칙과 무관하게 항상 해석된다.
+  //
+  //   왜 booker 와 별도로 두는가:
+  //     booker 는 "booker_* 규칙일 때 메일을 받는 사람"이다. 즉 수신자 개념이다.
+  //     그런데 메일 **본문**의 예약자/대여자 행은 "누가 받는가"가 아니라
+  //     "이 예약·대여의 주인이 누구인가"를 보여주는 자리다. 두 개는 다른 개념인데
+  //     send-notification 이 본문 정보를 recipients.booker 에서 가져오고 있었다.
+  //     → booker 를 조회하지 않는 규칙(admins_only / former_booker /
+  //       removed_attendees / book_borrower)에서는 본문 사용자 행이 통째로 비어
+  //       아바타가 "?" 로 렌더됐다. 23종 중 11종이 해당.
+  //
+  //   owner 는 항상 bookerUserId(= booking.user_id)로 해석하므로 규칙과 무관하다.
+  owner: Person | null
 }
 
 /** resolveRecipients 입력 */
@@ -333,18 +347,34 @@ export async function resolveRecipients(
     removedAttendees: [],
     formerBooker:     null,   // ← [2026-06-12]
     bookBorrower:     null,   // ← [2026-07-20]
+    owner:            null,   // ← [2026-07-20] 본문 표시용 주체 (규칙 무관)
   }
+
+  // ← [2026-07-20] 주체 해석 — 모든 규칙에서 동일하게 수행한다.
+  //   도서 알림은 borrowerUserId 가 주체, 회의 알림은 bookerUserId 가 주체다.
+  //   (send-notification 은 양쪽에 booking.user_id 를 넣어 보내므로 사실상 동일)
+  const ownerUserId = borrowerUserId || bookerUserId || ''
 
   // removed_attendees는 완전 별도 경로
   if (rule === 'removed_attendees') {
-    result.removedAttendees = await fetchRemovedAttendees(supabase, removedEmails ?? [])
+    const [removed, owner] = await Promise.all([
+      fetchRemovedAttendees(supabase, removedEmails ?? []),
+      fetchBooker(supabase, ownerUserId),
+    ])
+    result.removedAttendees = removed
+    result.owner = owner
     return result
   }
 
   // ← [2026-06-12] former_booker는 완전 별도 경로 — 원래 예약자 1명만 조회
   //   fetchBooker 재사용 (profiles에서 id로 단건 조회). 퇴사/삭제 시 null → 발송 스킵.
   if (rule === 'former_booker') {
-    result.formerBooker = await fetchBooker(supabase, formerBookerUserId ?? '')
+    const [former, owner] = await Promise.all([
+      fetchBooker(supabase, formerBookerUserId ?? ''),
+      fetchBooker(supabase, ownerUserId),
+    ])
+    result.formerBooker = former
+    result.owner = owner
     return result
   }
 
@@ -353,7 +383,9 @@ export async function resolveRecipients(
   //   borrowerUserId 가 비어 있으면 bookerUserId 로 폴백한다
   //   (send-notification 은 booking.user_id 를 양쪽에 모두 넘기므로 안전망).
   if (rule === 'book_borrower') {
-    result.bookBorrower = await fetchBooker(supabase, borrowerUserId || bookerUserId || '')
+    result.bookBorrower = await fetchBooker(supabase, ownerUserId)
+    // 도서 알림은 수신자 == 주체다. 같은 사람이므로 재조회하지 않는다.
+    result.owner = result.bookBorrower
     return result
   }
 
@@ -363,13 +395,17 @@ export async function resolveRecipients(
   const needAdmins    = rule === 'admins_only' || rule === 'booker_attendees_admins'
 
   // 1차 병렬: booker + admins (attendees는 booker.email이 필요하므로 2차에서)
-  const [booker, admins] = await Promise.all([
+  //   owner 는 booker 를 조회하는 규칙이면 같은 사람이라 재사용하고,
+  //   아니면(admins_only) 별도로 한 번 조회한다.
+  const [booker, admins, ownerOnly] = await Promise.all([
     needBooker ? fetchBooker(supabase, bookerUserId ?? '') : Promise.resolve(null),
     needAdmins ? fetchAdmins(supabase, bookerUserId) : Promise.resolve([]),
+    needBooker ? Promise.resolve(null) : fetchBooker(supabase, ownerUserId),
   ])
 
   result.booker = booker
   result.admins = admins
+  result.owner  = booker ?? ownerOnly
 
   // 2차: attendees (예약자 이메일 제외)
   if (needAttendees && bookingId) {

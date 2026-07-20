@@ -239,12 +239,28 @@ function buildEmailItems(
 ): EmailItem[] {
   const items: EmailItem[] = []
 
-  // creatorInfo: 본문에 예약자 정보 표시용 (Person → EmailCreatorInfo 변환)
-  const creatorInfo: EmailCreatorInfo | null = recipients.booker ? {
-    email:      recipients.booker.email,
-    name:       recipients.booker.name,
-    dept:       recipients.booker.dept,
-    avatar_url: recipients.booker.avatar_url,
+  // creatorInfo: 본문에 예약자/대여자 정보 표시용 (Person → EmailCreatorInfo 변환)
+  //
+  // ← [2026-07-20] 소스를 recipients.booker → recipients.owner 로 변경.
+  //
+  //   booker 는 "메일을 받는 예약자"라 booker_* 규칙에서만 채워진다.
+  //   본문의 예약자/대여자 행은 수신자가 아니라 **예약·대여의 주체**를 보여주는
+  //   자리인데 수신자 목록에서 값을 가져오고 있었다.
+  //   그 결과 booker 를 조회하지 않는 규칙(admins_only / former_booker /
+  //   removed_attendees / book_borrower)에서 creatorInfo 가 null 이 되고,
+  //   renderAvatar 가 이름 없는 "?" 원을 그렸다. 23종 중 11종이 해당.
+  //     · book_* 7종            → 대여자 행 "?"
+  //     · book_requested, pending_expiring (admins_only) → 예약자/신청자 행 "?"
+  //     · former_booker, attendee_removed → 예약자 행 "?"
+  //
+  //   owner 는 recipient-resolver 가 규칙과 무관하게 booking.user_id 로 해석한다.
+  //   booker 폴백은 혹시 owner 조회가 실패한 경우를 위한 안전망.
+  const creatorSource = recipients.owner ?? recipients.booker
+  const creatorInfo: EmailCreatorInfo | null = creatorSource ? {
+    email:      creatorSource.email,
+    name:       creatorSource.name,
+    dept:       creatorSource.dept,
+    avatar_url: creatorSource.avatar_url,
   } : null
 
   // 공통 렌더 입력 일부

@@ -273,6 +273,20 @@ function renderUserRow(
   const deptEsc   = escapeHtml(dept)
   const suffixEsc = suffix ? escapeHtml(suffix) : ''
 
+  // ← [2026-07-20] 이름이 비면 아바타를 그리지 않는다.
+  //
+  //   기존에는 renderAvatar 의 이니셜 폴백이 (name ?? '?')[0] ?? '?' 로
+  //   빈 문자열에서도 "?" 를 만들어, 이름·부서가 통째로 빠진 자리에
+  //   정체불명의 검은 "?" 원만 남았다(실제 발송 메일에서 확인).
+  //
+  //   근본 원인은 creatorInfo 미해석이고 그건 recipient-resolver 에서 고쳤다.
+  //   여기서는 같은 증상이 다시 나와도 "?" 대신 "—" 로 보이게 막는다.
+  //   퇴사/삭제로 profiles 조회가 실패하는 경우도 이 경로를 탄다.
+  if (!name || !name.trim()) {
+    return `<span style="font-family:${FONT};font-size:14px;font-weight:500;` +
+           `line-height:1.3;color:${C.TEXT_SUB};">—</span>`
+  }
+
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="display:inline-table;vertical-align:middle;">` +
     `<tr>` +
       `<td style="vertical-align:middle;padding-right:7px;white-space:nowrap;">${renderAvatar(name, avatarUrl)}</td>` +
