@@ -584,7 +584,10 @@ export function BookGridCard({
             ← [2026-07-20 rev5] 아바타 제거 (Figma 1344:1809 에 아바타 없음). */}
       {held && checkout && (
         <div style={{
-          display: 'flex', flexDirection: 'column', gap: 4,
+          // ← [2026-07-20 rev6] gap 4 → 0.
+          //   lineHeight 1.5 (=21px) 가 이미 행간을 만들고 있어 gap 까지 주면
+          //   '대여' 행과 '반납기한' 행이 따로 노는 덩어리로 보였다.
+          display: 'flex', flexDirection: 'column', gap: 0,
           width: '100%', fontSize: 14, fontWeight: FONT_R, lineHeight: 1.5,
         }}>
           {/* 상태 + 대여자 */}
@@ -620,8 +623,9 @@ export function BookGridCard({
           {/* 반납기한 — Figma 라벨 '반납일'/'2026/7/20' 에서 기한 표기로 변경
               (배포 완료된 문구 정책 유지) */}
           <div style={{
+            // ← [2026-07-20 rev6] padding '2px 0' → 0 (상하 여백 제거)
             display: 'flex', gap: 4, alignItems: 'center',
-            padding: '2px 0', color: LT.black, whiteSpace: 'nowrap',
+            padding: 0, color: LT.black, whiteSpace: 'nowrap',
           }}>
             <span>반납기한</span>
             <span>{checkout.due_at ? `${fmtDueShortKo(checkout.due_at)} 이내` : '-'}</span>
