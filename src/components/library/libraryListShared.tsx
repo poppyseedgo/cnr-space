@@ -4,15 +4,13 @@
  * [2026-07-20] 신규
  *
  * Figma: fMv9JLNlNybDBYUnJDCTrq
- *   · 73:831   Home list (전체 화면)
- *   · 73:834   Hero (로고 / CTA / 안내문 / 통계 / 검색)
- *   · 103:67   cate (좌측 장르 칩)
- *   · 82:53    Frame 2 (카드 그리드)
- *   · 83:336   카드 — 대여가능 (NEW 뱃지 있음)
- *   · 1334:566 카드 — 대여중 (NEW 뱃지 있음)
- *   · 1334:584 카드 — 대여중 (NEW 뱃지 없음)
- *   · 1328:426 카드 — 연체중
- *   · 1328:415 카드 — 대여가능 (뱃지 없음)
+ *   [2026-07-20 rev2] 1339:1146 Home list — 아래 구조로 개편
+ *     · 1339:1149 Hero (로고 / CTA / 안내문 / 통계·검색 / 장르칩)
+ *     · 1339:1306 GNB  — 장르 칩이 좌측 사이드바에서 Hero 하단 가로 배열로 이동
+ *     · 1339:1205 그리드 — 전폭 1352 / 5열 / 카드 251.2 / gap 24
+ *     · 1339:1257 카드 (대여중 + 호버 편집·삭제 오버레이 1340:1332)
+ *     · 1339:1247 카드 (대여가능) / 1339:1224 (연체중)
+ *   [rev1] 73:831 / 73:834 / 103:67 / 82:53 (좌측 GNB + 4열)
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * 이 파일에 모으는 이유
@@ -122,15 +120,20 @@ export const LT = {
   heroRadius:   24,
   heroGap:      40,
 
-  gnbW:         320,
-  colGap:       24,   // GNB ↔ 그리드, 그리고 카드 간 gap
-  cardW:        234,
+  colGap:       24,   // 카드 간 gap (Figma 1339:1205)
+  cardW:        251,  // 5열 기준 (1352 - 24*4) / 5 = 251.2
+  cardCols:     5,    // 데스크톱 열 수
   coverH:       280,
+
+  searchGap:    20,   // 검색바 요소 간격 (Figma 1339:1178 — rev1 10 → 20)
+  chipRowPadY:  24,   // Hero 하단 장르 칩 행 상하 여백 (Figma 1339:1306)
 
   cardGapFree:  16,   // 대여가능 카드 내부 gap (Figma 83:336)
   cardGapHeld:  12,   // 대여중/연체 카드 내부 gap (Figma 1334:566)
 
   dimmedCover:  0.3,  // 대여중/연체 표지 불투명도
+
+  danger:       '#F75D5F',   // 호버 오버레이 '삭제' 배경 (Figma 1340:1333)
 } as const
 
 const FONT_M = 500   // Pretendard Medium
@@ -141,13 +144,23 @@ const FONT_SB = 600  // Pretendard SemiBold
 // 2. 아이콘
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** 검색 (24×24) — Figma 1328:395 재현 */
-export function SearchIcon({ size = 24 }: { size?: number }) {
+/**
+ * 검색 (24×24) — Figma 1339:1179 원본 vector 적용
+ *
+ * ← [2026-07-20] rev1 의 stroke 재현본을 원본 path 로 교체.
+ *   원본은 20.2765 정사각 viewBox 의 **fill** path 이고, 24×24 프레임 안에서
+ *   inset 6.14% (= 1.4736px) 만큼 들어가 있다. 그대로 translate 해서 배치한다.
+ */
+export function SearchIcon({ size = 24, color = LT.black }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
       style={{ display: 'block', flexShrink: 0 }} aria-hidden>
-      <circle cx="10.5" cy="10.5" r="8" stroke="#111" strokeWidth="1.6" />
-      <path d="M16.5 16.5 L21.8 21.8" stroke="#111" strokeWidth="1.6" strokeLinecap="round" />
+      <g transform="translate(1.4736, 1.4736)">
+        <path
+          fill={color}
+          d="M20.2765 19.216L14.6125 13.5519C15.9735 11.9179 16.6522 9.82212 16.5074 7.70048C16.3625 5.57885 15.4053 3.59473 13.8348 2.16087C12.2644 0.727017 10.2016 -0.046177 8.07555 0.00213499C5.94953 0.050447 3.92397 0.916546 2.42026 2.42026C0.916546 3.92397 0.050447 5.94953 0.00213499 8.07555C-0.046177 10.2016 0.727017 12.2644 2.16087 13.8348C3.59473 15.4053 5.57885 16.3625 7.70048 16.5074C9.82212 16.6522 11.9179 15.9735 13.5519 14.6125L19.216 20.2765L20.2765 19.216ZM1.52654 8.27654C1.52654 6.94152 1.92243 5.63648 2.66412 4.52645C3.40582 3.41641 4.46003 2.55125 5.69343 2.04036C6.92683 1.52947 8.28403 1.39579 9.5934 1.65624C10.9028 1.91669 12.1055 2.55957 13.0495 3.50357C13.9935 4.44758 14.6364 5.65031 14.8968 6.95969C15.1573 8.26906 15.0236 9.62626 14.5127 10.8597C14.0018 12.0931 13.1367 13.1473 12.0266 13.889C10.9166 14.6307 9.61157 15.0265 8.27654 15.0265C6.48694 15.0246 4.77121 14.3128 3.50577 13.0473C2.24033 11.7819 1.52853 10.0661 1.52654 8.27654Z"
+        />
+      </g>
     </svg>
   )
 }
@@ -258,7 +271,10 @@ export function BookGridCard({
   book, checkout, borrower, isAdmin, isOverdueStatus,
   onCheckout, onReturn, onEdit, onDelete,
 }: BookGridCardProps) {
-  const [imgErr, setImgErr] = useState(false)
+  const [imgErr, setImgErr]   = useState(false)
+  // ← [2026-07-20] 편집/삭제는 카드 하단 고정이 아니라 표지 호버 오버레이로 이동
+  //   (Figma 1340:1332). 터치 기기는 hover 가 없으므로 focus-within 도 함께 사용.
+  const [hovered, setHovered] = useState(false)
 
   const displayStatus = (isOverdueStatus ? 'overdue' : book.status) as CardBook['status'] | 'overdue'
   const badge   = statusBadgeConfig(displayStatus)
@@ -269,45 +285,92 @@ export function BookGridCard({
   // Figma: 대여가능 16px / 대여중·연체 12px
   const innerGap = held ? LT.cardGapHeld : LT.cardGapFree
 
+  const showActions = isAdmin && hovered
+
   return (
-    <div style={{
-      position: 'relative',
-      display: 'flex', flexDirection: 'column', gap: innerGap,
-      alignItems: 'flex-start', width: '100%',
-    }}>
+    <div
+      style={{
+        display: 'flex', flexDirection: 'column', gap: innerGap,
+        alignItems: 'flex-start', width: '100%',
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setHovered(true)}
+      onBlur={e => {
+        // 카드 밖으로 포커스가 나갈 때만 닫는다 (내부 버튼 간 이동은 유지)
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setHovered(false)
+      }}
+    >
+      {/* ── 표지 영역 (h 280 / radius 0) — 뱃지·액션 오버레이의 기준 박스 ── */}
+      <div style={{ position: 'relative', width: '100%', flexShrink: 0 }}>
+        <div style={{
+          width: '100%', height: LT.coverH, overflow: 'hidden',
+          opacity: dimmed ? LT.dimmedCover : 1,
+        }}>
+          {book.cover_url && !imgErr
+            ? <img
+                src={book.cover_url}
+                alt={book.title}
+                onError={() => setImgErr(true)}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              />
+            : <CoverFallback title={book.title} />}
+        </div>
 
-      {/* ── 표지 (h 280, radius 0) ─────────────────────────────────────── */}
-      <div style={{
-        width: '100%', height: LT.coverH, overflow: 'hidden',
-        opacity: dimmed ? LT.dimmedCover : 1, flexShrink: 0,
-      }}>
-        {book.cover_url && !imgErr
-          ? <img
-              src={book.cover_url}
-              alt={book.title}
-              onError={() => setImgErr(true)}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-            />
-          : <CoverFallback title={book.title} />}
+        {/* 뱃지 행 (Figma 1339:1259 — left 8 / top 7.3 / right 8 / space-between)
+            NEW 가 없으면 상태 뱃지만 우측 정렬 (Figma 1339:1329). */}
+        <div style={{
+          position: 'absolute', left: 8, right: 8, top: 7.3,
+          display: 'flex', alignItems: 'center',
+          justifyContent: newLbl ? 'space-between' : 'flex-end',
+          pointerEvents: 'none',
+        }}>
+          {newLbl && <ListBadge bg={LT.badgeNew}>{newLbl}</ListBadge>}
+          <ListBadge bg={badge.bg}>{badge.label}</ListBadge>
+        </div>
+
+        {/* 편집/삭제 오버레이 (Figma 1340:1332 — 표지 하단 / padding 8 / gap 8)
+            ← [2026-07-20] 카드 하단 고정 → 표지 호버로 이동.
+            레이아웃 높이에 영향을 주지 않도록 absolute 로 띄운다
+            (기존처럼 흐름에 두면 관리자 화면만 카드 높이가 달라진다). */}
+        {isAdmin && (
+          <div style={{
+            position: 'absolute', left: 0, right: 0, bottom: 0,
+            display: 'flex', gap: 8, alignItems: 'center', padding: 8,
+            opacity: showActions ? 1 : 0,
+            visibility: showActions ? 'visible' : 'hidden',
+            transition: 'opacity 0.15s',
+          }}>
+            {book.status === 'available' && (
+              <button
+                onClick={onDelete}
+                tabIndex={showActions ? 0 : -1}
+                style={{
+                  flex: 1, minWidth: 0, border: 'none', cursor: 'pointer', borderRadius: 0,
+                  padding: '12px 16px', background: LT.danger, color: LT.white,
+                  fontSize: 14, fontWeight: FONT_R, lineHeight: 1.4, fontFamily: 'inherit',
+                }}>
+                삭제
+              </button>
+            )}
+            <button
+              onClick={onEdit}
+              tabIndex={showActions ? 0 : -1}
+              style={{
+                flex: 1, minWidth: 0, border: 'none', cursor: 'pointer', borderRadius: 0,
+                padding: '12px 16px', background: LT.white, color: LT.black,
+                fontSize: 14, fontWeight: FONT_R, lineHeight: 1.4, fontFamily: 'inherit',
+              }}>
+              편집
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* ── 뱃지 행 (표지 위 absolute — left 8 / top 7.3 / right 8) ──────
-          Figma 1334:720: width 218 = 카드 234 - 좌우 8. justify-between.
-          NEW 가 없으면 상태 뱃지만 우측에 붙는다(Figma 1334:613 left 174). */}
-      <div style={{
-        position: 'absolute', left: 8, right: 8, top: 7.3,
-        display: 'flex', alignItems: 'center',
-        justifyContent: newLbl ? 'space-between' : 'flex-end',
-        pointerEvents: 'none',
-      }}>
-        {newLbl && <ListBadge bg={LT.badgeNew}>{newLbl}</ListBadge>}
-        <ListBadge bg={badge.bg}>{badge.label}</ListBadge>
-      </div>
-
-      {/* ── 제목 (16 Medium / 1.25 / #1E1E1E) ──────────────────────────── */}
+      {/* ── 제목 (Figma 1339:1265 — 20px Regular / 1.25 / #1E1E1E) ────── */}
       <p style={{
         margin: 0, width: '100%',
-        fontSize: 16, fontWeight: FONT_M, lineHeight: 1.25, color: LT.ink,
+        fontSize: 20, fontWeight: FONT_R, lineHeight: 1.25, color: LT.ink,
         wordBreak: 'keep-all',
         display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
         overflow: 'hidden',
@@ -329,18 +392,26 @@ export function BookGridCard({
             }}>
               {isOverdueStatus ? '연체' : '대여'}
             </span>
+            {/* ← [2026-07-20] 부서명이 카드 폭을 넘기면 말줄임.
+                이름은 축약하지 않고(식별 정보) 부서만 줄인다.
+                flex 자식은 min-width:auto 가 기본이라 minWidth:0 이 없으면
+                ellipsis 가 동작하지 않는다 — 부모/자식 모두 지정. */}
             <span style={{
               display: 'flex', gap: 4, alignItems: 'center',
-              padding: '2px 0', minWidth: 0,
+              padding: '2px 0', minWidth: 0, flex: 1,
             }}>
-              <span style={{
-                color: LT.black, overflow: 'hidden',
-                textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
+              <span style={{ color: LT.black, flexShrink: 0, whiteSpace: 'nowrap' }}>
                 {borrower?.name ?? '알 수 없음'}
               </span>
               {borrower?.dept && (
-                <span style={{ color: LT.metaDept, flexShrink: 0 }}>{borrower.dept}</span>
+                <span
+                  title={borrower.dept}
+                  style={{
+                    color: LT.metaDept, minWidth: 0, flex: 1,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                  {borrower.dept}
+                </span>
               )}
             </span>
           </div>
@@ -383,31 +454,6 @@ export function BookGridCard({
         </button>
       )}
 
-      {/* ── 관리자 편집/삭제 (Figma 외 — 기존 기능 보존) ─────────────── */}
-      {isAdmin && (
-        <div style={{ display: 'flex', gap: 8, width: '100%' }}>
-          <button
-            onClick={onEdit}
-            style={{
-              flex: 1, padding: '8px 0', background: 'transparent',
-              border: `1px solid ${LT.black}`, borderRadius: 0, cursor: 'pointer',
-              fontSize: 12, fontWeight: FONT_R, color: LT.ink, fontFamily: 'inherit',
-            }}>
-            편집
-          </button>
-          {book.status === 'available' && (
-            <button
-              onClick={onDelete}
-              style={{
-                flex: 1, padding: '8px 0', background: 'transparent',
-                border: `1px solid ${LT.metaOverdue}`, borderRadius: 0, cursor: 'pointer',
-                fontSize: 12, fontWeight: FONT_R, color: LT.metaOverdue, fontFamily: 'inherit',
-              }}>
-              삭제
-            </button>
-          )}
-        </div>
-      )}
     </div>
   )
 }

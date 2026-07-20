@@ -614,6 +614,8 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
   // ← [2026-07-22] Admin 대여 등록(책 미선택 진입) / 사용자 대여 신청 / 승인 대기
   const [checkoutOpen,   setCheckoutOpen]   = useState(false)   // 헤더 진입(빈 상태)
   const [requestModal,   setRequestModal]   = useState<Book | null>(null)
+  // ← [2026-07-20] Hero '대여 신청'(책 미선택 진입) — 모달에서 도서를 검색해 고른다
+  const [requestOpen,    setRequestOpen]    = useState(false)
   const [pendingReqs,    setPendingReqs]    = useState<BookRequest[]>([])
   const [reqLoading,     setReqLoading]     = useState(false)
   const [reqBusyId,      setReqBusyId]      = useState<string | null>(null)
@@ -1098,14 +1100,22 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
               </div>
             </div>
 
-            {/* CTA (Figma 1332:557 — gap 8) */}
-            {isAdmin && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <HeroCta primary onClick={() => setCheckoutOpen(true)}>대여 등록</HeroCta>
-                <HeroCta onClick={() => setEditModal({ book: null })}>도서 추가</HeroCta>
-                <HeroCta onClick={() => setImportModal(true)}>일괄 등록</HeroCta>
-              </div>
-            )}
+            {/* CTA (Figma 1339:1162 — gap 8)
+                ← [2026-07-20] 권한별 분기
+                  · 관리자   : 대여 등록 / 도서 추가 / 일괄 등록
+                  · 일반사용자: 대여 신청 1개만
+                Figma 는 4개를 한 줄에 다 그려 두었지만 그건 두 역할의 합집합이다. */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {isAdmin ? (
+                <>
+                  <HeroCta primary onClick={() => setCheckoutOpen(true)}>대여 등록</HeroCta>
+                  <HeroCta onClick={() => setEditModal({ book: null })}>도서 추가</HeroCta>
+                  <HeroCta onClick={() => setImportModal(true)}>일괄 등록</HeroCta>
+                </>
+              ) : (
+                <HeroCta primary onClick={() => setRequestOpen(true)}>대여 신청</HeroCta>
+              )}
+            </div>
           </div>
 
           {/* 안내문 (Figma 98:65 — 20px / lineHeight 1.5 / 2줄) */}
@@ -1133,18 +1143,20 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
               )}
             </div>
 
-            {/* 검색 (Figma 1328:394 — flex 1 / gap 10 / py 12 / border-bottom #111) */}
+            {/* 검색 (Figma 1339:1178 — flex 1 / gap 20 / py 12 / border-bottom #111) */}
             <div style={{
-              flex: 1, minWidth: 0, display: 'flex', gap: 10, alignItems: 'center',
+              flex: 1, minWidth: 0, display: 'flex', gap: LT.searchGap, alignItems: 'center',
               padding: '12px 0', borderBottom: `1px solid ${LT.underline}`,
             }}>
               <SearchIcon />
 
-              {/* 상태 필터 (Figma 1334:633 '전체' pill — px16 py8 / radius 24 / 16px) */}
-              <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+              {/* 상태 필터 pill (Figma 1339:1180)
+                  ← [2026-07-20] rev1 대비 축소: py 8→4, radius 24→100.
+                  선택 pill 은 검정 배경 + 흰 글자, 비선택은 배경 없음. */}
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                 {([['all', '전체'], ['available', '대여가능'], ['borrowed', '대여중']] as const).map(([v, l]) => (
                   <button key={v} onClick={() => setFilterStatus(v)} style={{
-                    padding: '8px 16px', borderRadius: 24, border: 'none', cursor: 'pointer',
+                    padding: '4px 16px', borderRadius: 100, border: 'none', cursor: 'pointer',
                     fontFamily: 'inherit', fontSize: 16, fontWeight: 400, lineHeight: 1.5,
                     whiteSpace: 'nowrap',
                     background: filterStatus === v ? LT.black : 'transparent',
@@ -1169,99 +1181,102 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
               <style>{`.lib-search-input::placeholder{color:${LT.placeholder};}`}</style>
             </div>
           </div>
+
+          {/* ── 장르 칩 (Figma 1339:1306 GNB — Hero 하단 / py 24 / wrap gap 10)
+              ← [2026-07-20] 좌측 사이드바(320px) → Hero 내부 전폭 가로 배열로 이동.
+                컨테이너는 Hero 의 flex-col 자식이라 gap 40 이 이미 적용되므로
+                Figma 의 py 24 는 아래쪽만 반영해 이중 여백을 피한다. */}
+          <div style={{
+            width: '100%', display: 'flex', flexWrap: 'wrap', gap: 10,
+            paddingBottom: LT.chipRowPadY,
+          }}>
+            <GenreChip active={filterCategory === 'ALL'} onClick={() => setFilterCategory('ALL')}>
+              전체 장르
+            </GenreChip>
+            <GenreChip active={filterCategory === 'NEW'} onClick={() => setFilterCategory('NEW')}>
+              ⭐NEW⭐
+            </GenreChip>
+            {categories.map(c => (
+              <GenreChip
+                key={c.id}
+                active={filterCategory === c.id}
+                onClick={() => setFilterCategory(c.id)}>
+                {c.name}
+              </GenreChip>
+            ))}
+          </div>
         </section>
 
         {/* ══════════════════════════════════════════════════════════════════
-            본문 — Figma 73:883 (GNB 320 + gap 24 + 그리드 1008)
+            카드 그리드 — Figma 1339:1205
+              전폭 1352 / 5열 / 카드 251.2 / gap 24 / py 24
             ══════════════════════════════════════════════════════════════════ */}
-        <div style={{
-          display: 'flex', gap: LT.colGap, alignItems: 'flex-start',
-          padding: `0 ${LT.pagePad}px`,
-          flexDirection: isMobile ? 'column' : 'row',
-        }}>
+        <main style={{ padding: `${LT.pagePad}px ${LT.pagePad}px 0` }}>
 
-          {/* ── GNB 장르 칩 (Figma 103:67 — wrap / gap 10) ── */}
-          <aside style={{
-            width: isMobile ? '100%' : LT.gnbW, flexShrink: 0, paddingTop: LT.pagePad,
-          }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-              <GenreChip active={filterCategory === 'ALL'} onClick={() => setFilterCategory('ALL')}>
-                전체 장르
-              </GenreChip>
-              <GenreChip active={filterCategory === 'NEW'} onClick={() => setFilterCategory('NEW')}>
-                ⭐NEW⭐
-              </GenreChip>
-              {categories.map(c => (
-                <GenreChip
-                  key={c.id}
-                  active={filterCategory === c.id}
-                  onClick={() => setFilterCategory(c.id)}>
-                  {c.name}
-                </GenreChip>
-              ))}
+          {/* 관리자 승인 대기 패널 (선착순) */}
+          {isAdmin && pendingReqs.length > 0 && (
+            <div style={{ marginBottom: LT.colGap }}>
+              <BookRequestPanel
+                requests={pendingReqs}
+                users={users}
+                loading={reqLoading}
+                busyId={reqBusyId}
+                onApprove={handleApprove}
+                onReject={handleReject}
+                onRefresh={loadPendingRequests}
+              />
             </div>
-          </aside>
+          )}
 
-          {/* ── 카드 그리드 (Figma 82:53 — 4열 / gap 24 / py 24) ── */}
-          <main style={{ flex: 1, minWidth: 0, padding: `${LT.pagePad}px 0` }}>
-
-            {/* 관리자 승인 대기 패널 (선착순) */}
-            {isAdmin && pendingReqs.length > 0 && (
-              <div style={{ marginBottom: LT.colGap }}>
-                <BookRequestPanel
-                  requests={pendingReqs}
-                  users={users}
-                  loading={reqLoading}
-                  busyId={reqBusyId}
-                  onApprove={handleApprove}
-                  onReject={handleReject}
-                  onRefresh={loadPendingRequests}
-                />
+          {loading ? (
+            <div style={{ padding: 60, textAlign: 'center', fontSize: 16, color: LT.metaDept }}>
+              도서 목록 불러오는 중...
+            </div>
+          ) : filteredBooks.length === 0 ? (
+            <div style={{ padding: 60, textAlign: 'center' }}>
+              <div style={{ fontSize: 16, fontWeight: 500, color: LT.ink }}>도서가 없습니다</div>
+              <div style={{ fontSize: 14, marginTop: 6, color: LT.metaDept }}>
+                검색어나 필터를 바꿔보세요
               </div>
-            )}
-
-            {loading ? (
-              <div style={{ padding: 60, textAlign: 'center', fontSize: 16, color: LT.metaDept }}>
-                도서 목록 불러오는 중...
-              </div>
-            ) : filteredBooks.length === 0 ? (
-              <div style={{ padding: 60, textAlign: 'center' }}>
-                <div style={{ fontSize: 16, fontWeight: 500, color: LT.ink }}>도서가 없습니다</div>
-                <div style={{ fontSize: 14, marginTop: 6, color: LT.metaDept }}>
-                  검색어나 필터를 바꿔보세요
-                </div>
-              </div>
-            ) : (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? 150 : LT.cardW}px, 1fr))`,
-                columnGap: LT.colGap,
-                rowGap: LT.colGap,
-                alignItems: 'start',
-              }}>
-                {filteredBooks.map(book => {
-                  const checkout = checkoutMap[book.id] ?? null
-                  const borrower = checkout ? users.find(u => u.user_id === checkout.user_id) : undefined
-                  const overdue  = checkout ? isOverdue(checkout.due_at) : false
-                  return (
-                    <BookGridCard
-                      key={book.id}
-                      book={book}
-                      checkout={checkout}
-                      borrower={borrower}
-                      isAdmin={isAdmin}
-                      isOverdueStatus={overdue}
-                      onCheckout={() => isAdmin ? setCheckoutModal(book) : setRequestModal(book)}
-                      onReturn={() => { if (checkout) handleReturn(book, checkout) }}
-                      onEdit={() => setEditModal({ book })}
-                      onDelete={() => setDeleteConfirm(book)}
-                    />
-                  )
-                })}
-              </div>
-            )}
-          </main>
-        </div>
+            </div>
+          ) : (
+            /* ← [2026-07-20] 열 정의
+                 · 데스크톱: repeat(5, minmax(0,1fr)) — Figma 5열 고정.
+                   auto-fill 을 쓰면 뷰포트에 따라 6열/4열로 흔들려 카드 폭이
+                   Figma(251)와 어긋난다. 열 수를 고정하고 폭은 1fr 로 늘린다.
+                 · 모바일: repeat(2, minmax(0,1fr)) — 2열 유지.
+                   minmax(0,1fr) 이라 좌우가 항상 화면 폭에 꽉 찬다
+                   (minmax(150px,...) 는 폭이 모자라면 남는 여백이 생겼다).
+                   표지 높이는 고정 유지 — 잘리지 않는 현재 동작 그대로. */
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${isMobile ? 2 : LT.cardCols}, minmax(0, 1fr))`,
+              columnGap: isMobile ? 12 : LT.colGap,
+              rowGap: isMobile ? 20 : LT.colGap,
+              alignItems: 'start',
+            }}>
+              {filteredBooks.map(book => {
+                const checkout = checkoutMap[book.id] ?? null
+                const borrower = checkout ? users.find(u => u.user_id === checkout.user_id) : undefined
+                const overdue  = checkout ? isOverdue(checkout.due_at) : false
+                return (
+                  <BookGridCard
+                    key={book.id}
+                    book={book}
+                    checkout={checkout}
+                    borrower={borrower}
+                    isAdmin={isAdmin}
+                    isOverdueStatus={overdue}
+                    onCheckout={() => isAdmin ? setCheckoutModal(book) : setRequestModal(book)}
+                    onReturn={() => { if (checkout) handleReturn(book, checkout) }}
+                    onEdit={() => setEditModal({ book })}
+                    onDelete={() => setDeleteConfirm(book)}
+                  />
+                )
+              })}
+            </div>
+          )}
+        </main>
       </div>
 
       {/* ── 모달들 ── */}
@@ -1282,15 +1297,16 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
       )}
 
       {/* ← [2026-07-22] 대여 신청 모달 (일반 사용자) */}
-      {!isAdmin && requestModal && (
+      {!isAdmin && (requestModal || requestOpen) && (
         <BookRequestModal
           book={requestModal}
+          books={books}
           me={me}
           heldCount={myHeldCount}
           maxBorrow={MAX_BORROW_PER_USER}
           borrowDays={BORROW_DAYS}
           loading={actionLoading}
-          onClose={() => setRequestModal(null)}
+          onClose={() => { setRequestModal(null); setRequestOpen(false) }}
           onSubmit={handleRequest}
         />
       )}
