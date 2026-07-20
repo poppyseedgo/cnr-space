@@ -16,6 +16,7 @@
  */
 
 import { useState, useMemo, useRef, useEffect } from 'react'
+import { todayKST } from './libraryListShared'
 import type { AppUser, Book, MyBookLoan } from '../../types'
 import {
   OVERLAY, SHEET, BM, ModalHeader, Field, ModalFooter, MemoField,
@@ -32,7 +33,18 @@ interface Props {
   borrowDays:   number
   loading:      boolean
   onClose:      () => void
-  onSubmit:     (userId: string, bookIds: number[], notes: string) => void
+  /** ← [2026-07-20] checkoutAt('YYYY-MM-DD') 추가 — 서버가 이 날짜 + 7일로 반납기한 계산 */
+  onSubmit:     (userId: string, bookIds: number[], notes: string, checkoutAt: string) => void
+}
+
+// ── [2026-07-20] 대여일 선택 범위 — 오늘(KST) ± n일을 'YYYY-MM-DD' 로
+//   'YYYY-MM-DD' 문자열을 로컬 자정으로 분해해서 다룬다.
+//   new Date('YYYY-MM-DD') 는 UTC 자정 해석이라 KST 에서 하루 밀린다.
+function shiftDays(n: number): string {
+  const t = todayKST()
+  const d = new Date(+t.slice(0, 4), +t.slice(5, 7) - 1, +t.slice(8, 10))
+  d.setDate(d.getDate() + n)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 export function BookCheckoutModal({
@@ -50,6 +62,8 @@ export function BookCheckoutModal({
   const [userHighlight, setUserHighlight] = useState(-1)
 
   const [memo, setMemo] = useState('')
+  // ← [2026-07-20] 대여일 — 기본값은 오늘(KST). 서버가 이 날짜 + 7일로 반납기한 계산
+  const [checkoutAt, setCheckoutAt] = useState<string>(() => todayKST())
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => () => { if (blurTimer.current) clearTimeout(blurTimer.current) }, [])
@@ -268,8 +282,19 @@ export function BookCheckoutModal({
             </div>
           </Field>
 
-          {/* ── 대여일 / 반납기한 ──────────────────────────────────────── */}
-          <DateRows borrowDays={borrowDays} />
+          {/* ── 대여일 / 반납기한 ────────────────────────────────────────
+              ← [2026-07-20] 대여일 선택 가능.
+                · 소급 등록: 창구에서 이미 빌려준 건을 나중에 입력
+                · 예약 등록: 미래 날짜로 선점
+                범위는 오늘 기준 ±365일 — 서버 RPC 의 CHECKOUT_AT_OUT_OF_RANGE
+                검증과 동일하게 맞춘다. */}
+          <DateRows
+            borrowDays={borrowDays}
+            value={checkoutAt}
+            onChange={setCheckoutAt}
+            min={shiftDays(-365)}
+            max={shiftDays(365)}
+          />
 
           {/* ── 메모 ───────────────────────────────────────────────────── */}
           <MemoField value={memo} onChange={setMemo} />
@@ -280,7 +305,7 @@ export function BookCheckoutModal({
           onCancel={onClose}
           onConfirm={() => {
             if (!borrower) return
-            onSubmit(borrower.user_id, selectedBooks.map(b => b.id), memo.slice(0, MEMO_MAX))
+            onSubmit(borrower.user_id, selectedBooks.map(b => b.id), memo.slice(0, MEMO_MAX), checkoutAt)
           }}
           disabled={!canSubmit}
           loading={loading}

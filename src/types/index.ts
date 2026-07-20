@@ -289,6 +289,7 @@ export interface BookRequest extends MyBookLoan {
 /** 화면 표시용 파생 상태 (DB status + due_at 기준 클라 계산) */
 export type LoanDisplayStatus =
   | 'pending'   // 승인 대기중 (← [2026-07-22])
+  | 'scheduled' // 대여 예정 — checkout_at 이 아직 미래 (← [2026-07-20])
   | 'active'    // 대여중 (여유)
   | 'due_soon'  // 반납임박 (D-2 이내)
   | 'overdue'   // 연체중
@@ -313,6 +314,7 @@ export type CheckoutErrorCode =
   | 'BOOK_NOT_FOUND'
   | 'REQUEST_NOT_FOUND'
   | 'NOT_PENDING'
+  | 'CHECKOUT_AT_OUT_OF_RANGE'   // ← [2026-07-20] 대여일 범위 초과
   | 'UNKNOWN'
 
 export type ExtendErrorCode =

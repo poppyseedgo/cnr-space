@@ -145,8 +145,20 @@ export const LT = {
   //    '3 / 4'    → 여백 더 적지만 세로 긴 표지에 위아래 여백
   //    '2 / 3'    → 세로 긴 표지 우선
   coverRatio:   '1 / 1.45',
-  coverFit:     'contain' as const,   // 'cover' 로 바꾸면 다시 잘림
+  coverRatioNum: 1 / 1.45,   // 위 값의 수치판 (w/h) — 자동 맞춤 계산용
   coverBg:      '#F5F6F8',
+
+  //  ← [2026-07-20] 표지 자동 맞춤 임계값
+  //
+  //    contain 만 쓰면 잘림은 0 이지만 비율이 어긋난 표지에 좌우 여백이 남는다.
+  //    cover 만 쓰면 여백은 0 이지만 20% 넘게 잘리는 표지가 나온다.
+  //    → 표지마다 원본 비율을 재서 "조금 모자란" 것만 확대(cover)한다.
+  //
+  //    coverAutoFillMaxCrop = cover 로 채웠을 때 감수할 최대 잘림 비율.
+  //    0.10 이면 10% 이내로 잘리는 표지는 확대해 여백을 없애고,
+  //    그보다 많이 잘릴 표지는 contain 으로 원본을 온전히 보여준다.
+  //    여백이 더 신경 쓰이면 0.15~0.2 로, 잘림이 싫으면 0.05 로 낮추면 된다.
+  coverAutoFillMaxCrop: 0.10,
 
   searchGap:    20,   // 검색바 요소 간격 (Figma 1339:1178 — rev1 10 → 20)
   chipRowPadY:  24,   // Hero 하단 장르 칩 행 상하 여백 (Figma 1339:1306)
@@ -289,6 +301,29 @@ export function newBadgeLabel(book: Pick<CardBook, 'new_until' | 'acquired_at'>)
 // 4. 카드 — Figma 83:336 / 1334:566 / 1328:426
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * 표지 맞춤 방식 결정 — 원본 비율(w/h)을 받아 cover / contain 을 고른다.
+ *
+ * ← [2026-07-20] "가로가 비지 않도록, 살짝 모자라면 자동 확대"
+ *
+ *   박스 비율 B 와 원본 비율 R 의 어긋난 정도:
+ *     deviation = 1 - min(R,B) / max(R,B)
+ *
+ *   이 값은 두 가지를 동시에 뜻한다.
+ *     · cover 로 채웠을 때 **잘려나가는** 비율
+ *     · contain 으로 넣었을 때 **남는 여백** 비율
+ *   즉 둘은 같은 크기의 손해다. 어느 쪽을 택할지만 정하면 된다.
+ *
+ *   deviation ≤ 임계값 → 조금 모자란 것이므로 확대(cover). 여백 0.
+ *   deviation >  임계값 → 많이 잘리므로 원본 유지(contain). 잘림 0.
+ */
+export function pickCoverFit(naturalRatio: number): 'cover' | 'contain' {
+  if (!Number.isFinite(naturalRatio) || naturalRatio <= 0) return 'contain'
+  const B = LT.coverRatioNum
+  const deviation = 1 - Math.min(naturalRatio, B) / Math.max(naturalRatio, B)
+  return deviation <= LT.coverAutoFillMaxCrop ? 'cover' : 'contain'
+}
+
 /** 표지 대체 (cover_url 없음/로드 실패) — 카드 규격 유지가 목적 */
 function CoverFallback({ title }: { title: string }) {
   return (
@@ -326,6 +361,9 @@ export function BookGridCard({
   onCheckout, onReturn, onEdit, onDelete,
 }: BookGridCardProps) {
   const [imgErr, setImgErr]   = useState(false)
+  //  표지 원본 비율을 잰 뒤 결정되는 맞춤 방식.
+  //  onLoad 전에는 contain(안전측) — 로드 후 잘림이 임계값 이내면 cover 로 승격.
+  const [coverFit, setCoverFit] = useState<'cover' | 'contain'>('contain')
   // ← [2026-07-20] 편집/삭제는 카드 하단 고정이 아니라 표지 호버 오버레이로 이동
   //   (Figma 1340:1332). 터치 기기는 hover 가 없으므로 focus-within 도 함께 사용.
   const [hovered, setHovered] = useState(false)
@@ -366,9 +404,14 @@ export function BookGridCard({
                 src={book.cover_url}
                 alt={book.title}
                 onError={() => setImgErr(true)}
+                onLoad={e => {
+                  const el = e.currentTarget
+                  if (!el.naturalWidth || !el.naturalHeight) return
+                  setCoverFit(pickCoverFit(el.naturalWidth / el.naturalHeight))
+                }}
                 style={{
                   width: '100%', height: '100%',
-                  objectFit: LT.coverFit,   // contain — 원본 잘림 없음
+                  objectFit: coverFit,   // pickCoverFit() 이 표지별로 결정
                   display: 'block',
                 }}
               />
@@ -565,22 +608,53 @@ export function HeroCta({
   )
 }
 
-/** 통계 1칸 — Figma 1332:510 (gap 2 / opacity .8 / label 14 / value 24) */
+/**
+ * 통계 1칸 — Figma 1339:1169 (gap 2 / opacity .8 / label 14 / value 24)
+ *
+ * ← [2026-07-20] 상태 필터 역할을 여기로 통합.
+ *   검색바 안에 있던 전체/대여가능/대여중 pill 과 이 통계는 같은 값을 두 번
+ *   보여주고 있었다(중복). 숫자 쪽이 정보량이 많으므로 통계를 버튼으로 만들고
+ *   pill 은 삭제했다. onClick 이 없으면 기존처럼 표시 전용으로 동작한다.
+ */
 export function HeroStat({
-  label, value, valueColor, labelWeight = FONT_R,
-}: { label: string; value: number; valueColor: string; labelWeight?: number }) {
+  label, value, valueColor, labelWeight = FONT_R, active, onClick,
+}: {
+  label: string
+  value: number
+  valueColor: string
+  labelWeight?: number
+  active?: boolean
+  onClick?: () => void
+}) {
+  const interactive = !!onClick
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 2,
-      alignItems: 'flex-start', opacity: 0.8, whiteSpace: 'nowrap',
-    }}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!interactive}
+      aria-pressed={interactive ? !!active : undefined}
+      style={{
+        display: 'flex', flexDirection: 'column', gap: 2,
+        alignItems: 'flex-start', whiteSpace: 'nowrap',
+        // 선택된 항목만 불투명 — Figma 의 opacity .8 을 비활성 표현으로 재사용
+        opacity: !interactive || active ? 1 : 0.45,
+        padding: 0, background: 'transparent', fontFamily: 'inherit',
+        border: 'none',
+        // 선택 표시는 하단 라인. 배경/테두리를 쓰면 Figma 의 여백 설계가 깨진다.
+        borderBottom: interactive
+          ? `2px solid ${active ? LT.black : 'transparent'}`
+          : '2px solid transparent',
+        paddingBottom: 2,
+        cursor: interactive ? 'pointer' : 'default',
+        transition: 'opacity 0.15s',
+      }}>
       <span style={{ fontSize: 14, fontWeight: labelWeight, lineHeight: 1.5, color: LT.ink }}>
         {label}
       </span>
       <span style={{ fontSize: 24, fontWeight: FONT_R, lineHeight: 1.5, color: valueColor }}>
         {value}
       </span>
-    </div>
+    </button>
   )
 }
 

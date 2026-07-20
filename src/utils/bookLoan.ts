@@ -85,6 +85,11 @@ export function loanDisplayStatus(loan: MyBookLoan, now: Date = new Date()): Loa
   // status 가 'overdue' 로 저장된 경우도 연체로 취급
   if (loan.status === 'overdue')  return 'overdue'
 
+  // ← [2026-07-20] 대여 예정 — 관리자가 미래 날짜로 등록(예약)한 건.
+  //   DB status 는 'active' 지만 아직 시작 전이라 "대여중"으로 보이면 안 된다.
+  //   반납기한도 미래이므로 D-day/연체 판정보다 먼저 걸러야 한다.
+  if (loan.checkout_at && new Date(loan.checkout_at) > now) return 'scheduled'
+
   const d = daysUntilDue(loan.due_at, now)
   if (d < 0)               return 'overdue'
   if (d <= DUE_SOON_DAYS)  return 'due_soon'
@@ -101,6 +106,9 @@ export function loanDisplayStatus(loan: MyBookLoan, now: Date = new Date()): Loa
  */
 export function canExtend(loan: MyBookLoan, now: Date = new Date()): boolean {
   if (loan.status !== 'active')                return false
+  // ← [2026-07-20] 아직 시작하지 않은 예약은 연장 대상이 아니다.
+  //   DB status 는 'active' 라 위 검사만으로는 걸러지지 않는다.
+  if (loan.checkout_at && new Date(loan.checkout_at) > now) return false
   if (loan.extension_count >= MAX_EXTENSION)   return false
   // 연체일수 = -daysUntilDue. 이 값이 유예 한도를 넘으면 불가.
   if (-daysUntilDue(loan.due_at, now) > OVERDUE_EXTEND_GRACE_DAYS) return false
@@ -115,6 +123,7 @@ export function extendBlockedReason(loan: MyBookLoan, now: Date = new Date()): s
   if (loan.status === 'returned')              return '반납완료'
   if (loan.status === 'lost')                  return '분실'
   if (loan.status !== 'active')                return '연장 불가'
+  if (loan.checkout_at && new Date(loan.checkout_at) > now) return '대여 시작 전'
   // ← [2026-07-20] 연장완료 판정을 연체 판정보다 앞으로 이동.
   //   연체이면서 이미 연장한 건은 "연장완료"가 더 정확한 사유다.
   if (loan.extension_count >= MAX_EXTENSION)   return '연장완료'
@@ -206,6 +215,7 @@ export function loanStatusStyle(s: LoanDisplayStatus): { bg: string; color: stri
     case 'pending':   return { bg: '#FEF3C7', color: '#B45309', label: '승인 대기중' }   // ← [2026-07-22]
     case 'rejected':  return { bg: '#FEF2F2', color: '#DC2626', label: '거절됨' }        // ← [2026-07-22]
     case 'cancelled': return { bg: '#F1F5F9', color: '#64748B', label: '신청취소' }      // ← [2026-07-22]
+    case 'scheduled': return { bg: '#F1F5F9', color: '#475569', label: '대여 예정' }
     case 'active':   return { bg: '#EFF6FF', color: '#1D4ED8', label: '대여중' }
     case 'due_soon': return { bg: '#FFF7ED', color: '#C2410C', label: '반납임박' }
     case 'overdue':  return { bg: '#FEF2F2', color: '#DC2626', label: '연체중' }

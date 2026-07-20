@@ -1714,6 +1714,7 @@ function parseCheckoutError(message: string): { code: CheckoutErrorCode; detail?
     'NOT_AUTHENTICATED', 'NOT_ADMIN', 'NOT_OWNER', 'NO_BORROWER', 'NO_BOOKS',
     'NOTES_TOO_LONG', 'REASON_TOO_LONG', 'LIMIT_EXCEEDED', 'ALREADY_REQUESTED',
     'BOOK_NOT_AVAILABLE', 'BOOK_NOT_FOUND', 'REQUEST_NOT_FOUND', 'NOT_PENDING',
+    'CHECKOUT_AT_OUT_OF_RANGE',   // ← [2026-07-20] 대여일 허용 범위 초과
   ]
   const hit = codes.find(c => message.includes(c))
   if (!hit) return { code: 'UNKNOWN' }
@@ -1731,6 +1732,8 @@ export function checkoutErrorMessage(code: CheckoutErrorCode, detail?: string): 
     case 'NO_BORROWER':        return '대여자를 선택해주세요'
     case 'NO_BOOKS':           return '도서를 선택해주세요'
     case 'NOTES_TOO_LONG':     return '메모는 100자까지 입력할 수 있습니다'
+    case 'CHECKOUT_AT_OUT_OF_RANGE':
+      return `대여일은 오늘 기준 ${detail ?? '365'}일 이내로만 지정할 수 있습니다`
     case 'REASON_TOO_LONG':    return '거절 사유는 200자까지 입력할 수 있습니다'
     case 'ALREADY_REQUESTED':  return '이미 신청한 도서입니다'
     case 'BOOK_NOT_FOUND':     return '도서 정보를 찾을 수 없습니다'
@@ -1783,12 +1786,16 @@ function toLoanRow(r: any): MyBookLoan {
 
 /** [Admin] 도서 대여 등록 — 여러 권 동시, 단일 트랜잭션 */
 export async function adminCheckoutBooks(
-  userId: string, bookIds: number[], notes?: string | null
+  userId: string, bookIds: number[], notes?: string | null,
+  /** ← [2026-07-20] 대여일(ISO). 미지정 시 서버가 등록 시각을 쓴다.
+   *   반납기한은 서버에서 "이 값 + 7일"로 계산된다. */
+  checkoutAt?: string | null,
 ): Promise<CheckoutResult> {
   const { data, error } = await supabase.rpc('admin_checkout_books', {
-    p_user_id:  userId,
-    p_book_ids: bookIds,
-    p_notes:    notes ?? null,
+    p_user_id:     userId,
+    p_book_ids:    bookIds,
+    p_notes:       notes ?? null,
+    p_checkout_at: checkoutAt ?? null,
   })
   if (error) return { ok: false, ...parseCheckoutError(error.message ?? '') }
   return { ok: true, rows: (data ?? []).map(toLoanRow) }

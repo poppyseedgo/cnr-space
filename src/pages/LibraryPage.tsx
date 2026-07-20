@@ -702,7 +702,9 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
   const [searchQ,        setSearchQ]        = useState('')
   // ← [2026-07-20] Figma 103:70 '⭐NEW⭐' 칩 — 이번 달 취득 도서만
   const [filterCategory, setFilterCategory] = useState<number | 'ALL' | 'NEW'>('ALL')
-  const [filterStatus,   setFilterStatus]   = useState<'all' | 'available' | 'borrowed'>('all')
+  // ← [2026-07-20] 통계 4칸이 그대로 필터 버튼이 되므로 'overdue' 추가.
+  //   3칸만 눌리고 연체중만 안 눌리면 일관성이 깨진다.
+  const [filterStatus,   setFilterStatus]   = useState<'all' | 'available' | 'borrowed' | 'overdue'>('all')
 
   // ── Modal State ──
   const [checkoutModal,  setCheckoutModal]  = useState<Book | null>(null)
@@ -782,6 +784,16 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
   // ← [2026-07-22] 관리자만 승인 대기 목록 조회
   useEffect(() => { loadPendingRequests() }, [isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ─── 대여기록 맵 ───────────────────────────────────────────────────────────
+  //   ← [2026-07-20] 선언 위치를 필터링 위로 올렸다.
+  //     '연체중' 필터가 due_at 을 봐야 해서 filteredBooks 가 이 맵에 의존한다.
+  //     아래에 두면 TDZ(선언 전 참조)로 런타임에 터진다.
+  const checkoutMap = useMemo(() => {
+    const m: Record<number, BookCheckout> = {}
+    activeCheckouts.forEach(c => { m[c.book_id] = c })
+    return m
+  }, [activeCheckouts])
+
   // ─── 필터링 ────────────────────────────────────────────────────────────────
 
   const filteredBooks = useMemo(() => {
@@ -808,19 +820,34 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
       list = list.filter(b => b.status === 'available')
     } else if (filterStatus === 'borrowed') {
       list = list.filter(b => b.status === 'borrowed')
+    } else if (filterStatus === 'overdue') {
+      // 연체는 books 가 아니라 대여기록의 due_at 으로 판정된다
+      list = list.filter(b => {
+        const c = checkoutMap[b.id]
+        return !!c && isOverdue(c.due_at)
+      })
     }
     return list
-  }, [books, searchQ, filterCategory, filterStatus])
+  }, [books, searchQ, filterCategory, filterStatus, checkoutMap])
 
   // ─── 대여 등록 ──────────────────────────────────────────────────────────────
 
   // ── [Admin] 대여 등록 — admin_checkout_books RPC (여러 권 단일 트랜잭션)
   //   기존 개별 INSERT+UPDATE 방식은 N권 처리 시 부분 실패로
   //   "책은 borrowed 인데 대여기록 없음" 유령 데이터가 생겨 RPC 로 이관했다.
-  async function handleCheckout(userId: string, bookIds: number[], notes: string) {
+  async function handleCheckout(
+    userId: string, bookIds: number[], notes: string,
+    /** ← [2026-07-20] 대여일('YYYY-MM-DD'). 서버가 이 날짜 + 7일로 반납기한 계산 */
+    checkoutAt?: string,
+  ) {
     setActionLoading(true)
     try {
-      const res = await adminCheckoutBooks(userId, bookIds, notes)
+      // 날짜만 받으므로 그 날 정오(KST)로 고정한다.
+      // 자정으로 보내면 타임존 경계에서 하루 밀릴 수 있고, 정오면 ±12시간 여유가 있다.
+      const checkoutIso = checkoutAt
+        ? new Date(`${checkoutAt}T12:00:00+09:00`).toISOString()
+        : null
+      const res = await adminCheckoutBooks(userId, bookIds, notes, checkoutIso)
       if (!res.ok) {
         showToast(checkoutErrorMessage(res.code ?? 'UNKNOWN', res.detail), 'error')
         await load()
@@ -834,19 +861,31 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
       const label = titles.length > 1 ? `${titles[0]} 외 ${titles.length - 1}권` : (titles[0] ?? '')
       const due   = res.rows?.[0]?.due_at
 
-      supabase.functions.invoke('send-notification', {
-        body: {
-          type: 'book_borrowed',
-          booking: {
-            id:         res.rows?.[0]?.id ?? '',
-            title:      label,
-            user_id:    userId,
-            book_title: label,
-            due_at:     due,
-            due_date_kst: due ? String(due).slice(0, 10) : undefined,
+      // ← [2026-07-20] 미래 날짜로 등록(예약)한 경우 '대여 확정' 알림을 보내지 않는다.
+      //
+      //   book_borrowed 는 "지금 대여되었습니다" 문구다. 아직 시작하지 않은
+      //   예약에 이 메일이 나가면 대여자가 오늘 책을 받은 것으로 오해한다.
+      //   ※ 시작일에 자동 통지하려면 book-due-reminder cron 에 '대여 시작'
+      //     타입과 notified_started 컬럼을 추가해야 한다 (별도 작업).
+      const startsInFuture = !!checkoutAt && checkoutAt > todayKST()
+
+      if (startsInFuture) {
+        showToast(`${checkoutAt}부터 대여 예정으로 등록했습니다 (알림 미발송)`, 'success')
+      } else {
+        supabase.functions.invoke('send-notification', {
+          body: {
+            type: 'book_borrowed',
+            booking: {
+              id:         res.rows?.[0]?.id ?? '',
+              title:      label,
+              user_id:    userId,
+              book_title: label,
+              due_at:     due,
+              due_date_kst: due ? String(due).slice(0, 10) : undefined,
+            },
           },
-        },
-      }).catch(err => console.warn('[library] 대여 알림 발송 실패:', err))
+        }).catch(err => console.warn('[library] 대여 알림 발송 실패:', err))
+      }
 
       showToast(`대여 등록 완료 (${bookIds.length}권)`, 'success')
       setCheckoutModal(null)
@@ -1147,11 +1186,6 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
 
   // ─── 렌더 ─────────────────────────────────────────────────────────────────
 
-  const checkoutMap = useMemo(() => {
-    const m: Record<number, BookCheckout> = {}
-    activeCheckouts.forEach(c => { m[c.book_id] = c })
-    return m
-  }, [activeCheckouts])
 
   // 통계
   const { isMobile } = useBreakpoint()   // ← [2026-07-20] Figma 1400 데스크톱 기준 → 모바일 대응
@@ -1222,13 +1256,32 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
             flexDirection: isMobile ? 'column' : 'row',
             alignItems: isMobile ? 'stretch' : 'flex-end',
           }}>
-            {/* 통계 (Figma 1332:515 — gap 32) */}
+            {/* 통계 = 상태 필터 (Figma 1339:1168 — gap 32)
+                ← [2026-07-20] 표시 전용이던 통계가 그대로 필터 버튼이 된다.
+                  선택된 항목만 불투명 + 하단 라인으로 표시한다. */}
             <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start', flexShrink: 0 }}>
-              <HeroStat label="전체 도서" value={stats.total}     valueColor={LT.black}      labelWeight={HERO_FONT_SB} />
-              <HeroStat label="대여가능"  value={stats.available} valueColor={LT.statAvail} />
-              <HeroStat label="대여중"    value={stats.borrowed}  valueColor={LT.statBusy} />
+              <HeroStat
+                label="전체 도서" value={stats.total} valueColor={LT.black}
+                labelWeight={HERO_FONT_SB}
+                active={filterStatus === 'all'}
+                onClick={() => setFilterStatus('all')}
+              />
+              <HeroStat
+                label="대여가능" value={stats.available} valueColor={LT.statAvail}
+                active={filterStatus === 'available'}
+                onClick={() => setFilterStatus('available')}
+              />
+              <HeroStat
+                label="대여중" value={stats.borrowed} valueColor={LT.statBusy}
+                active={filterStatus === 'borrowed'}
+                onClick={() => setFilterStatus('borrowed')}
+              />
               {isAdmin && stats.overdue > 0 && (
-                <HeroStat label="연체중" value={stats.overdue} valueColor={LT.metaOverdue} />
+                <HeroStat
+                  label="연체중" value={stats.overdue} valueColor={LT.metaOverdue}
+                  active={filterStatus === 'overdue'}
+                  onClick={() => setFilterStatus('overdue')}
+                />
               )}
             </div>
 
@@ -1239,22 +1292,10 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
             }}>
               <SearchIcon />
 
-              {/* 상태 필터 pill (Figma 1339:1180)
-                  ← [2026-07-20] rev1 대비 축소: py 8→4, radius 24→100.
-                  선택 pill 은 검정 배경 + 흰 글자, 비선택은 배경 없음. */}
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                {([['all', '전체'], ['available', '대여가능'], ['borrowed', '대여중']] as const).map(([v, l]) => (
-                  <button key={v} onClick={() => setFilterStatus(v)} style={{
-                    padding: '4px 16px', borderRadius: 100, border: 'none', cursor: 'pointer',
-                    fontFamily: 'inherit', fontSize: 16, fontWeight: 400, lineHeight: 1.5,
-                    whiteSpace: 'nowrap',
-                    background: filterStatus === v ? LT.black : 'transparent',
-                    color:      filterStatus === v ? LT.white : LT.ink,
-                  }}>
-                    {l}
-                  </button>
-                ))}
-              </div>
+              {/* ← [2026-07-20] 상태 필터 pill 삭제.
+                  왼쪽 통계(전체 도서/대여가능/대여중)와 같은 값을 두 번 보여주는
+                  중복이었다. 통계 쪽이 숫자까지 있어 정보량이 많으므로 그쪽을
+                  버튼으로 만들고 여기서는 제거 — 검색바는 검색만 담당한다. */}
 
               <input
                 value={searchQ}
