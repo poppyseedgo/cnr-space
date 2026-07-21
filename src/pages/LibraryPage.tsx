@@ -282,6 +282,26 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
     return m
   }, [activeCheckouts])
 
+  // ─── 연체 도서 id 집합 (← [2026-07-21] New Collection 슬라이더 뱃지용) ────
+  //   연체는 books.status 로 표현되지 않고 대여기록의 due_at 으로만 판정된다.
+  //   슬라이더에 books 만 넘기면 연체 책이 '대여중'으로 보이므로, 목록 카드와
+  //   같은 isOverdue(= bookLoan.daysUntilDue) 판정으로 계산해 함께 넘긴다.
+  const overdueBookIds = useMemo(() => {
+    const set = new Set<number>()
+    activeCheckouts.forEach(c => { if (isOverdue(c.due_at)) set.add(c.book_id) })
+    return set
+  }, [activeCheckouts])
+
+  // ─── 내가 대여 중인 도서 (← [2026-07-21] 목록 최상단 고정용) ──────────────
+  //   activeCheckouts 는 이미 "시작된 대여"만 담고 있다(예약 제외).
+  //   예약은 아직 손에 없는 책이라 '내 책' 으로 끌어올리면 카드의 '대여가능'
+  //   뱃지와 어긋나 혼란스럽다.
+  const myBookIds = useMemo(() => {
+    const set = new Set<number>()
+    activeCheckouts.forEach(c => { if (c.user_id === authUserId) set.add(c.book_id) })
+    return set
+  }, [activeCheckouts, authUserId])
+
   // ─── 필터링 ────────────────────────────────────────────────────────────────
 
   const filteredBooks = useMemo(() => {
@@ -346,8 +366,28 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
         return byTitle(a, b)
       })
     }
+    // ── 내 대여 도서 최상단 고정 (← [2026-07-21] 복원) ──────────────────
+    //
+    //   목록을 훑는 목적은 대부분 "내가 빌린 책이 뭐였지 / 언제까지지" 다.
+    //   300권 사이에서 그걸 찾게 하지 않는다.
+    //
+    //   검색 중일 때는 적용하지 않는다. 검색은 목표가 분명한 행위라
+    //   관련도 순서를 흔들면 오히려 방해가 된다. 카테고리/상태 필터는
+    //   그대로 둔다 — 걸러진 결과 안에서 내 책이 먼저 오는 건 자연스럽다.
+    //
+    //   sort 안에서 처리하지 않고 분리한 이유: 정렬 비교 함수에 조건을
+    //   끼워 넣으면 '제목순'·'인기순' 각각의 규칙이 오염돼 나중에
+    //   정렬 하나를 고칠 때 이 규칙까지 같이 깨진다.
+    if (!searchQ.trim() && myBookIds.size > 0) {
+      const mine: Book[] = []
+      const rest: Book[] = []
+      // 정렬 결과 안에서의 상대 순서는 그대로 유지한다(안정 분할).
+      for (const b of sorted) (myBookIds.has(b.id) ? mine : rest).push(b)
+      return [...mine, ...rest]
+    }
+
     return sorted
-  }, [books, searchQ, filterCategory, filterStatus, checkoutMap, sortBy, popularity])
+  }, [books, searchQ, filterCategory, filterStatus, checkoutMap, sortBy, popularity, myBookIds])
 
   // ─── 대여 등록 ──────────────────────────────────────────────────────────────
 
@@ -584,6 +624,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
           <NewCollectionSlider
             books={books}
             isMobile={isMobile}
+            overdueBookIds={overdueBookIds}
             onSelect={b => {
               // 슬라이더는 축약 필드(SlideBook)만 갖고 있다. 상세 모달은 전체
               // 필드가 필요하므로 id 로 원본 Book 을 되찾아 넘긴다.

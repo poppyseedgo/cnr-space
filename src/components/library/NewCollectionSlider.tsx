@@ -57,6 +57,9 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   LT, ListBadge, pickCoverFit, acquiredMonthLabel, isRecentAcquisition,
   NEW_COLLECTION_MONTHS,
+  // ← [2026-07-21] 대여 상태 뱃지. 그리드 카드와 같은 함수를 쓴다 —
+  //   여기서 라벨/색을 새로 정의하면 같은 책이 목록과 슬라이더에서 다르게 보인다.
+  statusBadgeConfig,
 } from './libraryListShared'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -73,6 +76,8 @@ export interface SlideBook {
   author:      string | null
   cover_url:   string | null
   acquired_at: string | null
+  /** ← [2026-07-21] 대여 상태 뱃지용. books.status 그대로. */
+  status:      'available' | 'borrowed' | 'maintenance' | 'lost'
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -235,17 +240,29 @@ function useMeasuredWidth<T extends HTMLElement>(): [(el: T | null) => void, num
 // 4. 표지 — 그리드 카드와 같은 맞춤 규칙(pickCoverFit) 재사용
 // ═══════════════════════════════════════════════════════════════════════════
 
-function SlideCover({ book, w }: { book: SlideBook; w: number }) {
+function SlideCover({ book, w, isOverdue }: {
+  book: SlideBook; w: number; isOverdue: boolean
+}) {
   const [err, setErr] = useState(false)
   const [fit, setFit] = useState<'cover' | 'contain'>('contain')
 
   const label = acquiredMonthLabel(book.acquired_at)
+
+  // ← [2026-07-21] 그리드 카드(BookGridCard)와 완전히 같은 규칙.
+  //   displayStatus 계산 → statusBadgeConfig → 표지 디밍까지 한 벌로 맞춘다.
+  const displayStatus = (isOverdue ? 'overdue' : book.status) as
+    SlideBook['status'] | 'overdue'
+  const badge  = statusBadgeConfig(displayStatus)
+  const dimmed = book.status !== 'available'
 
   return (
     <div style={{
       position: 'relative', width: w, aspectRatio: NC.coverRatio,
       background: LT.coverBg, overflow: 'hidden', flexShrink: 0,
     }}>
+      {/* 표지만 흐리게 한다. 뱃지까지 같이 흐려지면 안 되므로
+          래퍼가 아니라 이미지/대체영역에 opacity 를 건다. */}
+      <div style={{ width: '100%', height: '100%', opacity: dimmed ? LT.dimmedCover : 1 }}>
       {book.cover_url && !err ? (
         <img
           src={book.cover_url}
@@ -275,13 +292,21 @@ function SlideCover({ book, w }: { book: SlideBook; w: number }) {
           </span>
         </div>
       )}
+      </div>
 
-      {/* "N월 신규 도서" — 그리드 카드 뱃지와 동일 규격/색 */}
-      {label && (
-        <div style={{ position: 'absolute', top: 7, left: 8 }}>
-          <ListBadge bg={LT.badgeNew}>{label}</ListBadge>
-        </div>
-      )}
+      {/* ── 뱃지 행 — 그리드 카드(Figma 1344:1562)와 동일 배치 ────────────
+          왼쪽 "N월 신규 도서" / 오른쪽 대여 상태.
+          신규 라벨이 없으면 상태 뱃지만 오른쪽에 남는다.
+          pointerEvents: none — 뱃지가 드래그·클릭을 가로채지 않게 한다. */}
+      <div style={{
+        position: 'absolute', left: 8, right: 8, top: 7.3,
+        display: 'flex', alignItems: 'center',
+        justifyContent: label ? 'space-between' : 'flex-end',
+        pointerEvents: 'none',
+      }}>
+        {label && <ListBadge bg={LT.badgeNew}>{label}</ListBadge>}
+        <ListBadge bg={badge.bg}>{badge.label}</ListBadge>
+      </div>
     </div>
   )
 }
@@ -297,10 +322,18 @@ export interface NewCollectionSliderProps {
   onSelect?: (book: SlideBook) => void
   /** 표시 기간(개월). 기본 3 = 사내 규칙(매월 3권 × 3개월 = 최대 9권) */
   months?:  number
+  /**
+   * ← [2026-07-21] 연체 중인 도서 id 집합.
+   *   연체는 books.status 가 아니라 대여기록의 due_at 으로 판정되므로
+   *   슬라이더가 스스로 알 수 없다. 호출부(LibraryPage)가 목록 카드와
+   *   같은 판정(utils/bookLoan)으로 계산해 넘긴다.
+   *   미지정이면 연체 표시 없이 books.status 만 반영한다.
+   */
+  overdueBookIds?: Set<number>
 }
 
 export function NewCollectionSlider({
-  books, isMobile, onSelect, months = NEW_COLLECTION_MONTHS,
+  books, isMobile, onSelect, months = NEW_COLLECTION_MONTHS, overdueBookIds,
 }: NewCollectionSliderProps) {
   const cardW = isMobile ? NC.mCardW : NC.cardW
   const gap   = isMobile ? NC.mGap   : NC.gap
@@ -340,7 +373,11 @@ export function NewCollectionSlider({
   const [dragPx,   setDragPx]   = useState(0)   // 손가락을 따라가는 실시간 오프셋
   const [dragging, setDragging] = useState(false)
   //   커밋 판정용 원본값 — 렌더와 무관하므로 ref 에 둔다(리렌더 유발 방지)
-  const dragRef = useRef<{ id: number; x0: number; y0: number; axis: 'none' | 'x' | 'y' } | null>(null)
+  //   armed = 실제 드래그로 승격됐는가. pointerdown 만으로는 승격하지 않는다
+  //   (아래 onPointerDown 주석 참조 — 카드 클릭이 막히는 원인이었다).
+  const dragRef = useRef<
+    { id: number; x0: number; y0: number; axis: 'none' | 'x' | 'y'; armed: boolean } | null
+  >(null)
   //   드래그로 끝난 제스처인지 — 카드 onClick(상세 모달)이 같이 터지는 것을 막는다
   const draggedRef = useRef(false)
 
@@ -413,25 +450,48 @@ export function NewCollectionSlider({
   //   폭이 커서 1/3 만 해도 100px 이 넘어 "끌었는데 안 넘어간다"는 느낌이 든다.
   const DRAG_THRESHOLD = Math.min(step / 3, 60)
 
+  //   드래그로 승격되는 최소 이동량. 이 값보다 작게 움직였다 떼면 클릭이다.
+  //   4px 은 손떨림·트랙패드 미세 이동을 흡수하면서 의도적 드래그는 놓치지 않는 폭.
+  const DRAG_START_PX = 4
+
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (!loop || !anim) return
     // 마우스는 주 버튼만 (우클릭·가운데클릭 제외)
     if (e.pointerType === 'mouse' && e.button !== 0) return
 
+    // ★ [2026-07-21 버그픽스] 여기서는 시작점만 기록한다.
+    //
+    //   이전 구현은 pointerdown 즉시 setPointerCapture 를 걸었다. 포인터가
+    //   캡처되면 이후 포인터 이벤트와 그로부터 파생되는 click 이 전부 캡처
+    //   대상(뷰포트)으로 재타깃된다. 그래서 카드의 onClick 이 아예 호출되지
+    //   않아 New Collection 카드에서 도서 상세가 열리지 않았다.
+    //   같은 이유로 idx 텔레포트·setDragging 도 단순 클릭에서 실행돼
+    //   불필요한 리렌더를 일으켰다.
+    //
+    //   → 캡처와 상태 변경은 "가로 이동이 확정된 순간"(armDrag)으로 미룬다.
+    //     탭/클릭은 드래그 모드에 진입조차 하지 않으므로 정상 동작한다.
+    dragRef.current = { id: e.pointerId, x0: e.clientX, y0: e.clientY, axis: 'none', armed: false }
+    draggedRef.current = false
+  }
+
+  /** 가로 드래그 확정 — 여기서부터 캡처하고 트랙을 손가락에 붙인다 */
+  function armDrag(e: React.PointerEvent<HTMLDivElement>) {
+    const d = dragRef.current
+    if (!d || d.armed) return
+    d.armed = true
+
     // idx 가 0 이면 왼쪽에 카드가 없어 오른쪽으로 끌 때 빈 여백이 드러난다.
     // 트랙이 2벌이므로 len 위치는 0 위치와 화면상 완전히 동일하다.
-    // 시작 시점에 무애니메이션으로 옮겨두면 뒤로 끌기가 자연스럽게 성립한다.
     if (idx === 0) {
       setAnim(false)
       setIdx(len)
       requestAnimationFrame(() => requestAnimationFrame(() => setAnim(true)))
     }
 
-    dragRef.current = { id: e.pointerId, x0: e.clientX, y0: e.clientY, axis: 'none' }
-    draggedRef.current = false
+    draggedRef.current = true
     setDragging(true)
     setDragPx(0)
-    e.currentTarget.setPointerCapture(e.pointerId)
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* 이미 캡처됨 */ }
   }
 
   function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
@@ -445,12 +505,15 @@ export function NewCollectionSlider({
     //   touch-action: pan-y 로 브라우저가 세로 스크롤을 처리하지만,
     //   대각선 제스처까지 가로로 가로채면 모바일에서 스크롤이 뻑뻑해진다.
     if (d.axis === 'none') {
-      if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return   // 아직 방향 미확정
+      // 임계값 미만은 아직 '클릭일 수도 있는' 구간이다. 여기서 드래그를
+      // 시작하면 손떨림만으로 카드 클릭이 사라진다.
+      if (Math.abs(dx) < DRAG_START_PX && Math.abs(dy) < DRAG_START_PX) return
       d.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y'
-      if (d.axis === 'y') { endDrag(e, true); return }
+      if (d.axis === 'y') { dragRef.current = null; return }   // 스크롤에 양보
+      armDrag(e)
     }
 
-    if (Math.abs(dx) > 4) draggedRef.current = true
+    if (!d.armed) return
     setDragPx(dx)
   }
 
@@ -459,6 +522,10 @@ export function NewCollectionSlider({
     const d = dragRef.current
     if (!d || d.id !== e.pointerId) return
     dragRef.current = null
+
+    // 승격되지 않은 제스처 = 단순 클릭/탭. 드래그 상태에 들어간 적이 없으므로
+    // 되돌릴 것도 없고, 카드의 onClick 이 그대로 이어져야 한다.
+    if (!d.armed) return
 
     try { e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* 이미 해제됨 */ }
 
@@ -569,6 +636,8 @@ export function NewCollectionSlider({
           // 세로 스크롤은 브라우저에 맡기고 가로만 우리가 처리한다.
           // 'none' 으로 두면 모바일에서 슬라이더 위를 지나갈 때 페이지가 안 움직인다.
           touchAction: loop ? 'pan-y' : 'auto',
+          // 끌기 중에만 grabbing. 평상시 grab 은 카드 자체의 pointer 커서를
+          // 덮지 않도록 뷰포트에만 둔다(카드 style.cursor 가 우선한다).
           cursor: loop ? (dragging ? 'grabbing' : 'grab') : 'default',
           // 끌 때 카드 제목이 파랗게 선택되는 것을 막는다
           userSelect: dragging ? 'none' : undefined,
@@ -604,7 +673,7 @@ export function NewCollectionSlider({
                 cursor: onSelect ? 'pointer' : 'default',
                 outlineOffset: 2,
               }}>
-              <SlideCover book={b} w={cardW} />
+              <SlideCover book={b} w={cardW} isOverdue={!!overdueBookIds?.has(b.id)} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
                 <span style={{
                   fontSize: isMobile ? 15 : NC.titleSize, fontWeight: FONT_R,

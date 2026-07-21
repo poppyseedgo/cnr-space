@@ -28,7 +28,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * 1) CTA 라벨
  *    Figma: 전부 "대여하기" / "반납하기"·"반납처리" 혼재
- *    구현:  권한·플로우에 맞춰 "대여 신청"(사용자) / "대여 등록"(관리자) /
+ *    구현:  권한·플로우에 맞춰 "대여하기"(사용자) / "대여 등록"(관리자) /
  *           "반납 처리"(관리자) 로 통일.
  *    근거:  일반 사용자의 대여는 즉시 확정이 아니라 pending → 관리자 승인이다.
  *           "대여하기"로 표기하면 눌렀는데 대여가 안 된 것처럼 보인다.
@@ -597,7 +597,7 @@ export function BookGridCard({
                 onClick={stop(onCheckout)}
                 tabIndex={overlayOpen ? 0 : -1}
                 style={{ ...HOVER_BTN, background: LT.black, color: LT.white }}>
-                {isAdmin ? '대여 등록' : '대여 신청'}
+                {isAdmin ? '대여 등록' : '대여하기'}
               </button>
             )}
             {book.status === 'borrowed' && checkout && isAdmin && (
@@ -863,7 +863,7 @@ export function BookSortRow({
     <div
       role="radiogroup"
       aria-label="도서 정렬 기준"
-      style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '24px 4px 0', flexWrap: 'wrap' }}>
+      style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: 4, flexWrap: 'wrap' }}>
       {BOOK_SORT_OPTIONS.map(opt => {
         const active = value === opt.value
         return (

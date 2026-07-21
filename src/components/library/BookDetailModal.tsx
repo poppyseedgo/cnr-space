@@ -78,7 +78,7 @@ export interface BookDetailModalProps {
   isAdmin:         boolean
   isOverdueStatus: boolean
   onClose:    () => void
-  onCheckout: () => void   // 관리자 = 대여 등록 / 일반 = 대여 신청
+  onCheckout: () => void   // 관리자 = 대여 등록 / 일반 = 대여하기 (← [2026-07-21] 승인 폐지)
   onReturn:   () => void
   onEdit:     () => void
   onDelete:   () => void
@@ -234,7 +234,7 @@ export function BookDetailModal({
           )}
           {canCheckout && (
             <ActionBtn onClick={onCheckout} bg={BM.btnPrimaryBg} color="#fff">
-              {isAdmin ? '대여 등록' : '대여 신청'}
+              {isAdmin ? '대여 등록' : '대여하기'}
             </ActionBtn>
           )}
           {canReturn && (
