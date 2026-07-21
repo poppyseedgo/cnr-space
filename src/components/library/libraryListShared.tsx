@@ -863,7 +863,7 @@ export function BookSortRow({
     <div
       role="radiogroup"
       aria-label="도서 정렬 기준"
-      style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: 4, flexWrap: 'wrap' }}>
+      style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '24px 4px 0', flexWrap: 'wrap' }}>
       {BOOK_SORT_OPTIONS.map(opt => {
         const active = value === opt.value
         return (
