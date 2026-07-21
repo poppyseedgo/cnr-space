@@ -100,9 +100,13 @@ export type NotificationType =
 
   // ── 도서 대여 신청/승인 (← [2026-07-22] 신규) ────────────────────────
   //   에메랄드룸 승인 패턴 준용. 신청은 관리자 전원에게, 승인/거절은 신청자에게.
-  | 'book_requested'          // 대여 신청 접수 → 관리자 전원
-  | 'book_request_approved'   // 신청 승인 → 신청자 (확정 반납일 안내)
-  | 'book_request_rejected'   // 신청 거절 → 신청자 (사유 포함)
+  // ── [2026-07-21] 승인 플로우 폐지. 아래 3종은 더 이상 발송되지 않는다.
+  //   과거 알림 이력(notifications 테이블)에 타입 문자열이 남아 있으므로
+  //   유니온에서 제거하지 않는다 — 제거하면 이력 조회가 타입 에러를 낸다.
+  | 'book_requested'          // [폐지]
+  | 'book_request_approved'   // [폐지]
+  | 'book_request_rejected'   // [폐지]
+  | 'book_started'            // 대여 시작일 도래 09:00 KST → 대여자 (← [2026-07-21])
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 2. 수신자 규칙
@@ -663,8 +667,8 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
   //     앱 내 반납 CTA는 제공하지 않는다 (연장 CTA만 유효)
 
   // ── 대여 신청/승인 (← [2026-07-22]) ──────────────────────────────────
-  //   book_requested 만 수신자가 관리자 전원(admins_only)이다.
-  //   나머지 2종은 신청자 본인(book_borrower).
+  //   ← [2026-07-21] 승인 폐지로 아래 3종은 발송 경로가 사라졌다.
+  //   설정 객체는 과거 이력 렌더링을 위해 남겨 둔다(삭제 시 이력 화면이 깨진다).
   book_requested: {
     subjectTag:         '[대여신청]',
     headerLabel:        '도서 대여 신청이 접수되었습니다',
@@ -739,6 +743,30 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
         ...BANNER_PRESETS.info,
         title: '도서 대여가 완료되었습니다.',
         body:  '아래 반납기한 이내에 반납해 주세요. 연장은 1회(7일)까지 마이페이지에서 신청할 수 있습니다.',
+      },
+    },
+    cta: { booker: CTA_MY_LOANS },
+    isCancelledStyle: false,
+  },
+
+  // ── [2026-07-21] 대여 시작일 도래 알림 ─────────────────────────────────
+  //   예약(미래 시작) 건이 시작일에 도달했을 때 1회 발송한다.
+  //   이 알림이 없으면 예약자가 책을 찾으러 오지 않는다 — 예약 기능의 전제다.
+  //   book_borrowed(즉시 대여 확정)와 문구가 겹치지 않게 "오늘부터"를 강조한다.
+  book_started: {
+    subjectTag:         '[대여시작]',
+    headerLabel:        '오늘부터 대여가 시작됩니다',
+    headerColor:        COLORS.INDIGO,
+    recipients:         'book_borrower',
+    inappType:          'book_started',
+    inappTitleBooker:   '예약하신 도서의 대여가 시작되었습니다',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '',
+    contextBanner: {
+      booker: {
+        ...BANNER_PRESETS.info,
+        title: '오늘부터 대여가 시작됩니다.',
+        body:  '도서관에서 도서를 수령해 주세요. 아래 반납기한 이내에 반납하시면 됩니다.',
       },
     },
     cta: { booker: CTA_MY_LOANS },

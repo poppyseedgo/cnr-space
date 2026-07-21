@@ -272,15 +272,22 @@ export interface MyBookLoan {
   notes?:             string | null
 }
 
-/** book_checkouts.status — 20260722 마이그레이션으로 pending/rejected/cancelled 추가 */
+/**
+ * book_checkouts.status
+ *
+ * ← [2026-07-21] 승인 플로우 폐지. pending/rejected 는 **더 이상 생성되지 않지만**
+ *   과거 이력 행이 남아 있어 유니온에서 제거하지 않는다. 제거하면 마이페이지
+ *   이력에서 그 행들이 타입상 표현 불가능해진다.
+ *   cancelled 는 의미가 바뀌었다: '신청 취소' → '예약 취소'(시작 전 본인 취소).
+ */
 export type BookCheckoutStatus =
-  | 'pending'    // 대여 신청(관리자 승인 대기)
+  | 'pending'    // [폐지] 구 승인 대기 — 신규 생성 없음, 과거 이력만
   | 'active'     // 대여중
   | 'returned'   // 반납완료
   | 'overdue'    // 연체 (DB 자동전환 배치는 없음 — 표시는 due_at 기준)
   | 'lost'       // 분실
-  | 'rejected'   // 관리자 거절
-  | 'cancelled'  // 신청자 취소
+  | 'rejected'   // [폐지] 구 관리자 거절 — 신규 생성 없음, 과거 이력만
+  | 'cancelled'  // 예약 취소 (시작 전 본인 취소) ← [2026-07-21] 의미 변경
 
 /** 대여 신청 1건 + 도서/신청자 정보 (관리자 승인 패널용) */
 export interface BookRequest extends MyBookLoan {
@@ -346,7 +353,7 @@ export type LoanDisplayStatus =
   | 'returned'  // 반납완료
   | 'lost'      // 분실
   | 'rejected'  // 거절됨 (← [2026-07-22])
-  | 'cancelled' // 신청취소 (← [2026-07-22])
+  | 'cancelled' // 예약 취소 (← [2026-07-21] 의미 변경)
 
 /** 연장 RPC 실패 코드 (extend_book_checkout) */
 /** 대여 등록/신청/승인 RPC 실패 코드 (← [2026-07-22]) */
@@ -364,7 +371,14 @@ export type CheckoutErrorCode =
   | 'BOOK_NOT_FOUND'
   | 'REQUEST_NOT_FOUND'
   | 'NOT_PENDING'
-  | 'CHECKOUT_AT_OUT_OF_RANGE'   // ← [2026-07-20] 대여일 범위 초과
+  | 'CHECKOUT_AT_OUT_OF_RANGE'   // ← [2026-07-20] 대여일 범위 초과 (관리자 ±365일)
+  // ── [2026-07-21] 승인 폐지 + 기간 겹침 예약 도입 ────────────────────────
+  | 'CHECKOUT_AT_PAST'           // 사용자는 소급 대여 불가
+  | 'RESERVE_TOO_FAR'            // 예약 가능 범위(오늘+3일) 초과
+  | 'PERIOD_CONFLICT'            // 해당 기간에 이미 다른 대여가 잡혀 있음
+  | 'ALREADY_STARTED'            // 이미 시작된 대여는 취소 불가 (반납 경로)
+  | 'CHECKOUT_NOT_FOUND'
+  | 'NOT_ACTIVE'
   | 'UNKNOWN'
 
 export type ExtendErrorCode =

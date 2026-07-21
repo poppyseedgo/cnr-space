@@ -14,7 +14,6 @@
  *   UI 는 다르지만 로직은 한 벌만 쓴다. 아래 것들을 그대로 재사용한다.
  *     · 폼/모달   : bookFormShared (BookEditModal / BookImportModal)
  *     · 대여 등록 : BookCheckoutModal
- *     · 승인 대기 : BookRequestPanel
  *     · 연체 판정 : utils/bookLoan (loanDisplayStatus / daysUntilDue …)
  *     · 상태 전이 : lib/api 의 RPC 래퍼 (알림 발송 포함)
  *     · CSV       : utils/csv
@@ -38,8 +37,7 @@ import {
   loadBookCheckoutsByRange, loadOutstandingBookLoans,
   adminReturnBook, returnErrorMessage,
   persistBook, deleteBookRecord, importBookRows,
-  adminCheckoutBooksWithNotify, approveBookRequestWithNotify, rejectBookRequestWithNotify,
-  fetchPendingBookRequests, checkoutErrorMessage,
+  adminCheckoutBooksWithNotify, checkoutErrorMessage,
 } from '../../lib/api'
 import { SegmentTabBar } from '../common/SegmentTabBar'
 import { DateRangeFilter } from '../common/DateRangeFilter'
@@ -53,9 +51,8 @@ import {
 import { isNewBook, todayKST } from './libraryListShared'
 import { BookEditModal, BookImportModal, OVERLAY_STYLE, MODAL_STYLE } from './bookFormShared'
 import { BookCheckoutModal } from './BookCheckoutModal'
-import { BookRequestPanel } from './BookRequestPanel'
 import type {
-  AppUser, Book, BookCategory, AdminBookLoan, BookRequest, BookReturnAction,
+  AppUser, Book, BookCategory, AdminBookLoan, BookReturnAction,
 } from '../../types'
 
 // ─── Props ───────────────────────────────────────────────────────────────────
@@ -71,7 +68,8 @@ interface BookAdminPanelProps {
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
-type SubTab   = 'overview' | 'books' | 'loans' | 'overdue' | 'requests'
+// ← [2026-07-21] 승인 폐지로 'requests' 제거 (5탭 → 4탭)
+type SubTab   = 'overview' | 'books' | 'loans' | 'overdue'
 type QuickId  = 'd7' | 'd30' | 'd90' | 'year'
 type LoanFilter = 'all' | 'active' | 'returned' | 'overdue' | 'lost' | 'closed'
 type BookFilter = 'all' | 'available' | 'borrowed' | 'maintenance' | 'lost'
@@ -259,13 +257,10 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
   const [categories,  setCategories]  = useState<BookCategory[]>([])
   const [outstanding, setOutstanding] = useState<AdminBookLoan[]>([])   // 미반납 전량
   const [rangeLoans,  setRangeLoans]  = useState<AdminBookLoan[]>([])   // 기간 이력
-  const [pendingReqs, setPendingReqs] = useState<BookRequest[]>([])
 
   const [loadingMaster, setLoadingMaster] = useState(true)
   const [loadingRange,  setLoadingRange]  = useState(false)
-  const [reqLoading,    setReqLoading]    = useState(false)
   const [busy,          setBusy]          = useState(false)
-  const [reqBusyId,     setReqBusyId]     = useState<string | null>(null)
 
   // ── 기간 필터 (개요 / 대여 이력 공용) ─────────────────────────────────────
   const [dateFrom,    setDateFrom]    = useState(daysAgoStr(89))
@@ -330,23 +325,12 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
     }
   }
 
-  async function loadPending() {
-    setReqLoading(true)
-    try {
-      setPendingReqs(await fetchPendingBookRequests())
-    } catch {
-      /* 승인 대기 목록 실패가 화면 전체를 막지 않게 한다 */
-    } finally {
-      setReqLoading(false)
-    }
-  }
-
-  useEffect(() => { loadMaster(); loadPending() }, [])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadMaster() }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { loadRange() }, [dateFrom, dateTo])   // eslint-disable-line react-hooks/exhaustive-deps
 
   /** 상태를 바꾸는 처리 후 공통 재조회 */
   async function reloadAll() {
-    await Promise.all([loadMaster(), loadRange(), loadPending()])
+    await Promise.all([loadMaster(), loadRange()])
   }
 
   // ─── 퀵 기간 버튼 ──────────────────────────────────────────────────────────
@@ -447,34 +431,6 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
     } finally { setBusy(false) }
   }
 
-  async function handleApprove(req: BookRequest) {
-    setReqBusyId(req.id)
-    try {
-      const res = await approveBookRequestWithNotify(req, currentUserName)
-      if (!res.ok) {
-        showToast(checkoutErrorMessage(res.code ?? 'UNKNOWN', res.detail), 'error')
-        await reloadAll()
-        return
-      }
-      showToast('대여 신청을 승인했습니다', 'success')
-      await reloadAll()
-    } finally { setReqBusyId(null) }
-  }
-
-  async function handleReject(req: BookRequest, reason: string) {
-    setReqBusyId(req.id)
-    try {
-      const res = await rejectBookRequestWithNotify(req, reason, currentUserName)
-      if (!res.ok) {
-        showToast(checkoutErrorMessage(res.code ?? 'UNKNOWN', res.detail), 'error')
-        await loadPending()
-        return
-      }
-      showToast('대여 신청을 거절했습니다', 'success')
-      await reloadAll()
-    } finally { setReqBusyId(null) }
-  }
-
   // ─── 파생 데이터 ───────────────────────────────────────────────────────────
 
   /** 도서별 현재 활성 대여 (카드/테이블의 '대여자' 표기용) */
@@ -484,18 +440,18 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
     return m
   }, [outstanding])
 
-  /** 사용자별 보유 권수 (active + pending 합산)
+  /** 사용자별 보유 권수
    *
-   *  한도 판정은 서버(admin_checkout_books)가 최종적으로 강제한다. 여기 값은
-   *  모달에서 "이미 2권"을 미리 알려주기 위한 표시용이다. 합산 대상이 서버와
-   *  달라지면 화면에서는 가능해 보이는데 등록만 실패하는 상황이 되므로
-   *  active + pending 이라는 서버와 같은 기준을 쓴다. */
+   *  ← [2026-07-21] 승인 폐지로 pending 합산을 제거했다. outstanding 은
+   *  active/overdue 전량이고 예약(미래 시작)도 status='active' 이므로
+   *  서버 admin_checkout_books 의 한도 산식과 그대로 일치한다.
+   *  한도의 최종 강제는 서버가 한다 — 여기 값은 모달에서 "이미 2권"을
+   *  미리 알려주기 위한 표시용이다. */
   const heldCountByUser = useMemo(() => {
     const m: Record<string, number> = {}
     outstanding.forEach(l => { m[l.user_id] = (m[l.user_id] ?? 0) + 1 })
-    pendingReqs.forEach(r => { m[r.user_id] = (m[r.user_id] ?? 0) + 1 })
     return m
-  }, [outstanding, pendingReqs])
+  }, [outstanding])
 
   /** 연체 건 (due_at 기준 — DB status 가 아니라 bookLoan SSOT 를 따른다) */
   const overdueLoans = useMemo(
@@ -814,7 +770,6 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
     { id: 'books'    as const, label: '도서 관리', count: books.length },
     { id: 'loans'    as const, label: '대여 이력', count: rangeLoans.length },
     { id: 'overdue'  as const, label: '연체 관리', count: overdueLoans.length },
-    { id: 'requests' as const, label: '승인 대기', count: pendingReqs.length },
   ]
 
   const quickButtons = [
@@ -981,7 +936,9 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
               { id: 'overdue'  as const, label: '연체',   count: rangeLoans.filter(l => l.status === 'active' && daysUntilDue(l.due_at) < 0).length },
               { id: 'returned' as const, label: '반납',   count: rangeLoans.filter(l => l.status === 'returned').length },
               { id: 'lost'     as const, label: '분실',   count: rangeLoans.filter(l => l.status === 'lost').length },
-              { id: 'closed'   as const, label: '거절·취소', count: rangeLoans.filter(l => l.status === 'rejected' || l.status === 'cancelled').length },
+              // ← [2026-07-21] rejected 는 폐지된 승인 플로우의 과거 이력,
+              //   cancelled 는 사용자가 시작 전에 취소한 예약. 둘 다 대여 미성립이라 한 칸에 묶는다.
+              { id: 'closed'   as const, label: '취소·거절', count: rangeLoans.filter(l => l.status === 'rejected' || l.status === 'cancelled').length },
             ]}
             activeTab={loanFilter}
             onTabChange={id => setLoanFilter(id)}
@@ -1040,28 +997,6 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
             />
           </div>
         </div>
-      )}
-
-      {/* ═══════════════════════ 승인 대기 ═══════════════════════ */}
-      {tab === 'requests' && (
-        pendingReqs.length === 0 && !reqLoading ? (
-          <div style={{ ...CARD, padding: 60, textAlign: 'center' }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#1E1E1E' }}>승인 대기 중인 신청이 없습니다</div>
-            <div style={{ fontSize: 13, color: '#A5AEC0', marginTop: 6 }}>
-              사용자가 도서관 화면에서 대여를 신청하면 여기에 표시됩니다.
-            </div>
-          </div>
-        ) : (
-          <BookRequestPanel
-            requests={pendingReqs}
-            users={users}
-            loading={reqLoading}
-            busyId={reqBusyId}
-            onApprove={handleApprove}
-            onReject={handleReject}
-            onRefresh={loadPending}
-          />
-        )
       )}
 
       {/* ═══════════════════════ 모달 ═══════════════════════ */}

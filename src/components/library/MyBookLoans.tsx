@@ -21,11 +21,12 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 //   경로는 components/library/ 기준 두 단계 상위 (LibraryPage는 '../lib/supabase')
 import { supabase } from '../../lib/supabase'
 import { fetchMyBookLoans, extendBookCheckout, extendErrorMessage,
-  cancelBookRequest, checkoutErrorMessage } from '../../lib/api'  // ← [2026-07-22] 신청 취소
+  cancelBookCheckout, checkoutErrorMessage } from '../../lib/api'  // ← [2026-07-21] 예약 취소
 import {
   loanDisplayStatus, loanStatusStyle, canExtend, extendBlockedReason,
   ddayLabel, fmtLoanDate, previewExtendedDue, EXTEND_DAYS,
   dueNoticeShort, fmtDueFullKo, fmtDueShortKo,   // ← [2026-07-20] 반납기한 표기 SSOT
+  canCancelReservation,                          // ← [2026-07-21] 시작 전 예약 취소 판정
 } from '../../utils/bookLoan'
 import type { MyBookLoan } from '../../types'
 
@@ -60,17 +61,20 @@ export function MyBookLoans({ authUserId, showToast, isMobile = false }: Props) 
   useEffect(() => { load() }, [load])
 
   // ── 그룹 분리: 현재 대여중(active) / 이력(returned·lost) ───────────────────
-  const { activeLoans, pendingLoans, historyLoans, summary } = useMemo(() => {
-    const act:  MyBookLoan[] = []
-    const pend: MyBookLoan[] = []   // ← [2026-07-22] 승인 대기중 신청
-    const hist: MyBookLoan[] = []
+  const { activeLoans, scheduledLoans, historyLoans, summary } = useMemo(() => {
+    const act:   MyBookLoan[] = []
+    const sched: MyBookLoan[] = []  // ← [2026-07-21] 대여 예정(시작 전 예약)
+    const hist:  MyBookLoan[] = []
     let dueSoon = 0, overdue = 0
 
     for (const l of loans) {
       const s = loanDisplayStatus(l)
-      // ← [2026-07-22] pending 은 별도 그룹, rejected/cancelled 는 이력으로
-      if (s === 'pending') { pend.push(l); continue }
-      if (s === 'returned' || s === 'lost' || s === 'rejected' || s === 'cancelled') {
+      // ← [2026-07-21] 승인 폐지. 'scheduled'(예약)가 pending 자리를 대체한다.
+      //   pending/rejected 분기는 지우지 않는다 — 신규 생성은 없지만 과거 이력
+      //   행이 남아 있고, 지우면 그 행들이 어느 그룹에도 안 잡혀 화면에서 사라진다.
+      if (s === 'scheduled') { sched.push(l); continue }
+      if (s === 'returned' || s === 'lost' ||
+          s === 'rejected' || s === 'cancelled' || s === 'pending') {
         hist.push(l); continue
       }
       act.push(l)
@@ -78,28 +82,29 @@ export function MyBookLoans({ authUserId, showToast, isMobile = false }: Props) 
       if (s === 'overdue')  overdue++
     }
     return {
-      activeLoans:  act,
-      pendingLoans: pend,
-      historyLoans: hist,
-      summary: { total: act.length, dueSoon, overdue, pending: pend.length },
+      activeLoans:    act,
+      scheduledLoans: sched,
+      historyLoans:   hist,
+      summary: { total: act.length, dueSoon, overdue, scheduled: sched.length },
     }
   }, [loans])
 
-  // ── 신청 취소 (← [2026-07-22]) ────────────────────────────────────────────
-  //   pending 만 취소 가능. 서버 RPC(cancel_book_request)가 본인/상태를 재검증한다.
-  const doCancelRequest = async (loan: MyBookLoan) => {
+  // ── 예약 취소 (← [2026-07-21]) ────────────────────────────────────────────
+  //   시작 전 예약만 취소 가능. 서버 RPC(cancel_book_checkout)가 본인·상태·
+  //   시작 여부(ALREADY_STARTED)를 재검증한다. 화면 판정은 UX 용이다.
+  const doCancelReservation = async (loan: MyBookLoan) => {
     setExtendingId(loan.id)
     try {
-      const res = await cancelBookRequest(loan.id)
+      const res = await cancelBookCheckout(loan.id)
       if (!res.ok) {
         showToast(checkoutErrorMessage(res.code ?? 'UNKNOWN', res.detail))
         await load()
         return
       }
-      showToast('신청을 취소했습니다')
+      showToast('예약을 취소했습니다')
       await load()
     } catch (e: any) {
-      showToast(e?.message ?? '신청 취소에 실패했습니다')
+      showToast(e?.message ?? '예약 취소에 실패했습니다')
     } finally {
       setExtendingId(null)
     }
@@ -183,28 +188,29 @@ export function MyBookLoans({ authUserId, showToast, isMobile = false }: Props) 
       {/* ── 요약 카드 (F1) ─────────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <SummaryCard label="대여중"   value={summary.total}   color="#1D4ED8" />
-        <SummaryCard label="승인 대기" value={summary.pending} color="#B45309" />{/* ← [2026-07-22] */}
+        <SummaryCard label="대여 예정" value={summary.scheduled} color="#4338CA" />{/* ← [2026-07-21] */}
         <SummaryCard label="반납임박" value={summary.dueSoon} color="#C2410C" />
         <SummaryCard label="연체"     value={summary.overdue} color="#DC2626" />
       </div>
 
-      {/* ── 승인 대기중 신청 (← [2026-07-22]) ───────────────────────────── */}
-      {pendingLoans.length > 0 && (
+      {/* ── 대여 예정 (← [2026-07-21] 예약) ─────────────────────────────── */}
+      {scheduledLoans.length > 0 && (
         <section>
-          <SectionTitle>승인 대기중 <Count n={pendingLoans.length} /></SectionTitle>
+          <SectionTitle>대여 예정 <Count n={scheduledLoans.length} /></SectionTitle>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {pendingLoans.map(loan => (
-              <PendingRequestCard
+            {scheduledLoans.map(loan => (
+              <ScheduledLoanCard
                 key={loan.id}
                 loan={loan}
                 isMobile={isMobile}
                 busy={extendingId === loan.id}
-                onCancel={() => doCancelRequest(loan)}
+                canCancel={canCancelReservation(loan)}
+                onCancel={() => doCancelReservation(loan)}
               />
             ))}
           </div>
           <div style={{ marginTop: 8, fontSize: 12, color: '#94A3B8', lineHeight: 1.6 }}>
-            관리자 승인 후 대여가 확정됩니다. 반납기한은 승인 시점 기준으로 다시 계산됩니다.
+            대여 시작일 아침에 알림을 보내드립니다. 시작 전까지는 취소할 수 있습니다.
           </div>
         </section>
       )}
@@ -366,15 +372,17 @@ function ActiveLoanCard({ loan, isMobile, extending, onExtendClick }: {
   )
 }
 
-/** 승인 대기중 신청 카드 (← [2026-07-22]) */
-function PendingRequestCard({ loan, isMobile, busy, onCancel }: {
-  loan: MyBookLoan; isMobile: boolean; busy: boolean; onCancel: () => void
+/** 대여 예정(시작 전 예약) 카드 (← [2026-07-21]) */
+function ScheduledLoanCard({ loan, isMobile, busy, canCancel, onCancel }: {
+  loan: MyBookLoan; isMobile: boolean; busy: boolean
+  canCancel: boolean; onCancel: () => void
 }) {
-  const style = loanStatusStyle('pending')
-  const reqAt = loan.requested_at ? fmtLoanDate(loan.requested_at) : null
+  const style   = loanStatusStyle('scheduled')
+  const startAt = loan.checkout_at ? fmtDueShortKo(loan.checkout_at) : null
+  const dueAt   = loan.due_at      ? fmtDueShortKo(loan.due_at)      : null
   return (
-    <div style={{ display: 'flex', gap: 12, padding: 12, background: '#FFFDF7',
-      border: '1px solid #FDE68A', borderRadius: 14,
+    <div style={{ display: 'flex', gap: 12, padding: 12, background: '#F8FAFF',
+      border: '1px solid #C7D2FE', borderRadius: 14,
       alignItems: isMobile ? 'flex-start' : 'center' }}>
       <div style={{ width: 48, height: 66, flexShrink: 0, borderRadius: 6, overflow: 'hidden',
         background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -392,19 +400,24 @@ function PendingRequestCard({ loan, isMobile, busy, onCancel }: {
         <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>
           {[loan.book?.author, loan.book?.publisher].filter(Boolean).join(' · ') || '—'}
         </div>
-        {reqAt && (
-          <div style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>신청 {reqAt}</div>
+        {startAt && (
+          <div style={{ fontSize: 12, color: '#4338CA', marginTop: 4, fontWeight: 600 }}>
+            {startAt} 대여 시작{dueAt ? ` · ${dueAt} 반납` : ''}
+          </div>
         )}
       </div>
-      <button
-        onClick={onCancel}
-        disabled={busy}
-        style={{
-          flexShrink: 0, padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
-          border: '1px solid #E2E8F0', background: '#fff', color: '#64748B',
-          cursor: busy ? 'default' : 'pointer', minWidth: 92,
-        }}
-      >{busy ? '처리중...' : '신청 취소'}</button>
+      {/* 시작일이 지나면 취소가 아니라 반납 경로다. 서버도 ALREADY_STARTED 로 막는다. */}
+      {canCancel && (
+        <button
+          onClick={onCancel}
+          disabled={busy}
+          style={{
+            flexShrink: 0, padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: '1px solid #E2E8F0', background: '#fff', color: '#64748B',
+            cursor: busy ? 'default' : 'pointer', minWidth: 92,
+          }}
+        >{busy ? '처리중...' : '예약 취소'}</button>
+      )}
     </div>
   )
 }

@@ -123,8 +123,72 @@ Deno.serve(async (req) => {
   const todayKST = kstDateStr(nowMs)
 
   try {
-    // ── 대여중(active) 건 전체 조회 ─────────────────────────────────────────
-    //   연체 건도 status='active' 로 남아 있으므로(자동 전환 배치 없음) 함께 조회.
+    // ══════════════════════════════════════════════════════════════════════
+    // [0] 대여 시작일 도래 처리 (← [2026-07-21] 예약 기능 도입)
+    //
+    //   start_due_book_checkouts() 가 두 가지를 한다.
+    //     ① 시작일이 지난 예약의 books.status 를 'borrowed' 로 전환
+    //     ② 아직 시작 알림을 안 보낸 건의 목록 반환
+    //
+    //   전환과 "발송 완료 마킹"을 분리한 이유: 알림 발송이 실패했는데
+    //   notified_started 가 먼저 찍히면 그 사용자는 영구히 시작 알림을 못 받는다.
+    //   발송에 성공한 id 만 모아 마지막에 mark_book_start_notified 로 기록한다.
+    //
+    //   이 블록이 실패해도 아래 반납 알림은 계속 진행한다 — 둘은 독립 기능이고,
+    //   시작 알림 하나 때문에 연체 알림 전체가 멈추면 피해가 더 크다.
+    // ══════════════════════════════════════════════════════════════════════
+    let startedSent = 0
+    const startedResults: any[] = []
+    try {
+      const { data: startRows, error: startErr } =
+        await supabase.rpc('start_due_book_checkouts')
+
+      if (startErr) throw new Error(`시작일 배치 실패: ${startErr.message}`)
+
+      const okIds: string[] = []
+      for (const sr of (startRows ?? [])) {
+        const { error: e } = await supabase.functions.invoke('send-notification', {
+          body: {
+            type: 'book_started',
+            booking: {
+              id:           sr.checkout_id,
+              title:        sr.book_title ?? '(제목 없음)',
+              user_id:      sr.user_id,
+              book_title:   sr.book_title ?? '(제목 없음)',
+              due_at:       sr.due_at,
+              due_date_kst: kstDateStr(sr.due_at),
+            },
+          },
+        })
+        if (e) {
+          startedResults.push({ id: sr.checkout_id, type: 'book_started', status: 'send_failed', error: e.message })
+          continue
+        }
+        okIds.push(sr.checkout_id)
+        startedSent++
+        startedResults.push({ id: sr.checkout_id, type: 'book_started', status: 'sent' })
+      }
+
+      if (okIds.length > 0) {
+        const { error: markErr } =
+          await supabase.rpc('mark_book_start_notified', { p_checkout_ids: okIds })
+        // 마킹 실패는 다음 실행에서 재발송으로 이어진다(중복 발송).
+        // 조용히 넘기지 않고 로그를 남겨 추적 가능하게 한다.
+        if (markErr) console.error('[book-due-reminder] 시작 알림 마킹 실패:', markErr.message)
+      }
+    } catch (e) {
+      console.error('[book-due-reminder] 시작일 처리 오류:', e)
+      startedResults.push({ status: 'batch_failed', error: String((e as any)?.message ?? e) })
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // [1] 반납 알림 (기존)
+    // ══════════════════════════════════════════════════════════════════════
+    //   ← [2026-07-21] checkout_at 조건 추가.
+    //     예약(미래 시작) 건도 status='active' 라 이 질의에 걸린다. 지금은
+    //     예약 최대 3일 + 대여 7일이라 dDiff 가 최소 7이어서 우연히 무해하지만,
+    //     상수가 바뀌면 "아직 받지도 않은 책의 반납 알림"이 나간다.
+    //     시작하지 않은 대여는 반납 알림 대상이 아니라는 것을 명시한다.
     const { data: rows, error } = await supabase
       .from('book_checkouts')
       .select(`
@@ -133,11 +197,15 @@ Deno.serve(async (req) => {
         books ( title, author )
       `)
       .eq('status', 'active')
+      .lte('checkout_at', new Date(nowMs).toISOString())
 
     if (error) throw new Error(`대여 목록 조회 실패: ${error.message}`)
 
     if (!rows || rows.length === 0) {
-      return json({ success: true, message: '대여중 도서 없음', date: todayKST, sent: 0 })
+      return json({
+        success: true, message: '반납 알림 대상 없음', date: todayKST,
+        sent: 0, startedSent, startedResults,
+      })
     }
 
     let sent = 0, skipped = 0
@@ -209,9 +277,12 @@ Deno.serve(async (req) => {
       results.push({ id: r.id, type, status: 'sent', dDiff: diff })
     }
 
-    console.log(`[book-due-reminder] ${todayKST} KST 09:00 — 발송 ${sent}건 / 스킵 ${skipped}건`)
+    console.log(
+      `[book-due-reminder] ${todayKST} KST 09:00 — ` +
+      `반납알림 ${sent}건 / 스킵 ${skipped}건 / 대여시작 ${startedSent}건`,
+    )
 
-    return json({ success: true, date: todayKST, sent, skipped, results })
+    return json({ success: true, date: todayKST, sent, skipped, results, startedSent, startedResults })
 
   } catch (e) {
     console.error('[book-due-reminder] 오류:', e)

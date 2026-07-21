@@ -1718,6 +1718,10 @@ function parseCheckoutError(message: string): { code: CheckoutErrorCode; detail?
     'NOTES_TOO_LONG', 'REASON_TOO_LONG', 'LIMIT_EXCEEDED', 'ALREADY_REQUESTED',
     'BOOK_NOT_AVAILABLE', 'BOOK_NOT_FOUND', 'REQUEST_NOT_FOUND', 'NOT_PENDING',
     'CHECKOUT_AT_OUT_OF_RANGE',   // ← [2026-07-20] 대여일 허용 범위 초과
+    // ← [2026-07-21] 자가 대여/예약. includes 매칭이므로 접두사가 겹치는 코드를
+    //   추가할 때는 긴 쪽을 앞에 둘 것 (OVERDUE_TOO_LONG 사례와 동일한 함정).
+    'CHECKOUT_AT_PAST', 'RESERVE_TOO_FAR', 'PERIOD_CONFLICT', 'ALREADY_STARTED',
+    'CHECKOUT_NOT_FOUND', 'NOT_ACTIVE',
   ]
   const hit = codes.find(c => message.includes(c))
   if (!hit) return { code: 'UNKNOWN' }
@@ -1730,18 +1734,32 @@ function parseCheckoutError(message: string): { code: CheckoutErrorCode; detail?
 export function checkoutErrorMessage(code: CheckoutErrorCode, detail?: string): string {
   switch (code) {
     case 'NOT_AUTHENTICATED':  return '로그인이 필요합니다'
-    case 'NOT_ADMIN':          return '대여 등록/승인 권한이 없습니다'
-    case 'NOT_OWNER':          return '본인 신청만 취소할 수 있습니다'
+    case 'NOT_ADMIN':          return '대여 등록 권한이 없습니다'
+    case 'NOT_OWNER':          return '본인 예약만 취소할 수 있습니다'
     case 'NO_BORROWER':        return '대여자를 선택해주세요'
     case 'NO_BOOKS':           return '도서를 선택해주세요'
     case 'NOTES_TOO_LONG':     return '메모는 100자까지 입력할 수 있습니다'
     case 'CHECKOUT_AT_OUT_OF_RANGE':
       return `대여일은 오늘 기준 ${detail ?? '365'}일 이내로만 지정할 수 있습니다`
-    case 'REASON_TOO_LONG':    return '거절 사유는 200자까지 입력할 수 있습니다'
-    case 'ALREADY_REQUESTED':  return '이미 신청한 도서입니다'
+    case 'REASON_TOO_LONG':    return '사유는 200자까지 입력할 수 있습니다'
+    case 'ALREADY_REQUESTED':  return '이미 대여 중인 도서입니다'
     case 'BOOK_NOT_FOUND':     return '도서 정보를 찾을 수 없습니다'
-    case 'REQUEST_NOT_FOUND':  return '신청 정보를 찾을 수 없습니다'
-    case 'NOT_PENDING':        return '이미 처리된 신청입니다'
+    case 'REQUEST_NOT_FOUND':  return '대여 정보를 찾을 수 없습니다'
+    case 'NOT_PENDING':        return '이미 처리된 건입니다'
+    // ── [2026-07-21] 자가 대여 / 예약 ───────────────────────────────────
+    case 'CHECKOUT_AT_PAST':   return '지난 날짜로는 대여할 수 없습니다'
+    case 'RESERVE_TOO_FAR':
+      return `대여 시작일은 오늘부터 ${detail ?? '3'}일 이내로만 지정할 수 있습니다`
+    case 'PERIOD_CONFLICT': {
+      // detail = "id:제목"
+      const t = (detail ?? '').split(':').slice(1).join(':')
+      return t
+        ? `"${t}" 은(는) 그 기간에 이미 대여가 잡혀 있습니다. 다른 날짜를 선택해주세요`
+        : '해당 기간에 이미 대여가 잡혀 있습니다. 다른 날짜를 선택해주세요'
+    }
+    case 'ALREADY_STARTED':    return '이미 시작된 대여는 취소할 수 없습니다. 반납 처리해주세요'
+    case 'CHECKOUT_NOT_FOUND': return '대여 정보를 찾을 수 없습니다'
+    case 'NOT_ACTIVE':         return '이미 처리된 대여입니다. 목록을 새로고침해주세요'
     case 'LIMIT_EXCEEDED': {
       // detail = "현재:한도"
       const [held, max] = (detail ?? '').split(':')
@@ -1804,76 +1822,17 @@ export async function adminCheckoutBooks(
   return { ok: true, rows: (data ?? []).map(toLoanRow) }
 }
 
-/** [사용자] 도서 대여 신청 — pending 생성 */
-export async function requestBookCheckout(
-  bookIds: number[], notes?: string | null
-): Promise<CheckoutResult> {
-  const { data, error } = await supabase.rpc('request_book_checkout', {
-    p_book_ids: bookIds,
-    p_notes:    notes ?? null,
-  })
-  if (error) return { ok: false, ...parseCheckoutError(error.message ?? '') }
-  return { ok: true, rows: (data ?? []).map(toLoanRow) }
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// [2026-07-21] 승인 플로우 폐지 — 아래 5개 래퍼를 제거했다.
+//   requestBookCheckout / approveBookRequest / rejectBookRequest /
+//   cancelBookRequest / fetchPendingBookRequests
+//   (대응 RPC 는 20260724_book_self_checkout.sql 에서 DROP 됨)
+//
+// 대체 경로
+//   자가 대여  → userCheckoutBooksWithNotify
+//   예약 취소  → cancelBookCheckout
+// ─────────────────────────────────────────────────────────────────────────────
 
-/** [Admin] 신청 승인 — pending → active (승인 시점 기준 반납일 재계산) */
-export async function approveBookRequest(
-  checkoutId: string, adminName?: string | null
-): Promise<CheckoutResult> {
-  const { data, error } = await supabase.rpc('admin_approve_book_request', {
-    p_checkout_id: checkoutId,
-    p_admin_name:  adminName ?? null,
-  })
-  if (error) return { ok: false, ...parseCheckoutError(error.message ?? '') }
-  const r = Array.isArray(data) ? data[0] : data
-  return r ? { ok: true, rows: [toLoanRow(r)] } : { ok: false, code: 'UNKNOWN' }
-}
-
-/** [Admin] 신청 거절 — pending → rejected (사유 기록) */
-export async function rejectBookRequest(
-  checkoutId: string, reason: string, adminName?: string | null
-): Promise<CheckoutResult> {
-  const { data, error } = await supabase.rpc('admin_reject_book_request', {
-    p_checkout_id: checkoutId,
-    p_reason:      reason,
-    p_admin_name:  adminName ?? null,
-  })
-  if (error) return { ok: false, ...parseCheckoutError(error.message ?? '') }
-  const r = Array.isArray(data) ? data[0] : data
-  return r ? { ok: true, rows: [toLoanRow(r)] } : { ok: false, code: 'UNKNOWN' }
-}
-
-/** [본인] 신청 취소 — pending → cancelled */
-export async function cancelBookRequest(checkoutId: string): Promise<CheckoutResult> {
-  const { data, error } = await supabase.rpc('cancel_book_request', {
-    p_checkout_id: checkoutId,
-  })
-  if (error) return { ok: false, ...parseCheckoutError(error.message ?? '') }
-  const r = Array.isArray(data) ? data[0] : data
-  return r ? { ok: true, rows: [toLoanRow(r)] } : { ok: false, code: 'UNKNOWN' }
-}
-
-/** [Admin] 승인 대기 신청 목록 (선착순 정렬) */
-export async function fetchPendingBookRequests(): Promise<BookRequest[]> {
-  const { data, error } = await supabase
-    .from('book_checkouts')
-    .select(`
-      id, book_id, user_id, checkout_at, due_at, returned_at,
-      extension_count, last_extended_at, status, notes,
-      requested_at, processed_at, processed_by_name, reject_reason,
-      books ( title, author, publisher, cover_url )
-    `)
-    .eq('status', 'pending')
-    .order('requested_at', { ascending: true })   // 선착순
-
-  if (error) throw new Error(error.message)
-
-  return (data ?? []).map((r: any): BookRequest => ({
-    ...toLoanRow(r),
-    user_id: r.user_id,
-    book: Array.isArray(r.books) ? (r.books[0] ?? null) : (r.books ?? null),
-  } as BookRequest))
-}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // [2026-07-23] 어드민 '도서 관리' 탭 전용 API
@@ -2292,60 +2251,84 @@ export async function adminCheckoutBooksWithNotify(
   return { ...res, deferredNotify: false }
 }
 
-/** [Admin] 신청 승인 + book_request_approved 알림 */
-export async function approveBookRequestWithNotify(
-  req: BookRequest,
-  adminName?: string | null,
-): Promise<CheckoutResult> {
-  const res = await approveBookRequest(req.id, adminName)
-  if (!res.ok) return res
-
-  const due = res.rows?.[0]?.due_at
-  supabase.functions.invoke('send-notification', {
-    body: {
-      type: 'book_request_approved',
-      booking: {
-        id:           req.id,
-        title:        req.book?.title ?? '',
-        user_id:      req.user_id,
-        book_title:   req.book?.title ?? '',
-        due_at:       due,
-        due_date_kst: due ? String(due).slice(0, 10) : undefined,
-      },
-    },
-  }).catch(err => console.warn('[api] 승인 알림 발송 실패:', err))
-
-  return res
-}
-
-/** [Admin] 신청 거절 + book_request_rejected 알림 (사유 포함) */
-export async function rejectBookRequestWithNotify(
-  req: BookRequest,
-  reason: string,
-  adminName?: string | null,
-): Promise<CheckoutResult> {
-  const res = await rejectBookRequest(req.id, reason, adminName)
-  if (!res.ok) return res
-
-  supabase.functions.invoke('send-notification', {
-    body: {
-      type: 'book_request_rejected',
-      booking: {
-        id:            req.id,
-        title:         req.book?.title ?? '',
-        user_id:       req.user_id,
-        book_title:    req.book?.title ?? '',
-        reject_reason: reason,
-      },
-    },
-  }).catch(err => console.warn('[api] 거절 알림 발송 실패:', err))
-
-  return res
-}
-
 /** 오늘(KST) 'YYYY-MM-DD' — libraryListShared.todayKST 와 동일 규칙.
  *  lib 계층이 components 를 import 하면 순환이 생기므로 여기서 계산한다. */
 function todayKSTStr(): string {
   const d = new Date(Date.now() + 9 * 3600 * 1000)
   return d.toISOString().slice(0, 10)
+}
+
+
+// ─── [사용자] 자가 대여 / 예약 (← [2026-07-21]) ───────────────────────────────
+//
+// 승인 플로우가 폐지되면서 사용자가 직접 대여를 성립시킨다.
+// 서버 RPC(user_checkout_books)가 본인 확인·한도·예약 범위·기간 겹침을 모두
+// 검증하므로 화면은 입력만 모아 넘긴다. 화면에서 한 번 더 막는 것은 UX 용이며,
+// 최종 강제는 서버와 EXCLUDE 제약이 담당한다.
+
+/**
+ * 사용자 대여 — user_checkout_books RPC + book_borrowed 알림
+ *
+ * @param checkoutAt 'YYYY-MM-DD' (선택). 미지정 시 즉시 대여.
+ *   지정 시 그 날 정오(KST)로 고정해 보낸다 — 자정으로 보내면 타임존 경계에서
+ *   하루 밀리고, 정오면 ±12시간 여유가 생긴다(관리자 경로와 동일 규칙).
+ * @param titles 알림 문구용 도서 제목 (호출부가 books 배열에서 해석해 전달)
+ */
+export async function userCheckoutBooksWithNotify(
+  bookIds: number[],
+  notes: string,
+  titles: string[],
+  checkoutAt?: string,
+): Promise<AdminCheckoutOutcome> {
+  const checkoutIso = checkoutAt
+    ? new Date(`${checkoutAt}T12:00:00+09:00`).toISOString()
+    : null
+
+  const { data, error } = await supabase.rpc('user_checkout_books', {
+    p_book_ids:    bookIds,
+    p_notes:       notes || null,
+    p_checkout_at: checkoutIso,
+  })
+  if (error) return { ok: false, ...parseCheckoutError(error.message ?? '') }
+
+  const rows = (data ?? []).map(toLoanRow)
+  const label = joinBookTitles(titles)
+  const due   = rows[0]?.due_at
+
+  // 미래 시작 예약에는 '대여 확정' 알림을 보내지 않는다.
+  //   book_borrowed 는 "지금 대여되었습니다" 문구다. 시작일이 오면
+  //   book-due-reminder 배치가 book_started 알림을 보낸다.
+  const startsInFuture = !!checkoutAt && checkoutAt > todayKSTStr()
+  if (startsInFuture) return { ok: true, rows, deferredNotify: true }
+
+  supabase.functions.invoke('send-notification', {
+    body: {
+      type: 'book_borrowed',
+      booking: {
+        id:           rows[0]?.id ?? '',
+        title:        label,
+        user_id:      rows[0]?.user_id ?? '',
+        book_title:   label,
+        due_at:       due,
+        due_date_kst: due ? String(due).slice(0, 10) : undefined,
+      },
+    },
+  }).catch(err => console.warn('[api] 대여 알림 발송 실패:', err))
+
+  return { ok: true, rows, deferredNotify: false }
+}
+
+/**
+ * [본인] 예약 취소 — cancel_book_checkout RPC
+ *
+ * 시작 전 예약만 취소할 수 있다. 이미 시작된 대여는 책이 물리적으로 나가 있어
+ * 취소가 아니라 반납으로 처리해야 하며, 서버가 ALREADY_STARTED 로 막는다.
+ */
+export async function cancelBookCheckout(checkoutId: string): Promise<CheckoutResult> {
+  const { data, error } = await supabase.rpc('cancel_book_checkout', {
+    p_checkout_id: checkoutId,
+  })
+  if (error) return { ok: false, ...parseCheckoutError(error.message ?? '') }
+  const r = Array.isArray(data) ? data[0] : data
+  return r ? { ok: true, rows: [toLoanRow(r)] } : { ok: false, code: 'UNKNOWN' }
 }

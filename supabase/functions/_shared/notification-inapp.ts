@@ -131,6 +131,9 @@ export function buildInAppBody(booking: InAppBookingData, role: 'booker' | 'atte
   //     시점 표기를 기한 표기로 바꿨다. 프론트 utils/bookLoan.ts 와 동일 문구.
   //   날짜는 due_date_kst(이미 KST로 계산된 문자열)를 그대로 쓴다.
   //   여기서 재변환하면 타임존 이중 적용으로 날짜가 밀릴 수 있다.
+  //   ← [2026-07-21] book_started(대여 시작일 도래)도 book_title 을 실어 보내므로
+  //     이 분기를 그대로 탄다. 본문은 "도서명 · 반납기한 …" 으로 동일하고,
+  //     "오늘부터 시작" 문구는 제목/배너(notification-types)가 담당한다.
   if (booking.book_title) {
     const name = booking.book_title
     const due  = booking.due_date_kst ?? ''

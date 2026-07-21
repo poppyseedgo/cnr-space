@@ -25,6 +25,13 @@ export const EXTEND_DAYS = 7
 export const MAX_EXTENSION = 1
 
 /**
+ * 예약 가능 범위 — 오늘(KST) 기준 며칠 뒤까지 대여 시작일을 지정할 수 있는가.
+ * ← [2026-07-21] 서버 user_checkout_books 의 c_reserve_days 와 반드시 일치.
+ *   여기만 바꾸면 화면에서는 고를 수 있는데 저장만 실패한다.
+ */
+export const RESERVE_MAX_DAYS = 3
+
+/**
  * 연체 상태에서 연장이 허용되는 최대 연체일수 (← [2026-07-20] 정책 변경)
  *
  * 정책: "연체 중에도 연장 가능. 단 연체일이 1회 연장 기일을 넘기면 불가"
@@ -58,14 +65,23 @@ export function isLoanOverdue(loan: MyBookLoan, now: Date = new Date()): boolean
   return loan.status === 'active' && daysUntilDue(loan.due_at, now) < 0
 }
 
-/** 승인 대기중인 신청인가 (← [2026-07-22]) */
-export function isPendingRequest(loan: MyBookLoan): boolean {
-  return loan.status === 'pending'
+/**
+ * 아직 시작하지 않은 예약인가 (← [2026-07-21])
+ *   DB status 는 'active' 지만 checkout_at 이 미래인 건.
+ *   승인 대기(pending)를 대체하는 개념이다.
+ */
+export function isScheduledLoan(loan: MyBookLoan, now: Date = new Date()): boolean {
+  return loan.status === 'active' && !!loan.checkout_at && new Date(loan.checkout_at) > now
 }
 
-/** 신청 취소 가능 여부 — 본인의 pending 만 (← [2026-07-22]) */
-export function canCancelRequest(loan: MyBookLoan): boolean {
-  return loan.status === 'pending'
+/**
+ * 예약 취소 가능 여부 (← [2026-07-21])
+ *   시작 전 본인 예약만. 이미 시작된 대여는 책이 나가 있으므로 취소가 아니라
+ *   반납으로 처리해야 한다 — 서버 cancel_book_checkout 의 ALREADY_STARTED
+ *   검증과 동일 조건이다.
+ */
+export function canCancelReservation(loan: MyBookLoan, now: Date = new Date()): boolean {
+  return isScheduledLoan(loan, now)
 }
 
 /**
@@ -119,7 +135,7 @@ export function canExtend(loan: MyBookLoan, now: Date = new Date()): boolean {
 export function extendBlockedReason(loan: MyBookLoan, now: Date = new Date()): string | null {
   if (loan.status === 'pending')               return '승인 대기중'   // ← [2026-07-22]
   if (loan.status === 'rejected')              return '거절됨'        // ← [2026-07-22]
-  if (loan.status === 'cancelled')             return '신청취소'      // ← [2026-07-22]
+  if (loan.status === 'cancelled')             return '예약 취소'
   if (loan.status === 'returned')              return '반납완료'
   if (loan.status === 'lost')                  return '분실'
   if (loan.status !== 'active')                return '연장 불가'
@@ -212,10 +228,12 @@ export function previewExtendedDue(dueAt: string): string {
 /** 표시 상태별 뱃지 색상/라벨 (기존 LibraryPage 토큰 체계와 동일 계열) */
 export function loanStatusStyle(s: LoanDisplayStatus): { bg: string; color: string; label: string } {
   switch (s) {
-    case 'pending':   return { bg: '#FEF3C7', color: '#B45309', label: '승인 대기중' }   // ← [2026-07-22]
-    case 'rejected':  return { bg: '#FEF2F2', color: '#DC2626', label: '거절됨' }        // ← [2026-07-22]
-    case 'cancelled': return { bg: '#F1F5F9', color: '#64748B', label: '신청취소' }      // ← [2026-07-22]
-    case 'scheduled': return { bg: '#F1F5F9', color: '#475569', label: '대여 예정' }
+    // ← [2026-07-21] pending/rejected 는 폐지된 승인 플로우의 과거 이력 전용
+    case 'pending':   return { bg: '#FEF3C7', color: '#B45309', label: '승인 대기중' }
+    case 'rejected':  return { bg: '#FEF2F2', color: '#DC2626', label: '거절됨' }
+    case 'cancelled': return { bg: '#F1F5F9', color: '#64748B', label: '예약 취소' }
+    // 예약(미래 시작)의 정식 표시 상태 — 승인 대기 자리를 대체한다
+    case 'scheduled': return { bg: '#EEF2FF', color: '#4338CA', label: '대여 예정' }
     case 'active':   return { bg: '#EFF6FF', color: '#1D4ED8', label: '대여중' }
     case 'due_soon': return { bg: '#FFF7ED', color: '#C2410C', label: '반납임박' }
     case 'overdue':  return { bg: '#FEF2F2', color: '#DC2626', label: '연체중' }

@@ -30,11 +30,13 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
-// ← [2026-07-22] 대여 등록/신청/승인 — 모든 상태 전이는 RPC 경유
+// 모든 상태 전이는 RPC 경유
 import {
-  requestBookCheckout, fetchPendingBookRequests, checkoutErrorMessage,
+  checkoutErrorMessage,
+  // ← [2026-07-21] 승인 폐지. 사용자도 RPC 로 즉시 대여한다.
+  userCheckoutBooksWithNotify,
   // ← [2026-07-23] RPC + 알림 발송을 묶은 래퍼 (LibraryPage / BookAdminPanel 공용)
-  adminCheckoutBooksWithNotify, approveBookRequestWithNotify, rejectBookRequestWithNotify,
+  adminCheckoutBooksWithNotify,
   // ← [2026-07-23] 반납/분실은 RPC 경유, 도서 마스터 저장 규칙은 api 로 일원화
   adminReturnBook, returnErrorMessage,
   persistBook, deleteBookRecord, importBookRows,
@@ -54,8 +56,8 @@ import { useBreakpoint } from '../hooks/useBreakpoint'
 import { NewCollectionSlider } from '../components/library/NewCollectionSlider'
 // ← [2026-07-21] 도서 상세 모달 — 그리드 카드/슬라이더 카드 공용 진입점
 import { BookDetailModal } from '../components/library/BookDetailModal'
-import { BookRequestModal }  from '../components/library/BookRequestModal'
-import { BookRequestPanel }  from '../components/library/BookRequestPanel'
+// ← [2026-07-21] 승인 폐지로 '대여 신청' → '대여하기'. 파일명도 의미에 맞게 변경.
+import { BookBorrowModal }  from '../components/library/BookBorrowModal'
 // ← [2026-07-23] 도서 등록/편집 폼 계열 — 어드민 '도서 관리' 탭과 공용.
 //   이 파일 안에 있던 BookEditModal / ImportModal / EditForm / 스타일 상수를
 //   bookFormShared.tsx 로 이동했다. 로직 변경 없음(위치 이동만).
@@ -64,7 +66,6 @@ import {
   OVERLAY_STYLE, MODAL_STYLE,
   type EditForm,
 } from '../components/library/bookFormShared'
-import type { BookRequest } from '../types'
 import type { AppUser, ToastType } from '../types'
 
 // ─── 로컬 타입 ────────────────────────────────────────────────────────────────
@@ -150,7 +151,7 @@ function isOverdue(dueAt: string): boolean {
 
 // ─── CheckoutModal 제거됨 [2026-07-22] ──────────────────────────────────────
 //   → src/components/library/BookCheckoutModal.tsx (Admin, 복수 도서 + RPC)
-//   → src/components/library/BookRequestModal.tsx  (사용자 신청)
+//   → src/components/library/BookBorrowModal.tsx   (사용자 자가 대여)
 
 
 
@@ -174,15 +175,13 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
 
   // ── Modal State ──
   const [checkoutModal,  setCheckoutModal]  = useState<Book | null>(null)
-  // ← [2026-07-22] Admin 대여 등록(책 미선택 진입) / 사용자 대여 신청 / 승인 대기
-  const [checkoutOpen,   setCheckoutOpen]   = useState(false)   // 헤더 진입(빈 상태)
-  const [requestModal,   setRequestModal]   = useState<Book | null>(null)
-  // ← [2026-07-20] Hero '대여 신청'(책 미선택 진입) — 모달에서 도서를 검색해 고른다
-  const [requestOpen,    setRequestOpen]    = useState(false)
-  const [pendingReqs,    setPendingReqs]    = useState<BookRequest[]>([])
-  const [reqLoading,     setReqLoading]     = useState(false)
-  const [reqBusyId,      setReqBusyId]      = useState<string | null>(null)
-  const [myHeldCount,    setMyHeldCount]    = useState(0)        // 본인 보유(active+pending)
+  // Admin 대여 등록 / 사용자 대여하기 — 책 미선택(헤더) 진입용 플래그
+  const [checkoutOpen,   setCheckoutOpen]   = useState(false)
+  const [borrowModal,    setBorrowModal]    = useState<Book | null>(null)
+  const [borrowOpen,     setBorrowOpen]     = useState(false)
+  // ← [2026-07-21] 본인 보유 권수. 승인 폐지로 pending 이 사라져 active 만 센다
+  //   (예약도 status='active' 라 자동 포함 — 서버 한도 산식과 동일)
+  const [myHeldCount,    setMyHeldCount]    = useState(0)
   const [heldCountByUser, setHeldCountByUser] = useState<Record<string, number>>({})
 
   // ← [2026-07-22] 로그인 사용자 정보 — 신청 모달 아바타 / 승인 처리자 이름 기록용
@@ -224,21 +223,23 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
         .order('sort_order')
       if (cErr) throw cErr
 
-      // 3. 대여기록 (active + pending)
-      //   ← [2026-07-22] 변경점 2가지
-      //     · pending 포함 — 1인 한도는 "대여중 + 신청대기" 합산이므로 카운트에 필요
-      //     · isAdmin 조건 제거 — 일반 사용자도 "본인" 보유 권수를 알아야 신청 한도를 계산할 수 있다.
-      //       RLS(book_checkouts_select_self_or_admin)가 비관리자에겐 본인 행만 반환하므로 안전하다.
+      // 3. 대여기록
+      //   ← [2026-07-21] 승인 폐지로 pending 조회 제거. active/overdue 가 곧 점유다.
+      //     예약(미래 시작)도 status='active' 이므로 같은 질의로 잡힌다.
+      //     RLS(book_checkouts_select_self_or_admin)가 비관리자에겐 본인 행만
+      //     반환하므로, 일반 사용자는 자기 보유 권수만 정확히 알게 된다.
       const { data: coData } = await supabase
         .from('book_checkouts')
         .select('id, book_id, user_id, checkout_at, due_at, returned_at, status, notes')
-        .in('status', ['active', 'pending'])
+        .in('status', ['active', 'overdue'])
       const allCheckouts = (coData ?? []) as BookCheckout[]
 
-      // 카드에 표시할 대여자 정보는 'active' 만 (pending 은 아직 대여가 아님)
-      const checkouts = allCheckouts.filter(c => c.status === 'active')
+      // 카드에 "지금 대여중"으로 표시할 건은 이미 시작된 것만.
+      // 미래 예약은 도서를 잠그지 않으므로 카드에 대여자를 띄우면 안 된다.
+      const nowMs = Date.now()
+      const checkouts = allCheckouts.filter(c => new Date(c.checkout_at).getTime() <= nowMs)
 
-      // 보유 권수 맵 (active + pending 합산)
+      // 보유 권수 맵 (예약 포함 — 서버 한도 산식과 동일)
       const heldMap: Record<string, number> = {}
       allCheckouts.forEach(c => { heldMap[c.user_id] = (heldMap[c.user_id] ?? 0) + 1 })
 
@@ -270,8 +271,6 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
   }
 
   useEffect(() => { load() }, [isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
-  // ← [2026-07-22] 관리자만 승인 대기 목록 조회
-  useEffect(() => { loadPendingRequests() }, [isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── 대여기록 맵 ───────────────────────────────────────────────────────────
   //   ← [2026-07-20] 선언 위치를 필터링 위로 올렸다.
@@ -391,86 +390,36 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
     }
   }
 
-  // ── [사용자] 대여 신청 — request_book_checkout RPC (pending 생성)
-  async function handleRequest(bookIds: number[], notes: string) {
+  // ── [사용자] 자가 대여 — user_checkout_books RPC (← [2026-07-21])
+  //   승인 절차가 없다. 서버가 본인·한도·예약범위(오늘~+3일)·기간 겹침을
+  //   모두 검증하고 즉시 대여를 성립시킨다.
+  async function handleUserBorrow(bookIds: number[], notes: string, checkoutAt?: string) {
     setActionLoading(true)
     try {
-      const res = await requestBookCheckout(bookIds, notes)
+      const titles = bookIds
+        .map(id => books.find(b => b.id === id)?.title)
+        .filter(Boolean) as string[]
+
+      const res = await userCheckoutBooksWithNotify(bookIds, notes, titles, checkoutAt)
       if (!res.ok) {
         showToast(checkoutErrorMessage(res.code ?? 'UNKNOWN', res.detail), 'error')
+        await load()
         return
       }
-      const title = books.find(b => b.id === bookIds[0])?.title ?? ''
 
-      // 관리자 전원에게 승인 요청 알림 (recipients='admins_only')
-      supabase.functions.invoke('send-notification', {
-        body: {
-          type: 'book_requested',
-          booking: {
-            id:         res.rows?.[0]?.id ?? '',
-            title,
-            user_id:    authUserId,
-            book_title: title,
-          },
-        },
-      }).catch(err => console.warn('[library] 신청 알림 발송 실패:', err))
-
-      showToast('대여 신청이 접수되었습니다. 관리자 승인 후 확정됩니다.', 'success')
-      setRequestModal(null)
+      showToast(
+        res.deferredNotify
+          ? `${checkoutAt}부터 대여 예정으로 등록했습니다`
+          : `대여 완료 (${bookIds.length}권)`,
+        'success',
+      )
+      setBorrowModal(null)
+      setBorrowOpen(false)
       await load()
     } catch (e: any) {
-      showToast(`대여 신청 실패: ${e.message}`, 'error')
+      showToast(`대여 실패: ${e.message}`, 'error')
     } finally {
       setActionLoading(false)
-    }
-  }
-
-  // ── [Admin] 승인 대기 목록 로드
-  async function loadPendingRequests() {
-    if (!isAdmin) return
-    setReqLoading(true)
-    try {
-      setPendingReqs(await fetchPendingBookRequests())
-    } catch {
-      /* 목록 실패는 화면 전체를 막지 않는다 */
-    } finally {
-      setReqLoading(false)
-    }
-  }
-
-  // ── [Admin] 신청 승인 — 승인 시점 기준으로 반납일이 재계산된다
-  async function handleApprove(req: BookRequest) {
-    setReqBusyId(req.id)
-    try {
-      // ← [2026-07-23] 승인 + 알림 발송을 api 래퍼로 위임 (어드민 탭과 공용)
-      const res = await approveBookRequestWithNotify(req, currentUserName)
-      if (!res.ok) {
-        showToast(checkoutErrorMessage(res.code ?? 'UNKNOWN', res.detail), 'error')
-        await loadPendingRequests(); await load()
-        return
-      }
-      showToast('대여 신청을 승인했습니다', 'success')
-      await loadPendingRequests(); await load()
-    } finally {
-      setReqBusyId(null)
-    }
-  }
-
-  // ── [Admin] 신청 거절 (사유 기록)
-  async function handleReject(req: BookRequest, reason: string) {
-    setReqBusyId(req.id)
-    try {
-      // ← [2026-07-23] 거절 + 알림 발송을 api 래퍼로 위임 (어드민 탭과 공용)
-      const res = await rejectBookRequestWithNotify(req, reason, currentUserName)
-      if (!res.ok) {
-        showToast(checkoutErrorMessage(res.code ?? 'UNKNOWN', res.detail), 'error')
-        await loadPendingRequests()
-        return
-      }
-      showToast('대여 신청을 거절했습니다', 'success')
-      await loadPendingRequests()
-    } finally {
-      setReqBusyId(null)
     }
   }
 
@@ -605,9 +554,9 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
             </div>
 
             {/* CTA (Figma 1339:1162 — gap 8)
-                ← [2026-07-20] 권한별 분기
-                  · 관리자   : 대여 등록 / 도서 추가 / 일괄 등록
-                  · 일반사용자: 대여 신청 1개만
+                ← [2026-07-21] 권한별 분기
+                  · 관리자   : 대여 등록(타인 지정) / 도서 추가 / 일괄 등록
+                  · 일반사용자: 대여하기 1개만 (승인 폐지 — 즉시 성립)
                 Figma 는 4개를 한 줄에 다 그려 두었지만 그건 두 역할의 합집합이다. */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {isAdmin ? (
@@ -617,7 +566,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
                   <HeroCta onClick={() => setImportModal(true)}>일괄 등록</HeroCta>
                 </>
               ) : (
-                <HeroCta primary onClick={() => setRequestOpen(true)}>대여 신청</HeroCta>
+                <HeroCta primary onClick={() => setBorrowOpen(true)}>대여하기</HeroCta>
               )}
             </div>
           </div>
@@ -752,21 +701,6 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
             ══════════════════════════════════════════════════════════════════ */}
         <main style={{ padding: `${LT.pagePad}px ${LT.pagePad}px 0` }}>
 
-          {/* 관리자 승인 대기 패널 (선착순) */}
-          {isAdmin && pendingReqs.length > 0 && (
-            <div style={{ marginBottom: LT.colGap }}>
-              <BookRequestPanel
-                requests={pendingReqs}
-                users={users}
-                loading={reqLoading}
-                busyId={reqBusyId}
-                onApprove={handleApprove}
-                onReject={handleReject}
-                onRefresh={loadPendingRequests}
-              />
-            </div>
-          )}
-
           {loading ? (
             <div style={{ padding: 60, textAlign: 'center', fontSize: 16, color: LT.metaDept }}>
               도서 목록 불러오는 중...
@@ -806,7 +740,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
                     borrower={borrower}
                     isAdmin={isAdmin}
                     isOverdueStatus={overdue}
-                    onCheckout={() => isAdmin ? setCheckoutModal(book) : setRequestModal(book)}
+                    onCheckout={() => isAdmin ? setCheckoutModal(book) : setBorrowModal(book)}
                     onReturn={() => { if (checkout) handleReturn(book, checkout) }}
                     onEdit={() => setEditModal({ book })}
                     onDelete={() => setDeleteConfirm(book)}
@@ -839,7 +773,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
             onCheckout={() => {
               const b = detailModal
               setDetailModal(null)
-              if (isAdmin) setCheckoutModal(b); else setRequestModal(b)
+              if (isAdmin) setCheckoutModal(b); else setBorrowModal(b)
             }}
             onReturn={() => {
               const b = detailModal
@@ -875,18 +809,18 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
         />
       )}
 
-      {/* ← [2026-07-22] 대여 신청 모달 (일반 사용자) */}
-      {!isAdmin && (requestModal || requestOpen) && (
-        <BookRequestModal
-          book={requestModal}
+      {/* ← [2026-07-21] 대여 모달 (일반 사용자) — 승인 없이 즉시 성립 */}
+      {!isAdmin && (borrowModal || borrowOpen) && (
+        <BookBorrowModal
+          book={borrowModal}
           books={books}
           me={me}
           heldCount={myHeldCount}
           maxBorrow={MAX_BORROW_PER_USER}
           borrowDays={BORROW_DAYS}
           loading={actionLoading}
-          onClose={() => { setRequestModal(null); setRequestOpen(false) }}
-          onSubmit={handleRequest}
+          onClose={() => { setBorrowModal(null); setBorrowOpen(false) }}
+          onSubmit={handleUserBorrow}
         />
       )}
 
