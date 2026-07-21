@@ -110,16 +110,31 @@ const EASING  = 'cubic-bezier(0.22, 0.61, 0.36, 1)'
 const FONT_R = 400
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 2. 아이콘 — Figma 1347:2082 / 1347:2085 (Material arrow_back_ios_new, 20×20)
+// 2. 아이콘 — Figma 1366:2286 arrow_back_ios_new (20×20)
 // ═══════════════════════════════════════════════════════════════════════════
 
-function ArrowIcon({ dir, size = NC.arrow }: { dir: 'prev' | 'next'; size?: number }) {
+/**
+ * ← [2026-07-21] 원본 SVG 적용 — 이전의 stroke 재현본을 교체했다.
+ *
+ *   원본은 fill path 이고 색은 #1C1B1F (Material 기본). stroke 로 흉내 낸
+ *   이전 버전은 굵기·꺾임 각도가 달라 Figma 와 눈으로 구분됐다.
+ *
+ *   원본에 있던 <mask> 는 20×20 전체를 덮는 사각형이라 시각적 효과가 없다
+ *   (클리핑되는 영역이 없음). DOM 노드만 늘어나므로 제거했다.
+ *
+ *   next 는 별도 에셋 대신 scaleX(-1) 로 좌우 반전한다. 같은 도형이므로
+ *   path 를 두 벌 두면 한쪽만 수정되는 사고가 난다.
+ */
+function ArrowIcon({ dir, size = NC.arrow, color = '#1C1B1F' }: {
+  dir: 'prev' | 'next'; size?: number; color?: string
+}) {
   return (
     <svg width={size} height={size} viewBox="0 0 20 20" fill="none"
       style={{ display: 'block', flexShrink: 0 }} aria-hidden>
       <path
-        d={dir === 'prev' ? 'M12.5 3.5L6 10l6.5 6.5' : 'M7.5 3.5L14 10l-6.5 6.5'}
-        stroke={LT.black} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+        d="M13.3333 17.5832L5.75 9.99984L13.3333 2.4165L14.0417 3.12484L7.16667 9.99984L14.0417 16.8748L13.3333 17.5832Z"
+        fill={color}
+        transform={dir === 'next' ? 'translate(20, 0) scale(-1, 1)' : undefined}
       />
     </svg>
   )
@@ -165,25 +180,55 @@ function usePageVisible(): boolean {
   return visible
 }
 
-/** 요소의 실제 폭(px). 슬라이드가 필요한지(항목이 넘치는지) 판단하는 데 쓴다. */
-function useElementWidth<T extends HTMLElement>(ref: React.RefObject<T | null>): number {
+/**
+ * 요소의 실제 폭(px). 슬라이드가 필요한지(항목이 넘치는지) 판단하는 데 쓴다.
+ *
+ * ← [2026-07-21] 근본 수정 — RefObject + useEffect([ref]) → **callback ref**
+ *
+ *   [증상] 자동 슬라이드 미작동 / 카운터·화살표 미표시 (셋 다 loop === false)
+ *
+ *   [원인] 이전 구현은 useEffect(deps: [ref]) 라 **마운트 시 1회만** 실행됐다.
+ *          그런데 LibraryPage 의 load() 는 비동기라 첫 렌더에서 books = [] 이고,
+ *          이 컴포넌트는 len === 0 이면 return null 한다 → 뷰포트 div 가 DOM 에
+ *          없다 → effect 가 ref.current === null 로 즉시 반환하고
+ *          **ResizeObserver 가 끝내 부착되지 않는다.**
+ *          이후 도서가 도착해 카드가 렌더돼도 effect 는 다시 돌지 않으므로
+ *          viewW 가 영원히 0 → loop = (viewW > 0 && ...) = false 로 고착.
+ *          카운터/화살표는 {loop && ...}, 자동 이동은 autoOn = loop && ... 이라
+ *          세 증상이 한 원인에서 나왔다.
+ *
+ *   [해법] 측정 시점을 "요소가 DOM 에 붙는 순간"에 결속한다.
+ *          callback ref 는 요소가 부착·해제될 때마다 React 가 호출하므로
+ *          조건부 렌더·비동기 데이터 도착 순서와 무관하게 항상 정확히 실행된다.
+ *          (len === 0 일 때 null 반환을 없애는 식의 우회는 원인을 안 없앤다 —
+ *           나중에 다른 조건부 렌더가 붙으면 같은 버그가 재발한다)
+ */
+function useMeasuredWidth<T extends HTMLElement>(): [(el: T | null) => void, number] {
   const [w, setW] = useState(0)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    // ResizeObserver 는 창 크기 변화뿐 아니라 사이드바 개폐 등 레이아웃 변화도 잡는다.
-    if (typeof ResizeObserver === 'undefined') {
-      setW(el.clientWidth)
-      return
-    }
+  const roRef = useRef<ResizeObserver | null>(null)
+
+  const setRef = useCallback((el: T | null) => {
+    // 이전 요소에 붙어 있던 관찰자는 반드시 끊는다(요소 교체 시 누수 방지)
+    roRef.current?.disconnect()
+    roRef.current = null
+
+    if (!el) return   // 언마운트 — 폭은 마지막 값을 유지한다(재부착 시 즉시 갱신됨)
+
+    setW(el.clientWidth)
+
+    // ResizeObserver 는 창 크기뿐 아니라 사이드바 개폐 등 레이아웃 변화도 잡는다.
+    if (typeof ResizeObserver === 'undefined') return
     const ro = new ResizeObserver(entries => {
       for (const e of entries) setW(e.contentRect.width)
     })
     ro.observe(el)
-    setW(el.clientWidth)
-    return () => ro.disconnect()
-  }, [ref])
-  return w
+    roRef.current = ro
+  }, [])
+
+  // 컴포넌트가 사라질 때의 최종 정리
+  useEffect(() => () => { roRef.current?.disconnect() }, [])
+
+  return [setRef, w]
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -276,9 +321,10 @@ export function NewCollectionSlider({
 
   const len = items.length
 
-  const viewportRef = useRef<HTMLDivElement | null>(null)
-  const trackRef    = useRef<HTMLDivElement | null>(null)
-  const viewW       = useElementWidth(viewportRef)
+  const trackRef = useRef<HTMLDivElement | null>(null)
+  //  ← [2026-07-21] callback ref — 뷰포트 div 가 DOM 에 붙는 즉시 폭을 잰다.
+  //     (len === 0 인 첫 렌더에서 null 을 반환해도 이후 부착 시점에 정상 측정)
+  const [setViewportRef, viewW] = useMeasuredWidth<HTMLDivElement>()
 
   const reduceMotion = usePrefersReducedMotion()
   const pageVisible  = usePageVisible()
@@ -416,7 +462,7 @@ export function NewCollectionSlider({
 
       {/* ── 뷰포트 / 트랙 ───────────────────────────────────────────────── */}
       <div
-        ref={viewportRef}
+        ref={setViewportRef}
         style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
         <div
           ref={trackRef}
