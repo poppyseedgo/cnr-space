@@ -36,6 +36,8 @@ import { BookCheckoutModal } from '../components/library/BookCheckoutModal'
 import {
   LT, SearchIcon, BooksLogoMark, BookGridCard, GenreChip, HeroCta, HeroStat,
   HERO_FONT_SB, isNewBook, todayKST,
+  // ← [2026-07-21] Figma 1366:2276 정렬순
+  BookSortRow, type BookSort,
 } from '../components/library/libraryListShared'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 // ← [2026-07-21] Figma 1347:1991 New Collection — 최근 3개월 입고 도서 자동 슬라이드
@@ -737,6 +739,11 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
   //  ← [2026-07-21] 도서 상세 모달. 그리드 카드 클릭과 New Collection 카드 클릭이
   //     같은 상태를 연다(모달이 두 벌로 갈리지 않도록).
   const [detailModal,    setDetailModal]    = useState<Book | null>(null)
+  //  ← [2026-07-21] 목록 정렬 (Figma 1366:2276). 기본 '최신 순'.
+  const [sortBy,         setSortBy]         = useState<BookSort>('recent')
+  //  누적 대여 횟수 맵 — '인기 순' 전용. get_book_checkout_counts() RPC 로만 채운다.
+  //  (RLS 상 비관리자는 본인 대여 행만 볼 수 있어 클라이언트 집계가 불가능하다)
+  const [popularity,     setPopularity]     = useState<Record<number, number>>({})
 
   // ─── 데이터 로드 ───────────────────────────────────────────────────────────
 
@@ -775,7 +782,22 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
       const heldMap: Record<string, number> = {}
       allCheckouts.forEach(c => { heldMap[c.user_id] = (heldMap[c.user_id] ?? 0) + 1 })
 
+      // 4. 누적 대여 횟수 (인기 순 정렬용)
+      //   ← [2026-07-21] 왜 RPC 인가: book_checkouts SELECT 정책이 비관리자에게
+      //     본인 행만 돌려주므로 클라이언트 집계는 사용자마다 다른 순위를 만든다.
+      //     get_book_checkout_counts() 는 SECURITY DEFINER 로 집계값만 반환한다.
+      //     실패해도 목록 자체는 살아 있어야 하므로 throw 하지 않고 빈 맵으로 둔다
+      //     (인기 순 선택 시 전부 0 → 제목순으로 안정 정렬).
+      const { data: popData, error: pErr } = await supabase.rpc('get_book_checkout_counts')
+      const popMap: Record<number, number> = {}
+      if (!pErr) {
+        ;(popData ?? []).forEach((r: { book_id: number; checkout_count: number }) => {
+          popMap[r.book_id] = Number(r.checkout_count) || 0
+        })
+      }
+
       setBooks((booksData ?? []) as Book[])
+      setPopularity(popMap)
       setCategories((catData ?? []) as BookCategory[])
       setActiveCheckouts(checkouts)
       setHeldCountByUser(heldMap)
@@ -834,8 +856,39 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
         return !!c && isOverdue(c.due_at)
       })
     }
-    return list
-  }, [books, searchQ, filterCategory, filterStatus, checkoutMap])
+    // ── 정렬 (Figma 1366:2276) ───────────────────────────────────────────
+    //   ← [2026-07-21] filter 는 원본 배열을 참조로 넘길 수 있으므로
+    //     sort 전에 반드시 복사한다. 아래 filter 들을 하나도 안 거친 경우
+    //     list === books 라서 그대로 sort 하면 state 배열을 제자리에서
+    //     뒤집어 버린다(React 가 변경을 감지 못 해 화면이 안 바뀐다).
+    const sorted = [...list]
+    const byTitle = (a: Book, b: Book) => a.title.localeCompare(b.title, 'ko')
+    if (sortBy === 'title') {
+      sorted.sort(byTitle)
+    } else if (sortBy === 'recent') {
+      // 입고일 내림차순. 입고일 미입력은 항상 뒤로 (빈 문자열이 먼저 오면
+      // '최신'인 척 상단을 차지한다). 동률은 제목순으로 고정 — 안 그러면
+      // 렌더마다 순서가 흔들려 보인다.
+      sorted.sort((a, b) => {
+        const da = a.acquired_at ?? ''
+        const db = b.acquired_at ?? ''
+        if (!da && !db) return byTitle(a, b)
+        if (!da) return 1
+        if (!db) return -1
+        if (da !== db) return db.localeCompare(da)
+        return byTitle(a, b)
+      })
+    } else {
+      // 인기 순 = 누적 대여 횟수 내림차순. 기록이 없으면 0.
+      sorted.sort((a, b) => {
+        const ca = popularity[a.id] ?? 0
+        const cb = popularity[b.id] ?? 0
+        if (ca !== cb) return cb - ca
+        return byTitle(a, b)
+      })
+    }
+    return sorted
+  }, [books, searchQ, filterCategory, filterStatus, checkoutMap, sortBy, popularity])
 
   // ─── 대여 등록 ──────────────────────────────────────────────────────────────
 
@@ -1207,7 +1260,8 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
   }), [books, activeCheckouts, isAdmin])
 
   return (
-    <div style={{ minHeight: '100vh', background: LT.white, paddingBottom: 60 }}>
+    // ← [2026-07-21] 페이지 바탕 #F6F6F6 (Figma 1340:1342)
+    <div style={{ minHeight: '100vh', background: LT.pageBg, paddingBottom: 60 }}>
       <div style={{ maxWidth: LT.pageMax, margin: '0 auto' }}>
 
         {/* ══════════════════════════════════════════════════════════════════
@@ -1217,7 +1271,8 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
         <section style={{
           display: 'flex', flexDirection: 'column',
           gap: isMobile ? 24 : LT.heroGap,
-          padding: LT.pagePad, borderRadius: LT.heroRadius, background: LT.white,
+          // ← [2026-07-21] Hero 자체 흰 배경 제거 — 페이지 바탕(#F6F6F6)이 그대로 비친다
+          padding: LT.pagePad, borderRadius: LT.heroRadius, background: 'transparent',
         }}>
 
           {/* 로고 ↔ CTA 그룹 (Figma 1333:565 — space-between) */}
@@ -1343,10 +1398,12 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
           {/* ── 장르 칩 (Figma 1339:1306 GNB — Hero 하단 / py 24 / wrap gap 10)
               ← [2026-07-20] 좌측 사이드바(320px) → Hero 내부 전폭 가로 배열로 이동.
                 컨테이너는 Hero 의 flex-col 자식이라 gap 40 이 이미 적용되므로
-                Figma 의 py 24 는 아래쪽만 반영해 이중 여백을 피한다. */}
+                Figma 의 py 24 는 아래쪽만 반영해 이중 여백을 피한다.
+              ← [2026-07-21] 아래에 정렬순 행이 붙으면서 이 행의 하단 여백을
+                제거했다. 그대로 두면 칩↔정렬 사이만 24 로 벌어져 두 줄이
+                한 덩어리로 읽히지 않는다. 하단 여백은 정렬 행이 이어받는다. */}
           <div style={{
             width: '100%', display: 'flex', flexWrap: 'wrap', gap: 10,
-            paddingBottom: LT.chipRowPadY,
           }}>
             <GenreChip active={filterCategory === 'ALL'} onClick={() => setFilterCategory('ALL')}>
               전체 장르
@@ -1362,6 +1419,19 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
                 {c.name}
               </GenreChip>
             ))}
+          </div>
+
+          {/* ── 정렬순 (Figma 1366:2276) ─────────────────────────────────
+              장르 칩 바로 아래. 장르(무엇을 볼지)를 고른 다음 정렬(어떤 순서로
+              볼지)을 고르는 순서가 자연스러워 그리드 상단이 아니라 여기에 둔다.
+              Hero 의 flex-col gap 40 이 칩 행과의 간격을 만들어 버리므로
+              marginTop 을 음수로 상쇄해 두 줄을 한 덩어리로 붙인다. */}
+          <div style={{
+            width: '100%',
+            marginTop: isMobile ? -16 : -(LT.heroGap - 12),
+            paddingBottom: LT.chipRowPadY,
+          }}>
+            <BookSortRow value={sortBy} onChange={setSortBy} />
           </div>
         </section>
 

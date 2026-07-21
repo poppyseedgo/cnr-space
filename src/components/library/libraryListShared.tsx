@@ -106,6 +106,9 @@ export const LT = {
   ink:          '#1E1E1E',   // 제목·본문 (검정 아님에 주의)
   black:        '#000000',
   white:        '#FFFFFF',
+  //  ← [2026-07-21] Home list 배경 (Figma 1340:1342). 흰색이던 페이지 바탕을
+  //     회색으로 내려 카드 표지가 바탕에 파묻히지 않게 한다.
+  pageBg:       '#F6F6F6',
 
   badgeNew:     '#78FF4F',   // "N월 신규 도서"
   badgeAvail:   '#ACF0FF',   // 대여가능
@@ -823,3 +826,74 @@ export function HeroStat({
 }
 
 export const HERO_FONT_SB = FONT_SB
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 7. 정렬순 — Figma 1366:2276 "정렬순"
+//     p4 / gap 8 / 항목 gap 8 / 사각 14×14 border 1px #000 (선택 시 fill #000)
+//     라벨 14px Regular #111 lh 1.4
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 정렬 기준.
+ *   recent  — 최신 순  : 입고일(acquired_at) 내림차순
+ *   title   — 가나다 순: 제목 한국어 로케일 정렬
+ *   popular — 인기 순  : 누적 대여 횟수 내림차순
+ *
+ * ← [2026-07-21] 문자열 리터럴을 여기 한 곳에만 둔다.
+ *   LibraryPage 의 state 타입과 라벨 정의가 따로 놀면 값을 하나 추가할 때
+ *   한쪽만 고쳐 조용히 어긋난다.
+ */
+export type BookSort = 'recent' | 'title' | 'popular'
+
+export const BOOK_SORT_OPTIONS: { value: BookSort; label: string }[] = [
+  { value: 'recent',  label: '최신 순'   },
+  { value: 'title',   label: '가나다 순' },
+  { value: 'popular', label: '인기 순'   },
+]
+
+/**
+ * Figma 는 체크박스 모양으로 그렸지만 동작은 단일 선택이다.
+ * → 시각은 Figma 그대로 두고 시맨틱만 radiogroup 으로 준다.
+ *   체크박스 role 을 쓰면 보조기기가 "여러 개 고를 수 있다"고 잘못 안내한다.
+ */
+export function BookSortRow({
+  value, onChange,
+}: { value: BookSort; onChange: (v: BookSort) => void }) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="도서 정렬 기준"
+      style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: 4, flexWrap: 'wrap' }}>
+      {BOOK_SORT_OPTIONS.map(opt => {
+        const active = value === opt.value
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(opt.value)}
+            style={{
+              display: 'flex', gap: 8, alignItems: 'center',
+              padding: 0, border: 'none', background: 'transparent',
+              cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+            }}>
+            <span style={{
+              width: 14, height: 14, flexShrink: 0, borderRadius: 0,
+              border: `1px solid ${LT.black}`,
+              background: active ? LT.black : 'transparent',
+              boxSizing: 'border-box',
+              transition: 'background 0.12s',
+            }} />
+            <span style={{
+              fontSize: 14, fontWeight: FONT_R, lineHeight: 1.4,
+              color: '#111', whiteSpace: 'nowrap',
+            }}>
+              {opt.label}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
