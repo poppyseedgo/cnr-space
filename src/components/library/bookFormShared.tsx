@@ -144,7 +144,14 @@ export function BookEditModal({
     publisher:   book?.publisher   ?? '',
     isbn:        book?.isbn        ?? '',
     category_id: book?.category_id ? String(book.category_id) : '',
-    acquired_at: book?.acquired_at ?? '',
+    // ← [2026-07-21 버그픽스] books.acquired_at 은 date 컬럼이라 'YYYY-MM-DD' 로
+    //   돌아오는데, 아래 입력은 <input type="month"> 라 'YYYY-MM' 만 유효값으로
+    //   인정한다. 형식이 맞지 않으면 브라우저가 값을 버리고 빈칸으로 렌더한다.
+    //   그 상태로 저장하면 form.acquired_at 이 '' → payload 가 null 이 되어
+    //   입고월이 조용히 삭제됐다(⭐NEW⭐ 라벨과 New Collection 슬라이더가
+    //   acquired_at 기준이라 함께 사라진다). 읽을 때 월까지만 잘라 준다.
+    //   저장 시 '-01' 을 붙이는 처리는 api.persistBook 에 이미 있다.
+    acquired_at: book?.acquired_at ? book.acquired_at.slice(0, 7) : '',
     is_new:      !!book?.new_until,
     new_until:   book?.new_until?.slice(0, 10) ?? '',
     status:      (book?.status === 'borrowed' ? 'available' : book?.status) ?? 'available',

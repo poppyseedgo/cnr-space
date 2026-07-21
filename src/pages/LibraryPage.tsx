@@ -47,6 +47,8 @@ import {
   // ← [2026-07-21] Figma 1366:2276 정렬순
   BookSortRow, type BookSort,
 } from '../components/library/libraryListShared'
+// ← [2026-07-21] 연체 판정 SSOT — 마이페이지·알림·어드민과 동일 기준 사용
+import { daysUntilDue } from '../utils/bookLoan'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 // ← [2026-07-21] Figma 1347:1991 New Collection — 최근 3개월 입고 도서 자동 슬라이드
 import { NewCollectionSlider } from '../components/library/NewCollectionSlider'
@@ -120,8 +122,24 @@ const BORROW_DAYS         = 7
 
 // ─── 유틸 ────────────────────────────────────────────────────────────────────
 
+/**
+ * 연체 여부 — 판정 SSOT 는 utils/bookLoan.ts 의 daysUntilDue 다.
+ *
+ * ← [2026-07-21 버그픽스] 기존 구현은 `new Date(dueAt) < new Date()` 로
+ *   **시각까지** 비교했다. 그런데 마이페이지·알림·어드민은 bookLoan 의
+ *   daysUntilDue(날짜 단위)를 쓴다. 두 기준이 달라 반납기한 당일에만
+ *   화면끼리 어긋났다.
+ *
+ *     반납기한 2026-07-23 12:00 인 대여 건
+ *       09:00 → 이 화면 정상 / 마이페이지 정상   (일치)
+ *       13:00 → 이 화면 "연체" / 마이페이지 정상 (불일치)
+ *
+ *   대여자는 "오늘까지 반납" 메일을 받았는데 도서관 화면에는 이미 연체로
+ *   찍히는 상태였다. 정책 문구가 "대여일 + 7일 **이내** 반납"이므로
+ *   시각 단위 판정 자체가 정책과 어긋난다 → 날짜 단위로 통일한다.
+ */
 function isOverdue(dueAt: string): boolean {
-  return new Date(dueAt) < new Date()
+  return daysUntilDue(dueAt) < 0
 }
 
 

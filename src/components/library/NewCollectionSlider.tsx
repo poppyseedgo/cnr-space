@@ -333,13 +333,24 @@ export function NewCollectionSlider({
   const [idx,  setIdx]  = useState(0)
   const [anim, setAnim] = useState(true)
 
+  // ── 드래그(grab) 상태 ─────────────────────────────────────────────────────
+  //   [2026-07-21] 마우스·터치·펜을 Pointer Events 하나로 처리한다.
+  //   mouse/touch 핸들러를 따로 달면 하이브리드 기기(터치 노트북)에서 두 번
+  //   발생해 이동량이 두 배가 된다.
+  const [dragPx,   setDragPx]   = useState(0)   // 손가락을 따라가는 실시간 오프셋
+  const [dragging, setDragging] = useState(false)
+  //   커밋 판정용 원본값 — 렌더와 무관하므로 ref 에 둔다(리렌더 유발 방지)
+  const dragRef = useRef<{ id: number; x0: number; y0: number; axis: 'none' | 'x' | 'y' } | null>(null)
+  //   드래그로 끝난 제스처인지 — 카드 onClick(상세 모달)이 같이 터지는 것을 막는다
+  const draggedRef = useRef(false)
+
   // ── 슬라이드가 필요한가 ───────────────────────────────────────────────────
   //   뷰포트에 전부 들어가면 움직일 이유가 없다(빈 공간이 흘러가는 것처럼 보인다).
   //   viewW 는 초기 렌더에서 0 이므로, 측정 전에는 이동하지 않는다.
   const loop = viewW > 0 && len * step - gap > viewW + 1
 
   // 자동 이동 활성 조건
-  const autoOn = loop && !hovered && pageVisible && !reduceMotion && anim
+  const autoOn = loop && !hovered && pageVisible && !reduceMotion && anim && !dragging
 
   // ── 이동 ──────────────────────────────────────────────────────────────────
   //   자동/수동이 같은 함수를 쓴다. anim=false(리셋 중)일 땐 입력을 무시해
@@ -385,8 +396,87 @@ export function NewCollectionSlider({
     if (e.target !== trackRef.current || e.propertyName !== 'transform') return
     if (idx < len) return
     setAnim(false)
-    setIdx(0)
+    // ← [2026-07-21] setIdx(0) → 모듈러. 화살표는 항상 1칸씩이라 idx 가 정확히
+    //   len 일 때만 도달했지만, 드래그는 한 번에 여러 칸을 넘길 수 있어
+    //   len+2 같은 값이 나온다. 그때 0 으로 되돌리면 위치가 튄다.
+    //   트랙이 2벌이므로 i 와 i%len 은 화면상 같은 카드다.
+    setIdx(i => i % len)
     requestAnimationFrame(() => requestAnimationFrame(() => setAnim(true)))
+  }
+
+  // ── 드래그(grab) 핸들러 ───────────────────────────────────────────────────
+  //
+  //   커밋 규칙: 이동 거리가 임계값을 넘으면 넘긴 칸 수만큼 이동하고,
+  //   못 넘기면 제자리로 되돌린다(스냅백).
+  //
+  //   임계값을 카드 폭의 1/3 로 두되 60px 을 상한으로 둔다. 데스크톱 카드는
+  //   폭이 커서 1/3 만 해도 100px 이 넘어 "끌었는데 안 넘어간다"는 느낌이 든다.
+  const DRAG_THRESHOLD = Math.min(step / 3, 60)
+
+  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (!loop || !anim) return
+    // 마우스는 주 버튼만 (우클릭·가운데클릭 제외)
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+
+    // idx 가 0 이면 왼쪽에 카드가 없어 오른쪽으로 끌 때 빈 여백이 드러난다.
+    // 트랙이 2벌이므로 len 위치는 0 위치와 화면상 완전히 동일하다.
+    // 시작 시점에 무애니메이션으로 옮겨두면 뒤로 끌기가 자연스럽게 성립한다.
+    if (idx === 0) {
+      setAnim(false)
+      setIdx(len)
+      requestAnimationFrame(() => requestAnimationFrame(() => setAnim(true)))
+    }
+
+    dragRef.current = { id: e.pointerId, x0: e.clientX, y0: e.clientY, axis: 'none' }
+    draggedRef.current = false
+    setDragging(true)
+    setDragPx(0)
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const d = dragRef.current
+    if (!d || d.id !== e.pointerId) return
+
+    const dx = e.clientX - d.x0
+    const dy = e.clientY - d.y0
+
+    // 축 잠금 — 세로로 시작한 제스처는 페이지 스크롤로 넘긴다.
+    //   touch-action: pan-y 로 브라우저가 세로 스크롤을 처리하지만,
+    //   대각선 제스처까지 가로로 가로채면 모바일에서 스크롤이 뻑뻑해진다.
+    if (d.axis === 'none') {
+      if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return   // 아직 방향 미확정
+      d.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y'
+      if (d.axis === 'y') { endDrag(e, true); return }
+    }
+
+    if (Math.abs(dx) > 4) draggedRef.current = true
+    setDragPx(dx)
+  }
+
+  /** 제스처 종료 — cancel=true 면 이동 없이 되돌린다 */
+  function endDrag(e: React.PointerEvent<HTMLDivElement>, cancel = false) {
+    const d = dragRef.current
+    if (!d || d.id !== e.pointerId) return
+    dragRef.current = null
+
+    try { e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* 이미 해제됨 */ }
+
+    const dx = cancel ? 0 : (e.clientX - d.x0)
+    let n = 0
+    if (dx <= -DRAG_THRESHOLD)      n =  Math.max(1, Math.round(-dx / step))   // 왼쪽으로 끌기 = 다음
+    else if (dx >= DRAG_THRESHOLD)  n = -Math.max(1, Math.round( dx / step))   // 오른쪽으로 끌기 = 이전
+
+    // 한 제스처가 전체 목록을 넘지 않게 막는다(트랙은 2벌뿐이라 넘으면 빈칸).
+    if (n >  len) n =  len
+    if (n < -len) n = -len
+
+    // dragging=false / dragPx=0 / idx 변경이 한 배치로 커밋된다.
+    // 이때 transition 이 다시 켜지므로 브라우저가 "현재 그려진 위치(드래그된
+    // 상태)"에서 목적지까지 애니메이션한다 — 별도 보간 코드가 필요 없다.
+    setDragging(false)
+    setDragPx(0)
+    if (n !== 0) setIdx(i => Math.max(0, i + n))
   }
 
   // ── 렌더 목록 ─────────────────────────────────────────────────────────────
@@ -463,15 +553,35 @@ export function NewCollectionSlider({
       {/* ── 뷰포트 / 트랙 ───────────────────────────────────────────────── */}
       <div
         ref={setViewportRef}
-        style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={e => endDrag(e)}
+        onPointerCancel={e => endDrag(e, true)}
+        // 드래그로 끝난 제스처는 카드 클릭(상세 모달)으로 이어지면 안 된다.
+        // 캡처 단계에서 한 번만 삼키고 플래그를 내린다.
+        onClickCapture={e => {
+          if (!draggedRef.current) return
+          e.preventDefault(); e.stopPropagation()
+          draggedRef.current = false
+        }}
+        style={{
+          flex: 1, minWidth: 0, overflow: 'hidden',
+          // 세로 스크롤은 브라우저에 맡기고 가로만 우리가 처리한다.
+          // 'none' 으로 두면 모바일에서 슬라이더 위를 지나갈 때 페이지가 안 움직인다.
+          touchAction: loop ? 'pan-y' : 'auto',
+          cursor: loop ? (dragging ? 'grabbing' : 'grab') : 'default',
+          // 끌 때 카드 제목이 파랗게 선택되는 것을 막는다
+          userSelect: dragging ? 'none' : undefined,
+        }}>
         <div
           ref={trackRef}
           onTransitionEnd={handleTransitionEnd}
           style={{
             display: 'flex', gap, alignItems: 'flex-start',
             // translate3d = GPU 합성 레이어. left/margin 애니메이션은 쓰지 않는다.
-            transform: `translate3d(${-idx * step}px, 0, 0)`,
-            transition: anim && !reduceMotion
+            // ← [2026-07-21] 드래그 오프셋(dragPx)을 더해 손가락을 그대로 따라간다.
+            transform: `translate3d(${-idx * step + dragPx}px, 0, 0)`,
+            transition: anim && !reduceMotion && !dragging
               ? `transform ${ANIM_MS}ms ${EASING}`
               : 'none',
             willChange: 'transform',
