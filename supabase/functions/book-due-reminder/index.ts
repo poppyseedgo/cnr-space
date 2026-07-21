@@ -182,6 +182,68 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════════════════
+    // [0-2] 연체 제재 만료 처리 (← [2026-07-21])
+    //
+    //   ends_at 이 지나면 제재는 자동으로 풀린다(book_penalty_state 가
+    //   ends_at > now() 만 유효로 보므로). 하지만 그 순간 도는 코드가 없어
+    //   사용자는 언제 풀렸는지 알 수 없다. 여기서 하루 한 번 통지한다.
+    //
+    //   [0] 블록과 같은 이유로 조회와 마킹을 분리한다 —
+    //   마킹이 먼저 찍히면 발송 실패 건은 영구 미통지가 된다.
+    //
+    //   still_blocked(다른 제재가 아직 남음)는 발송을 건너뛰고 마킹만 한다.
+    //   보내면 거짓말이 되고, 마킹을 안 하면 매일 다시 잡혀 배치가 헛돈다.
+    // ══════════════════════════════════════════════════════════════════════
+    let clearedSent = 0
+    const clearedResults: any[] = []
+    try {
+      const { data: expRows, error: expErr } =
+        await supabase.rpc('expire_book_penalties')
+
+      if (expErr) throw new Error(`제재 만료 조회 실패: ${expErr.message}`)
+
+      const markIds: string[] = []
+      for (const p of (expRows ?? [])) {
+        if (p.still_blocked) {
+          // 다른 제재가 남아 있다 → 알리지 않고 마킹만
+          markIds.push(p.penalty_id)
+          clearedResults.push({ id: p.penalty_id, status: 'skip_still_blocked' })
+          continue
+        }
+
+        const { error: e } = await supabase.functions.invoke('send-notification', {
+          body: {
+            type: 'book_penalty_cleared',
+            booking: {
+              id:           p.penalty_id,
+              title:        p.book_title ?? '도서 대여',
+              user_id:      p.user_id,
+              book_title:   p.book_title ?? '',
+              penalty_tier: p.tier,
+              // 해제 알림에는 until 을 싣지 않는다 — 이미 풀렸다
+            },
+          },
+        })
+        if (e) {
+          clearedResults.push({ id: p.penalty_id, status: 'send_failed', error: e.message })
+          continue
+        }
+        markIds.push(p.penalty_id)
+        clearedSent++
+        clearedResults.push({ id: p.penalty_id, status: 'sent' })
+      }
+
+      if (markIds.length > 0) {
+        const { error: markErr } = await supabase.rpc(
+          'mark_book_penalty_cleared_notified', { p_penalty_ids: markIds })
+        if (markErr) console.error('[book-due-reminder] 제재 해제 마킹 실패:', markErr.message)
+      }
+    } catch (e) {
+      console.error('[book-due-reminder] 제재 만료 처리 오류:', e)
+      clearedResults.push({ status: 'batch_failed', error: String((e as any)?.message ?? e) })
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
     // [1] 반납 알림 (기존)
     // ══════════════════════════════════════════════════════════════════════
     //   ← [2026-07-21] checkout_at 조건 추가.
@@ -204,7 +266,7 @@ Deno.serve(async (req) => {
     if (!rows || rows.length === 0) {
       return json({
         success: true, message: '반납 알림 대상 없음', date: todayKST,
-        sent: 0, startedSent, startedResults,
+        sent: 0, startedSent, startedResults, clearedSent, clearedResults,
       })
     }
 
@@ -279,10 +341,13 @@ Deno.serve(async (req) => {
 
     console.log(
       `[book-due-reminder] ${todayKST} KST 09:00 — ` +
-      `반납알림 ${sent}건 / 스킵 ${skipped}건 / 대여시작 ${startedSent}건`,
+      `반납알림 ${sent}건 / 스킵 ${skipped}건 / 대여시작 ${startedSent}건 / 제재해제 ${clearedSent}건`,
     )
 
-    return json({ success: true, date: todayKST, sent, skipped, results, startedSent, startedResults })
+    return json({
+      success: true, date: todayKST, sent, skipped, results,
+      startedSent, startedResults, clearedSent, clearedResults,
+    })
 
   } catch (e) {
     console.error('[book-due-reminder] 오류:', e)

@@ -33,6 +33,8 @@ import { supabase } from '../lib/supabase'
 // 모든 상태 전이는 RPC 경유
 import {
   checkoutErrorMessage,
+  // ← [2026-07-21] 연체 제재 — 대여 시도 전에 사유를 알려주기 위한 조회
+  fetchMyPenaltyState,
   // ← [2026-07-21] 승인 폐지. 사용자도 RPC 로 즉시 대여한다.
   userCheckoutBooksWithNotify,
   // ← [2026-07-23] RPC + 알림 발송을 묶은 래퍼 (LibraryPage / BookAdminPanel 공용)
@@ -51,6 +53,7 @@ import {
 } from '../components/library/libraryListShared'
 // ← [2026-07-21] 연체 판정 SSOT — 마이페이지·알림·어드민과 동일 기준 사용
 import { daysUntilDue } from '../utils/bookLoan'
+import type { BookPenaltyState } from '../types'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 // ← [2026-07-21] Figma 1347:1991 New Collection — 최근 3개월 입고 도서 자동 슬라이드
 import { NewCollectionSlider } from '../components/library/NewCollectionSlider'
@@ -182,6 +185,12 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
   // ← [2026-07-21] 본인 보유 권수. 승인 폐지로 pending 이 사라져 active 만 센다
   //   (예약도 status='active' 라 자동 포함 — 서버 한도 산식과 동일)
   const [myHeldCount,    setMyHeldCount]    = useState(0)
+  // ← [2026-07-21] 연체 제재 상태. 관리자도 본인 대여는 제한되지만,
+  //   관리자 대여 등록(타인 지정)은 대여자 기준으로 서버가 판정하므로
+  //   여기 값은 '본인이 빌릴 수 있는가' 에만 쓴다.
+  const [penalty, setPenalty] = useState<BookPenaltyState>({
+    blocked: false, tier: null, blockedUntil: null, overdueDays: 0, reason: null,
+  })
   const [heldCountByUser, setHeldCountByUser] = useState<Record<string, number>>({})
 
   // ← [2026-07-22] 로그인 사용자 정보 — 신청 모달 아바타 / 승인 처리자 이름 기록용
@@ -281,6 +290,18 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
     activeCheckouts.forEach(c => { m[c.book_id] = c })
     return m
   }, [activeCheckouts])
+
+  // ─── 내 대여 차단 상태 (← [2026-07-21]) ───────────────────────────────────
+  //   load() 안에 넣지 않은 이유: 도서 목록 로드 실패가 제재 조회를 막거나
+  //   그 반대가 되면 안 된다. 서로 독립적으로 실패할 수 있어야 한다.
+  useEffect(() => {
+    if (!authUserId) return
+    let alive = true
+    fetchMyPenaltyState()
+      .then(st => { if (alive) setPenalty(st) })
+      .catch(() => { /* 조회 실패 시 차단 아님으로 둔다 — 서버가 재검사한다 */ })
+    return () => { alive = false }
+  }, [authUserId, books])   // 반납/대여 후 load() 로 books 가 갱신되면 함께 재조회
 
   // ─── 연체 도서 id 집합 (← [2026-07-21] New Collection 슬라이더 뱃지용) ────
   //   연체는 books.status 로 표현되지 않고 대여기록의 due_at 으로만 판정된다.
@@ -606,7 +627,20 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
                   <HeroCta onClick={() => setImportModal(true)}>일괄 등록</HeroCta>
                 </>
               ) : (
-                <HeroCta primary onClick={() => setBorrowOpen(true)}>대여하기</HeroCta>
+                <HeroCta
+                  primary
+                  onClick={() => {
+                    // 제재 중이면 모달을 열지 않고 사유만 알린다.
+                    // 모달을 열어두고 확인 버튼만 막으면 도서를 고르고 나서야
+                    // 안 된다는 걸 알게 되어 헛수고를 시킨다.
+                    if (penalty.blocked) {
+                      showToast(penalty.reason ?? '연체 제재로 대여할 수 없습니다', 'error')
+                      return
+                    }
+                    setBorrowOpen(true)
+                  }}>
+                  {penalty.blocked ? '대여 제한' : '대여하기'}
+                </HeroCta>
               )}
             </div>
           </div>
@@ -781,6 +815,8 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
                     borrower={borrower}
                     isAdmin={isAdmin}
                     isOverdueStatus={overdue}
+                    penaltyBlocked={!isAdmin && penalty.blocked}
+                    penaltyReason={penalty.reason}
                     onCheckout={() => isAdmin ? setCheckoutModal(book) : setBorrowModal(book)}
                     onReturn={() => { if (checkout) handleReturn(book, checkout) }}
                     onEdit={() => setEditModal({ book })}
@@ -860,6 +896,8 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
           maxBorrow={MAX_BORROW_PER_USER}
           borrowDays={BORROW_DAYS}
           loading={actionLoading}
+          penaltyBlocked={penalty.blocked}
+          penaltyReason={penalty.reason}
           onClose={() => { setBorrowModal(null); setBorrowOpen(false) }}
           onSubmit={handleUserBorrow}
         />

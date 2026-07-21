@@ -50,6 +50,8 @@ export const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
   book_due_today:           "#EA580C",  // 반납 당일 — 주황
   book_overdue:             "#DC2626",  // 연체중 — 빨강
   book_started:             "#4338CA",  // 대여 시작(예약 도래) — 인디고 진하게 (← [2026-07-21])
+  book_penalty_applied:     "#DC2626",  // 연체 제재 확정 — 빨강 (← [2026-07-21])
+  book_penalty_cleared:     "#16A34A",  // 제재 해제 — 그린 (← [2026-07-21])
 
   // ── 대여 신청/승인 (← [2026-07-22]) ────────────────────────────────────
   // ← [2026-07-21] 승인 폐지로 신규 발송 없음. 과거 알림 이력 렌더링용으로 유지.

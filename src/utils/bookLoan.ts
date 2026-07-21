@@ -31,6 +31,62 @@ export const MAX_EXTENSION = 1
  */
 export const RESERVE_MAX_DAYS = 3
 
+// ─── 연체 패널티 (← [2026-07-21]) ───────────────────────────────────────────
+//
+// 제재는 반납기한(due_at)이 아니라 "최대 대여 가능 기한"부터 센다.
+// 한 권을 최대 14일(대여 7일 + 1회 연장 7일) 쓸 수 있는 것이 기존 정책이라,
+// 연장을 안 쓴 사람이 9일째 반납했다면 원래 쓸 수 있던 기간 안이다.
+//
+//   연장 미사용 → effective_due = due_at + EXTEND_DAYS
+//   연장 사용   → effective_due = due_at   (extend RPC 가 이미 +7일 해둠)
+//
+// 두 경로의 기준일이 같아지므로 "연장 버튼을 눌렀는지"로 제재가 갈리지 않는다.
+// ※ 서버 book_effective_due() 와 반드시 같은 식이어야 한다.
+
+/** 제재 발동 임계값(일). 서버 book_penalty_tier() 와 일치 */
+export const PENALTY_TIER_DAYS = { warn: 3, mid: 7, permanent: 14 } as const
+
+/** 제재 판정 기준일 */
+export function effectiveDueDate(dueAt: string, extensionCount: number): Date {
+  const d = new Date(dueAt)
+  if ((extensionCount ?? 0) === 0) d.setDate(d.getDate() + EXTEND_DAYS)
+  return d
+}
+
+/** effective_due 초과 일수 (KST 날짜 단위, 음수면 여유 있음) */
+export function penaltyOverdueDays(
+  dueAt: string, extensionCount: number, now: Date = new Date(),
+): number {
+  const eff = effectiveDueDate(dueAt, extensionCount)
+  const e0 = new Date(eff.getFullYear(), eff.getMonth(), eff.getDate())
+  const n0 = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  return Math.round((n0.getTime() - e0.getTime()) / 86400000)
+}
+
+/**
+ * 제재까지 남은 일수. 이미 제재 구간이면 0.
+ *
+ * 화면에 '연체중' 이 떠 있는데 제재는 아직 아닌 구간(due_at 초과 ~ 14일)이
+ * 존재한다. 그 구간에서 사용자가 "왜 연체인데 빌려지지?" / "언제부터 막히지?"
+ * 를 알 수 있어야 하므로 남은 일수를 노출한다.
+ */
+export function daysUntilPenalty(
+  dueAt: string, extensionCount: number, now: Date = new Date(),
+): number {
+  return Math.max(0, PENALTY_TIER_DAYS.warn - penaltyOverdueDays(dueAt, extensionCount, now))
+}
+
+/** 제재 등급 라벨 */
+export function penaltyTierLabel(tier: string | null | undefined): string {
+  switch (tier) {
+    case '7d':          return '7일 대여 제한'
+    case '30d':         return '30일 대여 제한'
+    case 'permanent':   return '영구 대여 제한'
+    case 'overdue_now': return '연체 중 대여 제한'
+    default:            return '대여 제한'
+  }
+}
+
 /**
  * 연체 상태에서 연장이 허용되는 최대 연체일수 (← [2026-07-20] 정책 변경)
  *

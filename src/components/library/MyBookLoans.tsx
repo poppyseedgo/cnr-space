@@ -21,14 +21,16 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 //   경로는 components/library/ 기준 두 단계 상위 (LibraryPage는 '../lib/supabase')
 import { supabase } from '../../lib/supabase'
 import { fetchMyBookLoans, extendBookCheckout, extendErrorMessage,
-  cancelBookCheckout, checkoutErrorMessage } from '../../lib/api'  // ← [2026-07-21] 예약 취소
+  cancelBookCheckout, checkoutErrorMessage,
+  fetchMyPenaltyState } from '../../lib/api'  // ← [2026-07-21] 예약 취소 / 연체 제재
 import {
   loanDisplayStatus, loanStatusStyle, canExtend, extendBlockedReason,
-  ddayLabel, fmtLoanDate, previewExtendedDue, EXTEND_DAYS,
+  ddayLabel, fmtLoanDate, previewExtendedDue, EXTEND_DAYS, daysUntilDue,
   dueNoticeShort, fmtDueFullKo, fmtDueShortKo,   // ← [2026-07-20] 반납기한 표기 SSOT
   canCancelReservation,                          // ← [2026-07-21] 시작 전 예약 취소 판정
+  penaltyTierLabel, daysUntilPenalty, penaltyOverdueDays, PENALTY_TIER_DAYS,
 } from '../../utils/bookLoan'
-import type { MyBookLoan } from '../../types'
+import type { MyBookLoan, BookPenaltyState } from '../../types'
 
 interface Props {
   authUserId: string
@@ -42,6 +44,10 @@ export function MyBookLoans({ authUserId, showToast, isMobile = false }: Props) 
   const [errorMsg,  setErrorMsg]  = useState<string | null>(null)
   const [extendingId, setExtendingId] = useState<string | null>(null)   // 연장 진행중 카드
   const [confirmTarget, setConfirmTarget] = useState<MyBookLoan | null>(null)
+  // ← [2026-07-21] 연체 제재 상태
+  const [penalty, setPenalty] = useState<BookPenaltyState>({
+    blocked: false, tier: null, blockedUntil: null, overdueDays: 0, reason: null,
+  })
 
   // ── 내 대여 목록 로드 ──────────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -51,6 +57,8 @@ export function MyBookLoans({ authUserId, showToast, isMobile = false }: Props) 
     try {
       const rows = await fetchMyBookLoans(authUserId)
       setLoans(rows)
+      // 제재 조회는 실패해도 목록을 막지 않는다 (api 래퍼가 안전값 반환)
+      setPenalty(await fetchMyPenaltyState())
     } catch (e: any) {
       setErrorMsg(e?.message ?? '대여 목록을 불러오지 못했습니다')
     } finally {
@@ -184,6 +192,34 @@ export function MyBookLoans({ authUserId, showToast, isMobile = false }: Props) 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+      {/* ── 연체 제재 배너 (← [2026-07-21]) ──────────────────────────────
+          가장 위에 둔다. 대여가 막힌 상태에서 목록만 보면 이유를 알 수 없다. */}
+      {penalty.blocked && (
+        <div style={{
+          padding: '14px 16px', borderRadius: 14,
+          background: penalty.tier === 'permanent' ? '#FEF2F2' : '#FFFBEB',
+          border: `1px solid ${penalty.tier === 'permanent' ? '#FECACA' : '#FDE68A'}`,
+        }}>
+          <div style={{
+            fontSize: 14, fontWeight: 700,
+            color: penalty.tier === 'permanent' ? '#B91C1C' : '#B45309',
+          }}>
+            {penaltyTierLabel(penalty.tier)}
+          </div>
+          <div style={{ fontSize: 13, color: '#475569', marginTop: 6, lineHeight: 1.6 }}>
+            {penalty.reason ?? '연체로 인해 대여가 제한되었습니다.'}
+          </div>
+          {penalty.blockedUntil && (
+            <div style={{ fontSize: 12, color: '#64748B', marginTop: 6 }}>
+              해제 예정 {fmtDueShortKo(penalty.blockedUntil)}
+            </div>
+          )}
+          <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 8, lineHeight: 1.6 }}>
+            사정이 있는 경우 도서 관리자에게 문의하시면 해제할 수 있습니다.
+          </div>
+        </div>
+      )}
 
       {/* ── 요약 카드 (F1) ─────────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -351,6 +387,42 @@ function ActiveLoanCard({ loan, isMobile, extending, onExtendClick }: {
         <div style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>
           대여 {fmtLoanDate(loan.checkout_at)} · {dueNoticeShort(loan.due_at)}
         </div>
+
+        {/* ── 제재 예고 (← [2026-07-21]) ──────────────────────────────────
+            반납기한(7일)이 지나도 제재는 14일부터 시작한다. 그 사이 구간에서
+            사용자는 "연체라는데 왜 아직 빌려지지?" / "언제부터 막히지?" 를
+            알 수 없다. 남은 일수를 명시해 반납을 유도한다. */}
+        {(() => {
+          // ← [2026-07-21] 면제 건은 제재 계산에서 완전히 빠진다.
+          //   정책 시행 전에 빌린 책이 대부분 여기 해당하는데, 이 가드가 없으면
+          //   "곧 대여가 제한됩니다" 라는 사실이 아닌 경고를 보게 된다.
+          //   서버 book_penalty_state 도 penalty_exempt=false 만 계산하므로
+          //   화면만 겁을 주고 실제로는 아무 일도 일어나지 않는 상태가 된다.
+          if (loan.penalty_exempt) return null
+
+          const over  = penaltyOverdueDays(loan.due_at, loan.extension_count)
+          const left  = daysUntilPenalty(loan.due_at, loan.extension_count)
+          if (over >= PENALTY_TIER_DAYS.warn) {
+            return (
+              <div style={{ fontSize: 12, color: '#B91C1C', marginTop: 4, fontWeight: 600 }}>
+                대여 제한 적용 중 · 반납 시 제재 확정
+              </div>
+            )
+          }
+          // 예고는 '연체중' 뱃지가 뜨는 구간과 정확히 같이 나타나야 한다.
+          //   뱃지는 due_at 기준(7일), 제재는 effective_due 기준(14일)이라
+          //   그 사이에 "연체라는데 왜 빌려지지?" 구간이 생긴다.
+          //   바로 그 구간에서만 남은 일수를 알려주는 것이 목적이므로
+          //   임의의 임계값(D-3 등)이 아니라 연체 판정을 그대로 따른다.
+          if (daysUntilDue(loan.due_at) < 0) {
+            return (
+              <div style={{ fontSize: 12, color: '#B45309', marginTop: 4, fontWeight: 600 }}>
+                {left}일 뒤부터 대여가 제한됩니다
+              </div>
+            )
+          }
+          return null
+        })()}
       </div>
 
       {/* 연장 버튼 (F3/F4) */}

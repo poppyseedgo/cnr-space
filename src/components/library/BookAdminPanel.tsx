@@ -31,13 +31,15 @@
  *   교체하면 된다(데이터 계층은 영향 없음).
  */
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   loadAllBooks, loadBookCategories,
   loadBookCheckoutsByRange, loadOutstandingBookLoans,
   adminReturnBook, returnErrorMessage,
   persistBook, deleteBookRecord, importBookRows,
   adminCheckoutBooksWithNotify, checkoutErrorMessage,
+  // ← [2026-07-21] 연체 제재 조회/해제
+  adminListBookPenalties, revokeBookPenalty, adminExemptCheckout,
 } from '../../lib/api'
 import { SegmentTabBar } from '../common/SegmentTabBar'
 import { DateRangeFilter } from '../common/DateRangeFilter'
@@ -47,12 +49,14 @@ import { exportCSV } from '../../utils/csv'
 import {
   loanDisplayStatus, loanStatusStyle, daysUntilDue, ddayLabel,
   fmtDueShortKo,
+  // ← [2026-07-21] 연체 제재 등급 라벨 — 사용자 화면과 같은 문구를 쓴다
+  penaltyTierLabel, penaltyOverdueDays, PENALTY_TIER_DAYS,
 } from '../../utils/bookLoan'
 import { isNewBook, todayKST } from './libraryListShared'
 import { BookEditModal, BookImportModal, OVERLAY_STYLE, MODAL_STYLE } from './bookFormShared'
 import { BookCheckoutModal } from './BookCheckoutModal'
 import type {
-  AppUser, Book, BookCategory, AdminBookLoan, BookReturnAction,
+  AppUser, Book, BookCategory, AdminBookLoan, BookReturnAction, AdminBookPenalty,
 } from '../../types'
 
 // ─── Props ───────────────────────────────────────────────────────────────────
@@ -69,7 +73,8 @@ interface BookAdminPanelProps {
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
 // ← [2026-07-21] 승인 폐지로 'requests' 제거 (5탭 → 4탭)
-type SubTab   = 'overview' | 'books' | 'loans' | 'overdue'
+// ← [2026-07-21] 연체 패널티 정책 도입으로 '대여 제한' 탭 추가 (4탭 → 5탭)
+type SubTab   = 'overview' | 'books' | 'loans' | 'overdue' | 'penalties'
 type QuickId  = 'd7' | 'd30' | 'd90' | 'year'
 type LoanFilter = 'all' | 'active' | 'returned' | 'overdue' | 'lost' | 'closed'
 type BookFilter = 'all' | 'available' | 'borrowed' | 'maintenance' | 'lost'
@@ -322,6 +327,88 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
       showToast(`대여 이력을 불러오지 못했습니다: ${e.message}`, 'error')
     } finally {
       setLoadingRange(false)
+    }
+  }
+
+  /** user_id → 이름. 제재 목록은 user_id 만 갖고 오므로 여기서 해석한다 */
+  const userNameById = useMemo(() => {
+    const m: Record<string, string> = {}
+    users.forEach(u => { m[u.user_id] = u.name })
+    return m
+  }, [users])
+
+  // ── 제재 목록 (← [2026-07-21]) ────────────────────────────────────────────
+  const [penalties,        setPenalties]        = useState<AdminBookPenalty[]>([])
+  const [penaltyActiveOnly, setPenaltyActiveOnly] = useState(true)
+  const [penaltyLoading,   setPenaltyLoading]   = useState(false)
+  const [revokingId,       setRevokingId]       = useState<string | null>(null)
+  const [penaltyPage,      setPenaltyPage]      = useState(1)
+
+  const loadPenalties = useCallback(async (activeOnly: boolean) => {
+    setPenaltyLoading(true)
+    try {
+      setPenalties(await adminListBookPenalties(activeOnly))
+    } catch (e: any) {
+      showToast(`제재 목록 조회 실패: ${e.message}`, 'error')
+    } finally {
+      setPenaltyLoading(false)
+    }
+  }, [showToast])
+
+  useEffect(() => {
+    setPenaltyPage(1)                       // 필터를 바꾸면 1페이지로
+    loadPenalties(penaltyActiveOnly)
+  }, [penaltyActiveOnly, loadPenalties])
+
+  /** 제재 해제 — 삭제가 아니라 해제 이력 기록. 사유는 선택 입력 */
+  async function handleRevoke(row: AdminBookPenalty) {
+    const who = userNameById[row.user_id] ?? '해당 사용자'
+    const reason = window.prompt(
+      `${who} 의 ${penaltyTierLabel(row.tier)} 을 해제합니다.\n사유를 입력하세요 (선택, 200자 이내)`,
+      '',
+    )
+    if (reason === null) return          // 취소
+
+    setRevokingId(row.id)
+    try {
+      const res = await revokeBookPenalty(row.id, reason)
+      if (!res.ok) { showToast(res.message ?? '해제 실패', 'error'); return }
+      showToast('제재를 해제했습니다', 'success')
+      await loadPenalties(penaltyActiveOnly)
+    } finally {
+      setRevokingId(null)
+    }
+  }
+
+  /**
+   * 진행 중 연체 건 면제 토글 (← [2026-07-21])
+   *
+   * 아직 반납 전이라 book_penalties 에 행이 없다. 그래서 '대여 제한' 탭의
+   * 해제 버튼으로는 풀 수 없고, 대여 건 자체를 제재 계산에서 빼야 한다.
+   * 출장·병가처럼 반납이 불가능한 사정이 확인됐을 때 쓴다.
+   */
+  const [exemptingId, setExemptingId] = useState<string | null>(null)
+
+  async function handleToggleExempt(loan: AdminBookLoan) {
+    const next = !loan.penalty_exempt
+    const who  = userNameById[loan.user_id] ?? '해당 사용자'
+    const ok = window.confirm(
+      next
+        ? `${who} 의 "${loan.book?.title ?? '이 도서'}" 대여를 제재 대상에서 제외합니다.\n\n` +
+          '반납이 늦어져도 대여 제한이 적용되지 않습니다. 계속할까요?'
+        : `${who} 의 "${loan.book?.title ?? '이 도서'}" 면제를 취소합니다.\n\n` +
+          '이후 연체 일수에 따라 대여 제한이 적용됩니다. 계속할까요?',
+    )
+    if (!ok) return
+
+    setExemptingId(loan.id)
+    try {
+      const res = await adminExemptCheckout(loan.id, next)
+      if (!res.ok) { showToast(res.message ?? '처리 실패', 'error'); return }
+      showToast(next ? '제재 면제 처리했습니다' : '면제를 취소했습니다', 'success')
+      await reloadAll()
+    } finally {
+      setExemptingId(null)
     }
   }
 
@@ -603,9 +690,14 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
   }
   function csvLoans()   { exportCSV(filteredLoans.map(loanCsvRow), `대여이력_${dateFrom}_${dateTo}`) }
   function csvOverdue() {
+    // ← [2026-07-21] 제재 관련 열 추가.
+    //   연체일수(due_at 기준)와 제재초과일(effective_due 기준)은 다른 숫자다.
+    //   CSV 로 뽑아 공유할 때 둘을 함께 보여야 "왜 아직 제재가 아닌지" 설명된다.
     exportCSV(overdueRows.map(l => ({
       ...loanCsvRow(l),
-      연체일수: Math.max(0, -daysUntilDue(l.due_at)),
+      연체일수:    Math.max(0, -daysUntilDue(l.due_at)),
+      제재초과일:  penaltyOverdueDays(l.due_at, l.extension_count),
+      제재면제:    l.penalty_exempt ? 'Y' : '',
     })), overdueOnly ? '연체목록' : '미반납목록')
   }
 
@@ -754,6 +846,48 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
       },
     },
     ...loanColumns.filter(c => c.key !== 'returned'),
+    // ── 제재 상태 + 면제 토글 (← [2026-07-21]) ─────────────────────────────
+    //   연체 일수(due_at 기준)와 제재 기준(effective_due 기준)이 다르므로
+    //   "연체 10일인데 왜 제재가 아직?" 을 여기서 바로 설명해야 한다.
+    {
+      key: 'penalty', label: '제재', width: 150,
+      render: (l: AdminBookLoan) => {
+        if (l.penalty_exempt) {
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ ...BTN_MINI, background: '#F1F5F9', color: '#64748B', display: 'inline-block' }}>
+                면제
+              </span>
+              <button
+                onClick={() => handleToggleExempt(l)}
+                disabled={exemptingId === l.id}
+                style={{ ...BTN_MINI, background: 'transparent', color: '#94A3B8',
+                         textDecoration: 'underline' }}>
+                {exemptingId === l.id ? '처리중' : '해제'}
+              </button>
+            </div>
+          )
+        }
+        const over = penaltyOverdueDays(l.due_at, l.extension_count)
+        const hit  = over >= PENALTY_TIER_DAYS.warn
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{
+              fontSize: 12, fontWeight: 600,
+              color: hit ? '#B91C1C' : '#94A3B8', whiteSpace: 'nowrap',
+            }}>
+              {hit ? `초과 ${over}일` : `D-${Math.max(0, PENALTY_TIER_DAYS.warn - over)}`}
+            </span>
+            <button
+              onClick={() => handleToggleExempt(l)}
+              disabled={exemptingId === l.id}
+              style={{ ...BTN_MINI, background: '#F1F5F9', color: '#374151' }}>
+              {exemptingId === l.id ? '처리중' : '면제'}
+            </button>
+          </div>
+        )
+      },
+    },
   ]
 
   // ─── 페이징 ────────────────────────────────────────────────────────────────
@@ -770,6 +904,9 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
     { id: 'books'    as const, label: '도서 관리', count: books.length },
     { id: 'loans'    as const, label: '대여 이력', count: rangeLoans.length },
     { id: 'overdue'  as const, label: '연체 관리', count: overdueLoans.length },
+    // 유효 제재만 카운트 — 해제·만료분까지 세면 숫자가 계속 늘어나 의미가 없다
+    { id: 'penalties' as const, label: '대여 제한',
+      count: penalties.filter(p => !p.revoked_at && (!p.ends_at || new Date(p.ends_at) > new Date())).length },
   ]
 
   const quickButtons = [
@@ -980,9 +1117,14 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
             csvLabel="CSV 추출"
           />
 
-          <div style={{ fontSize: 12, color: '#A5AEC0' }}>
+          <div style={{ fontSize: 12, color: '#A5AEC0', lineHeight: 1.7 }}>
             연체 판정은 저장된 상태값이 아니라 <b style={{ color: '#64748B' }}>반납기한(due_at)</b> 기준입니다.
             사용자 화면·알림과 동일한 기준을 사용하므로 숫자가 어긋나지 않습니다.
+            <br />
+            <b style={{ color: '#64748B' }}>제재</b> 열은 기준이 다릅니다 —
+            대여 7일 + 연장 7일 = 최대 14일 안의 연체에는 제재가 적용되지 않으므로,
+            연체 일수보다 늦게 카운트가 시작됩니다. D-n 은 제재 적용까지 남은 일수입니다.
+            사정이 있는 건은 <b style={{ color: '#64748B' }}>면제</b> 처리하면 제재 계산에서 빠집니다.
           </div>
 
           <div style={{ overflowX: 'auto' }}>
@@ -993,6 +1135,100 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
               loading={loadingMaster}
               emptyMessage={overdueOnly ? '연체 중인 도서가 없습니다. 👍' : '대여 중인 도서가 없습니다.'}
               page={overduePage} totalPages={overdueTotalPages} onPageChange={setOverduePage}
+              minWidth={1000}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════ 대여 제한 (← [2026-07-21]) ═══════════════════ */}
+      {tab === 'penalties' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <SegmentTabBar
+            tabs={[
+              { id: 'active' as const, label: '적용 중',
+                count: penalties.filter(p => !p.revoked_at && (!p.ends_at || new Date(p.ends_at) > new Date())).length },
+              { id: 'all'    as const, label: '전체 이력', count: penalties.length },
+            ]}
+            activeTab={penaltyActiveOnly ? 'active' : 'all'}
+            onTabChange={id => setPenaltyActiveOnly(id === 'active')}
+            onCsvClick={() => exportCSV(
+              penalties.map(p => ({
+                직원:      userNameById[p.user_id] ?? p.user_id,
+                도서:      p.book_title ?? '',
+                초과일수:  p.overdue_days,
+                등급:      penaltyTierLabel(p.tier),
+                시작:      fmtDueShortKo(p.starts_at),
+                해제예정:  p.ends_at ? fmtDueShortKo(p.ends_at) : '영구',
+                사유:      p.reason ?? '',
+                해제일:    p.revoked_at ? fmtDueShortKo(p.revoked_at) : '',
+                해제사유:  p.revoked_reason ?? '',
+              })),
+              '대여제한',
+            )}
+            csvLabel="CSV 추출"
+          />
+
+          <div style={{ fontSize: 12, color: '#A5AEC0', lineHeight: 1.7 }}>
+            제재 기준일은 반납기한이 아니라 <b style={{ color: '#64748B' }}>최대 대여 가능 기한</b>입니다.
+            대여 7일 + 연장 7일 = 14일 안의 연체에는 제재가 적용되지 않습니다.
+            <br />
+            아직 반납하지 않아 <b style={{ color: '#64748B' }}>진행 중인 연체</b>는 여기 표시되지 않습니다 —
+            반납 시점에 등급이 확정되어 이 목록에 들어옵니다. 진행 중 건은 연체 관리 탭에서 확인하세요.
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <DataTable
+              data={pageSlice(penalties, penaltyPage)}
+              columns={[
+                { key: 'user',  label: '직원',  width: 120,
+                  render: (p: AdminBookPenalty) => userNameById[p.user_id] ?? '—' },
+                { key: 'book',  label: '도서',  width: 240,
+                  render: (p: AdminBookPenalty) => p.book_title ?? '—' },
+                { key: 'over',  label: '초과일수', width: 90,
+                  render: (p: AdminBookPenalty) => `${p.overdue_days}일` },
+                { key: 'tier',  label: '등급',  width: 130,
+                  render: (p: AdminBookPenalty) => (
+                    <span style={{
+                      ...BTN_MINI,
+                      background: p.tier === 'permanent' ? '#FEE2E2' : '#FEF3C7',
+                      color:      p.tier === 'permanent' ? '#B91C1C' : '#B45309',
+                      display: 'inline-block',
+                    }}>{penaltyTierLabel(p.tier)}</span>
+                  ) },
+                { key: 'range', label: '기간',  width: 190,
+                  render: (p: AdminBookPenalty) =>
+                    `${fmtDueShortKo(p.starts_at)} ~ ${p.ends_at ? fmtDueShortKo(p.ends_at) : '영구'}` },
+                { key: 'state', label: '상태',  width: 110,
+                  render: (p: AdminBookPenalty) => {
+                    if (p.revoked_at) return <span style={{ color: '#64748B' }}>해제됨</span>
+                    if (p.ends_at && new Date(p.ends_at) <= new Date())
+                      return <span style={{ color: '#64748B' }}>만료</span>
+                    return <span style={{ color: '#B91C1C', fontWeight: 600 }}>적용 중</span>
+                  } },
+                { key: 'act',   label: '',      width: 90,
+                  render: (p: AdminBookPenalty) => {
+                    const done = !!p.revoked_at ||
+                      (!!p.ends_at && new Date(p.ends_at) <= new Date())
+                    if (done) return <span style={{ color: '#CBD5E1', fontSize: 12 }}>—</span>
+                    return (
+                      <button
+                        onClick={() => handleRevoke(p)}
+                        disabled={revokingId === p.id}
+                        style={{ ...BTN_MINI, background: '#F1F5F9', color: '#374151' }}>
+                        {revokingId === p.id ? '처리중' : '해제'}
+                      </button>
+                    )
+                  } },
+              ]}
+              getRowKey={p => p.id}
+              loading={penaltyLoading}
+              emptyMessage={penaltyActiveOnly
+                ? '적용 중인 대여 제한이 없습니다. 👍'
+                : '대여 제한 이력이 없습니다.'}
+              page={penaltyPage}
+              totalPages={Math.max(1, Math.ceil(penalties.length / PER_PAGE))}
+              onPageChange={setPenaltyPage}
               minWidth={1000}
             />
           </div>

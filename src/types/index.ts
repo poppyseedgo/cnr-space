@@ -270,6 +270,12 @@ export interface MyBookLoan {
   processed_by_name?: string | null
   reject_reason?:     string | null
   notes?:             string | null
+  /**
+   * ← [2026-07-21] 연체 제재 면제 여부.
+   *   true 면 이 대여 건은 제재 계산에서 완전히 빠진다(진행 중 차단·반납 시 확정 둘 다).
+   *   정책 시행 전에 대여된 건과, 관리자가 사정을 인정한 건에 세워진다.
+   */
+  penalty_exempt?:    boolean
 }
 
 /**
@@ -379,6 +385,8 @@ export type CheckoutErrorCode =
   | 'ALREADY_STARTED'            // 이미 시작된 대여는 취소 불가 (반납 경로)
   | 'CHECKOUT_NOT_FOUND'
   | 'NOT_ACTIVE'
+  // ── [2026-07-21] 연체 패널티 ─────────────────────────────────────────────
+  | 'PENALTY_BLOCKED'            // detail = "tier:해제일(YYYY-MM-DD 또는 빈값)"
   | 'UNKNOWN'
 
 export type ExtendErrorCode =
@@ -393,3 +401,42 @@ export type ExtendErrorCode =
   //   (문자열 includes 매칭이라 'OVERDUE_TOO_LONG' 안에 'OVERDUE' 가 포함됨).
   | 'OVERDUE_TOO_LONG'
   | 'UNKNOWN'
+
+
+// ─── 연체 패널티 (← [2026-07-21]) ─────────────────────────────────────────────
+
+/** 제재 등급. 'overdue_now' 는 확정 제재가 아니라 "지금 연체 중" 차단이다. */
+export type BookPenaltyTier = '7d' | '30d' | 'permanent' | 'overdue_now'
+
+/**
+ * 대여 차단 상태 — book_penalty_state RPC 반환값
+ *
+ * blockedUntil 이 null 인데 blocked=true 인 경우가 두 가지다.
+ *   · tier='permanent'   → 영구 (해제일 없음)
+ *   · tier='overdue_now' → 반납할 때까지 (기한이 아니라 조건)
+ * 둘을 tier 로 구분해야 화면 문구가 어긋나지 않는다.
+ */
+export interface BookPenaltyState {
+  blocked:      boolean
+  tier:         BookPenaltyTier | null
+  blockedUntil: string | null      // ISO. null = 영구 또는 반납 시까지
+  overdueDays:  number             // effective_due 초과 일수 (due_at 기준 아님)
+  reason:       string | null
+}
+
+/** 어드민 '대여 제한' 탭 행 — admin_list_book_penalties RPC 반환값 */
+export interface AdminBookPenalty {
+  id:             string
+  user_id:        string
+  checkout_id:    string | null
+  book_title:     string | null
+  overdue_days:   number
+  tier:           '7d' | '30d' | 'permanent'
+  starts_at:      string
+  ends_at:        string | null
+  reason:         string | null
+  revoked_at:     string | null
+  revoked_by:     string | null
+  revoked_reason: string | null
+  created_at:     string
+}

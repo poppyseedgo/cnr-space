@@ -107,6 +107,9 @@ export type NotificationType =
   | 'book_request_approved'   // [폐지]
   | 'book_request_rejected'   // [폐지]
   | 'book_started'            // 대여 시작일 도래 09:00 KST → 대여자 (← [2026-07-21])
+  // ── [2026-07-21] 연체 패널티 ────────────────────────────────────────────
+  | 'book_penalty_applied'    // 반납 시 제재 확정 → 대여자
+  | 'book_penalty_cleared'    // 제재 해제(만료·관리자) → 대여자
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 2. 수신자 규칙
@@ -767,6 +770,57 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
         ...BANNER_PRESETS.info,
         title: '오늘부터 대여가 시작됩니다.',
         body:  '도서관에서 도서를 수령해 주세요. 아래 반납기한 이내에 반납하시면 됩니다.',
+      },
+    },
+    cta: { booker: CTA_MY_LOANS },
+    isCancelledStyle: false,
+  },
+
+  // ── [2026-07-21] 연체 제재 확정 ─────────────────────────────────────────
+  //   반납 처리 시 제재가 생성되면 발송한다. 등급·기간은 본문(booking)에서
+  //   조립하므로 여기 문구는 등급과 무관하게 성립해야 한다.
+  //   "제재되었습니다" 만 있고 언제까지인지 없으면 문의가 그대로 관리자에게 간다.
+  book_penalty_applied: {
+    subjectTag:         '[대여제한]',
+    headerLabel:        '연체로 대여가 제한되었습니다',
+    headerColor:        COLORS.RED,
+    recipients:         'book_borrower',
+    inappType:          'book_penalty_applied',
+    inappTitleBooker:   '연체로 대여가 제한되었습니다',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '',
+    contextBanner: {
+      booker: {
+        ...BANNER_PRESETS.warning,
+        title: '반납이 늦어져 대여가 제한되었습니다.',
+        body:  '제한 기간 동안에는 도서를 대여하거나 예약할 수 없습니다. '
+             + '사정이 있는 경우 도서 관리자에게 문의해 주세요.',
+      },
+    },
+    cta: { booker: CTA_MY_LOANS },
+    isCancelledStyle: false,
+  },
+
+  // ── [2026-07-21] 제재 해제 ──────────────────────────────────────────────
+  //   기간 만료(배치)와 관리자 해제 두 경로가 같은 타입을 쓴다.
+  //   수신자 입장에서 "이제 빌릴 수 있다" 는 사실은 동일하고,
+  //   해제 사유를 구분해 알릴 실익이 없다.
+  book_penalty_cleared: {
+    subjectTag:         '[제한해제]',
+    headerLabel:        '대여 제한이 해제되었습니다',
+    // COLORS 에 GREEN 은 없다. 긍정/확정 계열은 INDIGO 를 쓰는 것이
+    //   book_borrowed·book_extended 와 동일한 기존 규칙이다.
+    headerColor:        COLORS.INDIGO,
+    recipients:         'book_borrower',
+    inappType:          'book_penalty_cleared',
+    inappTitleBooker:   '대여 제한이 해제되었습니다',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '',
+    contextBanner: {
+      booker: {
+        ...BANNER_PRESETS.success,
+        title: '대여 제한이 해제되었습니다.',
+        body:  '다시 도서를 대여하실 수 있습니다. 반납기한을 지켜 이용해 주세요.',
       },
     },
     cta: { booker: CTA_MY_LOANS },

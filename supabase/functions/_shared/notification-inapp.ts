@@ -58,6 +58,13 @@ export interface InAppBookingData {
   book_title?:   string          // 도서명
   due_date_kst?: string          // 반납예정일 (KST 'YYYY-MM-DD')
   days_overdue?: number          // 연체 일수 (book_overdue 전용)
+
+  // ── 연체 제재 전용 (← [2026-07-21]) ──────────────────────────────────
+  //   제재 알림은 반납기한이 아니라 "제한 기간" 을 알려야 한다.
+  //   penalty_tier 가 있으면 buildInAppBody 가 제재 포맷으로 렌더한다.
+  penalty_tier?:       '7d' | '30d' | 'permanent'
+  penalty_until_kst?:  string    // 해제 예정일 (KST 'YYYY-MM-DD'). 영구면 없음
+  penalty_over_days?:  number    // 기준일 초과 일수 (due_at 초과 일수가 아님)
 }
 
 /** 단일 INSERT 입력 */
@@ -134,6 +141,26 @@ export function buildInAppBody(booking: InAppBookingData, role: 'booker' | 'atte
   //   ← [2026-07-21] book_started(대여 시작일 도래)도 book_title 을 실어 보내므로
   //     이 분기를 그대로 탄다. 본문은 "도서명 · 반납기한 …" 으로 동일하고,
   //     "오늘부터 시작" 문구는 제목/배너(notification-types)가 담당한다.
+  // ── 연체 제재 분기 (← [2026-07-21]) ──────────────────────────────────────
+  //   아래 도서 분기보다 먼저 검사한다. 제재 알림도 book_title 을 싣기 때문에
+  //   순서가 바뀌면 "도서명 · 7월 28일 이내 반납" 이라는 엉뚱한 본문이 나간다.
+  //   (이미 반납한 건이라 반납기한 안내는 의미가 없다)
+  if (booking.penalty_tier) {
+    const name  = booking.book_title ?? ''
+    const until = booking.penalty_until_kst
+      ? fmtDueShortKo(booking.penalty_until_kst)
+      : ''
+    const label =
+      booking.penalty_tier === 'permanent' ? '영구 대여 제한'
+      : booking.penalty_tier === '30d'     ? '30일 대여 제한'
+      :                                      '7일 대여 제한'
+
+    // 해제 알림은 until 이 없다(이미 풀렸다) → 라벨 없이 해제 사실만 전한다
+    const head = name ? `${name} · ` : ''
+    if (!until) return `${head}${label}`
+    return `${head}${label} · ${until}까지`
+  }
+
   if (booking.book_title) {
     const name = booking.book_title
     const due  = booking.due_date_kst ?? ''

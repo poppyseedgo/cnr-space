@@ -50,6 +50,9 @@ interface Props {
   onClose:    () => void
   /** ← [2026-07-21] checkoutAt('YYYY-MM-DD') 추가 — 서버가 이 날짜 + 7일로 반납기한 계산 */
   onSubmit:   (bookIds: number[], notes: string, checkoutAt: string) => void
+  /** ← [2026-07-21] 연체 제재 차단 상태. 서버가 최종 강제하고 여기는 사전 안내다 */
+  penaltyBlocked?: boolean
+  penaltyReason?:  string | null
 }
 
 // ── 대여일 선택 범위 — 오늘(KST) + n일을 'YYYY-MM-DD' 로
@@ -64,6 +67,7 @@ function shiftDays(n: number): string {
 
 export function BookBorrowModal({
   book, books = [], me, heldCount, maxBorrow, borrowDays, loading, onClose, onSubmit,
+  penaltyBlocked = false, penaltyReason = null,
 }: Props) {
   const [memo, setMemo] = useState('')
   // ← [2026-07-21] 대여 시작일. 기본값은 오늘 = 지금 바로 대여.
@@ -233,7 +237,21 @@ export function BookBorrowModal({
           {/* ── 메모 ───────────────────────────────────────────────────── */}
           <MemoField value={memo} onChange={setMemo} />
 
-          {/* 안내 */}
+          {/* ← [2026-07-21] 연체 제재 배너.
+              제재 중이면 아래 일반 안내 대신 이것만 보여준다 — 두 개를 같이
+              띄우면 "바로 대여가 확정됩니다" 와 "대여할 수 없습니다" 가
+              동시에 보여 모순이 된다. */}
+          {penaltyBlocked ? (
+            <div style={{
+              marginTop: 12, padding: '10px 12px', background: '#FEF2F2',
+              border: '1px solid #FECACA', borderRadius: 8,
+              fontSize: 12, color: '#B91C1C', lineHeight: 1.6,
+            }}>
+              {penaltyReason ?? '연체 제재로 대여할 수 없습니다.'}
+              <br />
+              사정이 있는 경우 도서 관리자에게 문의해 주세요.
+            </div>
+          ) : (
           <div style={{
             marginTop: 12, padding: '10px 12px', background: '#EEF2FF',
             border: '1px solid #C7D2FE', borderRadius: 8,
@@ -252,15 +270,16 @@ export function BookBorrowModal({
               </>
             )}
           </div>
+          )}
         </div>
 
         <ModalFooter
           confirmLabel={checkoutAt === todayKST() ? '대여하기' : '대여 예약'}
           onCancel={onClose}
           onConfirm={() => onSubmit(selectedBooks.map(b => b.id), memo.slice(0, MEMO_MAX), checkoutAt)}
-          disabled={!canSubmit || !me}
+          disabled={!canSubmit || !me || penaltyBlocked}
           loading={loading}
-          hint={hint}
+          hint={penaltyBlocked ? (penaltyReason ?? '대여가 제한되었습니다') : hint}
         />
       </div>
     </div>

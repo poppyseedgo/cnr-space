@@ -460,6 +460,9 @@ export interface BookGridCardProps {
   borrower?:       CardBorrower | null
   isAdmin:         boolean
   isOverdueStatus: boolean
+  /** ← [2026-07-21] 연체 제재로 대여가 막힌 상태인가 (본인 기준) */
+  penaltyBlocked?: boolean
+  penaltyReason?:  string | null
   /** 콜백은 인자를 받지 않는다 — 대상 book/checkout 은 호출부가 클로저로 이미 갖고 있고,
    *  인자로 되돌려주면 카드가 전체 엔티티 타입을 알아야 해서 결합이 생긴다. */
   onCheckout: () => void
@@ -476,6 +479,7 @@ export interface BookGridCardProps {
 
 export function BookGridCard({
   book, checkout, borrower, isAdmin, isOverdueStatus,
+  penaltyBlocked = false, penaltyReason = null,
   onCheckout, onReturn, onEdit, onDelete, onOpenDetail,
 }: BookGridCardProps) {
   const [imgErr, setImgErr]   = useState(false)
@@ -592,12 +596,24 @@ export function BookGridCard({
             // 관리자가 아니면 그 행이 없으므로 여기서 하단 8 을 준다.
             padding: isAdmin ? '0 8px' : '0 8px 8px',
           }}>
+            {/* ← [2026-07-21] 연체 제재 중이면 CTA 를 비활성으로 바꾼다.
+                버튼을 숨기지 않는 이유: 사라지면 "왜 없지?" 가 되고,
+                눌러서 실패하면 그제야 이유를 알게 된다. 보이되 못 누르고,
+                이유는 title 로 즉시 확인되게 한다.
+                차단의 최종 강제는 서버가 한다 — 여기는 안내용이다. */}
             {book.status === 'available' && (
               <button
-                onClick={stop(onCheckout)}
+                onClick={penaltyBlocked ? undefined : stop(onCheckout)}
+                disabled={penaltyBlocked}
+                title={penaltyBlocked ? (penaltyReason ?? '대여가 제한되었습니다') : undefined}
                 tabIndex={overlayOpen ? 0 : -1}
-                style={{ ...HOVER_BTN, background: LT.black, color: LT.white }}>
-                {isAdmin ? '대여 등록' : '대여하기'}
+                style={{
+                  ...HOVER_BTN,
+                  background: penaltyBlocked ? '#E5E7EB' : LT.black,
+                  color:      penaltyBlocked ? '#9CA3AF' : LT.white,
+                  cursor:     penaltyBlocked ? 'not-allowed' : 'pointer',
+                }}>
+                {penaltyBlocked ? '대여 제한' : (isAdmin ? '대여 등록' : '대여하기')}
               </button>
             )}
             {book.status === 'borrowed' && checkout && isAdmin && (

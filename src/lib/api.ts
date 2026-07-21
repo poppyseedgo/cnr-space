@@ -113,6 +113,8 @@ import type { Booking, Room, AppUser, Feature, AttendeeRef,
   // ← [2026-07-23] 어드민 '도서 관리' 탭
   Book, BookCategory, AdminBookLoan, BookReturnAction, BookReturnErrorCode, BookEditForm,
 } from '../types'  // ← [2026-07-18] 내 대여 / [2026-07-22] 대여신청
+// ← [2026-07-21] 연체 패널티
+import type { BookPenaltyState, AdminBookPenalty } from '../types'
 
 // ── UTC → KST 변환 ───────────────────────────────────────────────────────────
 // Supabase가 UTC ISO 문자열로 반환하므로 앱 기준인 KST로 보정
@@ -1609,7 +1611,7 @@ export async function fetchMyBookLoans(userId: string): Promise<MyBookLoan[]> {
     .from('book_checkouts')
     .select(`
       id, book_id, checkout_at, due_at, returned_at,
-      extension_count, last_extended_at, status,
+      extension_count, last_extended_at, status, penalty_exempt,
       books ( title, author, publisher, cover_url )
     `)
     .eq('user_id', userId)
@@ -1627,6 +1629,7 @@ export async function fetchMyBookLoans(userId: string): Promise<MyBookLoan[]> {
     extension_count:  r.extension_count ?? 0,
     last_extended_at: r.last_extended_at ?? null,
     status:           r.status,
+    penalty_exempt:   r.penalty_exempt ?? false,
     book: Array.isArray(r.books) ? (r.books[0] ?? null) : (r.books ?? null),
   }))
 }
@@ -1722,6 +1725,7 @@ function parseCheckoutError(message: string): { code: CheckoutErrorCode; detail?
     //   추가할 때는 긴 쪽을 앞에 둘 것 (OVERDUE_TOO_LONG 사례와 동일한 함정).
     'CHECKOUT_AT_PAST', 'RESERVE_TOO_FAR', 'PERIOD_CONFLICT', 'ALREADY_STARTED',
     'CHECKOUT_NOT_FOUND', 'NOT_ACTIVE',
+    'PENALTY_BLOCKED',            // ← [2026-07-21] 연체 제재
   ]
   const hit = codes.find(c => message.includes(c))
   if (!hit) return { code: 'UNKNOWN' }
@@ -1760,6 +1764,17 @@ export function checkoutErrorMessage(code: CheckoutErrorCode, detail?: string): 
     case 'ALREADY_STARTED':    return '이미 시작된 대여는 취소할 수 없습니다. 반납 처리해주세요'
     case 'CHECKOUT_NOT_FOUND': return '대여 정보를 찾을 수 없습니다'
     case 'NOT_ACTIVE':         return '이미 처리된 대여입니다. 목록을 새로고침해주세요'
+    // ── [2026-07-21] 연체 제재. detail = "tier:해제일(YYYY-MM-DD, 없으면 빈값)"
+    case 'PENALTY_BLOCKED': {
+      const [tier, until] = (detail ?? '').split(':')
+      if (tier === 'overdue_now')
+        return '연체 중인 도서가 있어 대여할 수 없습니다. 반납 후 이용해주세요'
+      if (tier === 'permanent')
+        return '연체 누적으로 대여가 영구 제한되었습니다. 도서 관리자에게 문의해주세요'
+      return until
+        ? `연체 제재로 ${until} 까지 대여할 수 없습니다`
+        : '연체 제재로 대여할 수 없습니다'
+    }
     case 'LIMIT_EXCEEDED': {
       // detail = "현재:한도"
       const [held, max] = (detail ?? '').split(':')
@@ -1802,6 +1817,8 @@ function toLoanRow(r: any): MyBookLoan {
     processed_by_name: r.processed_by_name ?? null,
     reject_reason:     r.reject_reason ?? null,
     notes:             r.notes ?? null,
+    // ← [2026-07-21] 어드민 연체 관리 탭의 '면제' 토글이 현재 상태를 알아야 한다
+    penalty_exempt:    r.penalty_exempt ?? false,
   }
 }
 
@@ -1919,7 +1936,7 @@ export async function loadBookCheckoutsByRange(
       .select(`
         id, book_id, user_id, checkout_at, due_at, returned_at,
         extension_count, last_extended_at, status, notes,
-        requested_at, processed_at, processed_by_name, reject_reason,
+        requested_at, processed_at, processed_by_name, reject_reason, penalty_exempt,
         books ( title, author, publisher, cover_url )
       `)
       .gte(dateField, fromISO)
@@ -1956,7 +1973,7 @@ export async function loadOutstandingBookLoans(): Promise<AdminBookLoan[]> {
       .select(`
         id, book_id, user_id, checkout_at, due_at, returned_at,
         extension_count, last_extended_at, status, notes,
-        requested_at, processed_at, processed_by_name, reject_reason,
+        requested_at, processed_at, processed_by_name, reject_reason, penalty_exempt,
         books ( title, author, publisher, cover_url )
       `)
       .in('status', ['active', 'overdue'])
@@ -2027,7 +2044,54 @@ export async function adminReturnBook(
   if (error) return { ok: false, code: parseReturnError(error.message ?? '') }
   const r: any = Array.isArray(data) ? data[0] : data
   if (!r) return { ok: false, code: 'UNKNOWN' }
+
+  // ── [2026-07-21] 반납으로 제재가 확정됐으면 알림 발송 ────────────────────
+  //
+  //   admin_return_book 은 book_checkouts 행만 반환하므로 여기서는
+  //   "제재가 생겼는지" 를 알 수 없다. 같은 공식으로 다시 계산할 수도 있지만
+  //   그러면 'DB 가 만든 사실' 과 '화면이 추측한 사실' 두 갈래가 생기고,
+  //   어긋나는 순간 제재가 없는데 제재 안내 메일이 나간다.
+  //   실제로 생성된 행을 읽어서 보낸다.
+  //
+  //   분실(lost)은 제재 대상이 아니므로 조회 자체를 하지 않는다.
+  if (action === 'return') {
+    void notifyPenaltyApplied(checkoutId)
+  }
+
   return { ok: true, row: { ...toLoanRow(r), user_id: r.user_id } }
+}
+
+/** 반납 직후 생성된 제재를 읽어 book_penalty_applied 발송 (실패해도 반납은 성립) */
+async function notifyPenaltyApplied(checkoutId: string): Promise<void> {
+  try {
+    const { data, error } = await supabase.rpc('get_book_penalty_by_checkout', {
+      p_checkout_id: checkoutId,
+    })
+    if (error) { console.warn('[api] 제재 조회 실패:', error.message); return }
+
+    const p: any = Array.isArray(data) ? data[0] : data
+    if (!p) return                       // 제재 없음 = 기한 내 반납. 정상 경로다
+
+    await supabase.functions.invoke('send-notification', {
+      body: {
+        type: 'book_penalty_applied',
+        booking: {
+          id:                p.penalty_id,
+          title:             p.book_title ?? '(제목 없음)',
+          user_id:           p.user_id,
+          book_title:        p.book_title ?? '(제목 없음)',
+          penalty_tier:      p.tier,
+          penalty_over_days: p.overdue_days,
+          penalty_until_kst: p.ends_at
+            ? new Date(p.ends_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' })
+            : undefined,
+        },
+      },
+    })
+  } catch (e) {
+    // 알림 실패가 반납을 되돌리지는 않는다. 로그만 남긴다.
+    console.warn('[api] 제재 알림 발송 실패:', e)
+  }
 }
 
 // ─── 도서 마스터 저장 / 삭제 / 일괄등록 ───────────────────────────────────────
@@ -2331,4 +2395,119 @@ export async function cancelBookCheckout(checkoutId: string): Promise<CheckoutRe
   if (error) return { ok: false, ...parseCheckoutError(error.message ?? '') }
   const r = Array.isArray(data) ? data[0] : data
   return r ? { ok: true, rows: [toLoanRow(r)] } : { ok: false, code: 'UNKNOWN' }
+}
+
+
+// ─── 연체 패널티 (← [2026-07-21]) ─────────────────────────────────────────────
+//
+// 차단의 최종 강제는 서버(user_checkout_books / admin_checkout_books)가 한다.
+// 아래 조회는 "왜 못 빌리는지 미리 알려주기" 위한 것이다. 화면에서만 막고
+// 서버가 안 막으면 RPC 직접 호출로 우회되고, 반대로 서버만 막으면 사용자가
+// 버튼을 눌러보고 나서야 이유를 알게 된다. 둘 다 필요하다.
+
+/** 내 대여 차단 상태 — my_book_penalty_state RPC */
+export async function fetchMyPenaltyState(): Promise<BookPenaltyState> {
+  const { data, error } = await supabase.rpc('my_book_penalty_state')
+  if (error) {
+    // 제재 조회 실패가 도서관 화면 전체를 막지 않게 한다.
+    // 차단 여부는 서버가 대여 시점에 다시 검사하므로 안전 측 기본값은 '차단 아님'.
+    console.warn('[api] 제재 상태 조회 실패:', error.message)
+    return { blocked: false, tier: null, blockedUntil: null, overdueDays: 0, reason: null }
+  }
+  const r = Array.isArray(data) ? data[0] : data
+  return {
+    blocked:      !!r?.blocked,
+    tier:         r?.tier ?? null,
+    blockedUntil: r?.blocked_until ?? null,
+    overdueDays:  r?.overdue_days ?? 0,
+    reason:       r?.reason ?? null,
+  }
+}
+
+/** 특정 사용자의 차단 상태 — 관리자 대여 등록 모달에서 대여자 선택 시 */
+export async function fetchUserPenaltyState(userId: string): Promise<BookPenaltyState> {
+  const { data, error } = await supabase.rpc('book_penalty_state', { p_user_id: userId })
+  if (error) {
+    console.warn('[api] 제재 상태 조회 실패:', error.message)
+    return { blocked: false, tier: null, blockedUntil: null, overdueDays: 0, reason: null }
+  }
+  const r = Array.isArray(data) ? data[0] : data
+  return {
+    blocked:      !!r?.blocked,
+    tier:         r?.tier ?? null,
+    blockedUntil: r?.blocked_until ?? null,
+    overdueDays:  r?.overdue_days ?? 0,
+    reason:       r?.reason ?? null,
+  }
+}
+
+/** [Admin] 제재 목록 — activeOnly=false 면 해제·만료분까지 (이력 조회) */
+export async function adminListBookPenalties(
+  activeOnly = true,
+): Promise<AdminBookPenalty[]> {
+  const { data, error } = await supabase.rpc('admin_list_book_penalties', {
+    p_active_only: activeOnly,
+  })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as AdminBookPenalty[]
+}
+
+/** [Admin] 제재 해제 — 삭제가 아니라 revoked_* 기록 (근거 보존) */
+export async function revokeBookPenalty(
+  penaltyId: string, reason?: string,
+): Promise<{ ok: boolean; message?: string }> {
+  const { data, error } = await supabase.rpc('admin_revoke_book_penalty', {
+    p_penalty_id: penaltyId,
+    p_reason:     reason || null,
+  })
+  if (!error) {
+    // ── [2026-07-21] 해제 알림 ───────────────────────────────────────────
+    //   still_blocked 이면 보내지 않는다. 30일 제재가 남아 있는데
+    //   "대여 제한이 해제되었습니다" 를 보내면 사용자가 대여를 시도했다가
+    //   다시 막힌다 — 알림이 거짓말이 되는 경우다.
+    const p: any = Array.isArray(data) ? data[0] : data
+    if (p && !p.still_blocked) {
+      supabase.functions.invoke('send-notification', {
+        body: {
+          type: 'book_penalty_cleared',
+          booking: {
+            id:           p.penalty_id,
+            title:        p.book_title ?? '도서 대여',
+            user_id:      p.user_id,
+            book_title:   p.book_title ?? '',
+            penalty_tier: p.tier,
+            // 해제 알림에는 until 을 싣지 않는다 — 이미 풀렸으므로
+          },
+        },
+      }).catch(err => console.warn('[api] 제재 해제 알림 실패:', err))
+    }
+    return { ok: true }
+  }
+
+  const m = error.message ?? ''
+  if (m.includes('NOT_ADMIN'))        return { ok: false, message: '제재 해제 권한이 없습니다' }
+  if (m.includes('ALREADY_REVOKED'))  return { ok: false, message: '이미 해제된 제재입니다' }
+  if (m.includes('PENALTY_NOT_FOUND'))return { ok: false, message: '제재 정보를 찾을 수 없습니다' }
+  if (m.includes('REASON_TOO_LONG'))  return { ok: false, message: '사유는 200자까지 입력할 수 있습니다' }
+  return { ok: false, message: `해제 실패: ${m}` }
+}
+
+/**
+ * [Admin] 진행 중 연체 건 개별 면제
+ *
+ * 확정 제재(book_penalties)가 아니라 대여 건 자체를 제재 대상에서 빼는 것이다.
+ * 아직 반납하지 않아 제재 행이 없는 상태에서는 이 경로로만 풀 수 있다.
+ */
+export async function adminExemptCheckout(
+  checkoutId: string, exempt = true,
+): Promise<{ ok: boolean; message?: string }> {
+  const { error } = await supabase.rpc('admin_exempt_book_checkout', {
+    p_checkout_id: checkoutId,
+    p_exempt:      exempt,
+  })
+  if (!error) return { ok: true }
+  const m = error.message ?? ''
+  if (m.includes('NOT_ADMIN'))          return { ok: false, message: '면제 권한이 없습니다' }
+  if (m.includes('CHECKOUT_NOT_FOUND')) return { ok: false, message: '대여 정보를 찾을 수 없습니다' }
+  return { ok: false, message: `면제 실패: ${m}` }
 }

@@ -77,6 +77,9 @@ export interface BookDetailModalProps {
   borrower?:       DetailBorrower | null
   isAdmin:         boolean
   isOverdueStatus: boolean
+  /** ← [2026-07-21] 연체 제재 차단 상태 (본인 기준). 카드 CTA 와 같은 규칙 */
+  penaltyBlocked?: boolean
+  penaltyReason?:  string | null
   onClose:    () => void
   onCheckout: () => void   // 관리자 = 대여 등록 / 일반 = 대여하기 (← [2026-07-21] 승인 폐지)
   onReturn:   () => void
@@ -99,6 +102,7 @@ function fmtDateKo(d: string | null): string {
 
 export function BookDetailModal({
   book, categoryName, checkout, borrower, isAdmin, isOverdueStatus,
+  penaltyBlocked = false, penaltyReason = null,
   onClose, onCheckout, onReturn, onEdit, onDelete,
 }: BookDetailModalProps) {
   const [imgErr, setImgErr]     = useState(false)
@@ -219,6 +223,18 @@ export function BookDetailModal({
           )}
         </div>
 
+        {/* ← [2026-07-21] 제재 배너. 버튼만 회색이면 "왜 안 되지?" 가 되므로
+            모달에서는 사유를 문장으로 알려준다. */}
+        {penaltyBlocked && penaltyReason && (
+          <div style={{
+            flexShrink: 0, margin: '0 8px 8px', padding: '10px 12px',
+            background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8,
+            fontSize: 12, color: '#B91C1C', lineHeight: 1.6,
+          }}>
+            {penaltyReason}
+          </div>
+        )}
+
         {/* ── 액션 ────────────────────────────────────────────────────────
             ModalFooter(취소+확인 2버튼 고정)는 관리자 4버튼 구성에 맞지 않아
             전용 행을 쓴다. 버튼 규격(높이 56 / radius 16)은 동일하게 맞췄다. */}
@@ -232,9 +248,14 @@ export function BookDetailModal({
           {isAdmin && (
             <ActionBtn onClick={onEdit} bg={BM.btnCancelBg} color={BM.btnCancelTx} grow={0}>편집</ActionBtn>
           )}
+          {/* ← [2026-07-21] 제재 중이면 비활성 + 사유 노출.
+              모달은 카드보다 공간이 넉넉하므로 title 대신 아래 배너로도 알린다. */}
           {canCheckout && (
-            <ActionBtn onClick={onCheckout} bg={BM.btnPrimaryBg} color="#fff">
-              {isAdmin ? '대여 등록' : '대여하기'}
+            <ActionBtn
+              onClick={penaltyBlocked ? () => {} : onCheckout}
+              bg={penaltyBlocked ? '#E5E7EB' : BM.btnPrimaryBg}
+              color={penaltyBlocked ? '#9CA3AF' : '#fff'}>
+              {penaltyBlocked ? '대여 제한' : (isAdmin ? '대여 등록' : '대여하기')}
             </ActionBtn>
           )}
           {canReturn && (
