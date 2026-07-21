@@ -2,6 +2,10 @@
  * libraryListShared.tsx — 도서관 메인 리스트 UI 토큰 & 컴포넌트 (SSOT)
  *
  * [2026-07-20] 신규
+ * [2026-07-21] New Collection 슬라이더용 판정 추가
+ *   · isRecentAcquisition() / monthsAgoYM() / NEW_COLLECTION_MONTHS — 최근 3개월 입고분
+ *   · acquiredMonthLabel() — "N월 신규 도서" 문구 SSOT (newBadgeLabel 이 이걸 호출)
+ *   ※ isNewBook(new_until) 기존 판정은 변경 없음
  *
  * Figma: fMv9JLNlNybDBYUnJDCTrq
  *   [2026-07-20 rev2] 1339:1146 Home list — 아래 구조로 개편
@@ -326,18 +330,80 @@ export function isNewBook(book: Pick<CardBook, 'new_until'>): boolean {
 
 /**
  * 카드 뱃지 문구.
- *   · 취득월이 이번 달이면 Figma 원안대로 "N월 신규 도서"
- *   · 그 외(과거 입고분을 수동으로 띄운 경우 등)는 "신규 도서"
- *     — 5월 입고를 7월에 띄우면서 "5월 신규 도서"라 쓰면 오히려 오해를 준다.
+ *
+ * ← [2026-07-21] 고지 확정 — "신규 도서" 라벨 폐기, "N월 신규 도서" 로 통일.
+ *
+ *   변경 전: acquired_at 이 당월일 때만 "7월 신규 도서", 그 외에는 "신규 도서".
+ *            → 6월 입고분에 ⭐NEW⭐ 를 켜면 "신규 도서"로 뭉뚱그려져
+ *              New Collection 슬라이더의 "6월 신규 도서" 와 문구가 어긋났다.
+ *
+ *   변경 후: isNewBook 이면 acquired_at 의 월을 그대로 표기. 예외 없음.
+ *            문구 생성은 acquiredMonthLabel() 한 곳뿐이라 슬라이더와 항상 일치한다.
+ *
+ *   ※ acquired_at 이 비어 있으면 표기할 월이 없으므로 null(뱃지 미표시).
+ *     예전에는 이 경우 "신규 도서"가 나왔다 — 입고일 입력이 실질 필수가 된다.
  */
 export function newBadgeLabel(book: Pick<CardBook, 'new_until' | 'acquired_at'>): string | null {
   if (!isNewBook(book)) return null
-  const m = /^(\d{4})-(\d{2})/.exec(book.acquired_at ?? '')
-  if (m) {
-    const today = todayKST()
-    if (m[1] === today.slice(0, 4) && m[2] === today.slice(5, 7)) return `${+m[2]}월 신규 도서`
-  }
-  return '신규 도서'
+  return acquiredMonthLabel(book.acquired_at)
+}
+
+// ─── New Collection (최근 N개월 입고) 판정 ──────────────────────────────────
+//
+// ← [2026-07-21] 신설 — Figma 1347:1991 "New Collection" 자동 슬라이드용
+//
+//   ⭐NEW⭐(isNewBook / new_until) 와 **다른 개념**이라 함수를 분리한다.
+//     · ⭐NEW⭐          = 관리자가 손으로 켜는 강조. 종료일 수동 지정.
+//     · New Collection = "최근 3개월 입고분" 이라는 시간 창. 자동 롤링.
+//
+//   new_until 하나로 둘 다 표현하려 하면, 매월 9권을 사람이 켜고 꺼야 하고
+//   월이 바뀌어도 자동으로 빠지지 않는다. 시간 축 개념은 acquired_at 이 맞다.
+//   두 판정은 서로 간섭하지 않으며 한 도서가 양쪽에 동시에 속할 수 있다.
+
+/** 슬라이더가 보여줄 입고 기간 (당월 포함 개월 수). 사내 규칙: 매월 3권 구입 → 최대 9권 */
+export const NEW_COLLECTION_MONTHS = 3
+
+/**
+ * 'YYYY-MM' — 오늘(KST) 기준 (months-1) 개월 전의 달.
+ * months=3, 오늘이 2026-07 이면 '2026-05'.
+ *
+ * Date 파싱을 거치지 않는 이유는 todayKST() 주석과 같다
+ * (new Date('YYYY-MM-DD') 는 UTC 자정 해석이라 KST 에서 하루/한 달 밀린다).
+ */
+export function monthsAgoYM(months: number): string {
+  const today = todayKST()
+  let y = +today.slice(0, 4)
+  let m = +today.slice(5, 7) - (months - 1)
+  while (m <= 0) { m += 12; y -= 1 }
+  return `${y}-${String(m).padStart(2, '0')}`
+}
+
+/**
+ * 최근 N개월 입고분인가.
+ *
+ *   하한: (당월 - N + 1) 월  — 3개월 롤링
+ *   상한: 당월                — 미래 날짜로 등록된 도서는 아직 입고 전이므로 제외.
+ *
+ *   'YYYY-MM' 는 사전순 == 시간순이라 문자열 비교로 충분하다.
+ */
+export function isRecentAcquisition(
+  book: Pick<CardBook, 'acquired_at'>,
+  months: number = NEW_COLLECTION_MONTHS,
+): boolean {
+  const ym = book.acquired_at?.slice(0, 7)
+  if (!ym || !/^\d{4}-\d{2}$/.test(ym)) return false   // 미입력/형식오류 = 대상 아님
+  const nowYM = todayKST().slice(0, 7)
+  if (ym > nowYM) return false                          // 미래 입고 제외
+  return ym >= monthsAgoYM(months)
+}
+
+/**
+ * "N월 신규 도서" 문구 (SSOT).
+ * 그리드 뱃지(newBadgeLabel)와 슬라이더 라벨이 같은 문자열을 쓰도록 여기 한 곳에만 둔다.
+ */
+export function acquiredMonthLabel(acquiredAt: string | null): string | null {
+  const m = /^\d{4}-(\d{2})/.exec(acquiredAt ?? '')
+  return m ? `${+m[1]}월 신규 도서` : null
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -397,11 +463,17 @@ export interface BookGridCardProps {
   onReturn:   () => void
   onEdit:     () => void
   onDelete:   () => void
+  /**
+   * ← [2026-07-21] 카드 클릭 → 도서 상세 모달.
+   *   표지 위의 CTA/편집/삭제 버튼은 stopPropagation 으로 이 핸들러를 막는다
+   *   (버튼을 눌렀는데 상세까지 같이 열리는 이중 발화 방지).
+   */
+  onOpenDetail?: () => void
 }
 
 export function BookGridCard({
   book, checkout, borrower, isAdmin, isOverdueStatus,
-  onCheckout, onReturn, onEdit, onDelete,
+  onCheckout, onReturn, onEdit, onDelete, onOpenDetail,
 }: BookGridCardProps) {
   const [imgErr, setImgErr]   = useState(false)
   //  표지 원본 비율을 잰 뒤 결정되는 맞춤 방식.
@@ -424,11 +496,26 @@ export function BookGridCard({
   //   → (hover: none) 기기에서는 항상 펼쳐 둔다.
   const overlayOpen = !canHover || hovered
 
+  // ← [2026-07-21] 오버레이 버튼 공통 래퍼 — 카드 클릭(상세 열기)으로 전파되지 않게 한다.
+  const stop = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); fn() }
+
   return (
     <div
+      role={onOpenDetail ? 'button' : undefined}
+      tabIndex={onOpenDetail ? 0 : undefined}
+      aria-label={onOpenDetail ? `${book.title} 상세 보기` : undefined}
+      onClick={onOpenDetail}
+      onKeyDown={e => {
+        if (!onOpenDetail) return
+        // 내부 버튼에서 올라온 Enter/Space 는 무시 (버튼이 스스로 처리한다)
+        if (e.target !== e.currentTarget) return
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenDetail() }
+      }}
       style={{
         display: 'flex', flexDirection: 'column', gap: LT.cardGap,
         alignItems: 'flex-start', width: '100%',
+        cursor: onOpenDetail ? 'pointer' : 'default',
+        outlineOffset: 2,
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -504,7 +591,7 @@ export function BookGridCard({
           }}>
             {book.status === 'available' && (
               <button
-                onClick={onCheckout}
+                onClick={stop(onCheckout)}
                 tabIndex={overlayOpen ? 0 : -1}
                 style={{ ...HOVER_BTN, background: LT.black, color: LT.white }}>
                 {isAdmin ? '대여 등록' : '대여 신청'}
@@ -512,7 +599,7 @@ export function BookGridCard({
             )}
             {book.status === 'borrowed' && checkout && isAdmin && (
               <button
-                onClick={onReturn}
+                onClick={stop(onReturn)}
                 tabIndex={overlayOpen ? 0 : -1}
                 style={{ ...HOVER_BTN, background: LT.badgeBusy, color: LT.black }}>
                 반납 처리
@@ -530,14 +617,14 @@ export function BookGridCard({
                   남은 도서를 지우면 book_checkouts 가 고아가 된다. 기존 가드 유지. */}
               {book.status === 'available' && (
                 <button
-                  onClick={onDelete}
+                  onClick={stop(onDelete)}
                   tabIndex={overlayOpen ? 0 : -1}
                   style={{ ...HOVER_BTN, background: LT.danger, color: LT.white }}>
                   삭제
                 </button>
               )}
               <button
-                onClick={onEdit}
+                onClick={stop(onEdit)}
                 tabIndex={overlayOpen ? 0 : -1}
                 style={{ ...HOVER_BTN, background: LT.white, color: LT.black }}>
                 편집

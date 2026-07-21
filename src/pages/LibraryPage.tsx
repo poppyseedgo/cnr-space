@@ -38,6 +38,10 @@ import {
   HERO_FONT_SB, isNewBook, todayKST,
 } from '../components/library/libraryListShared'
 import { useBreakpoint } from '../hooks/useBreakpoint'
+// ← [2026-07-21] Figma 1347:1991 New Collection — 최근 3개월 입고 도서 자동 슬라이드
+import { NewCollectionSlider } from '../components/library/NewCollectionSlider'
+// ← [2026-07-21] 도서 상세 모달 — 그리드 카드/슬라이더 카드 공용 진입점
+import { BookDetailModal } from '../components/library/BookDetailModal'
 import { BookRequestModal }  from '../components/library/BookRequestModal'
 import { BookRequestPanel }  from '../components/library/BookRequestPanel'
 import type { BookRequest } from '../types'
@@ -730,6 +734,9 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
   const [importModal,    setImportModal]    = useState(false)
   const [actionLoading,  setActionLoading]  = useState(false)
   const [deleteConfirm,  setDeleteConfirm]  = useState<Book | null>(null)
+  //  ← [2026-07-21] 도서 상세 모달. 그리드 카드 클릭과 New Collection 카드 클릭이
+  //     같은 상태를 연다(모달이 두 벌로 갈리지 않도록).
+  const [detailModal,    setDetailModal]    = useState<Book | null>(null)
 
   // ─── 데이터 로드 ───────────────────────────────────────────────────────────
 
@@ -1249,6 +1256,27 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
             </div>
           </div>
 
+          {/* ══════════════════════════════════════════════════════════════
+              New Collection — Figma 1347:1991
+                Hero 안, 로고행(y 24) ↔ 통계·검색(y 589.7) 사이.
+                Hero 가 flex-col gap 40 이므로 별도 상단 여백은 주지 않는다.
+
+                대상: acquired_at 최근 3개월 입고분 (isRecentAcquisition SSOT).
+                     ⭐NEW⭐(new_until) 와는 독립 — 여기서 검색/필터 상태는
+                     건드리지 않고, 카드 클릭 시 기존 검색어 상태만 채운다.
+                3개월 내 입고분이 없으면 컴포넌트가 스스로 null 을 반환한다.
+              ══════════════════════════════════════════════════════════════ */}
+          <NewCollectionSlider
+            books={books}
+            isMobile={isMobile}
+            onSelect={b => {
+              // 슬라이더는 축약 필드(SlideBook)만 갖고 있다. 상세 모달은 전체
+              // 필드가 필요하므로 id 로 원본 Book 을 되찾아 넘긴다.
+              const full = books.find(x => x.id === b.id)
+              if (full) setDetailModal(full)
+            }}
+          />
+
           {/* 통계 + 검색 (Figma 1332:520 — gap 40 / items-end) */}
           <div style={{
             display: 'flex', width: '100%',
@@ -1401,6 +1429,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
                     onReturn={() => { if (checkout) handleReturn(book, checkout) }}
                     onEdit={() => setEditModal({ book })}
                     onDelete={() => setDeleteConfirm(book)}
+                    onOpenDetail={() => setDetailModal(book)}
                   />
                 )
               })}
@@ -1410,6 +1439,45 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
       </div>
 
       {/* ── 모달들 ── */}
+
+      {/* ← [2026-07-21] 도서 상세 (조회 전용) — 액션은 전부 기존 핸들러로 위임.
+            액션을 고르면 상세를 닫고 해당 모달로 넘긴다. 상세가 뒤에 남아 있으면
+            모달이 2겹으로 쌓여 ESC/오버레이 클릭 대상이 모호해진다. */}
+      {detailModal && (() => {
+        const co  = checkoutMap[detailModal.id] ?? null
+        const bwr = co ? users.find(u => u.user_id === co.user_id) : undefined
+        return (
+          <BookDetailModal
+            book={detailModal}
+            categoryName={detailModal.category?.name ?? null}
+            checkout={co}
+            borrower={bwr}
+            isAdmin={isAdmin}
+            isOverdueStatus={co ? isOverdue(co.due_at) : false}
+            onClose={() => setDetailModal(null)}
+            onCheckout={() => {
+              const b = detailModal
+              setDetailModal(null)
+              if (isAdmin) setCheckoutModal(b); else setRequestModal(b)
+            }}
+            onReturn={() => {
+              const b = detailModal
+              setDetailModal(null)
+              if (co) handleReturn(b, co)
+            }}
+            onEdit={() => {
+              const b = detailModal
+              setDetailModal(null)
+              setEditModal({ book: b })
+            }}
+            onDelete={() => {
+              const b = detailModal
+              setDetailModal(null)
+              setDeleteConfirm(b)
+            }}
+          />
+        )
+      })()}
 
       {/* ← [2026-07-22] 대여 등록 모달 (Admin) — 책 카드 진입 / 헤더 진입 공용 */}
       {isAdmin && (checkoutModal || checkoutOpen) && (
