@@ -109,7 +109,10 @@
 import { supabase, isSupabaseEnabled } from './supabase'
 import type { Booking, Room, AppUser, Feature, AttendeeRef,
   MyBookLoan, ExtendErrorCode,
-  CheckoutErrorCode, BookRequest } from '../types'  // ← [2026-07-18] 내 대여 / [2026-07-22] 대여신청
+  CheckoutErrorCode, BookRequest,
+  // ← [2026-07-23] 어드민 '도서 관리' 탭
+  Book, BookCategory, AdminBookLoan, BookReturnAction, BookReturnErrorCode, BookEditForm,
+} from '../types'  // ← [2026-07-18] 내 대여 / [2026-07-22] 대여신청
 
 // ── UTC → KST 변환 ───────────────────────────────────────────────────────────
 // Supabase가 UTC ISO 문자열로 반환하므로 앱 기준인 KST로 보정
@@ -1870,4 +1873,479 @@ export async function fetchPendingBookRequests(): Promise<BookRequest[]> {
     user_id: r.user_id,
     book: Array.isArray(r.books) ? (r.books[0] ?? null) : (r.books ?? null),
   } as BookRequest))
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// [2026-07-23] 어드민 '도서 관리' 탭 전용 API
+//
+// 설계 원칙
+//   ① PostgREST 기본 max-rows(1000) 무음 절단을 반드시 페이징 루프로 회피한다.
+//      도서는 현재 300권 수준이지만 대여 이력은 누적되므로 1000행을 넘는다.
+//      절단은 오류를 내지 않고 "그냥 적게 오는" 형태라 통계가 조용히 틀어진다.
+//      (loadBookings 에서 이미 같은 사고를 겪었고 동일 패턴으로 해결했다)
+//   ② 상태 전이는 SECURITY DEFINER RPC 경유. 클라 직접 UPDATE 금지.
+//   ③ 대여자 이름/부서는 저장하지 않는다. users 배열에서 live 조회한다.
+//      (퇴사·부서이동 시 스냅샷이 낡는 문제 — 회의실 모듈과 동일 원칙)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** PostgREST 기본 max-rows. 이 값 단위로 페이징한다. */
+const BOOK_PAGE_SIZE = 1000
+
+/**
+ * 전체 도서 목록 (카테고리 조인) — 페이징 루프 적용
+ *
+ * LibraryPage 의 load() 는 .range() 없이 select 하므로 도서가 1000권을 넘으면
+ * 조용히 잘린다. 어드민은 "전량"을 다루는 화면이라 여기서는 반드시 페이징한다.
+ */
+export async function loadAllBooks(): Promise<Book[]> {
+  const rows: any[] = []
+  let start = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('books')
+      .select('*, category:book_categories(id, name, parent_id, sort_order)')
+      .order('id', { ascending: true })
+      .range(start, start + BOOK_PAGE_SIZE - 1)
+    if (error) throw new Error(error.message)
+    if (!data || data.length === 0) break
+    rows.push(...data)
+    if (data.length < BOOK_PAGE_SIZE) break
+    start += BOOK_PAGE_SIZE
+  }
+  return rows as Book[]
+}
+
+/** 도서 카테고리 전체 */
+export async function loadBookCategories(): Promise<BookCategory[]> {
+  const { data, error } = await supabase
+    .from('book_categories')
+    .select('*')
+    .order('sort_order', { ascending: true })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as BookCategory[]
+}
+
+/**
+ * 기간별 대여 이력 (전체 사용자) — 관리자 전용
+ *
+ * @param from 'YYYY-MM-DD' (KST 00:00 부터)
+ * @param to   'YYYY-MM-DD' (KST 23:59:59 까지 — 종료일 당일 포함)
+ * @param dateField 기간 판정 기준 컬럼
+ *        'checkout_at'  = 대여일 기준 (기본. "그 기간에 빌려간 건")
+ *        'requested_at' = 신청일 기준 (승인 리드타임 분석용)
+ *
+ * 반환은 status 제한 없이 전량이다(pending/rejected/cancelled 포함).
+ * 화면에서 목적에 맞게 필터한다 — 서버 쿼리를 목적별로 쪼개면 같은 기간에
+ * 대해 서로 다른 모수가 만들어져 통계가 어긋난다.
+ *
+ * ※ RLS(book_checkouts_select_self_or_admin): 비관리자가 호출하면 본인 행만
+ *   돌아온다. 오류가 아니라 "적게 오는" 형태이므로 호출부는 반드시 관리자
+ *   화면에서만 사용해야 한다.
+ */
+export async function loadBookCheckoutsByRange(
+  from: string,
+  to: string,
+  dateField: 'checkout_at' | 'requested_at' = 'checkout_at',
+): Promise<AdminBookLoan[]> {
+  // KST 경계를 명시적으로 ISO 로 변환한다.
+  // 'YYYY-MM-DD' 를 그대로 넘기면 UTC 자정으로 해석돼 KST 기준 9시간이 밀린다.
+  const fromISO = new Date(`${from}T00:00:00+09:00`).toISOString()
+  const toISO   = new Date(`${to}T23:59:59.999+09:00`).toISOString()
+
+  const rows: any[] = []
+  let start = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('book_checkouts')
+      .select(`
+        id, book_id, user_id, checkout_at, due_at, returned_at,
+        extension_count, last_extended_at, status, notes,
+        requested_at, processed_at, processed_by_name, reject_reason,
+        books ( title, author, publisher, cover_url )
+      `)
+      .gte(dateField, fromISO)
+      .lte(dateField, toISO)
+      .order(dateField, { ascending: false })
+      .range(start, start + BOOK_PAGE_SIZE - 1)
+    if (error) throw new Error(error.message)
+    if (!data || data.length === 0) break
+    rows.push(...data)
+    if (data.length < BOOK_PAGE_SIZE) break
+    start += BOOK_PAGE_SIZE
+  }
+
+  return rows.map((r: any): AdminBookLoan => ({
+    ...toLoanRow(r),
+    user_id: r.user_id,
+    book: Array.isArray(r.books) ? (r.books[0] ?? null) : (r.books ?? null),
+  }))
+}
+
+/**
+ * 미반납 대여 전량 (기간 무관) — 연체 관리 탭 전용
+ *
+ * 연체는 "조회 기간"과 무관한 개념이다. 6개월 전에 빌려간 책이 아직
+ * 안 들어왔다면 이번 달 기간 필터에서 빠져 화면에서 사라진다. 그래서
+ * 연체 탭만 기간 필터를 적용하지 않고 status 기준으로 전량을 가져온다.
+ */
+export async function loadOutstandingBookLoans(): Promise<AdminBookLoan[]> {
+  const rows: any[] = []
+  let start = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('book_checkouts')
+      .select(`
+        id, book_id, user_id, checkout_at, due_at, returned_at,
+        extension_count, last_extended_at, status, notes,
+        requested_at, processed_at, processed_by_name, reject_reason,
+        books ( title, author, publisher, cover_url )
+      `)
+      .in('status', ['active', 'overdue'])
+      .order('due_at', { ascending: true })
+      .range(start, start + BOOK_PAGE_SIZE - 1)
+    if (error) throw new Error(error.message)
+    if (!data || data.length === 0) break
+    rows.push(...data)
+    if (data.length < BOOK_PAGE_SIZE) break
+    start += BOOK_PAGE_SIZE
+  }
+
+  return rows.map((r: any): AdminBookLoan => ({
+    ...toLoanRow(r),
+    user_id: r.user_id,
+    book: Array.isArray(r.books) ? (r.books[0] ?? null) : (r.books ?? null),
+  }))
+}
+
+// ─── 반납 / 분실 처리 ─────────────────────────────────────────────────────────
+
+/** admin_return_book RPC 에러 메시지 → 코드 */
+function parseReturnError(message: string): BookReturnErrorCode {
+  const codes: BookReturnErrorCode[] = [
+    'NOT_AUTHENTICATED', 'NOT_ADMIN', 'INVALID_ACTION',
+    'CHECKOUT_NOT_FOUND', 'NOT_ACTIVE',
+  ]
+  return codes.find(c => message.includes(c)) ?? 'UNKNOWN'
+}
+
+/** 반납/분실 실패 코드 → 사용자 안내 문구 */
+export function returnErrorMessage(code: BookReturnErrorCode): string {
+  switch (code) {
+    case 'NOT_AUTHENTICATED': return '로그인이 필요합니다'
+    case 'NOT_ADMIN':         return '반납 처리 권한이 없습니다'
+    case 'INVALID_ACTION':    return '잘못된 처리 요청입니다'
+    case 'CHECKOUT_NOT_FOUND':return '대여 정보를 찾을 수 없습니다'
+    // 다른 관리자가 먼저 처리했거나 이미 종결된 건
+    case 'NOT_ACTIVE':        return '이미 처리된 대여입니다. 목록을 새로고침해주세요'
+    default:                  return '처리에 실패했습니다. 잠시 후 다시 시도해주세요'
+  }
+}
+
+export interface ReturnResult {
+  ok:    boolean
+  row?:  AdminBookLoan
+  code?: BookReturnErrorCode
+}
+
+/**
+ * [Admin] 반납 / 분실 처리 — admin_return_book RPC 경유
+ *
+ * 왜 RPC 인가 (임시방편 배제):
+ *   반납은 book_checkouts 와 books 두 테이블을 함께 바꿔야 성립한다.
+ *   클라이언트에서 UPDATE 를 두 번 보내면 사이에 실패가 끼어들 수 있고,
+ *   그 결과 "대여기록은 반납완료인데 도서는 대여중"인 행이 남는다.
+ *   이 상태는 화면상 반납 버튼도 나오지 않아 관리자가 복구할 수 없다.
+ *   재시도/보정 코드로 덮지 않고, 두 UPDATE 를 하나의 트랜잭션으로 묶는다.
+ */
+export async function adminReturnBook(
+  checkoutId: string,
+  action: BookReturnAction = 'return',
+): Promise<ReturnResult> {
+  const { data, error } = await supabase.rpc('admin_return_book', {
+    p_checkout_id: checkoutId,
+    p_action:      action,
+  })
+  if (error) return { ok: false, code: parseReturnError(error.message ?? '') }
+  const r: any = Array.isArray(data) ? data[0] : data
+  if (!r) return { ok: false, code: 'UNKNOWN' }
+  return { ok: true, row: { ...toLoanRow(r), user_id: r.user_id } }
+}
+
+// ─── 도서 마스터 저장 / 삭제 / 일괄등록 ───────────────────────────────────────
+//
+// [2026-07-23] LibraryPage 의 handleSaveBook / handleDelete / handleImport 내부
+//   DB 로직을 그대로 옮겨왔다. 어드민 '도서 관리' 탭이 같은 동작을 해야 하는데,
+//   화면마다 payload 를 각자 만들면 아래 규칙들이 한쪽에서만 지켜진다.
+//
+//     · acquired_at 은 'YYYY-MM' 입력을 'YYYY-MM-01' 로 보정해야 한다
+//     · new_until 은 체크 해제 시 반드시 null 로 덮어써야 라벨이 실제로 내려간다
+//     · borrowed 상태 도서는 status 를 건드리면 안 된다 (반납 처리 경로로만 변경)
+//     · 카카오 표지는 CDN URL 을 그대로 쓰면 안 되고 Storage 로 옮겨야 한다
+//
+//   실제로 이 규칙들은 각각 별도 hotfix 로 들어온 것들이라 복제 시 누락 위험이
+//   가장 큰 부분이다. 호출부는 상태/토스트만 담당하고 규칙은 여기 한 곳에 둔다.
+
+/**
+ * 카카오 표지 → Supabase Storage 영구 저장
+ * Kakao CDN URL 은 외부 도메인 <img> 가 차단되므로 Storage 로 옮겨야 한다.
+ * 실패해도 도서 저장 자체는 성립하므로 throw 하지 않고 경고만 남긴다.
+ */
+async function applyKakaoCoverToStorage(bookId: number, kakaoItem: any): Promise<void> {
+  try {
+    const { error } = await supabase.functions.invoke('search-book', {
+      body: { action: 'apply', book_id: bookId, kakao: kakaoItem },
+    })
+    if (error) console.warn('[api] 표지 Storage 저장 실패:', error.message)
+  } catch (e) {
+    console.warn('[api] 표지 Storage 저장 오류:', e)
+  }
+}
+
+/**
+ * 도서 추가/수정 저장
+ * @param form     편집 폼 값
+ * @param existing 기존 도서 (null 이면 신규 추가)
+ * @param kakaoItem 카카오 검색으로 선택한 항목 (있으면 표지를 Storage 로 이관)
+ * @returns 저장된 도서 id
+ */
+export async function persistBook(
+  form: BookEditForm,
+  existing: Book | null,
+  kakaoItem?: any,
+): Promise<number> {
+  const isNew = existing === null
+
+  const payload: any = {
+    title:       form.title.trim(),
+    author:      form.author.trim() || null,
+    publisher:   form.publisher.trim() || null,
+    isbn:        form.isbn.trim() || null,
+    // cover_url 은 kakaoItem 이 있을 때 null 로 초기화한다.
+    //   → applyKakaoCoverToStorage() 가 Storage URL 로 다시 채운다.
+    //   → kakaoItem 이 없을 때만 수동 입력 URL 을 그대로 쓴다.
+    cover_url:   kakaoItem ? null : (form.cover_url.trim() || null),
+    category_id: form.category_id ? parseInt(form.category_id) : null,
+    acquired_at: form.acquired_at ? `${form.acquired_at}-01` : null,
+    // 체크 해제 시 반드시 null 로 덮어써야 ⭐NEW⭐ 라벨이 실제로 내려간다
+    new_until:   form.is_new && form.new_until ? form.new_until : null,
+    notes:       form.notes.trim() || null,
+    updated_at:  new Date().toISOString(),
+  }
+
+  if (isNew) {
+    payload.status = 'available'
+  } else if (existing!.status !== 'borrowed') {
+    // 대여중 도서의 status 는 반납 처리 경로(admin_return_book)로만 바뀐다
+    payload.status = form.status
+  }
+
+  if (isNew) {
+    const { data, error } = await supabase
+      .from('books').insert(payload).select('id').single()
+    if (error) throw new Error(error.message)
+    const newId = data!.id as number
+    if (kakaoItem) await applyKakaoCoverToStorage(newId, kakaoItem)
+    return newId
+  }
+
+  const bookId = existing!.id
+  const { error } = await supabase.from('books').update(payload).eq('id', bookId)
+  if (error) throw new Error(error.message)
+  if (kakaoItem) await applyKakaoCoverToStorage(bookId, kakaoItem)
+  return bookId
+}
+
+/** deleteBookRecord 결과 — 이력이 있어 차단된 경우를 오류가 아닌 상태로 반환 */
+export interface DeleteBookResult {
+  ok:      boolean
+  blocked: boolean   // true = 대여 이력이 있어 삭제 차단됨
+}
+
+/**
+ * 도서 삭제
+ * 대여 이력(반납분 포함)이 하나라도 있으면 FK 제약으로 삭제할 수 없다.
+ * DB 오류로 터뜨리지 않고 사전 확인 후 blocked 로 돌려준다 —
+ * 운영상 정답은 삭제가 아니라 상태를 '분실'로 바꾸는 것이기 때문이다.
+ */
+export async function deleteBookRecord(bookId: number): Promise<DeleteBookResult> {
+  const { count, error: cErr } = await supabase
+    .from('book_checkouts')
+    .select('id', { count: 'exact', head: true })
+    .eq('book_id', bookId)
+  if (cErr) throw new Error(cErr.message)
+  if ((count ?? 0) > 0) return { ok: false, blocked: true }
+
+  const { error } = await supabase.from('books').delete().eq('id', bookId)
+  if (error) throw new Error(error.message)
+  return { ok: true, blocked: false }
+}
+
+/** importBookRows 결과 */
+export interface ImportBooksResult {
+  success: number
+  errors:  string[]
+}
+
+/**
+ * CSV 일괄 등록 — 50건 배치 insert
+ * 일부 배치가 실패해도 나머지는 계속 진행하고, 결과를 합산해 돌려준다.
+ * (전량 롤백하면 수백 건 중 한 줄 때문에 다시 처음부터 해야 한다)
+ */
+export async function importBookRows(rows: any[]): Promise<ImportBooksResult> {
+  const BATCH = 50
+  let success = 0
+  const errors: string[] = []
+
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const batch = rows.slice(i, i + BATCH)
+    const { error } = await supabase.from('books').insert(
+      batch.map((r: any) => ({
+        title:       r.title,
+        author:      r.author,
+        publisher:   r.publisher,
+        isbn:        r.isbn,
+        category_id: r.category_id,
+        // 'YYYY-MM' → 'YYYY-MM-01' 보정 (date 컬럼)
+        acquired_at: r.acquired_at ? (r.acquired_at.length === 7 ? `${r.acquired_at}-01` : r.acquired_at) : null,
+        // 일괄 등록은 ⭐NEW⭐ 미지정 — 등록 후 편집에서 개별 설정
+        new_until:   null,
+        notes:       r.notes,
+        status:      'available',
+      }))
+    )
+    if (error) errors.push(error.message)
+    else success += batch.length
+  }
+  return { success, errors }
+}
+
+// ─── 대여 등록 / 승인 / 거절 + 알림 발송 (화면 공용) ──────────────────────────
+//
+// [2026-07-23] LibraryPage 의 handleCheckout / handleApprove / handleReject 에
+//   들어 있던 "RPC 호출 + send-notification 페이로드 조립"을 그대로 옮겼다.
+//
+//   알림 페이로드는 필드 이름 하나만 달라도 인앱 본문이 "제목 · · " 처럼 깨진다
+//   (2026-07-20 에 실제로 겪은 결함). 화면이 늘어날 때마다 페이로드를 복제하면
+//   같은 사고가 반복되므로, 발송 규칙을 한 곳에 고정한다.
+//
+//   알림 발송은 의도적으로 await 하지 않는다. 메일 게이트웨이 지연 때문에
+//   대여 등록 자체가 느려지면 안 되고, 실패해도 대여는 이미 성립했기 때문이다.
+
+/** 여러 권을 한 통으로 묶는 제목 라벨 — '자바스크립트 외 2권' */
+function joinBookTitles(titles: string[]): string {
+  const list = titles.filter(Boolean)
+  if (list.length === 0) return ''
+  return list.length > 1 ? `${list[0]} 외 ${list.length - 1}권` : list[0]
+}
+
+export interface AdminCheckoutOutcome extends CheckoutResult {
+  /** 미래 날짜 예약이라 '대여 확정' 알림을 보내지 않은 경우 true */
+  deferredNotify?: boolean
+}
+
+/**
+ * [Admin] 대여 등록 + book_borrowed 알림
+ *
+ * @param checkoutAt 'YYYY-MM-DD' (선택). 지정 시 그 날 정오(KST)로 고정해 전송한다.
+ *   자정으로 보내면 타임존 경계에서 하루 밀릴 수 있고, 정오면 ±12시간 여유가 있다.
+ * @param titles 알림 문구에 쓸 도서 제목들 (호출부의 books 배열에서 해석해 전달)
+ */
+export async function adminCheckoutBooksWithNotify(
+  userId: string,
+  bookIds: number[],
+  notes: string,
+  titles: string[],
+  checkoutAt?: string,
+): Promise<AdminCheckoutOutcome> {
+  const checkoutIso = checkoutAt
+    ? new Date(`${checkoutAt}T12:00:00+09:00`).toISOString()
+    : null
+
+  const res = await adminCheckoutBooks(userId, bookIds, notes, checkoutIso)
+  if (!res.ok) return res
+
+  const label = joinBookTitles(titles)
+  const due   = res.rows?.[0]?.due_at
+
+  // 미래 날짜로 등록(예약)한 경우 '대여 확정' 알림을 보내지 않는다.
+  //   book_borrowed 는 "지금 대여되었습니다" 문구다. 아직 시작하지 않은 예약에
+  //   이 메일이 나가면 대여자가 오늘 책을 받은 것으로 오해한다.
+  //   ※ 시작일 자동 통지는 book-due-reminder cron 에 '대여 시작' 타입과
+  //     notified_started 컬럼을 추가해야 한다 (별도 작업 — 미구현).
+  const startsInFuture = !!checkoutAt && checkoutAt > todayKSTStr()
+  if (startsInFuture) return { ...res, deferredNotify: true }
+
+  supabase.functions.invoke('send-notification', {
+    body: {
+      type: 'book_borrowed',
+      booking: {
+        id:           res.rows?.[0]?.id ?? '',
+        title:        label,
+        user_id:      userId,
+        book_title:   label,
+        due_at:       due,
+        due_date_kst: due ? String(due).slice(0, 10) : undefined,
+      },
+    },
+  }).catch(err => console.warn('[api] 대여 알림 발송 실패:', err))
+
+  return { ...res, deferredNotify: false }
+}
+
+/** [Admin] 신청 승인 + book_request_approved 알림 */
+export async function approveBookRequestWithNotify(
+  req: BookRequest,
+  adminName?: string | null,
+): Promise<CheckoutResult> {
+  const res = await approveBookRequest(req.id, adminName)
+  if (!res.ok) return res
+
+  const due = res.rows?.[0]?.due_at
+  supabase.functions.invoke('send-notification', {
+    body: {
+      type: 'book_request_approved',
+      booking: {
+        id:           req.id,
+        title:        req.book?.title ?? '',
+        user_id:      req.user_id,
+        book_title:   req.book?.title ?? '',
+        due_at:       due,
+        due_date_kst: due ? String(due).slice(0, 10) : undefined,
+      },
+    },
+  }).catch(err => console.warn('[api] 승인 알림 발송 실패:', err))
+
+  return res
+}
+
+/** [Admin] 신청 거절 + book_request_rejected 알림 (사유 포함) */
+export async function rejectBookRequestWithNotify(
+  req: BookRequest,
+  reason: string,
+  adminName?: string | null,
+): Promise<CheckoutResult> {
+  const res = await rejectBookRequest(req.id, reason, adminName)
+  if (!res.ok) return res
+
+  supabase.functions.invoke('send-notification', {
+    body: {
+      type: 'book_request_rejected',
+      booking: {
+        id:            req.id,
+        title:         req.book?.title ?? '',
+        user_id:       req.user_id,
+        book_title:    req.book?.title ?? '',
+        reject_reason: reason,
+      },
+    },
+  }).catch(err => console.warn('[api] 거절 알림 발송 실패:', err))
+
+  return res
+}
+
+/** 오늘(KST) 'YYYY-MM-DD' — libraryListShared.todayKST 와 동일 규칙.
+ *  lib 계층이 components 를 import 하면 순환이 생기므로 여기서 계산한다. */
+function todayKSTStr(): string {
+  const d = new Date(Date.now() + 9 * 3600 * 1000)
+  return d.toISOString().slice(0, 10)
 }

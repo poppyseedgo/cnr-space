@@ -209,7 +209,11 @@ export interface BookCheckout {
   due_at:          string
   returned_at:     string | null
   extension_count: number
-  status:          'active' | 'returned' | 'overdue' | 'lost'
+  /** ← [2026-07-23] 리터럴 유니온 직접 선언 → BookCheckoutStatus 참조로 교체.
+   *   20260722 마이그레이션에서 pending/rejected/cancelled 가 추가됐는데 이 타입만
+   *   갱신되지 않아, 어드민에서 전체 이력을 다룰 때 실제 DB 값이 타입에 없는
+   *   상태였다(컴파일은 통과하지만 분기 누락을 컴파일러가 잡아주지 못함). */
+  status:          BookCheckoutStatus
   notes:           string | null
   created_at:      string
   updated_at:      string
@@ -285,6 +289,52 @@ export interface BookRequest extends MyBookLoan {
   user_name?: string | null
   user_dept?: string | null
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [2026-07-23] 어드민 '도서 관리' 탭 — 전체 대여 이력 행
+//   · MyBookLoan(본인 전용)과 필드 구성이 같고 user_id 만 더 필요하다.
+//     새 타입을 처음부터 다시 선언하면 필드가 갈라지므로 확장으로 둔다.
+//   · 정규화는 api.ts 의 toLoanRow() 하나를 계속 재사용한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AdminBookLoan extends MyBookLoan {
+  /** 대여자 user_id — 이름/부서는 users 배열에서 live 조회 (스냅샷 저장 안 함) */
+  user_id: string
+}
+
+/** 도서 추가/편집 폼 상태
+ *
+ *  ← [2026-07-23] bookFormShared.tsx(구 LibraryPage) 지역 타입에서 승격.
+ *    저장 로직(persistBook)이 api.ts 로 이동하면서 lib 계층이 이 타입을 알아야
+ *    하는데, components → lib → components 순환 참조가 생긴다.
+ *    타입은 최하위 계층(types)에 두는 것이 유일하게 순환이 없는 배치다.
+ */
+export interface BookEditForm {
+  title:       string
+  author:      string
+  publisher:   string
+  isbn:        string
+  category_id: string
+  acquired_at: string
+  /** ⭐NEW⭐ — 체크 여부와 노출 종료일('YYYY-MM-DD') */
+  is_new:      boolean
+  new_until:   string
+  status:      'available' | 'maintenance' | 'lost'
+  notes:       string
+  cover_url:   string
+}
+
+/** 반납/분실 처리 액션 — admin_return_book RPC 의 p_action 과 1:1 */
+export type BookReturnAction = 'return' | 'lost'
+
+/** admin_return_book RPC 실패 코드 */
+export type BookReturnErrorCode =
+  | 'NOT_AUTHENTICATED'
+  | 'NOT_ADMIN'
+  | 'INVALID_ACTION'
+  | 'CHECKOUT_NOT_FOUND'
+  | 'NOT_ACTIVE'
+  | 'UNKNOWN'
 
 /** 화면 표시용 파생 상태 (DB status + due_at 기준 클라 계산) */
 export type LoanDisplayStatus =

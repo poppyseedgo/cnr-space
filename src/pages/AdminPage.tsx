@@ -43,6 +43,8 @@ import { AdminSideNav, type AdminTabId } from '../components/layout/AdminSideNav
 // ← [2026-05-06 Admin Phase C] 승인 관리 테이블 컴포넌트 신설 (Figma node 451:3534, Phase B 공통 컴포넌트 사용)
 import { AdminApprovalTable } from '../components/common/AdminApprovalTable'
 import { VisitorLogPanel } from '../components/common/VisitorLogPanel'  // ← [2026-07-10] 방문로그 관리 패널
+import { BookAdminPanel } from '../components/library/BookAdminPanel'  // ← [2026-07-23] 도서 관리 패널
+import { exportCSV } from '../utils/csv'  // ← [2026-07-23] 지역 함수에서 공용 유틸로 이동
 // ← [2026-05-11 Phase 2] isNoshow 통일 — utils/noshow.ts SSOT 사용
 //   기존 분산: L186 / L783 / L1073 (모두 옛 autoCancelled 룰)
 //   변경 사유: cron ②③ 비활성화 후 markNoshow API가 status='confirmed' 유지 → 확정 룰이 더 정확
@@ -156,17 +158,10 @@ function DateRangePicker({ from, to, onChangeFn, presetId, onPreset, compact = f
 }
 
 // ─── CSV Export 유틸 ──────────────────────────────────────────────────────────
-function exportCSV(rows: Record<string,any>[], filename: string) {
-  if (!rows.length) return
-  const BOM = '\uFEFF'
-  const cols = Object.keys(rows[0])
-  const escape = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
-  const csv = BOM + [cols.join(','), ...rows.map(r => cols.map(c => escape(r[c])).join(','))].join('\r\n')
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8;' }))
-  a.download = `${filename}_${todayStr()}.csv`
-  a.click(); URL.revokeObjectURL(a.href)
-}
+//   ← [2026-07-23] 구현을 src/utils/csv.ts 로 이동했다.
+//     도서 관리 탭에서도 같은 함수가 필요한데 이 파일의 지역 함수라 import 가
+//     불가능했다. 복사하면 BOM/escape 규칙이 두 벌이 되어 한쪽만 고쳐진다.
+//     동작은 동일하다 — 위치만 옮기고 여기서는 import 해서 쓴다.
 
 // ─── Detail Drawer ─────────────────────────────────────────────────────────────
 type DetailType = 'bookings'|'noshow'|'rooms'|'dept'|'hours'|'pending'|'users'
@@ -674,7 +669,7 @@ function AggTable({ rows, cols, onExport, onRowClick, onHeaderClick, activeSortK
 // ← [2026-05-06 Admin Phase C] currentUserId/currentUserEmail 추가 — AdminApprovalTable 내 BookingStatusBadge 판정용
 // ← [2026-05-06 사이드 sticky 핫픽스] headerHeight 추가 — 사이드 네비 fixed top 위치 계산용
 export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject, onForceCancel, onDetail, currentUserId = '', currentUserEmail = '', headerHeight = 0 }) {
-  const TABS = ['dashboard','bookings','approvals','rooms','users','visitors']  // ← [2026-07-10] visitors(방문 기록) 추가
+  const TABS = ['dashboard','bookings','approvals','rooms','users','visitors','books']  // ← [2026-07-10] visitors / [2026-07-23] books(도서 관리) 추가
   const getTabFromHash = () => {
     const hash = window.location.hash.replace('#', '')
     if (hash.startsWith('admin-booking-')) return 'approvals'  // 딥링크: 승인 관리 탭으로
@@ -789,6 +784,10 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
       {activeTab==='rooms'     && <AdminRooms     showToast={showToast} isMobile={isMobile}/>}
       {activeTab==='users'     && <AdminUsers     users={users} setUsers={setUsers} rooms={rooms} showToast={showToast} isMobile={isMobile}/>}{/* ← [2026-05-26] rooms prop 추가 — 노쇼 현황 DetailDrawer 드릴다운에서 회의실 이름 표시용 */}
       {activeTab==='visitors'  && <VisitorLogPanel showToast={showToast} isMobile={isMobile}/>}{/* ← [2026-07-10] 방문로그 관리 (2차 비번 잠금 → 조회/반납/삭제/Excel) */}
+      {/* ← [2026-07-23] 도서 관리 — 개요/도서/대여이력/연체/승인 5개 서브탭.
+            LibraryPage(사용자 화면)의 관리 기능은 그대로 두고, 여기서는 같은
+            모달·API·판정 기준을 재사용해 운영자 관점의 테이블/통계를 제공한다. */}
+      {activeTab==='books'     && <BookAdminPanel users={users} currentUserId={currentUserId} showToast={showToast} isMobile={isMobile}/>}
         </div>
       </div>
     </>
