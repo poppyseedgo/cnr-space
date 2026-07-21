@@ -31,6 +31,7 @@ import {
   penaltyTierLabel, daysUntilPenalty, penaltyOverdueDays, PENALTY_TIER_DAYS,
 } from '../../utils/bookLoan'
 import type { MyBookLoan, BookPenaltyState } from '../../types'
+import { BookLoanDetailModal } from './BookLoanDetailModal'   // ← [2026-07-21] 상세
 
 interface Props {
   authUserId: string
@@ -44,6 +45,9 @@ export function MyBookLoans({ authUserId, showToast, isMobile = false }: Props) 
   const [errorMsg,  setErrorMsg]  = useState<string | null>(null)
   const [extendingId, setExtendingId] = useState<string | null>(null)   // 연장 진행중 카드
   const [confirmTarget, setConfirmTarget] = useState<MyBookLoan | null>(null)
+  // ← [2026-07-21] 대여 상세. 지금까지 카드에 onClick 이 아예 없어
+  //   "클릭이 안 된다" 는 인상을 줬다 (열 화면이 없었기 때문).
+  const [detailLoan, setDetailLoan] = useState<MyBookLoan | null>(null)
   // ← [2026-07-21] 연체 제재 상태
   const [penalty, setPenalty] = useState<BookPenaltyState>({
     blocked: false, tier: null, blockedUntil: null, overdueDays: 0, reason: null,
@@ -193,6 +197,14 @@ export function MyBookLoans({ authUserId, showToast, isMobile = false }: Props) 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
+      {/* ← [2026-07-21] 대여 상세 */}
+      {detailLoan && (
+        <BookLoanDetailModal
+          loan={detailLoan}
+          onClose={() => setDetailLoan(null)}
+        />
+      )}
+
       {/* ── 연체 제재 배너 (← [2026-07-21]) ──────────────────────────────
           가장 위에 둔다. 대여가 막힌 상태에서 목록만 보면 이유를 알 수 없다. */}
       {penalty.blocked && (
@@ -266,6 +278,7 @@ export function MyBookLoans({ authUserId, showToast, isMobile = false }: Props) 
                 isMobile={isMobile}
                 extending={extendingId === loan.id}
                 onExtendClick={() => setConfirmTarget(loan)}
+                onOpenDetail={() => setDetailLoan(loan)}
               />
             ))}
           </div>
@@ -342,8 +355,11 @@ function SummaryCard({ label, value, color }: { label: string; value: number; co
 }
 
 /** 현재 대여중 카드 — 표지 + 정보 + 연장 버튼 */
-function ActiveLoanCard({ loan, isMobile, extending, onExtendClick }: {
-  loan: MyBookLoan; isMobile: boolean; extending: boolean; onExtendClick: () => void
+function ActiveLoanCard({ loan, isMobile, extending, onExtendClick, onOpenDetail }: {
+  loan: MyBookLoan; isMobile: boolean; extending: boolean
+  onExtendClick: () => void
+  /** ← [2026-07-21] 카드 클릭 → 대여 상세 */
+  onOpenDetail: () => void
 }) {
   const ds      = loanDisplayStatus(loan)
   const style   = loanStatusStyle(ds)
@@ -351,9 +367,16 @@ function ActiveLoanCard({ loan, isMobile, extending, onExtendClick }: {
   const blocked = extendBlockedReason(loan)
 
   return (
-    <div style={{ display: 'flex', gap: 12, padding: 12, background: '#fff',
-      border: '1px solid #EEF1F5', borderRadius: 14,
-      alignItems: isMobile ? 'flex-start' : 'center' }}>
+    // ← [2026-07-21] 카드 전체를 클릭 가능하게. 연장 버튼은 아래에서
+    //   stopPropagation 으로 분리한다 — 연장하려다 상세가 열리면 안 된다.
+    <div
+      onClick={onOpenDetail}
+      role="button"
+      tabIndex={0}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenDetail() } }}
+      style={{ display: 'flex', gap: 12, padding: 12, background: '#fff',
+        border: '1px solid #EEF1F5', borderRadius: 14, cursor: 'pointer',
+        alignItems: isMobile ? 'flex-start' : 'center' }}>
 
       {/* 표지 */}
       <div style={{ width: 48, height: 66, flexShrink: 0, borderRadius: 6, overflow: 'hidden',
@@ -427,7 +450,7 @@ function ActiveLoanCard({ loan, isMobile, extending, onExtendClick }: {
 
       {/* 연장 버튼 (F3/F4) */}
       <button
-        onClick={onExtendClick}
+        onClick={e => { e.stopPropagation(); onExtendClick() }}
         disabled={!ok || extending}
         style={{
           flexShrink: 0, padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,

@@ -40,13 +40,16 @@ import { getNotificationColor } from '../../data/notificationMeta'
 interface NotificationBellProps {
   authUser: { user_id: string } | null;
   dark: boolean;
-  onOpenBookingDetail: (bookingId: string) => void;
+  onOpenBookingDetail: (bookingId: string) => void
+  /** ← [2026-07-21] 도서 대여 알림 클릭. 미전달 시 도서 알림은 아무것도 열지 않는다 */
+  onOpenBookLoanDetail?: (checkoutId: string) => void;
 }
 
 export function NotificationBell({
   authUser,
   dark,
   onOpenBookingDetail,
+  onOpenBookLoanDetail,
 }: NotificationBellProps) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
@@ -149,7 +152,18 @@ export function NotificationBell({
                       markNotificationRead(n.id)
                       setNotifications(prev => prev.map(x => x.id===n.id ? {...x,is_read:true} : x))
                     }
-                    if (n.booking_id) onOpenBookingDetail(n.booking_id)
+                    // ── [2026-07-21] 도서 알림 분기 ──────────────────────
+                    //   booking_id 는 두 종류의 id 를 담는 공용 필드다.
+                    //     회의실 알림 → bookings.id
+                    //     도서 알림   → book_checkouts.id
+                    //   구분 없이 onOpenBookingDetail 로 보내면 부모가
+                    //   bookings.find() 로 찾다 undefined 를 얻어
+                    //   회의실 상세 모달이 data=null 로 열린다 → 빈 화면.
+                    //   알림 type 접두사가 유일하게 신뢰할 수 있는 판별자다.
+                    if (n.booking_id) {
+                      if (n.type?.startsWith('book_')) onOpenBookLoanDetail?.(n.booking_id)
+                      else                             onOpenBookingDetail(n.booking_id)
+                    }
                     setShowNotifPanel(false)
                   }}
                   style={{padding:"12px 16px",borderBottom:"1px solid #F8FAFC",cursor:"pointer",

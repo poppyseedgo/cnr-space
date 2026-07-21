@@ -215,7 +215,10 @@ Deno.serve(async (req) => {
           body: {
             type: 'book_penalty_cleared',
             booking: {
-              id:           p.penalty_id,
+              // ★ 딥링크 규약: 도서 알림의 booking_id 는 book_checkouts.id 다.
+              //   penalty_id 를 넣으면 클릭 시 대여 건을 못 찾아 빈 화면이 뜬다.
+              //   checkout 이 지워진 건은 폴백해도 모달이 '찾을 수 없음' 을 안내한다.
+              id:           p.checkout_id ?? p.penalty_id,
               title:        p.book_title ?? '도서 대여',
               user_id:      p.user_id,
               book_title:   p.book_title ?? '',

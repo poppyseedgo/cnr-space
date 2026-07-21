@@ -53,6 +53,7 @@ import {
   penaltyTierLabel, penaltyOverdueDays, PENALTY_TIER_DAYS,
 } from '../../utils/bookLoan'
 import { isNewBook, todayKST } from './libraryListShared'
+import { BookLoanDetailModal } from './BookLoanDetailModal'   // ← [2026-07-21] 대여 상세
 import { BookEditModal, BookImportModal, OVERLAY_STYLE, MODAL_STYLE } from './bookFormShared'
 import { BookCheckoutModal } from './BookCheckoutModal'
 import type {
@@ -343,6 +344,9 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
   const [penaltyLoading,   setPenaltyLoading]   = useState(false)
   const [revokingId,       setRevokingId]       = useState<string | null>(null)
   const [penaltyPage,      setPenaltyPage]      = useState(1)
+  // ← [2026-07-21] 대여 상세. DataTable 은 onRowClick 을 지원하는데
+  //   도서 탭들이 넘기지 않아 행이 클릭되지 않았다(열 화면이 없었기 때문).
+  const [detailLoan, setDetailLoan] = useState<AdminBookLoan | null>(null)
 
   const loadPenalties = useCallback(async (activeOnly: boolean) => {
     setPenaltyLoading(true)
@@ -824,9 +828,9 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
         return (
           <div style={{ display: 'flex', gap: 6 }}>
             <button className="btn" style={{ ...BTN_MINI, background: '#111', color: '#fff' }}
-              onClick={() => setReturnTarget({ loan: l, action: 'return' })}>반납</button>
+              onClick={e => { e.stopPropagation(); setReturnTarget({ loan: l, action: 'return' }) }}>반납</button>
             <button className="btn" style={{ ...BTN_MINI, background: '#FEF2F2', color: '#DC2626' }}
-              onClick={() => setReturnTarget({ loan: l, action: 'lost' })}>분실</button>
+              onClick={e => { e.stopPropagation(); setReturnTarget({ loan: l, action: 'lost' }) }}>분실</button>
           </div>
         )
       },
@@ -859,7 +863,7 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
                 면제
               </span>
               <button
-                onClick={() => handleToggleExempt(l)}
+                onClick={e => { e.stopPropagation(); handleToggleExempt(l) }}
                 disabled={exemptingId === l.id}
                 style={{ ...BTN_MINI, background: 'transparent', color: '#94A3B8',
                          textDecoration: 'underline' }}>
@@ -879,7 +883,7 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
               {hit ? `초과 ${over}일` : `D-${Math.max(0, PENALTY_TIER_DAYS.warn - over)}`}
             </span>
             <button
-              onClick={() => handleToggleExempt(l)}
+              onClick={e => { e.stopPropagation(); handleToggleExempt(l) }}
               disabled={exemptingId === l.id}
               style={{ ...BTN_MINI, background: '#F1F5F9', color: '#374151' }}>
               {exemptingId === l.id ? '처리중' : '면제'}
@@ -1091,6 +1095,7 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
 
           <div style={{ overflowX: 'auto' }}>
             <DataTable
+              onRowClick={(l: AdminBookLoan) => setDetailLoan(l)}
               data={pageSlice(filteredLoans, loanPage)}
               columns={loanColumns}
               getRowKey={l => l.id}
@@ -1129,6 +1134,7 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
 
           <div style={{ overflowX: 'auto' }}>
             <DataTable
+              onRowClick={(l: AdminBookLoan) => setDetailLoan(l)}
               data={pageSlice(overdueRows, overduePage)}
               columns={overdueColumns}
               getRowKey={l => l.id}
@@ -1233,6 +1239,19 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
             />
           </div>
         </div>
+      )}
+
+      {/* ← [2026-07-21] 대여 상세. 반납/분실은 기존 핸들러를 그대로 재사용한다 —
+           모달이 직접 RPC 를 부르면 목록 갱신·토스트가 어긋난다. */}
+      {detailLoan && (
+        <BookLoanDetailModal
+          loan={detailLoan}
+          isAdmin
+          borrowerName={userNameById[detailLoan.user_id] ?? null}
+          onClose={() => setDetailLoan(null)}
+          onReturn={l => { setDetailLoan(null); setReturnTarget({ loan: l as AdminBookLoan, action: 'return' }) }}
+          onLost={l   => { setDetailLoan(null); setReturnTarget({ loan: l as AdminBookLoan, action: 'lost'   }) }}
+        />
       )}
 
       {/* ═══════════════════════ 모달 ═══════════════════════ */}

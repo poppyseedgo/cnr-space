@@ -238,6 +238,9 @@ import { createPortal } from 'react-dom'  // ← [2026-05-05 핫픽스 v17] 헤�
 // ← [2026-04-30] 헤더 상단 공지 영역 (NoticeBar) 도입 — Figma node 410:6745 반영
 import { NoticeBar, type AnnouncementConfig } from './components/layout/NoticeBar'
 import { ProfileDropdown } from './components/layout/ProfileDropdown'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 2)
+import { BookLoanDetailModal } from './components/library/BookLoanDetailModal'
+import { fetchBookLoanById } from './lib/api'
+import type { AdminBookLoan } from './types'
 import { NotificationBell } from './components/layout/NotificationBell'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 3)
 import { ResourceDropdown } from './components/layout/ResourceDropdown'  // ← [2026-05-13 v7] 헤더 우측 자원 예약 드롭다운 (Figma 572:462)
 import { HeaderNav } from './components/layout/HeaderNav'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 4)
@@ -358,6 +361,10 @@ function AppContent() {
   const [calView, setCalView]     = useState("daily");
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [modal, setModal]         = useState(null);
+  // ← [2026-07-21] 도서 대여 상세 (알림 클릭 경로).
+  //   loading 상태를 함께 들고 있어야 조회 중 빈 화면이 노출되지 않는다.
+  const [loanDetail, setLoanDetail] =
+    useState<{ loan: AdminBookLoan | null; loading: boolean } | null>(null);
   const [subModal, setSubModal]   = useState(null);
   const [toast, setToast]         = useState(null);
   const [searchQ, setSearchQ]     = useState("");
@@ -1750,6 +1757,15 @@ function AppContent() {
                 onOpenBookingDetail={(bookingId) => {
                   setModal({type:"detail", data: bookings.find(b=>b.id===bookingId) ?? null})
                 }}
+                /* ← [2026-07-21] 도서 대여 알림.
+                     App 은 book_checkouts 목록을 들고 있지 않다(도서관 화면에서만
+                     로드한다). 알림은 어느 화면에서나 열리므로 id 로 단건 조회한다. */
+                onOpenBookLoanDetail={(checkoutId) => {
+                  setLoanDetail({ loan: null, loading: true })
+                  fetchBookLoanById(checkoutId)
+                    .then(row => setLoanDetail({ loan: row, loading: false }))
+                    .catch(() => setLoanDetail({ loan: null, loading: false }))
+                }}
               />
 
               {/* ← [2026-05-04] 프로필 + 드롭다운 메뉴 → ProfileDropdown 컴포넌트로 분리 (Phase 1+2 Step 2)
@@ -1833,6 +1849,17 @@ function AppContent() {
       {view==="library" && <LibraryPage isAdmin={isAdmin} users={users} authUserId={authUser?.user_id ?? ''} showToast={showToast} />}{/* ← [2026-07-16] 도서관 모듈 추가 */}
 
       {/* ── Modals ── */}
+      {/* ← [2026-07-21] 도서 대여 상세 — 알림 클릭 진입점.
+           마이페이지·어드민도 같은 모달을 쓰지만 그쪽은 각자 목록을 들고 있어
+           자체적으로 연다. 여기는 목록 없이 id 로만 진입하는 경로다. */}
+      {loanDetail && (
+        <BookLoanDetailModal
+          loan={loanDetail.loan}
+          loading={loanDetail.loading}
+          onClose={() => setLoanDetail(null)}
+        />
+      )}
+
       {modal && (
         <div
           style={{

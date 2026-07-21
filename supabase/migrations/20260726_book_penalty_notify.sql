@@ -19,7 +19,21 @@
 --   한 함수로 합쳐 "조회하면서 마킹" 하면, 발송이 실패했을 때 이미 마킹돼
 --   그 사용자는 해제 통지를 영구히 못 받는다.
 --
--- 반환 타입 변경 주의 (← 2026-07-21 배포 중 발견)
+-- ★ 반환 타입 변경 주의 (← 2026-07-21 배포 중 두 번 겪음)
+--
+--   Postgres 는 CREATE OR REPLACE 로 반환 타입을 바꾸지 못한다.
+--   RETURNS TABLE 의 경우 "컬럼을 하나 추가" 하는 것도 반환 타입 변경이다
+--   (DETAIL: Row type defined by OUT parameters is different).
+--
+--   이 파일은 개정되며 여러 번 재실행되므로, TABLE 을 반환하는 함수 3종은
+--   전부 DROP FUNCTION 을 선행한다. 지금 안 겪어도 다음 개정에서 겪는다.
+--     · expire_book_penalties()            — checkout_id 추가
+--     · get_book_penalty_by_checkout(uuid) — 방어적
+--     · admin_revoke_book_penalty(uuid,text) — 반환 타입 자체가 바뀜
+--
+--   mark_book_penalty_cleared_notified 는 int 스칼라 반환이라 해당 없다.
+--
+-- (구) 반환 타입 변경 주의
 --   admin_revoke_book_penalty 는 20260725 에서 RETURNS public.book_penalties 로
 --   만들어졌다. 여기서 RETURNS TABLE(...) 로 바꾸므로 CREATE OR REPLACE 만으로는
 --   ERROR 42P13 (cannot change return type of existing function) 이 난다.
@@ -27,6 +41,16 @@
 --
 --   나머지 3개(expire_book_penalties / mark_book_penalty_cleared_notified /
 --   get_book_penalty_by_checkout)는 이 파일에서 처음 만들어지므로 충돌이 없다.
+--
+-- 알림 딥링크 규약 (← 2026-07-21 추가)
+--   인앱 알림은 booking_id 하나로 "클릭 시 열 대상" 을 가리킨다.
+--   도서 알림은 이 값에 **book_checkouts.id** 를 넣는 것이 규약이다
+--   (book_borrowed / book_started / book_due_* / book_overdue 전부 그렇다).
+--
+--   제재 알림만 penalty_id 를 넣으면 클릭 시 대여 건을 못 찾아 빈 화면이 뜬다.
+--   그래서 아래 두 함수가 checkout_id 를 함께 반환한다.
+--   "제재를 보여주는 화면" 이 따로 있는 게 아니라, 사용자가 알고 싶은 것은
+--   "어느 대여 때문에 막혔는가" 이므로 대여 상세로 보내는 것이 맞다.
 --
 -- 멱등: 재실행 안전
 -- ============================================================================
@@ -68,10 +92,17 @@ CREATE INDEX IF NOT EXISTS idx_book_penalties_pending_clear
 --      (중복 제재는 max 규칙이라 이런 상태가 실제로 생긴다)
 --      이 건은 마킹만 하고 넘어가도록 별도 플래그로 알려준다.
 -- ════════════════════════════════════════════════════════════════════════
+-- ★ RETURNS TABLE 의 컬럼 구성이 바뀌면 CREATE OR REPLACE 가 거부된다.
+--   (DETAIL: Row type defined by OUT parameters is different)
+--   이 함수는 checkout_id 컬럼이 추가되면서 구성이 바뀌었으므로 DROP 이 필요하다.
+--   DROP 하면 GRANT 도 사라지므로 아래에서 재부여한다.
+DROP FUNCTION IF EXISTS public.expire_book_penalties();
+
 CREATE OR REPLACE FUNCTION public.expire_book_penalties()
 RETURNS TABLE (
   penalty_id     uuid,
   user_id        uuid,
+  checkout_id    uuid,     -- ← 알림 딥링크 대상. 제재 id 가 아니다 (아래 주석)
   tier           text,
   ends_at        timestamptz,
   book_title     text,
@@ -85,6 +116,7 @@ AS $$
   SELECT
     p.id,
     p.user_id,
+    p.checkout_id,
     p.tier,
     p.ends_at,
     bk.title,
@@ -160,6 +192,10 @@ GRANT  EXECUTE ON FUNCTION public.mark_book_penalty_cleared_notified(uuid[]) TO 
 --    둘이 어긋나면 제재가 없는데 제재 안내 메일이 나간다.
 --    실제로 생성된 행을 그대로 읽는다.
 -- ════════════════════════════════════════════════════════════════════════
+-- 이 파일이 여러 번 개정되며 재실행되는 상황을 전제로, TABLE 반환 함수는
+-- 전부 DROP 을 선행한다. 컬럼을 하나만 더해도 42P13 이 나기 때문이다.
+DROP FUNCTION IF EXISTS public.get_book_penalty_by_checkout(uuid);
+
 CREATE OR REPLACE FUNCTION public.get_book_penalty_by_checkout(
   p_checkout_id uuid
 )
@@ -216,6 +252,7 @@ CREATE OR REPLACE FUNCTION public.admin_revoke_book_penalty(
 RETURNS TABLE (
   penalty_id    uuid,
   user_id       uuid,
+  checkout_id   uuid,     -- ← 알림 딥링크 대상
   tier          text,
   book_title    text,
   still_blocked boolean   -- 해제 후에도 다른 제재가 남아 있는가
@@ -267,6 +304,7 @@ BEGIN
   SELECT
     v_row.id,
     v_row.user_id,
+    v_row.checkout_id,
     v_row.tier,
     (SELECT bk.title
        FROM public.book_checkouts c
@@ -296,11 +334,16 @@ COMMIT;
 -- select column_name from information_schema.columns
 --  where table_name = 'book_penalties' and column_name = 'notified_cleared_at';
 --
--- select proname, pg_get_function_identity_arguments(oid) as args
+-- select proname,
+--        pg_get_function_identity_arguments(oid) as args,
+--        pg_get_function_result(oid)             as returns
 --   from pg_proc
 --  where proname in ('expire_book_penalties','mark_book_penalty_cleared_notified',
 --                    'get_book_penalty_by_checkout','admin_revoke_book_penalty')
 --  order by proname;
+--   expire_book_penalties     의 returns 에 checkout_id uuid 가 있어야 한다
+--   admin_revoke_book_penalty 의 returns 에 checkout_id uuid 가 있어야 한다
+--   (없으면 구 버전이 남은 것 — DROP 이 안 걸렸다)
 --
 -- -- ② 만료 대상 조회 (아직 제재가 없으면 0행이 정상)
 -- select * from public.expire_book_penalties();

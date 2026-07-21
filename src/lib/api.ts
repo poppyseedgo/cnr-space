@@ -2076,7 +2076,9 @@ async function notifyPenaltyApplied(checkoutId: string): Promise<void> {
       body: {
         type: 'book_penalty_applied',
         booking: {
-          id:                p.penalty_id,
+          // ★ 딥링크 규약: 도서 알림의 booking_id 는 book_checkouts.id 다.
+          //   penalty_id 를 넣으면 클릭했을 때 대여 건을 못 찾아 빈 화면이 뜬다.
+          id:                checkoutId,
           title:             p.book_title ?? '(제목 없음)',
           user_id:           p.user_id,
           book_title:        p.book_title ?? '(제목 없음)',
@@ -2471,7 +2473,8 @@ export async function revokeBookPenalty(
         body: {
           type: 'book_penalty_cleared',
           booking: {
-            id:           p.penalty_id,
+            // ★ 딥링크 규약 — book_checkouts.id (penalty_id 아님)
+            id:           p.checkout_id ?? p.penalty_id,
             title:        p.book_title ?? '도서 대여',
             user_id:      p.user_id,
             book_title:   p.book_title ?? '',
@@ -2510,4 +2513,43 @@ export async function adminExemptCheckout(
   if (m.includes('NOT_ADMIN'))          return { ok: false, message: '면제 권한이 없습니다' }
   if (m.includes('CHECKOUT_NOT_FOUND')) return { ok: false, message: '대여 정보를 찾을 수 없습니다' }
   return { ok: false, message: `면제 실패: ${m}` }
+}
+
+
+// ─── 대여 단건 조회 (← [2026-07-21]) ─────────────────────────────────────────
+//
+// 알림을 클릭했을 때 쓰는 경로다. App 은 book_checkouts 목록을 들고 있지 않고
+// (도서관 화면에서만 로드한다), 알림은 어느 화면에서나 열릴 수 있으므로
+// id 하나로 대여 건을 직접 가져올 수단이 필요하다.
+//
+// RLS 가 본인 건 또는 관리자만 허용하므로 권한 검사를 따로 하지 않는다.
+// 권한이 없으면 0행이 오고, 호출부가 "정보를 찾을 수 없습니다" 로 처리한다.
+export async function fetchBookLoanById(
+  checkoutId: string,
+): Promise<AdminBookLoan | null> {
+  if (!checkoutId) return null
+
+  const { data, error } = await supabase
+    .from('book_checkouts')
+    .select(`
+      id, book_id, user_id, checkout_at, due_at, returned_at,
+      extension_count, last_extended_at, status, notes, penalty_exempt,
+      requested_at, processed_at, processed_by_name, reject_reason,
+      books ( title, author, publisher, cover_url )
+    `)
+    .eq('id', checkoutId)
+    .maybeSingle()
+
+  if (error) {
+    console.warn('[api] 대여 단건 조회 실패:', error.message)
+    return null
+  }
+  if (!data) return null
+
+  const r: any = data
+  return {
+    ...toLoanRow(r),
+    user_id: r.user_id,
+    book: Array.isArray(r.books) ? (r.books[0] ?? null) : (r.books ?? null),
+  }
 }
