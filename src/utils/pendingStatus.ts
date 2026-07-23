@@ -46,6 +46,10 @@ export const APPROVAL_DEADLINE_MS = 60_000
 export function isExpiredPending(b: Booking, nowMs: number = Date.now()): boolean {
   return b.status === 'pending'
       && !b.autoCancelled
+      // ← [2026-07-23 보강] cancelledBy 가드. App.tsx 블록②의 `if (b.cancelledBy != null) return b`
+      //   (누군가 이미 처리한 건 보호)를 옮길 때 빠뜨렸던 조건이다.
+      //   조합 전수 시뮬에서 `pending + cancelledBy='user'` 같은 건까지 기한초과로 잡히는 걸 확인해 보강.
+      && b.cancelledBy == null
       && b.room_id === APPROVAL_ROOM_ID
       && nowMs >= new Date(b.start_at).getTime() - APPROVAL_DEADLINE_MS
 }

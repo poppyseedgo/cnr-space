@@ -1,5 +1,8 @@
 import type { Booking, Room } from '../../types'
 import { tsDate, tsMin, todayStr, nowMinutes, CHECKIN_EARLY_MIN, isCheckinable, isCheckedInWaiting } from '../../utils/time'  // ← [2026-05-28] isCheckedInWaiting 추가 — 시작 전 체크인 완료 칩 표시용
+// ← [2026-07-23] 노쇼·기한초과 판정을 SSOT로 통일 (자체 규칙 폐기)
+import { isNoshow as isNoshowSSOT } from '../../utils/noshow'
+import { isExpiredPending as isExpiredPendingSSOT } from '../../utils/pendingStatus'
 import { isBooker, isAttendee } from '../../utils/bookingOwnership'  // ← [2026-04-24 P4-B] isOwner를 isBooker(UUID/email)로 교체 / [2026-05-04 핫픽스 v11] isAttendee 추가 — mine 칩 라벨 분기용
 
 /**
@@ -197,30 +200,45 @@ export function BookingStatusBadge({
   // ③ 시스템 취소 (기한초과 vs 노쇼 분리)
   const isSystemCancel = b.autoCancelled && b.cancelledBy === 'system'
                          && !isRejected && !isUserCancel && !isAdminCancel
-  // ③-1 기한초과: status='pending' 유지이거나, cancelled지만 start_at 도달 전
-  //     · cron이 처리한 경우 status='cancelled' + start_at 근방 (보통 now~start_at+몇초)
-  //     · 프론트가 선점한 경우 status='pending' + now는 start_at 전후
-  //     · 핵심: cancelled_by='system'이면서 노쇼 시점(start_at+10분)에 도달 안 한 경우
-  //  ← [2026-04-24 HOTFIX] isToday 가드 추가 (slotHelpers와 동일 원칙)
-  //    tsMin()은 당일 자정 기준 분, nowMinutes()는 "오늘"의 분.
-  //    두 값은 같은 날짜일 때만 의미 있는 비교.
-  //    isToday=false(과거/미래 날짜)에서 `now < sm + 10` 비교하면,
-  //    예: 어제 09:00(sm=540) 건을 오늘 01:40(now=100)에 조회 시
-  //        100 < 550 = true로 오판정되어 "기한초과"로 표시됨 (실제로는 노쇼)
-  //    해결: isToday일 때만 시간 비교, 아닐 때는 status만으로 판정.
-  //  ← [2026-04-30 다이아몬드 hotfix] room_id=3 가드 추가
-  //    배경: stale state 사고로 다이아몬드(room_id≠3) 예약이 React state에서
-  //          cancelledBy='system' 마킹된 케이스에서 "기한초과 취소" 칩 오표시 발생.
-  //          (audit_log로 확인 — 2026-04-30 06:11 다수 발생)
-  //    원칙: pending_expired는 Emerald 전용(메모리 표준). slotHelpers.ts L119와 일관.
-  //    단일 진실 원천: BookingStatusBadge와 slotHelpers의 isExpiredPending 공식 자체는
-  //                   여전히 다름(별도 통일 작업 대기). 본 hotfix는 room_id 가드만 보강.
-  const isExpiredPending = isSystemCancel
-                           && b.room_id === 3                                       // ← [2026-04-30] Emerald 전용 가드
-                           && (b.status === 'pending' || (isToday && now < sm + 10))
-  // ③-2 노쇼: start_at + 10분 경과 + status='cancelled' (또는 confirmed 단계 건)
-  //     (또는 isToday=false인 과거 날짜의 status='confirmed' + system 취소 건)
-  const isNoshow         = isSystemCancel && !isExpiredPending
+  // ─── [2026-07-23] ③-1/③-2 판정 SSOT 전환 ─────────────────────────────────
+  //
+  //  🐞 수정한 버그
+  //    기존 isExpiredPending은 `b.status === 'pending'`을 기한초과의 신호로 삼았다.
+  //    그런데 App.tsx tick(L1539)이 만료 pending을 `status:'cancelled'`로 낙관 변조하고,
+  //    cron 처리본도 'cancelled'이므로 **신호가 사라진 채 노쇼로 폴백**했다.
+  //    → 승인조차 되지 않은 과거 에메랄드 예약이 상세 모달에서 '노쇼'로 표시됨.
+  //
+  //  🔧 전환 내용
+  //    · 노쇼      → utils/noshow.ts SSOT (status='confirmed' && cancelledBy='system' && !checkedIn)
+  //    · 기한초과  → utils/pendingStatus.ts SSOT(DB 원본 형태) + 처리본/변조본 분기
+  //
+  //  📌 구분 키: **status**
+  //    markNoshow는 status를 바꾸지 않아 진짜 노쇼는 'confirmed'로 남고,
+  //    기한초과는 cron·tick 어느 쪽이 처리하든 'cancelled'가 된다. 이 차이로 갈린다.
+  //
+  //  ⚠ 기존 동작 보존
+  //    비-에메랄드(room_id≠3)의 시스템 취소 오염 데이터는 예전처럼 '노쇼'로 남긴다.
+  //    여기서 빼면 칩이 아무것도 뜨지 않는 회귀가 생긴다.
+  //    (노쇼 **통계**는 utils/noshow SSOT를 쓰므로 이 폴백에 영향받지 않는다 — 표시 전용)
+
+  // 엄격 판정 — 통계와 동일한 기준
+  const isNoshowStrict = isNoshowSSOT(b)
+
+  // ③-1 기한초과 (에메랄드 전용)
+  //   ⓐ DB 원본:            status='pending' + auto_cancelled=false + 마감 경과
+  //   ⓑ 처리본/tick 변조본:  status='cancelled' + auto_cancelled=true + cancelled_by='system'
+  //   ★ `b.status === 'pending' || !b.checkedIn` — 전수 시뮬로 다듬은 조건이다.
+  //     · status='pending' + auto_cancelled=true = 구버전 프론트가 status는 두고 플래그만
+  //       세웠던 기한초과 데이터(과거 17건 누적 이력). 이건 checkedIn 값과 무관하게 기한초과다.
+  //       (메모리 원칙: pending 상태에서 checkedIn은 의미 없음 — 가드로 쓰지 말 것)
+  //     · status='cancelled' 처리본/변조본은 체크인됐다면 기한초과일 수 없다.
+  //       체크인 = 실제로 사용했다는 뜻이라 '사용 못 함'과 배타이기 때문.
+  const isExpiredPending = isExpiredPendingSSOT(b)
+                           || (isSystemCancel && b.room_id === 3 && !isNoshowStrict
+                               && (b.status === 'pending' || !b.checkedIn))
+
+  // ③-2 노쇼 — SSOT 우선, 비-에메랄드 오염 데이터만 기존 폴백 유지
+  const isNoshow         = isNoshowStrict || (isSystemCancel && !isExpiredPending)
 
   // ── 진행 상태 판별 ──────────────────────────────────────────────
   const isAct     = isToday && sm <= now && now < em && !b.autoCancelled && !b.earlyEnded
