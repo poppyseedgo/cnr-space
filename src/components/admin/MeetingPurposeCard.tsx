@@ -114,9 +114,10 @@ export function MeetingPurposeCard({ onPickPurpose }: {
       {/* ── 목적별 표 (Figma 2646:7551 — 3컬럼 · 10행 전부) ────────────────
             행 클릭 → 그 분류의 개별 예약 목록(회의 제목·예약자·날짜)으로 드릴다운 */}
       <div style={{ display:'flex', flexDirection:'column', width:'100%' }}>
-        {/* 헤더행 — Figma: Medium 11 / #9CA3AF / py8 */}
+        {/* 헤더행 — Figma: Medium 11 / #9CA3AF / py8
+              ← [2026-07-23] 임원 요청으로 '노쇼'·'사용자 취소' 2컬럼 추가 (3 → 5컬럼) */}
         <div style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 0', width:'100%' }}>
-          {['회의 목적','건 수','%'].map(l => (
+          {['회의 목적','건 수','%','노쇼 (율)','사용자 취소 (율)'].map(l => (
             <div key={l} style={{ flex:1, minWidth:0 }}>
               <span style={{
                 fontFamily:FONT, fontWeight:500, fontSize:11, lineHeight:1.5, color:'#9CA3AF',
@@ -157,6 +158,19 @@ export function MeetingPurposeCard({ onPickPurpose }: {
               <span style={{
                 fontFamily:FONT, fontWeight:400, fontSize:13, lineHeight:1.5, color:'#000',
               }}>{(r.ratio * 100).toFixed(1)}%</span>
+            </div>
+            {/* ← [2026-07-23] 노쇼 = 사용자 귀책이므로 경고색, 사용자 취소는 중립색 */}
+            <div style={{ flex:1, minWidth:0 }}>
+              <span style={{
+                fontFamily:FONT, fontWeight:400, fontSize:13, lineHeight:1.5,
+                color: r.noshow > 0 ? '#DC2626' : '#9CA3AF',
+              }}>{r.noshow}건 ({(r.noshowRate * 100).toFixed(1)}%)</span>
+            </div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <span style={{
+                fontFamily:FONT, fontWeight:400, fontSize:13, lineHeight:1.5,
+                color: r.userCancel > 0 ? '#697077' : '#9CA3AF',
+              }}>{r.userCancel}건 ({(r.userCancelRate * 100).toFixed(1)}%)</span>
             </div>
           </div>
         ))}

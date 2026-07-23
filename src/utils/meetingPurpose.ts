@@ -31,6 +31,9 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+import type { Booking } from '../types'
+import { isNoshow } from './noshow'
+
 export type PurposeCode =
   | 'interview' | 'onetoone' | 'rehearsal' | 'handover' | 'training'
   | 'audit'     | 'project'  | 'mgmt'      | 'team'     | 'dept'
@@ -84,34 +87,106 @@ export interface PurposeAggRow {
   code:  PurposeCode
   label: string
   short: string
+  /** 그 목적으로 분류된 **생성된 모든 예약** 건수 (고지 확정 2026-07-23: 분모는 전수) */
   count: number
-  ratio: number   // 0~1
+  /** count / 전체 count 합 (0~1) */
+  ratio: number
+  /** 노쇼 건수 — utils/noshow.ts SSOT 기준 */
+  noshow:      number
+  /** 노쇼율 = noshow / count (0~1) */
+  noshowRate:  number
+  /** 사용자 취소 건수 — status='cancelled' && cancelledBy='user' */
+  userCancel:     number
+  /** 취소율 = userCancel / count (0~1) */
+  userCancelRate: number
 }
 
 /**
  * 예약 목록 → 목적별 집계 (count desc).
  *
- * 모수 규칙: 자동취소·거절 건은 제외한다.
- *   사유: 실제로 열리지 않은 회의를 "이 회의실은 면접에 많이 쓰인다"의 근거로 삼으면 왜곡된다.
- *   ※ 이 조건은 dashboardAgg.aggregateUsers의 count 조건과 동일하게 맞췄다.
+ * ⚠ 모수(분모) 정책 — 고지 확정 2026-07-23
+ *   "실제 생성된 모든 예약 건수를 분모로 삼는다."
+ *   즉 취소·거절·승인대기를 **제외하지 않는다**. 예약을 만든 행위 자체가 회의실을 선점했고,
+ *   그 뒤 어떤 결과로 끝났는지(사용/노쇼/취소)를 비율로 보는 것이 이 지표의 목적이기 때문이다.
+ *
+ *   ※ [2026-07-23 변경] 이전 버전은 autoCancelled·rejected를 분모에서 뺐다.
+ *     그 상태로 노쇼율을 내면 "취소를 많이 한 사람일수록 분모가 작아져 노쇼율이 튀는" 왜곡이 생기고,
+ *     카드의 건수와 노쇼율의 분모가 서로 달라 이중 진실이 된다. 전수로 통일했다.
+ *
+ * 📌 노쇼와 사용자 취소의 성격 차이 (고지 정리 2026-07-23)
+ *   · 노쇼      = 사용자가 예약해놓고 나타나지 않음 → **사용자 귀책**
+ *   · 사용자 취소 = 귀책은 아니지만 사용자가 스스로 취소한 건 (방은 다시 열림)
+ *   두 지표를 합산하지 않고 항상 분리해 표시한다.
  */
-export function aggregatePurposes(bookings: { title?: string | null; autoCancelled?: boolean; status?: string }[]): PurposeAggRow[] {
-  const counts = new Map<PurposeCode, number>()
+export function aggregatePurposes(bookings: Booking[]): PurposeAggRow[] {
+  type Acc = { count: number; noshow: number; userCancel: number }
+  const acc = new Map<PurposeCode, Acc>()
   let total = 0
 
   bookings.forEach(b => {
-    if (b.autoCancelled || b.status === 'rejected') return
     const d = classifyPurpose(b.title)
-    counts.set(d.code, (counts.get(d.code) ?? 0) + 1)
+    if (!acc.has(d.code)) acc.set(d.code, { count: 0, noshow: 0, userCancel: 0 })
+    const a = acc.get(d.code)!
+    a.count++
     total++
+    if (isNoshow(b)) a.noshow++
+    // 사용자 취소 — bookingStatusLabel.ts '예약자 취소'와 동일 판정식 (새 정의 만들지 않음)
+    if (b.status === 'cancelled' && b.cancelledBy === 'user') a.userCancel++
   })
 
   return PURPOSE_DEFS
     .map(d => {
-      const count = counts.get(d.code) ?? 0
-      return { code: d.code, label: d.label, short: d.short, count, ratio: total > 0 ? count / total : 0 }
+      const a = acc.get(d.code) ?? { count: 0, noshow: 0, userCancel: 0 }
+      return {
+        code: d.code, label: d.label, short: d.short,
+        count: a.count,
+        ratio: total > 0 ? a.count / total : 0,
+        noshow: a.noshow,
+        noshowRate: a.count > 0 ? a.noshow / a.count : 0,
+        userCancel: a.userCancel,
+        userCancelRate: a.count > 0 ? a.userCancel / a.count : 0,
+      }
     })
     .filter(r => r.count > 0)
+    .sort((a, b) => b.count - a.count)
+}
+
+/** 목적 + 부서 2단 집계 — 목적 드릴다운 안에서 부서별로 다시 쪼개 볼 때 사용 */
+export interface PurposeDeptRow {
+  dept:           string
+  count:          number
+  ratio:          number   // 그 목적 안에서의 비중
+  noshow:         number
+  noshowRate:     number
+  userCancel:     number
+  userCancelRate: number
+}
+
+export function aggregatePurposeByDept(bookings: Booking[], code: PurposeCode): PurposeDeptRow[] {
+  const acc = new Map<string, { count: number; noshow: number; userCancel: number }>()
+  let total = 0
+
+  bookings.forEach(b => {
+    if (classifyPurpose(b.title).code !== code) return
+    const dept = b.dept?.trim() || '(부서 미상)'
+    if (!acc.has(dept)) acc.set(dept, { count: 0, noshow: 0, userCancel: 0 })
+    const a = acc.get(dept)!
+    a.count++
+    total++
+    if (isNoshow(b)) a.noshow++
+    if (b.status === 'cancelled' && b.cancelledBy === 'user') a.userCancel++
+  })
+
+  return Array.from(acc.entries())
+    .map(([dept, a]) => ({
+      dept,
+      count: a.count,
+      ratio: total > 0 ? a.count / total : 0,
+      noshow: a.noshow,
+      noshowRate: a.count > 0 ? a.noshow / a.count : 0,
+      userCancel: a.userCancel,
+      userCancelRate: a.count > 0 ? a.userCancel / a.count : 0,
+    }))
     .sort((a, b) => b.count - a.count)
 }
 

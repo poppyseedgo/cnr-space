@@ -62,7 +62,8 @@ import { DashboardRangeRow, SmallDateTrigger, RANGE_PRESETS_RECENT } from '../co
 import { UserRankingCard, UserNoshowCard } from '../components/admin/DashboardUserCards'
 import { MeetingPurposeCard } from '../components/admin/MeetingPurposeCard'      // ← [2026-07-23 Phase 3] 위젯 ⑨
 import { DashboardUserCell } from '../components/admin/DashboardUserCell'         // ← [2026-07-23] 사용자 표시 공통 셀
-import { aggregatePurposes, classifyPurpose, PURPOSE_DEFS, type PurposeCode } from '../utils/meetingPurpose'  // ← [2026-07-23] 분류·집계 SSOT (DetailDrawer 공용) + 드릴다운 판정
+import { RoomUtilizationCard } from '../components/admin/RoomUtilizationCard'     // ← [2026-07-23] 요일별 가동률 (Figma 2662:7844)
+import { aggregatePurposes, aggregatePurposeByDept, classifyPurpose, PURPOSE_DEFS, type PurposeCode } from '../utils/meetingPurpose'  // ← [2026-07-23] 분류·집계 SSOT (DetailDrawer 공용) + 드릴다운 판정
 import { useBookingsByRange } from '../components/admin/useBookingsByRange'
 import { aggregateUsers } from '../utils/dashboardAgg'
 
@@ -231,12 +232,9 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
   // ← [2026-07-23] initialPurpose가 있으면 드릴다운 상태로 시작한다.
   //   드로어를 연 뒤 useEffect로 setDrill 하면 "전체 목록 → 깜빡 → 필터된 목록" 이 보인다.
   //   초기값으로 넣으면 첫 렌더부터 올바른 화면이다.
-  const [drill, setDrill] = useState<{ label: string; fn: (b:Booking)=>boolean } | null>(() => {
-    if (!initialPurpose) return null
-    const def = PURPOSE_DEFS.find(d => d.code === initialPurpose)
-    if (!def) return null
-    return { label: def.label, fn: (b: Booking) => classifyPurpose(b.title).code === initialPurpose }
-  })
+  // ← [2026-07-23] 목적 진입은 개별 예약이 아니라 '부서별 집계'(2단 드릴다운 1단계)로 시작한다.
+  //   개별 예약 목록은 부서까지 고른 뒤 2단계에서 나온다 → purposeDrill state가 담당.
+  const [drill, setDrill] = useState<{ label: string; fn: (b:Booking)=>boolean } | null>(null)
   const PER = 30
 
   // ← [2026-05-28] fetchData에 dateField 동적 적용 + dateMode 의존성 추가
@@ -308,10 +306,27 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
   // ← [2026-07-23 Phase 3] 목적별 집계 — 카드(위젯 ⑨)와 동일한 aggregatePurposes 사용
   //   카드는 Figma 사양상 상위 5개만 노출하므로, 전체 10분류는 여기서 확인한다.
   const purposeAgg = useMemo(() => aggregatePurposes(filtered).map(r => ({
+    code:  r.code,
     label: r.label,
     count: r.count,
     ratio: `${(r.ratio * 100).toFixed(1)}%`,
+    // ← [2026-07-23] 임원 요청 — 노쇼(사용자 귀책) / 사용자 취소(귀책 아님) 분리 표기
+    noshow:     `${r.noshow}건 (${(r.noshowRate * 100).toFixed(1)}%)`,
+    userCancel: `${r.userCancel}건 (${(r.userCancelRate * 100).toFixed(1)}%)`,
   })), [filtered])
+
+  // ← [2026-07-23] 2단 드릴다운 1단계 — 목적을 고르면 그 목적 안의 부서별 집계를 보여준다.
+  //   (목적 → 부서 → 개별 예약). purposeDrill이 null이면 목적 목록 화면이다.
+  const [purposeDrill, setPurposeDrill] = useState<PurposeCode | null>(initialPurpose ?? null)
+  const purposeDeptAgg = useMemo(() => (
+    purposeDrill ? aggregatePurposeByDept(filtered, purposeDrill).map(r => ({
+      dept:  r.dept,
+      count: r.count,
+      ratio: `${(r.ratio * 100).toFixed(1)}%`,
+      noshow:     `${r.noshow}건 (${(r.noshowRate * 100).toFixed(1)}%)`,
+      userCancel: `${r.userCancel}건 (${(r.userCancelRate * 100).toFixed(1)}%)`,
+    })) : []
+  ), [filtered, purposeDrill])
 
   // ← [2026-07-23 Phase 2] 본문을 utils/dashboardAgg.aggregateUsers()로 추출 (로직 1:1 무변경)
   //   사유: 신규 카드 '사용자 예약 순위'/'사용자 누적 노쇼'가 같은 값을 표시한다.
@@ -462,11 +477,39 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
       onExport={() => exportCSV(deptAgg.map(r=>({부서:r.dept,예약:r.confirmed,노쇼:r.noshow})), `부서별통계_${dateFrom}_${dateTo}`)}
       onRowClick={row => { setDrill({ label:row.dept, fn:(b)=>b.dept===row.dept }); setPage(1) }}/>
 
-    if (type === 'purpose') return <AggTable rows={purposeAgg}
-      cols={[{k:'label',l:'회의 목적'},{k:'count',l:'건 수'},{k:'ratio',l:'비율'}]}
-      /* ← [2026-07-23] 행 클릭 → 그 분류의 개별 예약 목록. 기존 rooms/dept/hours와 동일한 drill 메커니즘 재사용 */
-      onRowClick={row => { setDrill({ label: row.label, fn: (b) => classifyPurpose(b.title).label === row.label }); setPage(1) }}
-      onExport={() => exportCSV(purposeAgg.map(r=>({'회의 목적':r.label,'건 수':r.count,'비율':r.ratio})), `회의목적별통계_${dateFrom}_${dateTo}`)} />
+    if (type === 'purpose') {
+      // ── 2단 드릴다운 (고지 확정 2026-07-23): 목적 → 부서 → 개별 예약 ──
+      if (purposeDrill) {
+        const def = PURPOSE_DEFS.find(d => d.code === purposeDrill)!
+        return (
+          <>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+              <button className="btn" onClick={() => { setPurposeDrill(null); setPage(1) }}
+                style={{ padding:'4px 10px', borderRadius:8, background:'#F8FAFC', border:'1px solid #E2E8F0', fontSize:11, fontWeight:600, color:'#374151' }}>
+                ← 목적 전체
+              </button>
+              <span style={{ fontSize:12, color:'#6366F1', fontWeight:600 }}>{def.label}</span>
+              <span style={{ fontSize:11, color:'#94A3B8' }}>부서별 · 행 클릭 시 개별 예약</span>
+            </div>
+            <AggTable rows={purposeDeptAgg}
+              cols={[{k:'dept',l:'부서'},{k:'count',l:'건 수'},{k:'ratio',l:'비중'},{k:'noshow',l:'노쇼 (율)'},{k:'userCancel',l:'사용자 취소 (율)'}]}
+              onRowClick={row => {
+                setDrill({
+                  label: `${def.label} · ${row.dept}`,
+                  fn: (b) => classifyPurpose(b.title).code === purposeDrill
+                          && (b.dept?.trim() || '(부서 미상)') === row.dept,
+                })
+                setPage(1)
+              }}
+              onExport={() => exportCSV(purposeDeptAgg.map(r=>({'부서':r.dept,'건 수':r.count,'비중':r.ratio,'노쇼':r.noshow,'사용자 취소':r.userCancel})), `${def.label}_부서별_${dateFrom}_${dateTo}`)} />
+          </>
+        )
+      }
+      return <AggTable rows={purposeAgg}
+        cols={[{k:'label',l:'회의 목적'},{k:'count',l:'건 수'},{k:'ratio',l:'비율'},{k:'noshow',l:'노쇼 (율)'},{k:'userCancel',l:'사용자 취소 (율)'}]}
+        onRowClick={row => { setPurposeDrill(row.code); setPage(1) }}
+        onExport={() => exportCSV(purposeAgg.map(r=>({'회의 목적':r.label,'건 수':r.count,'비율':r.ratio,'노쇼':r.noshow,'사용자 취소':r.userCancel})), `회의목적별통계_${dateFrom}_${dateTo}`)} />
+    }
     if (type === 'hours') return <AggTable rows={hourAgg}
       cols={[{k:'hour',l:'시간대'},{k:'count',l:'예약 건수'}]}
       onExport={() => exportCSV(hourAgg.map(r=>({시간대:r.hour,예약건수:r.count})), `시간대별분포_${dateFrom}_${dateTo}`)}
@@ -2660,7 +2703,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
              Row2 3-col 389×400 : ③사용자예약순위 ④일일예약추이 ⑤부서예약순위   ← [2026-07-23] ④⑤ 교환
              Row3 3-col 389×400 : ⑥사용자누적노쇼 ⑦일일노쇼현황 ⑧회의실노쇼현황  ← [2026-07-23] ⑥⑦ 교환
              Row4 1-col 1200    : ⑨회의실사용목적AI분석 (풀폭 — 스택바 + 10분류 표)  ← [2026-07-23] 592→풀폭
-             Row5 2-col 592     : ⑩예약많은회의실 ⑪시간대별예약분포              ← [2026-07-23] 시간대별을 2-col로
+             Row5 3-col 389×364 : ⑩예약많은회의실 ⑪요일별가동률[신규] ⑫시간대별예약분포  ← [2026-07-23]
 
            · 신규 위젯 3종(③⑦⑨)은 Phase 2·3에서 구현 — 현재는 DashboardPlaceholderCard로 자리만 확보.
              자리를 비워두지 않는 이유: 그리드 컬럼 수가 달라지면 나머지 카드 폭이 전부 틀어져
@@ -2741,15 +2784,20 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
         </div>
       </div>
 
-      {/* ── Row 5: ⑩ 예약 많은 회의실 / ⑪ 시간대별 예약 분포 (2-col) ──
-            ← [2026-07-23] Figma 갱신: 시간대별이 단독 풀폭 → 예약 많은 회의실과 나란히 배치 */}
-      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
+      {/* ── Row 5: ⑩ 예약 많은 회의실 / ⑪ 요일별 가동률 / ⑫ 시간대별 예약 분포 (3-col 389×364) ──
+            ← [2026-07-23] Figma 갱신: 2-col → 3-col, 가운데에 요일별 가동률 신규 카드 */}
+      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
         {/* ⑩ 예약 많은 회의실 → rooms 통계 (confirmed desc — 동작 유지) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'confirmed', sortAsc: false })}>
           <RoomRankingCard rooms={rooms} />
         </div>
-        {/* ⑪ 시간대별 예약 분포 → hours 통계 (본문 차트는 고지 지시로 현행 유지) */}
+        {/* ⑪ 요일별 가동률 [2026-07-23 신규] — 클릭 시 회의실별 가동률(rooms 드로어)로 이동 */}
+        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'confirmed', sortAsc: false })}>
+          <RoomUtilizationCard rooms={rooms} />
+        </div>
+        {/* ⑫ 시간대별 예약 분포 → hours 통계 (본문 차트는 고지 지시로 현행 유지) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'hours' })}>
           <HourlyDistributionCard />
