@@ -53,11 +53,18 @@ export function bucketKeyOf(date: string, bucket: Bucket): string {
   return d.toISOString().slice(0, 10)
 }
 
-/** 버킷 표시 라벨 */
-export function bucketLabel(key: string, bucket: Bucket): string {
+/**
+ * 버킷 표시 라벨
+ *
+ * @param withYear 연도 경계를 넘는 기간이면 true — 월 라벨에 연도를 붙인다.
+ *   ⚠ 시뮬레이션에서 발견한 실제 버그: 2년 범위를 고르면 월 버킷 x축이
+ *     "7월 | 7월 | 7월"로 나와 어느 해인지 구분이 불가능했다.
+ *     같은 해 안이면 연도가 군더더기이므로 기간을 보고 켜고 끈다.
+ */
+export function bucketLabel(key: string, bucket: Bucket, withYear = false): string {
   const [y, m, d] = key.split('-')
-  if (bucket === 'month') return `${Number(m)}월`
-  if (bucket === 'week')  return `${Number(m)}/${Number(d)}~`
+  if (bucket === 'month') return withYear ? `${y.slice(2)}.${Number(m)}월` : `${Number(m)}월`
+  if (bucket === 'week')  return withYear ? `${y.slice(2)}.${Number(m)}/${Number(d)}~` : `${Number(m)}/${Number(d)}~`
   return `${Number(m)}/${Number(d)}`
 }
 
@@ -94,9 +101,12 @@ export function buildSeries<T>(
     map.get(key)!.push(date)
   }
 
+  // 연도 경계를 넘는가 — 월/주 라벨에 연도를 붙일지 판단
+  const spansYears = from.slice(0, 4) !== to.slice(0, 4)
+
   const points = Array.from(map.entries())
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([key, dates]) => ({ key, label: bucketLabel(key, bucket), dates, value: reduce(dates) }))
+    .map(([key, dates]) => ({ key, label: bucketLabel(key, bucket, spansYears), dates, value: reduce(dates) }))
 
   return { bucket, points }
 }
