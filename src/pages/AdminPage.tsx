@@ -1165,6 +1165,9 @@ function ApprovalPendingCard({ count }: { count: number }) {
 //   동작: 자체 dateFrom/dateTo + useBookingsByRange + 봉 hover/click 시 툴팁
 //   ※ Figma 1:1 사양 (gap 48 헤더↔차트, 외곽/내부 봉 gradient, StatusBadge 툴팁)
 //   ※ [Phase 4 v3] 라벨 표시: peak 자동 → 인터랙티브 툴팁 (사용자 의도)
+// ← [2026-07-23] 노쇼 차트 Y축(노쇼율 %) 라벨 폭 — 고지 지시로 신설
+const NOSHOW_Y_AXIS_W = 24
+
 function NoshowChartCard() {
   // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
   const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
@@ -1295,6 +1298,22 @@ function NoshowChartCard() {
 
       {/* ── 차트 영역 (flex column gap 6) ────────────────────── */}
       <div style={{ display:'flex', flexDirection:'column', gap:6, width:'100%', position:'relative' }}>
+        {/* ── [2026-07-23] Y축 = 노쇼율 눈금 (고지 지시로 신설) ──
+              외곽 봉이 그 날 전체 예약(=100%)이고 내부 봉이 노쇼 비율이므로 Y축 단위는 %다.
+              축 폭 24px를 확보하고 봉 영역을 그만큼 오른쪽으로 민다. */}
+        <div style={{ display:'flex', alignItems:'stretch', gap:6, width:'100%' }}>
+          <div style={{
+            width:NOSHOW_Y_AXIS_W, height:CHART_HEIGHT, flexShrink:0,
+            display:'flex', flexDirection:'column', justifyContent:'space-between',
+            pointerEvents:'none',
+          }}>
+            {['100%','50%','0%'].map(t => (
+              <span key={t} style={{
+                fontFamily:"'Pretendard', -apple-system, sans-serif", fontWeight:500, fontSize:9, lineHeight:1,
+                letterSpacing:'0.1px', color:'#DDE1E6',
+              }}>{t}</span>
+            ))}
+          </div>
         {/* ── Bar 컨테이너 (h 111, flex row gap 4, items-end) ── */}
         {/*    ← [Phase 4 v3] onMouseLeave로 컨테이너 벗어나면 라벨 해제 (hover 추적) */}
         <div
@@ -1389,13 +1408,21 @@ function NoshowChartCard() {
             })
           )}
         </div>
+        </div>{/* ← [2026-07-23] Y축 + 봉 영역 래퍼 닫기 */}
 
-        {/* ── Date 라벨 (차트 아래) ──────────────────────────── */}
-        <p style={{
+        {/* ── X·Y축 단위 라벨 (차트 아래) ──────────────────────
+              ← [2026-07-23] 기존엔 시작일 하나만 있었다. 기간에 따라 봉 1개의 단위가
+                바뀌므로(일/주/월) 반드시 명시해야 오독이 없다. */}
+        <div style={{
+          display:'flex', justifyContent:'space-between', width:'100%',
+          paddingLeft: NOSHOW_Y_AXIS_W + 6,
           fontFamily:"'Pretendard', -apple-system, sans-serif",
-          fontWeight:400, fontSize:10, lineHeight:1.5, color:'#AEB5C4', margin:0,
+          fontWeight:400, fontSize:10, lineHeight:1.5, color:'#AEB5C4',
           whiteSpace:'nowrap',
-        }}>{dateLabel}</p>
+        }}>
+          <span>x · {dateLabel}</span>
+          <span>y · 노쇼율</span>
+        </div>
       </div>
     </div>
   )
@@ -2010,6 +2037,9 @@ const TREND_VIEWBOX_H = 414       // ← Figma: 차트 영역 height
 const TREND_PADDING_TOP = 22      // ← Figma: SVG path가 chart 상단 5.2%부터 시작 (peak 잘림 방지)
 const TREND_MARKER_LINE_H = 40    // ← Figma 570:7429: 활성 marker 수직 연결선 h-[40px]
 
+// ← [2026-07-23] Y축 라벨 영역 폭 (고지 지시로 신설 — Figma에는 없던 요소)
+const TREND_Y_AXIS_W = 28
+
 function BookingTrendsAreaCard() {
   // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
   const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
@@ -2019,22 +2049,42 @@ function BookingTrendsAreaCard() {
   const { data: bookings, loading } = useBookingsByRange(dateFrom, dateTo)
 
   // ── 3. 일자별 count (모든 booking, 위젯 ②⑦⑧과 일관성) ──────────────
-  const dayStats = useMemo(() => {
-    const diffDays = Math.round(
-      (new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000
-    ) + 1
-    if (diffDays <= 0 || diffDays > 365) return []
-    return Array.from({ length: diffDays }, (_, i) => {
-      const date  = addDaysStr(dateFrom, i)
-      const count = bookings.filter(b => tsDate(b.start_at) === date).length
-      return { date, count }
+  // ← [2026-07-23] 일 단위 고정 → 기간별 자동 롤업 (utils/timeSeries)
+  //   노쇼 현황과 동일한 문제였다: 3개월이면 점 90개, 전체면 200개 이상이 357px에 몰려
+  //   곡선이 뭉개지고, 365일을 넘기면 빈 배열이 되어 그래프가 사라졌다.
+  //   ※ 곡선(Catmull-Rom Area) 형식은 그대로 유지한다 — 이 카드는 '추세'를 보는 지표라
+  //     막대보다 곡선이 읽기 좋고, 막대는 개수가 늘면 더 빨리 뭉개진다.
+  const { bucket, points: dayStats } = useMemo(() => {
+    const byDate = new Map<string, number>()
+    bookings.forEach(b => {
+      const d = tsDate(b.start_at)
+      byDate.set(d, (byDate.get(d) ?? 0) + 1)
     })
+    const r = buildSeries(dateFrom, dateTo, dates =>
+      dates.reduce((sum, d) => sum + (byDate.get(d) ?? 0), 0)
+    )
+    return {
+      bucket: r.bucket,
+      points: r.points.map(p => ({ date: p.key, label: p.label, count: p.value })),
+    }
   }, [bookings, dateFrom, dateTo])
 
-  const maxCount = useMemo(
+  const rawMax = useMemo(
     () => dayStats.reduce((m, d) => Math.max(m, d.count), 0),
     [dayStats]
   )
+  // ← [2026-07-23] Y축 눈금용 "보기 좋은 최대값".
+  //   실측 최대값(예: 23)을 그대로 축 상한으로 쓰면 눈금이 23·11.5·0 처럼 나와 읽기 어렵다.
+  //   1·2·5 배수로 올림해 25·12.5·0 형태로 만든다. 0건일 때는 축이 무너지지 않게 1로 둔다.
+  const maxCount = useMemo(() => {
+    if (rawMax <= 0) return 1
+    const mag  = Math.pow(10, Math.floor(Math.log10(rawMax)))
+    const norm = rawMax / mag
+    const step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10
+    return step * mag
+  }, [rawMax])
+  // Y축 눈금 3개 (0 / 중간 / 최대)
+  const yTicks = useMemo(() => [maxCount, maxCount / 2, 0], [maxCount])
 
   // ── 4. 인터랙티브 hover/click state ──────────────────────────────────
   const [activeDate, setActiveDate] = useState<string | null>(null)
@@ -2047,19 +2097,21 @@ function BookingTrendsAreaCard() {
   // ── Active label "5월 20일  20건" (Figma 1:1: 공백 2개) ──
   const activeLabel = useMemo(() => {
     if (!activeStats) return null
-    const dt = new Date(activeStats.date)
-    return `${dt.getMonth() + 1}월 ${dt.getDate()}일  ${activeStats.count}건`
+    // ← [2026-07-23] 버킷 라벨 사용 (일별 "7/23" / 주별 "7/20~" / 월별 "7월")
+    return `${activeStats.label}  ${activeStats.count}건`
   }, [activeStats])
 
   // ── X축 footer 양 끝 라벨 (Figma 570:7467: 양 끝만 표시) ──────────────
+  // ← [2026-07-23] 양 끝 2개 → 양 끝 + 중간 3개.
+  //   기간이 길어지면 양 끝만으로는 중간 지점이 언제인지 가늠할 수 없다.
+  //   버킷 라벨을 그대로 쓰므로 집계 단위와 항상 일치한다.
   const xAxisLabels = useMemo(() => {
-    if (dayStats.length === 0) return null
-    const first = new Date(dayStats[0].date)
-    const last  = new Date(dayStats[dayStats.length - 1].date)
-    return {
-      from: `${first.getMonth() + 1}월 ${first.getDate()}일`,
-      to:   `${last.getMonth() + 1}월 ${last.getDate()}일`,
-    }
+    if (dayStats.length === 0) return []
+    if (dayStats.length === 1) return [dayStats[0].label]
+    const mid = Math.floor((dayStats.length - 1) / 2)
+    return dayStats.length < 3
+      ? [dayStats[0].label, dayStats[dayStats.length - 1].label]
+      : [dayStats[0].label, dayStats[mid].label, dayStats[dayStats.length - 1].label]
   }, [dayStats])
 
   // ── 5. SVG 좌표 계산 ──────────────────────────────────────────────────
@@ -2149,12 +2201,39 @@ function BookingTrendsAreaCard() {
             · top 70 = 헤더 끝 (12 + 22 title + 2 gap + 18 date = 54) + 16 gap
             · bottom 40 = X축 footer (24 = 수평선 1 + gap 4 + text 15 + 4 안전) + pb16 = 40
             · left/right 16 = Figma px16 padding */}
+      {/* ── Y축 (Figma에 없던 요소 — 고지 지시 2026-07-23로 신설) ────────
+            · 눈금 3개(최대/중간/0) + 각 눈금의 가로 그리드선
+            · 축 폭 28px를 확보하고 차트를 그만큼 오른쪽으로 민다 */}
+      <div style={{
+        position:'absolute', top:70, left:16, bottom:56, width:TREND_Y_AXIS_W,
+        display:'flex', flexDirection:'column', justifyContent:'space-between',
+        pointerEvents:'none', zIndex:1,
+      }}>
+        {yTicks.map((t, ti) => (
+          <span key={ti} style={{
+            fontFamily:"'Pretendard', -apple-system, sans-serif", fontWeight:500, fontSize:10, lineHeight:1,
+            letterSpacing:'0.1px', color:'#DDE1E6',
+            transform: ti === 0 ? 'translateY(0)' : ti === yTicks.length - 1 ? 'translateY(-50%)' : 'translateY(-50%)',
+          }}>{Number.isInteger(t) ? t : t.toFixed(1)}</span>
+        ))}
+      </div>
+      {/* 가로 그리드선 — 눈금과 같은 높이 */}
+      <div style={{
+        position:'absolute', top:70, left:16 + TREND_Y_AXIS_W, right:16, bottom:56,
+        display:'flex', flexDirection:'column', justifyContent:'space-between',
+        pointerEvents:'none',
+      }}>
+        {yTicks.map((_, ti) => (
+          <div key={ti} style={{ borderTop:'0.5px dashed #F1F3F5', width:'100%' }} />
+        ))}
+      </div>
+
       <div style={{
         position: 'absolute',
         top:      70,
-        left:     16,
+        left:     16 + TREND_Y_AXIS_W,   // ← [2026-07-23] Y축 폭만큼 우측 이동
         right:    16,
-        bottom:   40,
+        bottom:   56,   // ← [2026-07-23] X축 라벨 2줄(값+단위)로 늘어나 여백 확대
       }}>
         {dayStats.length === 0 ? (
           <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#CBD5E1' }}>
@@ -2298,8 +2377,18 @@ function BookingTrendsAreaCard() {
           color:          '#DDE1E6',                         // ← Figma: #DDE1E6 (날짜 picker #AEB5C4와 다름)
           whiteSpace:     'nowrap',
         }}>
-          <span>{xAxisLabels?.from ?? ''}</span>
-          <span>{xAxisLabels?.to ?? ''}</span>
+          {/* ← [2026-07-23] 양 끝 2개 → 3개(시작/중간/끝) */}
+          {xAxisLabels.map((l, li) => <span key={li}>{l}</span>)}
+        </div>
+        {/* ← [2026-07-23] 축 단위 명시. 막대/점 하나가 뜻하는 단위가 기간에 따라 바뀌므로
+              적지 않으면 "7월"이 하루인지 한 달인지 알 수 없다. */}
+        <div style={{
+          display:'flex', justifyContent:'space-between',
+          fontFamily:"'Pretendard', -apple-system, sans-serif",
+          fontWeight:400, fontSize:10, lineHeight:1.5, color:'#CBD5E1',
+        }}>
+          <span>x · {BUCKET_LABEL[bucket]}</span>
+          <span>y · 예약 건수</span>
         </div>
       </div>
     </div>
