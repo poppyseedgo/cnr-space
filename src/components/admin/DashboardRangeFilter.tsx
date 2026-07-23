@@ -177,22 +177,29 @@ function RangePresetPills({ activeId, onPick, presets }: RangePresetPillsProps) 
             // ← 카드 wrapper onClick(DetailDrawer)으로 bubble-up 차단 — SmallDateTrigger와 동일 사유
             onClick={(e) => { e.stopPropagation(); onPick(p.id) }}
             style={{
-              // ── Figma StatusBadge-XS 1:1 ──
-              width:        p.width,
+              // ── Figma StatusBadge-XS 1:1 (2026-07-23 갱신본 2646:7518~7523) ──
+              //   활성 : bg rgba(0,0,0,0.9) + 1px solid #000 + 흰 글씨
+              //   비활성: bg rgba(255,255,255,0.9) + 1px solid #000 + #1E1E1E
+              //   ← 기존(#111 / #F4F6FA 무테두리)에서 변경. Figma가 테두리 있는 형태로 통일됨.
+              //   width 고정을 버리고 padding 기반으로 바꾼 이유: 라벨 길이가 세트마다 달라
+              //   ('오늘' vs '일주일') 고정 폭이면 글자가 잘리거나 여백이 뜬다.
+              minWidth:     p.width,
               height:       21,
-              borderRadius: 999,
-              border:       'none',
-              padding:      0,
+              borderRadius: 24,
+              border:       '1px solid #000',
+              padding:      '2px 8px',
               cursor:       'pointer',
               display:      'inline-flex',
               alignItems:   'center',
               justifyContent:'center',
               fontFamily:   FONT,
               fontWeight:   400,
-              fontSize:     12,
-              lineHeight:   1.4,
-              background:   active ? '#111'  : '#F4F6FA',
-              color:        active ? '#fff'  : '#697077',
+              fontSize:     11,
+              lineHeight:   1.5,
+              letterSpacing:'0.11px',
+              whiteSpace:   'nowrap',
+              background:   active ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.9)',
+              color:        active ? '#fff'            : '#1E1E1E',
               transition:   'background 0.15s, color 0.15s',
             }}>
             {p.label}

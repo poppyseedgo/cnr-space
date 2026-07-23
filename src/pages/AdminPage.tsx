@@ -62,7 +62,7 @@ import { DashboardRangeRow, SmallDateTrigger, RANGE_PRESETS_RECENT } from '../co
 import { UserRankingCard, UserNoshowCard } from '../components/admin/DashboardUserCards'
 import { MeetingPurposeCard } from '../components/admin/MeetingPurposeCard'      // ← [2026-07-23 Phase 3] 위젯 ⑨
 import { DashboardUserCell } from '../components/admin/DashboardUserCell'         // ← [2026-07-23] 사용자 표시 공통 셀
-import { aggregatePurposes } from '../utils/meetingPurpose'                       // ← [2026-07-23 Phase 3] 분류·집계 SSOT (DetailDrawer 공용)
+import { aggregatePurposes, classifyPurpose, PURPOSE_DEFS, type PurposeCode } from '../utils/meetingPurpose'  // ← [2026-07-23] 분류·집계 SSOT (DetailDrawer 공용) + 드릴다운 판정
 import { useBookingsByRange } from '../components/admin/useBookingsByRange'
 import { aggregateUsers } from '../utils/dashboardAgg'
 
@@ -203,12 +203,13 @@ const DETAIL_META: Record<DetailType, { title: string; icon: React.ReactNode }> 
 //        ⑤ CSV에도 두 날짜 컬럼 분리
 //    · 정렬: initialSortKey도 모드와 함께 결정 (최근 생성 카드는 'createdAt' desc)
 //      모드 변경 시 정렬은 자동 변경 X — 사용자가 헤더 클릭으로 자유 정렬 가능
-function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, initialSortAsc, initialDateMode, onDetail, onClose, currentUserId = '', currentUserEmail = '' }:
+function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, initialSortAsc, initialDateMode, initialPurpose, onDetail, onClose, currentUserId = '', currentUserEmail = '' }:
   { type: DetailType; rooms: Room[]; users: AppUser[]; initFrom: string; initTo: string;
     // ← [2026-05-26 카드 클릭 활성화] 진입 시 정렬 옵션 (RoomRanking vs RoomNoshow 분기용)
     initialSortKey?: string; initialSortAsc?: boolean;
     // ← [2026-05-28] 진입 시 날짜 조회 모드 ('createdAt'=생성일 기준 / 'startAt'=회의 날짜 기준, default 'startAt')
     initialDateMode?: 'createdAt' | 'startAt';
+  initialPurpose?: PurposeCode        // ← [2026-07-23] 목적 카드에서 분류 선택 후 진입 시 초기 드릴다운
     onDetail?: (b:Booking)=>void; onClose: ()=>void;
     // ← [2026-05-28 P4-B 패턴 일관성] BookingStatusBadge 'mine' 칩 판정용 (어드민 본인 예약 표시)
     currentUserId?: string; currentUserEmail?: string }) {
@@ -227,7 +228,15 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
   //   · AdminApprovalTable의 dateFilterMode 패턴과 동일 — 백엔드/프론트 단일 진실 원천
   const [dateMode, setDateMode] = useState<'createdAt' | 'startAt'>(initialDateMode ?? 'startAt')
   // 드릴다운: 집계 행 클릭 → 해당 필터로 예약 목록 표시
-  const [drill, setDrill] = useState<{ label: string; fn: (b:Booking)=>boolean } | null>(null)
+  // ← [2026-07-23] initialPurpose가 있으면 드릴다운 상태로 시작한다.
+  //   드로어를 연 뒤 useEffect로 setDrill 하면 "전체 목록 → 깜빡 → 필터된 목록" 이 보인다.
+  //   초기값으로 넣으면 첫 렌더부터 올바른 화면이다.
+  const [drill, setDrill] = useState<{ label: string; fn: (b:Booking)=>boolean } | null>(() => {
+    if (!initialPurpose) return null
+    const def = PURPOSE_DEFS.find(d => d.code === initialPurpose)
+    if (!def) return null
+    return { label: def.label, fn: (b: Booking) => classifyPurpose(b.title).code === initialPurpose }
+  })
   const PER = 30
 
   // ← [2026-05-28] fetchData에 dateField 동적 적용 + dateMode 의존성 추가
@@ -455,6 +464,8 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
 
     if (type === 'purpose') return <AggTable rows={purposeAgg}
       cols={[{k:'label',l:'회의 목적'},{k:'count',l:'건 수'},{k:'ratio',l:'비율'}]}
+      /* ← [2026-07-23] 행 클릭 → 그 분류의 개별 예약 목록. 기존 rooms/dept/hours와 동일한 drill 메커니즘 재사용 */
+      onRowClick={row => { setDrill({ label: row.label, fn: (b) => classifyPurpose(b.title).label === row.label }); setPage(1) }}
       onExport={() => exportCSV(purposeAgg.map(r=>({'회의 목적':r.label,'건 수':r.count,'비율':r.ratio})), `회의목적별통계_${dateFrom}_${dateTo}`)} />
     if (type === 'hours') return <AggTable rows={hourAgg}
       cols={[{k:'hour',l:'시간대'},{k:'count',l:'예약 건수'}]}
@@ -2612,7 +2623,9 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
   // 진입 기간: 카드 클릭 시 기본 30일 (DetailDrawer가 자체 DateRangePicker로 재변경 가능)
   // ═══════════════════════════════════════════════════════════════════════════
   // ← [2026-05-28] initialDateMode 추가 — '최근 생성된 예약' 카드 진입 시 'createdAt' 모드로 시작
-  type CardDrawer = { type: DetailType; sortKey?: string; sortAsc?: boolean; initialDateMode?: 'createdAt' | 'startAt' }
+  // ← [2026-07-23] initialPurpose 추가 — 목적 카드에서 분류를 직접 골라 들어오면
+  //   드로어가 그 분류의 개별 예약 목록(드릴다운)부터 보여준다.
+  type CardDrawer = { type: DetailType; sortKey?: string; sortAsc?: boolean; initialDateMode?: 'createdAt' | 'startAt'; initialPurpose?: PurposeCode }
   const [cardDrawer, setCardDrawer] = useState<CardDrawer | null>(null)
   const drawerInitFrom = addDaysStr(todayStr(), -29)
   const drawerInitTo   = todayStr()
@@ -2646,8 +2659,8 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
              Row1 2-col 592×367 : ①승인대기 ②최근생성된예약   ← [2026-07-23] 342→367
              Row2 3-col 389×400 : ③사용자예약순위 ④일일예약추이 ⑤부서예약순위   ← [2026-07-23] ④⑤ 교환
              Row3 3-col 389×400 : ⑥사용자누적노쇼 ⑦일일노쇼현황 ⑧회의실노쇼현황  ← [2026-07-23] ⑥⑦ 교환
-             Row4 2-col 592×504 : ⑨회의실사용목적AI분석[신규] ⑩예약많은회의실
-             Row5 1-col 1200    : ⑪시간대별예약분포 (풀폭 — 본문은 고지 지시로 현행 유지)
+             Row4 1-col 1200    : ⑨회의실사용목적AI분석 (풀폭 — 스택바 + 10분류 표)  ← [2026-07-23] 592→풀폭
+             Row5 2-col 592     : ⑩예약많은회의실 ⑪시간대별예약분포              ← [2026-07-23] 시간대별을 2-col로
 
            · 신규 위젯 3종(③⑦⑨)은 Phase 2·3에서 구현 — 현재는 DashboardPlaceholderCard로 자리만 확보.
              자리를 비워두지 않는 이유: 그리드 컬럼 수가 달라지면 나머지 카드 폭이 전부 틀어져
@@ -2715,24 +2728,28 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
         </div>
       </div>
 
-      {/* ── Row 4: ⑨ 회의실 사용 목적 AI 분석 / ⑩ 예약 많은 회의실 (2-col 592×504) ── */}
-      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
-        {/* ⑨ 회의실 사용 목적 AI 분석 → 전체 10분류 드릴다운 (카드는 상위 5개만 — Figma 1:1) */}
+      {/* ── Row 4: ⑨ 회의실 사용 목적 AI 분석 (1200 풀폭) ──
+            ← [2026-07-23] Figma 갱신: 592 2-col → 풀폭 1행 단독.
+              10분류 스택 바 + 10행 표가 592폭에서는 라벨이 전부 잘린다. */}
+      <div className="grid gap-4 grid-cols-1">
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'purpose' })}>
-          <MeetingPurposeCard />
+          <MeetingPurposeCard
+            /* 분류 선택 → 그 분류의 개별 예약 목록으로 바로 진입 (드로어 드릴다운 상태로 오픈) */
+            onPickPurpose={(code) => setCardDrawer({ type: 'purpose', initialPurpose: code })}
+          />
         </div>
+      </div>
+
+      {/* ── Row 5: ⑩ 예약 많은 회의실 / ⑪ 시간대별 예약 분포 (2-col) ──
+            ← [2026-07-23] Figma 갱신: 시간대별이 단독 풀폭 → 예약 많은 회의실과 나란히 배치 */}
+      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
         {/* ⑩ 예약 많은 회의실 → rooms 통계 (confirmed desc — 동작 유지) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'confirmed', sortAsc: false })}>
           <RoomRankingCard rooms={rooms} />
         </div>
-      </div>
-
-      {/* ── Row 5: ⑪ 시간대별 예약 분포 (1200 풀폭) ──
-            · 고지 지시(2026-07-23): 본문 차트는 현행 그대로 유지 — 폭만 542 → 1200으로 확장
-            · Figma Row5(551:3713)에는 헤더 텍스트만 있고 본문 사양이 없어 현행 구현을 SSOT로 삼음 */}
-      <div className="grid gap-4 grid-cols-1">
+        {/* ⑪ 시간대별 예약 분포 → hours 통계 (본문 차트는 고지 지시로 현행 유지) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'hours' })}>
           <HourlyDistributionCard />
@@ -2755,6 +2772,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
           initialSortKey={cardDrawer.sortKey}
           initialSortAsc={cardDrawer.sortAsc}
           initialDateMode={cardDrawer.initialDateMode}  /* ← [2026-05-28] 카드별 진입 모드 (예: 최근 생성→'createdAt', 예약추이→default 'startAt') */
+          initialPurpose={cardDrawer.initialPurpose}    /* ← [2026-07-23] 목적 분류 직접 선택 시 초기 드릴다운 */
           onDetail={onDetail}
           onClose={() => setCardDrawer(null)}
           currentUserId={currentUserId}        /* ← [2026-05-28] BookingStatusBadge 'mine' 칩 판정용 (P4-B) */

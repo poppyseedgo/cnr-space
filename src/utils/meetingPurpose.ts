@@ -60,7 +60,8 @@ export const PURPOSE_DEFS: PurposeDef[] = [
   { code:'audit',     label:'외부방문·실사·감사', short:'외부방문', re:/방문|점검|실사|실태조사|audit|감사|식약처|oversight/i },
   { code:'project',   label:'과제·프로젝트',      short:'과제',     re:/pjm|kom|kick\s?off|과제|sponsor|스폰서|의뢰자|srm|siv|psv|prt|\btf\b|국책|review meeting/i },
   { code:'mgmt',      label:'경영회의',           short:'경영회의', re:/경영회의|경영관리|월간경영|ir 미팅|자문위원|advisor|klt|회계/i },
-  { code:'team',      label:'팀·파트 정례회의',   short:'정례회의',
+  // ← [2026-07-23 고지 지시] 라벨 '팀·파트 정례회의' → '정기 회의' (분류 규칙·범위는 변경 없음)
+  { code:'team',      label:'정기 회의',          short:'정기회의',
     re:/스크럼|파트\s?미팅|part\s?meeting|partmeeting|팀\s?미팅|팀\s?회의|파트\s?회의|lm\s?meeting|\blmm\b|division\s?meeting|주간|weekly|정기\s?회의|정기\s?미팅|데일리|\boom\b|내부\s?미팅|내부\s?회의|team\s?meeting|part\s?[12]|manager meeting|파트\s?업무|업무분장/i },
   // ── fallback: 위 9종 어디에도 걸리지 않는 전부 ──
   //   실측상 대부분 "브랜드실" "PV" "DM 미팅"처럼 부서명·약어만 적힌 건이다.
@@ -115,22 +116,14 @@ export function aggregatePurposes(bookings: { title?: string | null; autoCancell
 }
 
 /**
- * 버블 지름 계산 — 원의 **면적**이 건수에 비례하도록 한다.
+ * 스택 바 세그먼트 색상 — [2026-07-23 Figma 갱신] 버블 차트 → 가로 100% 스택 바로 변경.
  *
- * 지름을 건수에 그대로 비례시키면 면적이 제곱으로 커져서 1위가 실제보다 훨씬 크게 보인다.
- * (예: 2배 건수 → 지름 2배 → 면적 4배). 그래서 sqrt를 씌운다.
- *
- * @param counts   내림차순 정렬된 건수 배열
- * @param maxD     1위 원의 지름 (Figma 140)
- * @param minD     최소 지름 — 라벨이 들어갈 최소 크기 보장
- * @param maxTotal 가로로 이어 붙였을 때 허용되는 지름 합 (Figma 450). 넘치면 일괄 축소
+ * Figma는 rgba(0,0,0,0.9)에서 시작해 세그먼트마다 투명도를 낮춘다(0.9 → 0.8 → 0.7 …).
+ * 분류가 10개이므로 0.9에서 0.35까지 균등 분배한다.
+ * 색상은 순위를 나타내는 장식이지 데이터가 아니다 — 실제 값은 세그먼트 폭과 표가 담당한다.
  */
-export function bubbleDiameters(counts: number[], maxD = 140, minD = 44, maxTotal = 450): number[] {
-  if (counts.length === 0) return []
-  const max = counts[0] || 1
-  const raw = counts.map(c => Math.max(minD, maxD * Math.sqrt(c / max)))
-  const sum = raw.reduce((s, d) => s + d, 0)
-  if (sum <= maxTotal) return raw
-  const scale = maxTotal / sum
-  return raw.map(d => d * scale)
+export function segmentAlpha(index: number, total: number): number {
+  if (total <= 1) return 0.9
+  const MAX = 0.9, MIN = 0.35
+  return MAX - (MAX - MIN) * (index / (total - 1))
 }
