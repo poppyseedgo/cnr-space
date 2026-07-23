@@ -51,8 +51,11 @@ import { exportCSV } from '../utils/csv'  // ← [2026-07-23] 지역 함수에�
 //   영향: contaminated 데이터(status='cancelled' 시절) 제외 + 강제취소 자동 분리
 import { isNoshow } from '../utils/noshow'
 import { getBookingStatusLabel } from '../utils/bookingStatusLabel'  // ← [2026-05-28] CSV 내보내기 단일 라벨 SSOT — 옛 룰 인라인 분기 대체
-// ← [2026-05-11 Phase 4] 위젯 ② 노쇼 현황 — 카드 헤더 inline date picker용
-import { DatePickerPopup } from '../components/common/DatePickerPopup'
+// ← [2026-07-23 대시보드 개편 Phase 1] 카드 헤더 날짜행 공통화
+//   기존: DatePickerPopup을 직접 import + SmallDateTrigger를 이 파일에 정의 + 6개 위젯이 인라인 조립
+//   변경: DashboardRangeFilter.tsx로 이동 — SmallDateTrigger·프리셋 pill·⎯ 를 DashboardRangeRow 하나로 캡슐화
+//   ※ DatePickerPopup의 유일한 사용처가 SmallDateTrigger였으므로 이 파일에서 import 제거
+import { DashboardRangeRow, SmallDateTrigger } from '../components/admin/DashboardRangeFilter'
 
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
 function addDaysStr(base: string, days: number): string {
@@ -995,7 +998,7 @@ function ApprovalPendingCard({ count }: { count: number }) {
       flexDirection:'column',
       alignItems:   'flex-start',
       gap:          4,                            // ← Figma: gap 4 (title block ↔ number)
-      height:       268,                          // ← Figma: 카드 높이 명시
+      height:       342,                          // ← [2026-07-23 Phase 1] Figma 551:3316 Row1 592×342 (기존 268 — 3-col 356폭 시절 값)
       width:        '100%',                       // ← grid cell 폭 채움 (3-col)
       // Figma는 box-shadow 없음
     }}>
@@ -1078,62 +1081,9 @@ function useBookingsByRange(dateFrom: string, dateTo: string) {
   return { data, loading }
 }
 
-// ─── SmallDateTrigger — 카드 헤더용 inline 날짜 picker trigger ──────────────
-//   Figma 1:1: 단순 텍스트만 표시 (예: "2026-04-11"), 클릭 시 DatePickerPopup 띄움
-//   DateDisplay는 h 48이라 카드 헤더에 너무 큼 → 텍스트만 있는 작은 버전 별도
-//   재사용: Phase 5-10 다른 위젯들도 동일 패턴 사용 예정
-interface SmallDateTriggerProps {
-  value:    string                                    // ← YYYY-MM-DD
-  onChange: (newDate: string) => void
-  min?:     string
-  max?:     string
-}
-function SmallDateTrigger({ value, onChange, min, max }: SmallDateTriggerProps) {
-  const [open, setOpen] = useState(false)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        // ← [2026-05-26 Dashboard 카드 클릭 활성화] e.stopPropagation 추가
-        //   사유: AdminDashboard에서 카드 wrapper에 onClick 적용 시 SmallDateTrigger의
-        //         button click이 wrapper로 bubble-up되어 DetailDrawer가 잘못 열림.
-        //         이 한 줄로 8개 위젯 카드의 SmallDateTrigger 충돌 모두 해결.
-        onClick={(e) => { e.stopPropagation(); setOpen(o => !o) }}
-        style={{
-          // ── Figma: 텍스트만 표시, button reset ──
-          background: 'transparent',
-          border:     'none',
-          padding:    0,
-          margin:     0,
-          cursor:     'pointer',
-          // ── Figma: Pretendard Regular 12 / lh 1.5 / #AEB5C4 ──
-          fontFamily: "'Pretendard', -apple-system, sans-serif",
-          fontWeight: 400,
-          fontSize:   12,
-          lineHeight: 1.5,
-          color:      '#AEB5C4',
-          // hover 시 살짝 진한 색 (인터랙션 가능 명시)
-          transition: 'color 0.15s',
-        }}
-        onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = '#697077'}
-        onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = '#AEB5C4'}>
-        {value}
-      </button>
-      {open && (
-        <DatePickerPopup
-          value={value}
-          onChange={d => { onChange(d); setOpen(false) }}
-          onClose={() => setOpen(false)}
-          anchorRef={triggerRef}
-          min={min}
-          max={max}
-        />
-      )}
-    </>
-  )
-}
+// ─── SmallDateTrigger — [2026-07-23 Phase 1] components/admin/DashboardRangeFilter.tsx 로 이동 ──
+//   사유: 6개 위젯이 각자 인라인으로 날짜행을 조립하던 구조 → 프리셋 pill 추가 시 6곳 중복 수정 필요.
+//   DatePickerPopup import도 함께 이동 (이 파일 내 유일한 사용처였음).
 
 // ─── 위젯 ② 노쇼 현황 (Figma node 490:704) ──────────────────────────────────
 //   사용처: Row 1 Col 2 (356×268, 3-col grid)
@@ -1207,7 +1157,7 @@ function NoshowChartCard() {
       flexDirection:'column',
       alignItems:   'flex-start',
       gap:          48,                              // ← Figma: gap 48 (헤더 ↔ 차트)
-      height:       268,
+      height:       400,                          // ← [2026-07-23 Phase 1] Figma Row3 389.33×400 (기존 268 — Row1 3-col 시절 값)
       width:        '100%',
       // ← Peak label이 차트 위로 absolute 위치하므로 overflow visible 필요 없음
       //   (gap 48 안에서 자연스럽게 들어감)
@@ -1218,16 +1168,14 @@ function NoshowChartCard() {
           fontFamily:"'Pretendard', -apple-system, sans-serif",
           fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
           whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-        }}>노쇼 현황</p>
+        }}>일일 노쇼 현황</p>{/* ← [2026-07-23 Phase 1] Figma 문구: 노쇼 현황 → 일일 노쇼 현황 */}
         {/* ── 날짜 범위 (SmallDateTrigger × 2 + ⎯) — Figma 1:1 ── */}
-        <div style={{ display:'flex', gap:4, alignItems:'center' }}>
-          <SmallDateTrigger value={dateFrom} onChange={setDateFrom} max={dateTo} />
-          <span style={{
-            fontFamily:"'Pretendard', -apple-system, sans-serif",
-            fontWeight:400, fontSize:12, lineHeight:1.5, color:'#AEB5C4',
-          }}>⎯</span>
-          <SmallDateTrigger value={dateTo} onChange={setDateTo} min={dateFrom} max={todayStr()} />
-        </div>
+        {/* ← [2026-07-23 Phase 1] SmallDateTrigger×2 인라인 조립 → DashboardRangeRow 공통 행 (프리셋 pill 한 달/3개월/전체 포함) */}
+        <DashboardRangeRow
+          from={dateFrom}
+          to={dateTo}
+          onChange={r => { setDateFrom(r.from); setDateTo(r.to) }}
+        />
       </div>
 
       {/* ── 차트 영역 (flex column gap 6) ────────────────────── */}
@@ -1376,7 +1324,7 @@ function RecentBookingsCard({
       flexDirection:'column',
       alignItems:   'flex-start',
       gap:          48,                              // ← Figma: 헤더(22h) ↔ 리스트(82y) = 82-12-22=48
-      height:       268,
+      height:       342,                          // ← [2026-07-23 Phase 1] Figma Row1 592×342 (기존 268)
       width:        '100%',
     }}>
       {/* ── 헤더 (타이틀만, 날짜 범위 없음 — Figma) ── */}
@@ -1519,7 +1467,7 @@ function RoomRankingCard({ rooms }: { rooms: Room[] }) {
       flexDirection: 'column',
       alignItems:    'flex-start',
       justifyContent:'space-between',                // ← Figma: 헤더↔리스트 양 끝 분배 (no gap)
-      height:        504,
+      height:        504,                         // ← [2026-07-23 Phase 1] Figma Row4 592×504 — 높이 유지, 폭만 542→592 (grid 2-col)
       width:         '100%',
     }}>
       {/* ── 헤더 (gap 2) ────────────────────────────────────── */}
@@ -1530,14 +1478,12 @@ function RoomRankingCard({ rooms }: { rooms: Room[] }) {
           whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
         }}>예약 많은 회의실</p>
         {/* ── 날짜 범위 picker (SmallDateTrigger × 2 + ⎯) — Q3: 위젯 ②와 동일 ── */}
-        <div style={{ display:'flex', gap:4, alignItems:'center' }}>
-          <SmallDateTrigger value={dateFrom} onChange={setDateFrom} max={dateTo} />
-          <span style={{
-            fontFamily:"'Pretendard', -apple-system, sans-serif",
-            fontWeight:400, fontSize:12, lineHeight:1.5, color:'#AEB5C4',
-          }}>⎯</span>
-          <SmallDateTrigger value={dateTo} onChange={setDateTo} min={dateFrom} max={todayStr()} />
-        </div>
+        {/* ← [2026-07-23 Phase 1] SmallDateTrigger×2 인라인 조립 → DashboardRangeRow 공통 행 (프리셋 pill 한 달/3개월/전체 포함) */}
+        <DashboardRangeRow
+          from={dateFrom}
+          to={dateTo}
+          onChange={r => { setDateFrom(r.from); setDateTo(r.to) }}
+        />
       </div>
 
       {/* ── 리스트 (9 rows, gap 2, 점진적 height/색상) ────── */}
@@ -1644,7 +1590,7 @@ function RoomNoshowCard({ rooms }: { rooms: Room[] }) {
       flexDirection: 'column',
       alignItems:    'flex-start',
       justifyContent:'space-between',
-      height:        504,
+      height:        400,                         // ← [2026-07-23 Phase 1] Figma Row3 389.33×400 (기존 542×504)
       width:         '100%',
     }}>
       {/* ── 헤더 (gap 2) ────────────────────────────────────── */}
@@ -1655,14 +1601,12 @@ function RoomNoshowCard({ rooms }: { rooms: Room[] }) {
           whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
         }}>회의실 노쇼 현황</p>
         {/* ── 날짜 범위 picker (위젯 ②④와 동일) ── */}
-        <div style={{ display:'flex', gap:4, alignItems:'center' }}>
-          <SmallDateTrigger value={dateFrom} onChange={setDateFrom} max={dateTo} />
-          <span style={{
-            fontFamily:"'Pretendard', -apple-system, sans-serif",
-            fontWeight:400, fontSize:12, lineHeight:1.5, color:'#AEB5C4',
-          }}>⎯</span>
-          <SmallDateTrigger value={dateTo} onChange={setDateTo} min={dateFrom} max={todayStr()} />
-        </div>
+        {/* ← [2026-07-23 Phase 1] SmallDateTrigger×2 인라인 조립 → DashboardRangeRow 공통 행 (프리셋 pill 한 달/3개월/전체 포함) */}
+        <DashboardRangeRow
+          from={dateFrom}
+          to={dateTo}
+          onChange={r => { setDateFrom(r.from); setDateTo(r.to) }}
+        />
       </div>
 
       {/* ── 세로 bar 차트 (h 172, gap 2, 9 bars flex 1) ────── */}
@@ -2009,7 +1953,7 @@ function BookingTrendsAreaCard() {
       position:      'relative',
       background:    '#fff',
       borderRadius:  24,
-      height:        504,
+      height:        400,                         // ← [2026-07-23 Phase 1] Figma Row2 389.33×400 (기존 542×504)
       width:         '100%',
       overflow:      'hidden',
     }}>
@@ -2030,15 +1974,13 @@ function BookingTrendsAreaCard() {
           fontWeight:500,                                  // ← Pretendard:Medium
           fontSize:16, lineHeight:1.4, color:'#111', margin:0,
           whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-        }}>예약추이</p>
-        <div style={{ display:'flex', gap:4, alignItems:'center' }}>
-          <SmallDateTrigger value={dateFrom} onChange={setDateFrom} max={dateTo} />
-          <span style={{
-            fontFamily:"'Pretendard', -apple-system, sans-serif",
-            fontWeight:400, fontSize:12, lineHeight:1.5, color:'#AEB5C4',
-          }}>⎯</span>
-          <SmallDateTrigger value={dateTo} onChange={setDateTo} min={dateFrom} max={todayStr()} />
-        </div>
+        }}>일일 예약 추이</p>{/* ← [2026-07-23 Phase 1] Figma 문구: 예약추이 → 일일 예약 추이 */}
+        {/* ← [2026-07-23 Phase 1] SmallDateTrigger×2 인라인 조립 → DashboardRangeRow 공통 행 (프리셋 pill 한 달/3개월/전체 포함) */}
+        <DashboardRangeRow
+          from={dateFrom}
+          to={dateTo}
+          onChange={r => { setDateFrom(r.from); setDateTo(r.to) }}
+        />
       </div>
 
       {/* ── 차트 영역 (absolute, X축 footer 위까지) ──────────────────
@@ -2277,7 +2219,7 @@ function DepartmentBookingsCard() {
       display:       'flex',
       flexDirection: 'column',
       gap:           24,                                // ← Figma 1:1 (chart flex:1로 남은 공간 자동 채움)
-      height:        504,
+      height:        400,                         // ← [2026-07-23 Phase 1] Figma Row2 389.33×400 (기존 542×504)
       width:         '100%',
       overflow:      'hidden',                          // ← Figma: overflow-clip
     }}>
@@ -2287,16 +2229,14 @@ function DepartmentBookingsCard() {
           fontFamily:"'Pretendard', -apple-system, sans-serif",
           fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
           whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-        }}>부서별 예약 현황</p>
+        }}>부서 예약 순위</p>{/* ← [2026-07-23 Phase 1] Figma 문구: 부서별 예약 현황 → 부서 예약 순위 */}
         {/* ── 날짜 범위 picker (위젯 ②④⑤⑥와 동일) ── */}
-        <div style={{ display:'flex', gap:4, alignItems:'center' }}>
-          <SmallDateTrigger value={dateFrom} onChange={setDateFrom} max={dateTo} />
-          <span style={{
-            fontFamily:"'Pretendard', -apple-system, sans-serif",
-            fontWeight:400, fontSize:12, lineHeight:1.5, color:'#AEB5C4',
-          }}>⎯</span>
-          <SmallDateTrigger value={dateTo} onChange={setDateTo} min={dateFrom} max={todayStr()} />
-        </div>
+        {/* ← [2026-07-23 Phase 1] SmallDateTrigger×2 인라인 조립 → DashboardRangeRow 공통 행 (프리셋 pill 한 달/3개월/전체 포함) */}
+        <DashboardRangeRow
+          from={dateFrom}
+          to={dateTo}
+          onChange={r => { setDateFrom(r.from); setDateTo(r.to) }}
+        />
       </div>
 
       {/* ── 부서 list (상단, Top 7 - 사용자 정정 2026-05-12) ──────────── */}
@@ -2835,39 +2775,42 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
   }
 
   return (
-    <div className="flex flex-col gap-4" style={{ maxWidth: 1100, width: '100%' }}>
+    <div className="flex flex-col gap-4" style={{ maxWidth: 1200, width: '100%' }}>{/* ← [2026-07-23 Phase 1] Figma 551:3316 컨테이너 1100 → 1200 */}
 
-      {/* ── [2026-05-11 Phase 3.5] 상단 공통 날짜 필터 + 로딩 인디케이터 제거 ──
-            · 사유: Q1 결정 — 각 위젯이 자체 dateFrom/dateTo state + DateDisplay picker 보유
-            · 공통 필터를 두면 카드별 필터와 충돌하므로 완전 제거 (Q2 결정)
-            · 각 위젯이 own loadBookingsByRange fetch + own loading state 가짐 */}
+      {/* ══════════════════════════════════════════════════════════════════════
+           [2026-07-23 Phase 1] 대시보드 외곽 5-row grid 재구성 (Figma node 551:3316 1:1)
 
-      {/* ──────────────────────────────────────────────────────────────────
-           [2026-05-11 Phase 3] Dashboard 외곽 4-row grid (Figma node 489:393 1:1)
-           · Row 1 (gap 16): 위젯 ①②③ 각 356×268 (3-col)
-           · Row 2 (gap 16): 위젯 ④⑤   각 542×504 (2-col)
-           · Row 3 (gap 16): 위젯 ⑥⑦   각 542×504 (2-col)
-           · Row 4 (gap 16): 위젯 ⑧     542×205 (좌측만, 우측 빈 칸)
-         ──────────────────────────────────────────────────────────────── */}
+           변경 전(2026-05-11 Phase 3, node 489:393 / maxWidth 1100)
+             Row1 3-col 356×268 : ①승인대기 ②노쇼현황 ③최근생성된예약
+             Row2 2-col 542×504 : ④예약많은회의실 ⑤회의실노쇼현황
+             Row3 2-col 542×504 : ⑥예약추이 ⑦부서별예약현황
+             Row4 2-col         : ⑧시간대별예약분포 + 빈칸
 
-      {/* ── Row 1: 위젯 ① 승인 대기 / ② 노쇼 현황 / ③ 최근 생성된 예약 ── */}
-      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
-        {/* ① 승인 대기 → [2026-06-10] 드로어(type:'pending') 대신 '승인 관리' 탭으로 즉시 이동
-              (드로어 기본 30일 범위 + 날짜모드 필터에 대기 예약이 누락되어 목록이 비어 보이는 문제 회피) */}
+           변경 후(Figma 551:3316 / maxWidth 1200, gap 16)
+             Row1 2-col 592×342 : ①승인대기 ②최근생성된예약
+             Row2 3-col 389×400 : ③사용자예약순위[신규] ④부서예약순위 ⑤일일예약추이
+             Row3 3-col 389×400 : ⑥일일노쇼현황 ⑦사용자누적노쇼[신규] ⑧회의실노쇼현황
+             Row4 2-col 592×504 : ⑨회의실사용목적AI분석[신규] ⑩예약많은회의실
+             Row5 1-col 1200    : ⑪시간대별예약분포 (풀폭 — 본문은 고지 지시로 현행 유지)
+
+           · 신규 위젯 3종(③⑦⑨)은 Phase 2·3에서 구현 — 현재는 DashboardPlaceholderCard로 자리만 확보.
+             자리를 비워두지 않는 이유: 그리드 컬럼 수가 달라지면 나머지 카드 폭이 전부 틀어져
+             Phase 2 착수 시 레이아웃을 또 손봐야 하므로, 골격은 이번에 확정한다.
+           · 각 위젯의 자체 dateFrom/dateTo state + 독립 fetch 구조(Phase 3.5)는 그대로 유지.
+           · 기존 카드의 onClick(DetailDrawer 진입) 동작은 1건도 변경하지 않음.
+         ═══════════════════════════════════════════════════════════════════════ */}
+
+      {/* ── Row 1: ① 승인 대기 / ② 최근 생성된 예약 (2-col 592×342) ── */}
+      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
+        {/* ① 승인 대기 → [2026-06-10] 드로어 대신 '승인 관리' 탭으로 즉시 이동 (동작 유지) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => onGoApprovals()}>  {/* ← [2026-06-10] setCardDrawer({ type: 'pending' }) → onGoApprovals() (승인 관리 페이지 이동) */}
+          onClick={() => onGoApprovals()}>
           <ApprovalPendingCard count={pendingCount} />
         </div>
 
-        {/* ② 노쇼 현황 → 노쇼 목록 */}
+        {/* ② 최근 생성된 예약 → 헤더 클릭은 bookings drawer(생성일 최신순), 행 클릭은 onDetail (동작 유지) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'noshow' })}>
-          <NoshowChartCard />
-        </div>
-
-        {/* ③ 최근 생성된 예약 → 헤더 클릭은 bookings drawer (생성일 기준 최신순 진입), 행 클릭은 onDetail (사용자 결정) */}
-        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'bookings', initialDateMode: 'createdAt', sortKey: 'createdAt', sortAsc: false })}>  {/* ← [2026-05-28] 사용자 결정: 생성일 모드 + createdAt 내림차순 (최신순)으로 진입 — '예약추이' 카드는 기존 startAt 유지 */}
+          onClick={() => setCardDrawer({ type: 'bookings', initialDateMode: 'createdAt', sortKey: 'createdAt', sortAsc: false })}>
           <RecentBookingsCard
             bookings={bookings}
             users={users}
@@ -2877,43 +2820,72 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
         </div>
       </div>
 
-      {/* ── Row 2: 위젯 ④ 예약 많은 회의실 / ⑤ 회의실 노쇼 현황 ── */}
-      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
-        {/* ④ 예약 많은 회의실 → rooms 통계 (confirmed desc) */}
+      {/* ── Row 2: ③ 사용자 예약 순위 / ④ 부서 예약 순위 / ⑤ 일일 예약 추이 (3-col 389×400) ── */}
+      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
+        {/* ③ 사용자 예약 순위 [Phase 2 구현 예정] */}
+        <DashboardPlaceholderCard
+          height={400}
+          title="사용자 예약 순위"
+          subtitle={null}
+          phaseNote="Phase 2 구현 예정"
+        />
+        {/* ④ 부서 예약 순위 → dept 통계 (동작 유지) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'confirmed', sortAsc: false })}>
-          <RoomRankingCard rooms={rooms} />
+          onClick={() => setCardDrawer({ type: 'dept' })}>
+          <DepartmentBookingsCard />
         </div>
-        {/* ⑤ 회의실 노쇼 현황 → rooms 통계 (noshow desc — 진입 정렬 분기) */}
+        {/* ⑤ 일일 예약 추이 → 전체 예약 목록 (동작 유지) */}
+        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'bookings' })}>
+          <BookingTrendsAreaCard />
+        </div>
+      </div>
+
+      {/* ── Row 3: ⑥ 일일 노쇼 현황 / ⑦ 사용자 누적 노쇼 / ⑧ 회의실 노쇼 현황 (3-col 389×400) ── */}
+      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
+        {/* ⑥ 일일 노쇼 현황 → 노쇼 목록 (동작 유지) */}
+        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'noshow' })}>
+          <NoshowChartCard />
+        </div>
+        {/* ⑦ 사용자 누적 노쇼 [Phase 2 구현 예정] */}
+        <DashboardPlaceholderCard
+          height={400}
+          title="사용자 누적 노쇼"
+          subtitle={null}
+          phaseNote="Phase 2 구현 예정"
+        />
+        {/* ⑧ 회의실 노쇼 현황 → rooms 통계 (noshow desc 진입 정렬 — 동작 유지) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'noshow', sortAsc: false })}>
           <RoomNoshowCard rooms={rooms} />
         </div>
       </div>
 
-      {/* ── Row 3: 위젯 ⑥ 예약추이 / ⑦ 부서별 예약 현황 ── */}
+      {/* ── Row 4: ⑨ 회의실 사용 목적 AI 분석 / ⑩ 예약 많은 회의실 (2-col 592×504) ── */}
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
-        {/* ⑥ 예약추이 → 전체 예약 목록 */}
+        {/* ⑨ 회의실 사용 목적 AI 분석 [Phase 3 구현 예정 — bookings.purpose_code 마이그레이션 선행] */}
+        <DashboardPlaceholderCard
+          height={504}
+          title="회의실 사용 목적 AI 분석"
+          subtitle={null}
+          phaseNote="Phase 3 구현 예정"
+        />
+        {/* ⑩ 예약 많은 회의실 → rooms 통계 (confirmed desc — 동작 유지) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'bookings' })}>
-          <BookingTrendsAreaCard />
-        </div>
-        {/* ⑦ 부서별 예약 현황 → dept 통계 */}
-        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'dept' })}>
-          <DepartmentBookingsCard />
+          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'confirmed', sortAsc: false })}>
+          <RoomRankingCard rooms={rooms} />
         </div>
       </div>
 
-      {/* ── Row 4: 위젯 ⑧ 시간대별 예약 분포 (좌측만) ── */}
-      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
-        {/* ⑧ 시간대별 예약 분포 → hours 통계 */}
+      {/* ── Row 5: ⑪ 시간대별 예약 분포 (1200 풀폭) ──
+            · 고지 지시(2026-07-23): 본문 차트는 현행 그대로 유지 — 폭만 542 → 1200으로 확장
+            · Figma Row5(551:3713)에는 헤더 텍스트만 있고 본문 사양이 없어 현행 구현을 SSOT로 삼음 */}
+      <div className="grid gap-4 grid-cols-1">
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'hours' })}>
           <HourlyDistributionCard />
         </div>
-        {/* 우측 빈 칸 — Figma 사양 (Row 4는 좌측 카드만) */}
-        {!isMobile && <div />}
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════════
