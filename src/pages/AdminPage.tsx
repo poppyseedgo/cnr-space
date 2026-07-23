@@ -60,6 +60,8 @@ import { DashboardRangeRow, SmallDateTrigger } from '../components/admin/Dashboa
 //   aggregateUsers: DetailDrawer userAgg 본문을 utils로 추출 — 카드와 드로어가 같은 집계를 쓰도록 강제
 //   useBookingsByRange: AdminPage에 있던 훅을 이동 (신규 카드 파일이 import하면 순환참조가 되므로)
 import { UserRankingCard, UserNoshowCard } from '../components/admin/DashboardUserCards'
+import { MeetingPurposeCard } from '../components/admin/MeetingPurposeCard'      // ← [2026-07-23 Phase 3] 위젯 ⑨
+import { aggregatePurposes } from '../utils/meetingPurpose'                       // ← [2026-07-23 Phase 3] 분류·집계 SSOT (DetailDrawer 공용)
 import { useBookingsByRange } from '../components/admin/useBookingsByRange'
 import { aggregateUsers } from '../utils/dashboardAgg'
 
@@ -173,7 +175,7 @@ function DateRangePicker({ from, to, onChangeFn, presetId, onPreset, compact = f
 //     동작은 동일하다 — 위치만 옮기고 여기서는 import 해서 쓴다.
 
 // ─── Detail Drawer ─────────────────────────────────────────────────────────────
-type DetailType = 'bookings'|'noshow'|'rooms'|'dept'|'hours'|'pending'|'users'
+type DetailType = 'bookings'|'noshow'|'rooms'|'dept'|'hours'|'pending'|'users'|'purpose'  // ← [2026-07-23 Phase 3] 'purpose' 추가 — 위젯 ⑨ 전체 10분류 드릴다운
 interface DetailConfig { type: DetailType; title: string; icon: React.ReactNode }
 
 const DETAIL_META: Record<DetailType, { title: string; icon: React.ReactNode }> = {
@@ -184,6 +186,7 @@ const DETAIL_META: Record<DetailType, { title: string; icon: React.ReactNode }> 
   hours:    { title: '시간대별 분포',      icon: <Clock size={16} strokeWidth={1.8}/> },
   pending:  { title: '승인 대기 목록',     icon: <Inbox size={16} strokeWidth={1.8}/> },
   users:    { title: '사용자 예약 현황',   icon: <Users size={16} strokeWidth={1.8}/> },
+  purpose:  { title: '회의 목적별 통계',   icon: <BarChart2 size={16} strokeWidth={1.8}/> },  // ← [2026-07-23 Phase 3]
 }
 
 // ─── DetailDrawer ──────────────────────────────────────────────────────────────
@@ -292,6 +295,14 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
   //   매핑 키 변경: b.user(이름) → b.user_id (UUID 우선, 없으면 b.user fallback)
   //     · 동명이인 안전 — 이름이 같아도 user_id가 다르면 별도 행
   //     · user_id 없는 외부 게스트는 b.user 키로 fallback (기존 동작 보존)
+  // ← [2026-07-23 Phase 3] 목적별 집계 — 카드(위젯 ⑨)와 동일한 aggregatePurposes 사용
+  //   카드는 Figma 사양상 상위 5개만 노출하므로, 전체 10분류는 여기서 확인한다.
+  const purposeAgg = useMemo(() => aggregatePurposes(filtered).map(r => ({
+    label: r.label,
+    count: r.count,
+    ratio: `${(r.ratio * 100).toFixed(1)}%`,
+  })), [filtered])
+
   // ← [2026-07-23 Phase 2] 본문을 utils/dashboardAgg.aggregateUsers()로 추출 (로직 1:1 무변경)
   //   사유: 신규 카드 '사용자 예약 순위'/'사용자 누적 노쇼'가 같은 값을 표시한다.
   //         집계를 두 벌 두면 조건이 한쪽만 바뀌는 순간 카드와 드로어 숫자가 어긋난다.
@@ -441,6 +452,9 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
       onExport={() => exportCSV(deptAgg.map(r=>({부서:r.dept,예약:r.confirmed,노쇼:r.noshow})), `부서별통계_${dateFrom}_${dateTo}`)}
       onRowClick={row => { setDrill({ label:row.dept, fn:(b)=>b.dept===row.dept }); setPage(1) }}/>
 
+    if (type === 'purpose') return <AggTable rows={purposeAgg}
+      cols={[{k:'label',l:'회의 목적'},{k:'count',l:'건 수'},{k:'ratio',l:'비율'}]}
+      onExport={() => exportCSV(purposeAgg.map(r=>({'회의 목적':r.label,'건 수':r.count,'비율':r.ratio})), `회의목적별통계_${dateFrom}_${dateTo}`)} />
     if (type === 'hours') return <AggTable rows={hourAgg}
       cols={[{k:'hour',l:'시간대'},{k:'count',l:'예약 건수'}]}
       onExport={() => exportCSV(hourAgg.map(r=>({시간대:r.hour,예약건수:r.count})), `시간대별분포_${dateFrom}_${dateTo}`)}
@@ -2641,13 +2655,11 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
 
       {/* ── Row 4: ⑨ 회의실 사용 목적 AI 분석 / ⑩ 예약 많은 회의실 (2-col 592×504) ── */}
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
-        {/* ⑨ 회의실 사용 목적 AI 분석 [Phase 3 구현 예정 — bookings.purpose_code 마이그레이션 선행] */}
-        <DashboardPlaceholderCard
-          height={504}
-          title="회의실 사용 목적 AI 분석"
-          subtitle={null}
-          phaseNote="Phase 3 구현 예정"
-        />
+        {/* ⑨ 회의실 사용 목적 AI 분석 → 전체 10분류 드릴다운 (카드는 상위 5개만 — Figma 1:1) */}
+        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'purpose' })}>
+          <MeetingPurposeCard />
+        </div>
         {/* ⑩ 예약 많은 회의실 → rooms 통계 (confirmed desc — 동작 유지) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'confirmed', sortAsc: false })}>
