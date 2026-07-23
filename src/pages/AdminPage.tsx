@@ -1490,6 +1490,62 @@ function RoomRankingCard({ rooms }: { rooms: Room[] }) {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ─── RankListRow — 랭크 서클 + 라벨 + 우측 카운트 (Figma Frame 48096263 행) ──
+//   [2026-07-23 Phase 2-B] 신설.
+//   사유: Figma 551:3316에서 '회의실 노쇼 현황' Top5 행과 '부서 예약 순위' 8행이
+//         완전히 동일한 행 컴포넌트다. 각 위젯이 따로 마크업을 들고 있으면
+//         한쪽만 Figma 수정이 반영되어 두 카드가 미세하게 어긋난다.
+//   ※ RoomNoshowCard가 쓰던 현행 마크업을 그대로 승격한 것 — 치수·색상 변경 없음.
+function RankListRow({ rank, label, count, first, empty = false }: {
+  rank:   number
+  label:  string
+  count:  number | string
+  first:  boolean        // ← 첫 행만 borderTop (Figma 1:1)
+  empty?: boolean        // ← 데이터 부족분 placeholder 행 (회색 처리)
+}) {
+  const fg = empty ? '#CBD5E1' : '#000'
+  return (
+    <div style={{
+      // ── Figma row 1:1: py 8, border-top(첫 행만) + border-bottom #FAFBFF ──
+      display:       'flex',
+      alignItems:    'center',
+      justifyContent:'space-between',
+      padding:       '8px 0',
+      borderTop:     first && !empty ? '1px solid #FAFBFF' : 'none',
+      borderBottom:  '1px solid #FAFBFF',
+      width:         '100%',
+    }}>
+      {/* ── 좌측: rank circle + 라벨 (gap 10) ── */}
+      <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:1, minWidth:0, paddingRight:8 }}>
+        {/* ── Rank circle (Figma: 16×16, border 1px, radius 999) ── */}
+        <div style={{
+          width:16, height:16,
+          border: empty ? '1px solid #CBD5E1' : '1px solid #000',
+          borderRadius:999,
+          display:'flex', alignItems:'center', justifyContent:'center',
+          flexShrink:0,
+        }}>
+          <span style={{
+            fontFamily:"'Pretendard', -apple-system, sans-serif",
+            fontWeight:400, fontSize:8, lineHeight:1.5, color:fg,
+          }}>{rank}</span>
+        </div>
+        <span style={{
+          fontFamily:"'Pretendard', -apple-system, sans-serif",
+          fontWeight:400, fontSize:12, lineHeight:1.5, color:fg,
+          whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+        }}>{label}</span>
+      </div>
+      {/* ── 우측: count ── */}
+      <span style={{
+        fontFamily:"'Pretendard', -apple-system, sans-serif",
+        fontWeight:400, fontSize:12, lineHeight:1.5, color:fg,
+        flexShrink:0,
+      }}>{count}</span>
+    </div>
+  )
+}
+
 // ─── 위젯 ⑤ 회의실 노쇼 현황 (Figma node 551:3548) ──────────────────────────
 //   사용처: Row 2 Col 2 (542×504, 2-col grid)
 //   데이터: 자체 dateFrom/dateTo (default 30일) + useBookingsByRange + isNoshow SSOT
@@ -1531,7 +1587,7 @@ function RoomNoshowCard({ rooms }: { rooms: Room[] }) {
   )
 
   // ── 차트 상수 (Figma 사양) ──────────────────────────────────────────
-  const CHART_HEIGHT     = 172    // ← Figma: 외곽 컨테이너 h
+  const CHART_HEIGHT     = 126    // ← [2026-07-23 Phase 2-B] Figma 2646:7433 h126 (기존 172 — 542×504 시절 값)
   const CHART_INNER_MAX  = 109    // ← Figma: 내부 bar max (Bar 1 = max noshow)
 
   return (
@@ -1666,70 +1722,30 @@ function RoomNoshowCard({ rooms }: { rooms: Room[] }) {
         })()}
       </div>
 
-      {/* ── Top 5 ranked list (h 34 × 5 rows = 170) ────────── */}
+      {/* ── Top 5 ranked list (h 34 × 5 rows = 170) — Figma 2646:7452 ──
+            ← [2026-07-23 Phase 2-B] 인라인 마크업 → 공통 RankListRow (부서 예약 순위와 동일 컴포넌트) */}
       <div style={{
         display:'flex', flexDirection:'column', width:'100%',
       }}>
-        {top5.map((s, i) => (
-          <div key={s.room.room_id} style={{
-            // ── Figma row 1:1: py 8, border-top + border-bottom #FAFBFF ──
-            display:      'flex',
-            alignItems:   'center',
-            justifyContent:'space-between',
-            padding:      '8px 0',
-            borderTop:    i === 0 ? '1px solid #FAFBFF' : 'none',   // ← 첫 row만 top
-            borderBottom: '1px solid #FAFBFF',
-            width:        '100%',
-          }}>
-            {/* ── 좌측: rank circle + 회의실명 (gap 10) ── */}
-            <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:1, minWidth:0, paddingRight:8 }}>
-              {/* ── Rank circle (Figma: 16×16, border 1px #000, radius 999) ── */}
-              <div style={{
-                width:16, height:16,
-                border:'1px solid #000',
-                borderRadius:999,
-                display:'flex', alignItems:'center', justifyContent:'center',
-                flexShrink:0,
-              }}>
-                <span style={{
-                  fontFamily:"'Pretendard', -apple-system, sans-serif",
-                  fontWeight:400, fontSize:8, lineHeight:1.5, color:'#000',
-                }}>{i + 1}</span>
-              </div>
-              {/* ── 회의실명 ── */}
-              <span style={{
-                fontFamily:"'Pretendard', -apple-system, sans-serif",
-                fontWeight:400, fontSize:12, lineHeight:1.5, color:'#000',
-                whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-              }}>{s.room?.room_name ?? '—'}</span>
-            </div>
-            {/* ── 우측: count ── */}
-            <span style={{
-              fontFamily:"'Pretendard', -apple-system, sans-serif",
-              fontWeight:400, fontSize:12, lineHeight:1.5, color:'#000',
-              flexShrink:0,
-            }}>{s.room ? s.noshow : '—'}</span>
-          </div>
+        {top5.map((s2, i2) => (
+          <RankListRow
+            key={s2.room.room_id}
+            rank={i2 + 1}
+            label={s2.room?.room_name ?? '—'}
+            count={s2.room ? s2.noshow : '—'}
+            first={i2 === 0}
+          />
         ))}
         {/* ── Q3: rooms.length < 5인 경우 placeholder row로 5개 채움 (count 0 표시) ── */}
-        {Array.from({ length: Math.max(0, 5 - top5.length) }).map((_, i) => (
-          <div key={`empty-${i}`} style={{
-            display:'flex', alignItems:'center', justifyContent:'space-between',
-            padding:'8px 0',
-            borderBottom:'1px solid #FAFBFF',
-            width:'100%',
-          }}>
-            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-              <div style={{
-                width:16, height:16, border:'1px solid #CBD5E1', borderRadius:999,
-                display:'flex', alignItems:'center', justifyContent:'center',
-              }}>
-                <span style={{ fontSize:8, color:'#CBD5E1' }}>{top5.length + i + 1}</span>
-              </div>
-              <span style={{ fontSize:12, color:'#CBD5E1' }}>—</span>
-            </div>
-            <span style={{ fontSize:12, color:'#CBD5E1' }}>0</span>
-          </div>
+        {Array.from({ length: Math.max(0, 5 - top5.length) }).map((_, i2) => (
+          <RankListRow
+            key={`empty-${i2}`}
+            rank={top5.length + i2 + 1}
+            label="—"
+            count={0}
+            first={false}
+            empty
+          />
         ))}
       </div>
     </div>
@@ -2107,16 +2123,11 @@ function BookingTrendsAreaCard() {
 //   ※ Figma 1:1: padding p16 균등 + flex-col gap 24 (위젯 ②④⑤⑥과 다름)
 //   ※ hover/click 시 그 column #343333 진해짐 + label (위젯 ②⑤⑥ 패턴 일관)
 
-// ─── DEPT_RANK_COLORS — Rank별 점진적 옅음 (Top 7 대응, 7단계 그라데이션) ──
-//   rank 0 (1위): #777 (가장 진함)
-//   rank 1 (2위): #8B8B8B
-//   rank 2 (3위): #A0A0A0
-//   rank 3 (4위): #B5B5B5
-//   rank 4 (5위): #C8C8C8
-//   rank 5 (6위): #D6D6D6
-//   rank 6+ (7위~): #E2E2E2 (가장 옅음)
-const DEPT_RANK_COLORS = ['#777', '#8B8B8B', '#A0A0A0', '#B5B5B5', '#C8C8C8', '#D6D6D6', '#E2E2E2']
-const DEPT_RANK_ACTIVE_COLOR = '#343333'    // ← hover/click 시 (Figma mockup의 활성 색)
+// ─── [2026-07-23 Phase 2-B] DEPT_RANK_COLORS / DEPT_RANK_ACTIVE_COLOR 삭제 ──
+//   두 상수 모두 '부서 예약 순위' 하단의 가로 비율 bar 차트 전용이었다.
+//   Figma 551:3652에 bar 차트가 없어 차트를 제거했으므로 참조처가 0이 되어 함께 삭제.
+//   (dead code를 남기면 다음 작업자가 '색상 규칙이 있다'고 오인한다)
+
 
 function DepartmentBookingsCard() {
   // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
@@ -2141,28 +2152,13 @@ function DepartmentBookingsCard() {
       .sort((a, b) => b.count - a.count)                // Q6: count desc
   }, [bookings])
 
-  // ── 4. Top 7 부서 (사용자 정정 2026-05-12: list와 chart 모두 Top 7) ───
-  const top7 = useMemo(() => deptStats.slice(0, 7), [deptStats])
+  // ── 4. Top 8 부서 ───────────────────────────────────────────────────
+  //   ← [2026-07-23 Phase 2-B] Figma 551:3659 = 8행 × h34 = 272 (기존 Top 7 + 가로 bar 구성)
+  const top8 = useMemo(() => deptStats.slice(0, 8), [deptStats])
 
-  // ── 5. 총 카운트 (Q6: bar width = count / totalCount × 100%) ──────────
-  //   ← Top 7 합 기준 → chart가 가득 차오름 (Top 8+ 부서 제외)
-  const totalCount = useMemo(
-    () => top7.reduce((s, d) => s + d.count, 0),
-    [top7]
-  )
-
-  // ── 6. 인터랙티브 hover/click state (Q5: 위젯 ②⑤⑥ v3 패턴 일관) ────
-  const [activeDept, setActiveDept] = useState<string | null>(null)
-  const activeStats  = useMemo(
-    () => top7.find(d => d.dept === activeDept) ?? null,    // ← Top 7 안에서만
-    [activeDept, top7]
-  )
-
-  // ── 활성 column label 내용 ("{부서명} {N}건") ─────────────────────────
-  const activeLabel = useMemo(() => {
-    if (!activeStats) return null
-    return `${activeStats.dept} ${activeStats.count}건`
-  }, [activeStats])
+  // ← [2026-07-23 Phase 2-B] totalCount / activeDept / activeStats / activeLabel 제거
+  //   전부 하단 '가로 비율 bar 차트' 전용 상태였고, Figma 551:3652에는 bar 차트가 없다.
+  //   (헤더 45 + gap 51 + 8행 리스트 272 = 400 으로 카드가 정확히 채워짐)
 
   return (
     <div style={{
@@ -2172,7 +2168,8 @@ function DepartmentBookingsCard() {
       padding:       16,                                // ← Figma: p16 균등 (위젯 ②④⑤⑥의 pt12 px16 pb16과 다름)
       display:       'flex',
       flexDirection: 'column',
-      gap:           24,                                // ← Figma 1:1 (chart flex:1로 남은 공간 자동 채움)
+      justifyContent:'space-between',                   // ← [2026-07-23 Phase 2-B] gap 24 → space-between
+                                                        //   Figma: 헤더 y16~61 / 리스트 y112~384 → 간격 51px이 자동 산출됨
       height:        400,                         // ← [2026-07-23 Phase 1] Figma Row2 389.33×400 (기존 542×504)
       width:         '100%',
       overflow:      'hidden',                          // ← Figma: overflow-clip
@@ -2193,200 +2190,30 @@ function DepartmentBookingsCard() {
         />
       </div>
 
-      {/* ── 부서 list (상단, Top 7 - 사용자 정정 2026-05-12) ──────────── */}
+      {/* ── 부서 리스트 (Figma 551:3659 — 8행, 랭크 서클 + 부서명 + 건수) ──
+            ← [2026-07-23 Phase 2-B] dot(12px 색상) → RankListRow(16px 랭크 서클 숫자)
+              Figma에 순위 숫자가 명시되어 있고, '회의실 노쇼 현황' Top5와 동일 컴포넌트다 */}
       <div style={{ display:'flex', flexDirection:'column', width:'100%' }}>
-        {top7.map((s, i) => {
-          const dotColor = DEPT_RANK_COLORS[Math.min(i, DEPT_RANK_COLORS.length - 1)]
-          return (
-            <div key={s.dept} style={{
-              // ── Figma row 1:1: py 8, border #FAFBFF ──
-              display:      'flex',
-              alignItems:   'center',
-              justifyContent:'space-between',
-              padding:      '8px 0',
-              borderTop:    i === 0 ? '1px solid #FAFBFF' : 'none',
-              borderBottom: '1px solid #FAFBFF',
-              width:        '100%',
-            }}>
-              {/* ── 좌측: dot 12 + 부서명 (gap 10) ── */}
-              <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:1, minWidth:0, paddingRight:8 }}>
-                <div style={{
-                  width:12, height:12,
-                  borderRadius:999,
-                  background: dotColor,                  // ← rank별 색상 (bar 색상과 일관)
-                  flexShrink:0,
-                }}/>
-                <span style={{
-                  fontFamily:"'Pretendard', -apple-system, sans-serif",
-                  fontWeight:400, fontSize:12, lineHeight:1.5, color:'#000',
-                  whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-                }}>{s.dept}</span>
-              </div>
-              <span style={{
-                fontFamily:"'Pretendard', -apple-system, sans-serif",
-                fontWeight:400, fontSize:12, lineHeight:1.5, color:'#000',
-                flexShrink:0,
-              }}>{s.count}</span>
-            </div>
-          )
-        })}
-        {/* ── deptStats.length < 7인 경우 placeholder row로 7개 채움 ── */}
-        {Array.from({ length: Math.max(0, 7 - top7.length) }).map((_, i) => (
-          <div key={`empty-${i}`} style={{
-            display:'flex', alignItems:'center', justifyContent:'space-between',
-            padding:'8px 0',
-            borderBottom:'1px solid #FAFBFF',
-            width:'100%',
-          }}>
-            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-              <div style={{ width:12, height:12, borderRadius:999, background:'#E5E7EB' }}/>
-              <span style={{ fontSize:12, color:'#CBD5E1' }}>—</span>
-            </div>
-            <span style={{ fontSize:12, color:'#CBD5E1' }}>0</span>
-          </div>
+        {top8.map((d, i) => (
+          <RankListRow
+            key={d.dept}
+            rank={i + 1}
+            label={d.dept}
+            count={d.count}
+            first={i === 0}
+          />
         ))}
-      </div>
-
-      {/* ── 가로 비율 bar 차트 (하단, Top 7만 표시) ─────────────────────
-            ※ wrapper(외부) + container(내부 overflow:hidden) 구조로 분리
-              · 사유: label은 container 위쪽(top: -25)에 표시되어야 하는데
-                      Figma의 radius 16 + overflow:hidden 때문에 label이 잘림
-              · 해결: wrapper(position:relative)에 label 위치, container만 overflow hidden */}
-      <div
-        onMouseLeave={() => setActiveDept(null)}
-        style={{
-          position: 'relative',                          // ← label absolute 기준점
-          width:    '100%',
-          flex:     1,                                    // ← 카드 안 남은 공간 자동 채움
-          minHeight:0,                                    // ← flex item이 min-content 제한 무시 (필수)
-        }}>
-        {/* ── Chart container (height 100% — wrapper flex 1로 자동 sizing) ── */}
-        <div style={{
-          display:     'flex',
-          alignItems:  'stretch',
-          gap:         1,                                // ← Figma: gap 1px
-          height:      '100%',                            // ← wrapper height 자동 채움 (Top 5/6/7 변동 무관 자동 조정)
-          width:       '100%',
-          borderRadius:0,                                 // ← 사용자 정정 2026-05-12: borderRadius 16 → 0 (직각 모서리)
-          overflow:    'hidden',                          // ← column ellipsis용 유지 (borderRadius와 무관)
-        }}>
-          {top7.length === 0 || totalCount === 0 ? (
-            <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#CBD5E1', background:'#F8F9FB' }}>
-              {loading ? '로딩 중…' : '예약 데이터 없음'}
-            </div>
-          ) : (
-            top7.map((s, i) => {
-              const isActive = s.dept === activeDept
-              // Q6: width = count / totalCount × 100% (Top 7 합 기준 → 100% 차오름)
-              const widthPct = (s.count / totalCount) * 100
-              // Q4: rank별 색상, 활성 시 #343333
-              const bgColor = isActive
-                ? DEPT_RANK_ACTIVE_COLOR
-                : DEPT_RANK_COLORS[Math.min(i, DEPT_RANK_COLORS.length - 1)]
-              return (
-                <div
-                  key={s.dept}
-                  // ← [2026-05-26 Dashboard 카드 클릭 활성화] e.stopPropagation
-                  onMouseEnter={() => setActiveDept(s.dept)}
-                  onClick={(e) => { e.stopPropagation(); setActiveDept(prev => prev === s.dept ? null : s.dept) }}
-                  style={{
-                    width:         `${widthPct}%`,
-                    minWidth:      0,
-                    background:    bgColor,
-                    display:       'flex',
-                    flexDirection: 'column',
-                    alignItems:    'flex-start',
-                    justifyContent:'space-between',         // ← count 위 / 부서명 아래
-                    padding:       8,
-                    cursor:        'pointer',
-                    transition:    'background 0.15s ease',
-                    overflow:      'hidden',                 // ← column 내부 ellipsis용 (label은 wrapper에서 처리)
-                    position:      'relative',
-                  }}>
-                  {/* ── count (상단) ── */}
-                  <span style={{
-                    fontFamily:"'Pretendard', -apple-system, sans-serif",
-                    fontWeight:400, fontSize:10, lineHeight:1.3, color:'#fff',
-                    whiteSpace:'nowrap',
-                  }}>{s.count}</span>
-                  {/* ── 부서명 (하단, Top 7 모두 표시 - 사용자 정정) ── */}
-                  <span style={{
-                    fontFamily:"'Pretendard', -apple-system, sans-serif",
-                    fontWeight:400, fontSize:10, lineHeight:1.5,
-                    color:       '#fff',                    // ← 모두 표시 (좁은 column은 ellipsis로 자동 자름)
-                    whiteSpace:  'nowrap',
-                    overflow:    'hidden',
-                    textOverflow:'ellipsis',
-                    maxWidth:    '100%',
-                  }}>{s.dept}</span>
-                </div>
-              )
-            })
-          )}
-        </div>
-        {/* ── 활성 column label (chart container 외부 - overflow:hidden 영향 안 받음) ──
-              · 위치: chart 위쪽 외부 (top: -25)
-              · 형식: "{부서명} {N}건" (위젯 ②⑤⑥ 패턴 일관)
-              · ← [2026-05-12 v3] clamp 처리: 좌/우 가장자리에서 label 잘림 방지
-                · 정상: translateX(-50%) (column 중앙 정렬)
-                · 좌측 끝: translateX(0)    (label 좌측 = chart 0%)
-                · 우측 끝: translateX(-100%) (label 우측 = chart 100%) */}
-        {activeStats && activeLabel && totalCount > 0 && (() => {
-          // 활성 column 중앙 위치 계산 (Top 7 누적 width)
-          let leftPct = 0
-          for (const s of top7) {
-            if (s.dept === activeStats.dept) break
-            leftPct += (s.count / totalCount) * 100
-          }
-          const activeWidthPct = (activeStats.count / totalCount) * 100
-          const centerPct      = leftPct + activeWidthPct / 2
-          // ── clamp 임계값: chart 폭 25% 이하면 좌측 정렬, 75% 이상이면 우측 정렬 ──
-          //   · 부서명 긴 경우(예: 'Clinical Platform Research Institute 51건' ~280px) 안전
-          let leftStr:      string
-          let transformStr: string
-          if (centerPct < 25) {
-            leftStr      = '0'
-            transformStr = 'translateX(0)'              // ← label 좌측 = chart 좌측
-          } else if (centerPct > 75) {
-            leftStr      = '100%'
-            transformStr = 'translateX(-100%)'           // ← label 우측 = chart 우측
-          } else {
-            leftStr      = `${centerPct}%`
-            transformStr = 'translateX(-50%)'            // ← 정상 (column 중앙)
-          }
-          return (
-            <div style={{
-              position:    'absolute',
-              top:         -25,                              // ← chart 위쪽 외부 (wrapper 기준)
-              left:        leftStr,
-              transform:   transformStr,
-              // ── Figma StatusBadge-XS (위젯 ②⑤⑥와 동일) ──
-              background:  'rgba(255,255,255,0.9)',
-              border:      '1px solid #000',
-              borderRadius:24,
-              padding:     '2px 8px',
-              display:     'flex',
-              gap:         10,
-              alignItems:  'center',
-              justifyContent:'center',
-              fontFamily:  "'Pretendard', -apple-system, sans-serif",
-              fontWeight:  400,
-              fontSize:    10,
-              lineHeight:  1.5,
-              letterSpacing:'0.1px',
-              color:       '#1E1E1E',
-              whiteSpace:  'nowrap',
-              // ── 안전망: label width 너무 길면 ellipsis ──
-              maxWidth:    'calc(100% - 8px)',             // ← chart 폭 - 양쪽 4px 여백
-              overflow:    'hidden',
-              textOverflow:'ellipsis',
-              pointerEvents:'none',
-              zIndex:      10,
-            }}>
-              {activeLabel}
-            </div>
-          )
-        })()}
+        {/* ── deptStats.length < 8인 경우 placeholder row로 8개 채움 ── */}
+        {Array.from({ length: Math.max(0, 8 - top8.length) }).map((_, i) => (
+          <RankListRow
+            key={`empty-${i}`}
+            rank={top8.length + i + 1}
+            label={loading ? '로딩 중…' : '—'}
+            count={0}
+            first={false}
+            empty
+          />
+        ))}
       </div>
     </div>
   )
