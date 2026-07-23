@@ -55,12 +55,13 @@ import { getBookingStatusLabel } from '../utils/bookingStatusLabel'  // ← [202
 //   기존: DatePickerPopup을 직접 import + SmallDateTrigger를 이 파일에 정의 + 6개 위젯이 인라인 조립
 //   변경: DashboardRangeFilter.tsx로 이동 — SmallDateTrigger·프리셋 pill·⎯ 를 DashboardRangeRow 하나로 캡슐화
 //   ※ DatePickerPopup의 유일한 사용처가 SmallDateTrigger였으므로 이 파일에서 import 제거
-import { DashboardRangeRow, SmallDateTrigger } from '../components/admin/DashboardRangeFilter'
+import { DashboardRangeRow, SmallDateTrigger, RANGE_PRESETS_RECENT } from '../components/admin/DashboardRangeFilter'
 // ← [2026-07-23 Phase 2] 신규 위젯 2종 + 집계 SSOT + 기간조회 훅 분리
 //   aggregateUsers: DetailDrawer userAgg 본문을 utils로 추출 — 카드와 드로어가 같은 집계를 쓰도록 강제
 //   useBookingsByRange: AdminPage에 있던 훅을 이동 (신규 카드 파일이 import하면 순환참조가 되므로)
 import { UserRankingCard, UserNoshowCard } from '../components/admin/DashboardUserCards'
 import { MeetingPurposeCard } from '../components/admin/MeetingPurposeCard'      // ← [2026-07-23 Phase 3] 위젯 ⑨
+import { DashboardUserCell } from '../components/admin/DashboardUserCell'         // ← [2026-07-23] 사용자 표시 공통 셀
 import { aggregatePurposes } from '../utils/meetingPurpose'                       // ← [2026-07-23 Phase 3] 분류·집계 SSOT (DetailDrawer 공용)
 import { useBookingsByRange } from '../components/admin/useBookingsByRange'
 import { aggregateUsers } from '../utils/dashboardAgg'
@@ -999,7 +1000,7 @@ function ApprovalPendingCard({ count }: { count: number }) {
       flexDirection:'column',
       alignItems:   'flex-start',
       gap:          4,                            // ← Figma: gap 4 (title block ↔ number)
-      height:       342,                          // ← [2026-07-23 Phase 1] Figma 551:3316 Row1 592×342 (기존 268 — 3-col 356폭 시절 값)
+      height:       367,                          // ← [2026-07-23] Figma 갱신: Row1 592×367 (Phase1의 342에서 재조정)
       width:        '100%',                       // ← grid cell 폭 채움 (3-col)
       // Figma는 box-shadow 없음
     }}>
@@ -1112,6 +1113,19 @@ function NoshowChartCard() {
     return `${dt.getMonth() + 1}월 ${dt.getDate()}일`
   }, [dateFrom])
 
+  // ── 일 평균 노쇼율 (Figma 2645:7209 — 라벨 '일 평균 노쇼율' + 큰 숫자) ──
+  //   ← [2026-07-23] 기획 의도 복원. Figma 헤더 블록 h144 = 타이틀22 + 날짜행21 + 이 블록 85.
+  //
+  //   ⚠ 정의: "일별 노쇼율의 평균"이다. 기간 전체 노쇼율(총노쇼/총예약)이 아니다.
+  //     라벨이 '일 평균'이므로 문자 그대로 일 단위 평균을 낸다.
+  //     단 예약이 0건인 날(주말·공휴일)은 분모에서 제외한다.
+  //     포함시키면 rate=0인 날이 평균을 끌어내려 실제보다 낮게 나와 지표가 왜곡된다.
+  const avgDailyRate = useMemo(() => {
+    const active = dailyStats.filter(d => d.total > 0)     // ← 예약 있는 날만
+    if (active.length === 0) return 0
+    return active.reduce((sum, d) => sum + d.rate, 0) / active.length
+  }, [dailyStats])
+
   // ── 차트 영역 높이 상수 (Figma) ───────────────────────────────────────
   const CHART_HEIGHT = 111
 
@@ -1124,14 +1138,16 @@ function NoshowChartCard() {
       display:      'flex',
       flexDirection:'column',
       alignItems:   'flex-start',
-      gap:          48,                              // ← Figma: gap 48 (헤더 ↔ 차트)
+      justifyContent:'space-between',                // ← [2026-07-23] gap 48 → space-between
+                                                     //   Figma: 헤더블록 y12~156(h144) / 차트블록 y252~384 → 간격이 자동 산출됨
       height:       400,                          // ← [2026-07-23 Phase 1] Figma Row3 389.33×400 (기존 268 — Row1 3-col 시절 값)
       width:        '100%',
       // ← Peak label이 차트 위로 absolute 위치하므로 overflow visible 필요 없음
       //   (gap 48 안에서 자연스럽게 들어감)
     }}>
-      {/* ── 헤더 (gap 2) ────────────────────────────────────── */}
-      <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2, width:'100%' }}>
+      {/* ── 헤더 (Figma 2645:7105 h144: 타이틀22 + gap8 + 날짜행21 + gap8 + 노쇼율블록85) ──
+            ← [2026-07-23] gap 2 → 8. 이 카드만 Figma가 8이다(다른 카드는 2 또는 4). */}
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:8, width:'100%' }}>
         <p style={{
           fontFamily:"'Pretendard', -apple-system, sans-serif",
           fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
@@ -1144,6 +1160,20 @@ function NoshowChartCard() {
           to={dateTo}
           onChange={r => { setDateFrom(r.from); setDateTo(r.to) }}
         />
+
+        {/* ── 일 평균 노쇼율 (Figma 2645:7209 — 라벨 18 + 숫자 57, 블록 h85) ──
+              ← [2026-07-23] 기획 의도 복원: 이 카드는 "기간별 일자 분포 + 일 평균 노쇼율" 두 축이다.
+                분포 차트만 있으면 "그래서 평균이 몇 %인가"를 읽을 수 없다. */}
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', justifyContent:'center', height:85 }}>{/* ← [2026-07-23] Figma 2645:7209 블록 h85 명시 */}
+          <span style={{
+            fontFamily:"'Pretendard', -apple-system, sans-serif",
+            fontWeight:400, fontSize:12, lineHeight:1.5, color:'#AEB5C4',
+          }}>일 평균 노쇼율</span>
+          <span style={{
+            fontFamily:"'Pretendard', -apple-system, sans-serif",
+            fontWeight:400, fontSize:38, lineHeight:1.5, color:'#111',
+          }}>{loading ? '—' : `${Math.round(avgDailyRate * 100)}%`}</span>
+        </div>
       </div>
 
       {/* ── 차트 영역 (flex column gap 6) ────────────────────── */}
@@ -1262,128 +1292,159 @@ function NoshowChartCard() {
 //   동작: row 클릭 → onDetail(booking) → BookingModal 열기
 //   ※ Figma 1:1 사양: 헤더(타이틀만, 날짜 범위 없음) + 5 rows (각 h 34)
 function RecentBookingsCard({
-  bookings,
   users,
   rooms,
   onDetail,
 }: {
-  bookings: Booking[]
   users:    AppUser[]
   rooms:    Room[]
   onDetail?: (b: Booking) => void
 }) {
-  // ── 데이터: createdAt desc top 5 (옵션 A — bookings prop 사용) ────────
-  //   · createdAt이 number(timestamp) → desc 정렬 = 최신순
-  //   · createdAt 없는 row는 안전 제외 (legacy data 방어)
-  const recent = useMemo(() => {
-    return [...bookings]
+  // ── [2026-07-23 Figma 갱신 반영] 카드 전면 재설계 ─────────────────────────
+  //   변경 전: bookings prop(대시보드 전역 목록)에서 createdAt desc top5만 뽑아 표시.
+  //            헤더는 타이틀 한 줄, 건수 블록·컬럼 헤더·기간 필터가 모두 없었다.
+  //   변경 후: Figma 2646:7239 1:1 —
+  //            타이틀 + 기간 pill(오늘/일주일/한 달) + "예약 건 수" 큰 숫자 + 컬럼헤더 + 5행
+  //   ※ 기간 필터가 생겼으므로 bookings prop이 아니라 자체 fetch로 전환한다.
+  //      prop은 대시보드 전역 로딩 범위(−3개월)에 묶여 있어 '오늘'만 세는 것이 불가능하고,
+  //      "한 달" 선택 시 prop 범위와 카드 표기가 어긋나는 이중 진실이 된다.
+  //   ※ 기준 날짜는 start_at이 아니라 created_at(생성일)이다 — 카드 이름이 '생성된 예약'이다.
+  const [dateFrom, setDateFrom] = useState<string>(() => todayStr())   // ← 기본 '오늘' (Figma 첫 pill)
+  const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
+
+  const [rows,    setRows]    = useState<Booking[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    // dateField='created_at' — DetailDrawer의 '생성일 모드'와 동일한 조회 경로
+    loadBookingsByRange(dateFrom, dateTo, 'created_at')
+      .then(d => { if (!cancelled) setRows(d) })
+      .catch(e => console.error('[RecentBookingsCard] fetch failed', e))
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [dateFrom, dateTo])
+
+  // 전체 건수(큰 숫자)는 기간 내 생성된 예약 전부, 목록은 최신 5건
+  const totalCount = rows.length
+  const recent = useMemo(() => (
+    [...rows]
       .filter(b => b.createdAt != null)
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, 5)
-  }, [bookings])
+  ), [rows])
+
+  const COLS = [1, 1, 1]   // ← Figma: 178.67 × 3 균등 3분할
 
   return (
     <div style={{
-      // ── Figma outer 1:1 (위젯 ①과 동일 카드 스타일) ──
       background:   '#fff',
       borderRadius: 24,
       padding:      '12px 16px 16px 16px',
       display:      'flex',
       flexDirection:'column',
       alignItems:   'flex-start',
-      gap:          48,                              // ← Figma: 헤더(22h) ↔ 리스트(82y) = 82-12-22=48
-      height:       342,                          // ← [2026-07-23 Phase 1] Figma Row1 592×342 (기존 268)
+      height:       367,                          // ← [2026-07-23] Figma 갱신: Row1 592×367 (기존 342)
       width:        '100%',
     }}>
-      {/* ── 헤더 (타이틀만, 날짜 범위 없음 — Figma) ── */}
-      <div style={{ width:'100%' }}>
+      {/* ── 헤더 블록 (Figma 2646:7240 — h136) ────────────────────────────
+            타이틀 22 + gap4 + 날짜행 21 + gap4 + [라벨 18 + 숫자 57] */}
+      <div style={{ display:'flex', flexDirection:'column', gap:4, width:'100%' }}>
         <p style={{
           fontFamily:"'Pretendard', -apple-system, sans-serif",
           fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
           whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
         }}>최근 생성된 예약</p>
+
+        {/* ← [2026-07-23] Figma 2646:7652 — 이 카드만 오늘/일주일/한 달 프리셋 */}
+        <DashboardRangeRow
+          from={dateFrom}
+          to={dateTo}
+          onChange={r => { setDateFrom(r.from); setDateTo(r.to) }}
+          presets={RANGE_PRESETS_RECENT}
+        />
+
+        {/* 예약 건 수 (Figma 2646:7243 — 라벨 '예약 건 수' + 숫자 57) */}
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', justifyContent:'center', height:85 }}>{/* ← [2026-07-23] Figma 2646:7243 블록 h85 명시 */}
+          <span style={{
+            fontFamily:"'Pretendard', -apple-system, sans-serif",
+            fontWeight:400, fontSize:12, lineHeight:1.5, color:'#AEB5C4',
+          }}>예약 건 수</span>
+          <span style={{
+            fontFamily:"'Pretendard', -apple-system, sans-serif",
+            fontWeight:400, fontSize:38, lineHeight:1.5, color:'#111',
+          }}>{loading ? '—' : totalCount}</span>
+        </div>
       </div>
 
-      {/* ── 리스트 (5 rows, 각 h 34, 인접 row 사이 border #FAFBFF) ── */}
-      <div style={{
-        display:      'flex',
-        flexDirection:'column',
-        width:        '100%',
-      }}>
+      {/* ── 표 (Figma 2646:7246 — 헤더행 33 + 데이터행 34 × 5 = 203) ────── */}
+      <div style={{ display:'flex', flexDirection:'column', width:'100%' }}>
+        {/* 컬럼 헤더 — ← [2026-07-23] Figma 2646:7247 신규 추가 */}
+        <div style={{ display:'flex', alignItems:'center', height:33, gap:12 }}>
+          {['회의','회의실','예약자'].map((l, i2) => (
+            <div key={l} style={{ flex:COLS[i2], minWidth:0 }}>
+              <span style={{
+                fontFamily:"'Pretendard', -apple-system, sans-serif",
+                fontWeight:400, fontSize:12, lineHeight:1.4, color:'#AEB5C4',
+              }}>{l}</span>
+            </div>
+          ))}
+        </div>
+
         {recent.length === 0 ? (
           <div style={{
-            padding:'24px 0', textAlign:'center', fontSize:11, color:'#CBD5E1',
-          }}>예약 없음</div>
+            height: 34 * 5, display:'flex', alignItems:'center', justifyContent:'center',
+            fontFamily:"'Pretendard', -apple-system, sans-serif", fontSize:12, color:'#CBD5E1',
+          }}>{loading ? '로딩 중…' : '해당 기간에 생성된 예약이 없습니다'}</div>
         ) : (
-          recent.map((b, i) => {
-            // user lookup (UUID 기반, fallback to snapshot)
-            const user = users.find(u => u.user_id === b.user_id)
-            const ownerName   = user?.name ?? b.user ?? '—'
-            const ownerAvatar = user?.avatar_url ?? null
-            // room lookup
-            const room        = rooms.find(r => r.room_id === b.room_id)
-            const roomName    = room?.room_name ?? '—'
-            return (
-              <div
-                key={b.id}
-                // ← [2026-05-26 Dashboard 카드 클릭 활성화] e.stopPropagation — 행 클릭은 onDetail(개별 예약), 카드 wrapper 클릭은 bookings DetailDrawer로 분리 (사용자 결정)
-                onClick={(e) => { e.stopPropagation(); onDetail?.(b) }}
-                style={{
-                  // ── Figma row 1:1 ─────────────────────────────────────
-                  display:        'flex',
-                  alignItems:     'center',
-                  justifyContent: 'space-between',
-                  padding:        '8px 0',           // ← Figma: py 8 (row h 34 = 18 + 8*2)
-                  // ── Figma: border-top + border-bottom #FAFBFF (인접 row 자연스러운 구분) ──
-                  borderTop:      i === 0 ? '1px solid #FAFBFF' : 'none',  // ← 첫 row만 top 보임
-                  borderBottom:   '1px solid #FAFBFF',
-                  cursor:         onDetail ? 'pointer' : 'default',
-                  transition:     'background 0.12s',
-                }}
-                onMouseEnter={e => { if (onDetail) (e.currentTarget as HTMLElement).style.background = '#FAFBFD' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
-                {/* ── 제목 (w 120) ── */}
-                <div style={{ display:'flex', alignItems:'center', flexShrink:0, width:120 }}>
-                  <p style={{
-                    fontFamily:"'Pretendard', -apple-system, sans-serif",
-                    fontWeight:400, fontSize:12, lineHeight:1.5, color:'#000', margin:0,
-                    whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-                  }}>{b.title || '—'}</p>
+          <>
+            {recent.map(b => {
+              // 표시명·프로필: users 배열 live 우선, 스냅샷 fallback (프로젝트 live-first 원칙)
+              const user        = users.find(u => u.user_id === b.user_id)
+              const ownerName   = user?.name ?? b.user ?? '—'
+              const ownerAvatar = user?.avatar_url ?? null
+              const roomName    = rooms.find(r => r.room_id === b.room_id)?.room_name ?? '—'
+              return (
+                <div
+                  key={b.id}
+                  // ← [2026-05-26] 행 클릭은 onDetail(개별 예약), 카드 wrapper 클릭은 DetailDrawer
+                  onClick={(e) => { e.stopPropagation(); onDetail?.(b) }}
+                  style={{
+                    display:'flex', alignItems:'center', height:34, gap:12,
+                    width:'100%', cursor:'pointer',
+                  }}>
+                  <div style={{ flex:COLS[0], minWidth:0 }}>
+                    <span style={{
+                      fontFamily:"'Pretendard', -apple-system, sans-serif",
+                      fontWeight:400, fontSize:13, lineHeight:1.4, color:'#111',
+                      whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', display:'block',
+                    }}>{b.title || '—'}</span>
+                  </div>
+                  <div style={{ flex:COLS[1], minWidth:0 }}>
+                    <span style={{
+                      fontFamily:"'Pretendard', -apple-system, sans-serif",
+                      fontWeight:400, fontSize:12, lineHeight:1.5, color:'#697077',
+                      whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', display:'block',
+                    }}>{roomName}</span>
+                  </div>
+                  <div style={{ flex:COLS[2], minWidth:0 }}>
+                    {/* ← [2026-07-23] 공통 셀로 교체 — 사용자 예약 순위/누적 노쇼와 동일 표시 */}
+                    <DashboardUserCell name={ownerName} avatarUrl={ownerAvatar} />
+                  </div>
                 </div>
-                {/* ── 회의실 (w 120) ── */}
-                <div style={{ display:'flex', alignItems:'center', flexShrink:0, width:120 }}>
-                  <p style={{
-                    fontFamily:"'Pretendard', -apple-system, sans-serif",
-                    fontWeight:400, fontSize:10, lineHeight:1.5, color:'#000', margin:0,
-                    whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-                  }}>{roomName}</p>
-                </div>
-                {/* ── 예약자 (avatar 16 + name) ── */}
-                <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
-                  <UserAvatar
-                    name={ownerName}
-                    avatarUrl={ownerAvatar}
-                    size={16}
-                    fontSize={9}                       // ← Figma: 이니셜 9 (Regular)
-                    fontWeight={400}                   // ← Figma: Regular (이전 기본 500)
-                  />
-                  <span style={{
-                    fontFamily:"'Pretendard', -apple-system, sans-serif",
-                    fontWeight:400, fontSize:11, lineHeight:1.3, color:'#111',
-                    whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-                    maxWidth:60,
-                  }}>{ownerName}</span>
-                </div>
-              </div>
-            )
-          })
+              )
+            })}
+            {/* 5행 미만이면 빈 행으로 채워 카드 높이 고정 */}
+            {Array.from({ length: Math.max(0, 5 - recent.length) }).map((_, i2) => (
+              <div key={`empty-${i2}`} style={{ height:34 }} />
+            ))}
+          </>
         )}
       </div>
     </div>
   )
 }
-
-// ═══════════════════════════════════════════════════════════════════════════════
 
 // ─── 위젯 ④ 예약 많은 회의실 (Figma node 551:3513) ──────────────────────────
 //   사용처: Row 2 Col 1 (542×504, 2-col grid)
@@ -2582,9 +2643,9 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
              Row4 2-col         : ⑧시간대별예약분포 + 빈칸
 
            변경 후(Figma 551:3316 / maxWidth 1200, gap 16)
-             Row1 2-col 592×342 : ①승인대기 ②최근생성된예약
-             Row2 3-col 389×400 : ③사용자예약순위[신규] ④부서예약순위 ⑤일일예약추이
-             Row3 3-col 389×400 : ⑥일일노쇼현황 ⑦사용자누적노쇼[신규] ⑧회의실노쇼현황
+             Row1 2-col 592×367 : ①승인대기 ②최근생성된예약   ← [2026-07-23] 342→367
+             Row2 3-col 389×400 : ③사용자예약순위 ④일일예약추이 ⑤부서예약순위   ← [2026-07-23] ④⑤ 교환
+             Row3 3-col 389×400 : ⑥사용자누적노쇼 ⑦일일노쇼현황 ⑧회의실노쇼현황  ← [2026-07-23] ⑥⑦ 교환
              Row4 2-col 592×504 : ⑨회의실사용목적AI분석[신규] ⑩예약많은회의실
              Row5 1-col 1200    : ⑪시간대별예약분포 (풀폭 — 본문은 고지 지시로 현행 유지)
 
@@ -2607,7 +2668,6 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'bookings', initialDateMode: 'createdAt', sortKey: 'createdAt', sortAsc: false })}>
           <RecentBookingsCard
-            bookings={bookings}
             users={users}
             rooms={rooms}
             onDetail={onDetail}
@@ -2622,29 +2682,31 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
           onClick={() => setCardDrawer({ type: 'users', sortKey: 'count', sortAsc: false })}>
           <UserRankingCard users={users} />
         </div>
-        {/* ④ 부서 예약 순위 → dept 통계 (동작 유지) */}
-        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'dept' })}>
-          <DepartmentBookingsCard />
-        </div>
-        {/* ⑤ 일일 예약 추이 → 전체 예약 목록 (동작 유지) */}
+        {/* ④ 일일 예약 추이 → 전체 예약 목록 (동작 유지)
+              ← [2026-07-23] Figma 갱신으로 부서 예약 순위와 위치 교환 (Row2 Col2) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'bookings' })}>
           <BookingTrendsAreaCard />
+        </div>
+        {/* ⑤ 부서 예약 순위 → dept 통계 (동작 유지) ← [2026-07-23] Row2 Col3으로 이동 */}
+        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'dept' })}>
+          <DepartmentBookingsCard />
         </div>
       </div>
 
       {/* ── Row 3: ⑥ 일일 노쇼 현황 / ⑦ 사용자 누적 노쇼 / ⑧ 회의실 노쇼 현황 (3-col 389×400) ── */}
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
-        {/* ⑥ 일일 노쇼 현황 → 노쇼 목록 (동작 유지) */}
-        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'noshow' })}>
-          <NoshowChartCard />
-        </div>
-        {/* ⑦ 사용자 누적 노쇼 → users 통계 (noshow desc — 카드 정렬과 동일 진입) */}
+        {/* ⑥ 사용자 누적 노쇼 → users 통계 (noshow desc — 카드 정렬과 동일 진입)
+              ← [2026-07-23] Figma 갱신으로 일일 노쇼 현황과 위치 교환 (Row3 Col1) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'users', sortKey: 'noshow', sortAsc: false })}>
           <UserNoshowCard users={users} />
+        </div>
+        {/* ⑦ 일일 노쇼 현황 → 노쇼 목록 (동작 유지) ← [2026-07-23] Row3 Col2로 이동 */}
+        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'noshow' })}>
+          <NoshowChartCard />
         </div>
         {/* ⑧ 회의실 노쇼 현황 → rooms 통계 (noshow desc 진입 정렬 — 동작 유지) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}

@@ -19,6 +19,9 @@ export interface UserAggRow {
   user_id?:     string
   name:         string
   dept:         string
+  /** ← [2026-07-23] 프로필 사진 URL. live users에서만 얻을 수 있고 예약 스냅샷에는 없다.
+   *    카드가 '최근 생성된 예약'과 동일하게 실제 사진을 띄우기 위해 집계 단계에서 함께 담는다. */
+  avatarUrl:    string | null
   count:        number   // 유효 예약 건수 (자동취소·거절 제외)
   noshow:       number   // 노쇼 건수 (utils/noshow.ts SSOT 기준)
   lastNoshowAt: number   // 마지막 노쇼 시점 (epoch ms, 없으면 0)
@@ -30,7 +33,8 @@ export interface UserAggRow {
  * ※ 기존 AdminPage.tsx DetailDrawer userAgg(2026-05-26판)에서 그대로 옮긴 규칙:
  *   · 매핑 키 = b.user_id (UUID) 우선, 없으면 b.user(이름) fallback
  *       → 동명이인이라도 user_id가 다르면 별도 행. user_id 없는 외부 게스트만 이름 키 사용.
- *   · 표시명/부서 = users 배열의 live 값 우선, 없으면 예약 스냅샷(b.user / b.dept) fallback
+ *   · 표시명/부서/프로필사진 = users 배열의 live 값 우선, 없으면 예약 스냅샷(b.user / b.dept) fallback
+ *     (avatar_url은 스냅샷에 없으므로 live에서 못 찾으면 null → UserAvatar가 이니셜로 대체)
  *       → 퇴사자·부서이동 사용자도 안전 (프로젝트 live-first 원칙)
  *   · count 조건 = !autoCancelled && status !== 'rejected'
  *   · noshow 판정 = utils/noshow.ts의 isNoshow (단일 SSOT — 여기서 재정의 금지)
@@ -46,7 +50,7 @@ export function aggregateUsers(bookings: Booking[], users: AppUser[]): UserAggRo
       const liveUser    = b.user_id ? users.find(u => u.user_id === b.user_id) : null
       const displayName = liveUser?.name ?? b.user
       const displayDept = liveUser?.dept ?? b.dept
-      map.set(key, { user_id: b.user_id, name: displayName, dept: displayDept, count: 0, noshow: 0, lastNoshowAt: 0 })
+      map.set(key, { user_id: b.user_id, name: displayName, dept: displayDept, avatarUrl: liveUser?.avatar_url ?? null, count: 0, noshow: 0, lastNoshowAt: 0 })
     }
     const s = map.get(key)!
     if (!b.autoCancelled && b.status !== 'rejected') s.count++

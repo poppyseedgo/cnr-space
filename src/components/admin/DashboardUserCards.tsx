@@ -15,10 +15,10 @@
  *  4) 기간은 위젯 자체 dateFrom/dateTo state + DashboardRangeRow (Phase 3.5 위젯 독립 필터 구조 유지).
  */
 import { useState, useMemo } from 'react'
-import { UserAvatar } from '../common/UserAvatar'
+import { DashboardUserCell, DashboardDeptText } from './DashboardUserCell'  // ← [2026-07-23] 사용자 표시·부서 표기 공통화
 import { DashboardRangeRow } from './DashboardRangeFilter'
 import { useBookingsByRange } from './useBookingsByRange'
-import { aggregateUsers, type UserAggRow } from '../../utils/dashboardAgg'
+import { aggregateUsers } from '../../utils/dashboardAgg'
 import { todayStr } from '../../utils/time'
 import type { AppUser } from '../../types'
 
@@ -78,18 +78,8 @@ function Th({ label, flex, align = 'left', color = '#AEB5C4' }: {
   )
 }
 
-// ─── 공통 이름 셀 (아바타 16 + gap 4 + 이름) ────────────────────────────────
-function NameCell({ row, flex }: { row: UserAggRow; flex: number }) {
-  return (
-    <div style={{ flex, minWidth: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
-      <UserAvatar name={row.name} size={16} fontSize={8} fontWeight={500} />
-      <span style={{
-        fontFamily: FONT, fontWeight: 400, fontSize: 13, lineHeight: 1.4, color: '#111',
-        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-      }}>{row.name}</span>
-    </div>
-  )
-}
+// ─── [2026-07-23] 지역 NameCell 삭제 → components/admin/DashboardUserCell 공통 컴포넌트 사용
+//     사유: '최근 생성된 예약'만 프로필 사진이 뜨고 이 카드는 이니셜만 떠서 같은 사람이 달라 보였다.
 
 // 데이터 없음 표시 — 기존 위젯들과 동일 톤
 function EmptyRow({ height }: { height: number }) {
@@ -137,12 +127,11 @@ export function UserRankingCard({ users }: { users: AppUser[] }) {
         {rows.length === 0 ? <EmptyRow height={RANK_ROWS * 34} /> : rows.map(row => (
           <div key={row.user_id ?? row.name}
             style={{ display: 'flex', alignItems: 'center', gap: 12, height: 34 }}>
-            <NameCell row={row} flex={1} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <span style={{
-                fontFamily: FONT, fontWeight: 400, fontSize: 13, lineHeight: 1.4, color: '#6366F1',
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block',
-              }}>{row.dept || '—'}</span>
+              <DashboardUserCell name={row.name} avatarUrl={row.avatarUrl} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <DashboardDeptText dept={row.dept} />{/* ← [2026-07-23] 인디고 → 회색 */}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <span style={{
@@ -200,12 +189,11 @@ export function UserNoshowCard({ users }: { users: AppUser[] }) {
         {rows.length === 0 ? <EmptyRow height={NOSHOW_ROWS * 35} /> : rows.map(row => (
           <div key={row.user_id ?? row.name}
             style={{ display: 'flex', alignItems: 'center', gap: 8, height: 35 }}>
-            <NameCell row={row} flex={1} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <span style={{
-                fontFamily: FONT, fontWeight: 400, fontSize: 13, lineHeight: 1.4, color: '#6366F1',
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block',
-              }}>{row.dept || '—'}</span>
+              <DashboardUserCell name={row.name} avatarUrl={row.avatarUrl} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <DashboardDeptText dept={row.dept} />{/* ← [2026-07-23] 인디고 → 회색 */}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               {/* Figma StatusBadge-XS 32×19 */}

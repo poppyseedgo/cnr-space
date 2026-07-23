@@ -37,13 +37,27 @@ const FONT = "'Pretendard', -apple-system, sans-serif"
 export const ALL_TIME_FROM = '2026-01-01'
 
 // ─── 프리셋 정의 ──────────────────────────────────────────────────────────────
-//   days = "오늘 포함 N일" 이 되도록 offset 값 (한 달=30일 → -29)
-export type RangePresetId = '1m' | '3m' | 'all'
+//   offsetDays = "오늘 포함 N일"이 되도록 한 offset (한 달=30일 → -29)
+//   [2026-07-23 Phase 2 수정] 프리셋을 고정 배열 → "세트" 개념으로 확장.
+//     사유: Figma 갱신으로 '최근 생성된 예약' 카드만 오늘/일주일/한 달 3종을 쓴다.
+//           고정 배열이면 카드마다 프리셋 UI를 따로 만들어야 하고, pill 스타일·
+//           활성 판정 로직이 두 벌이 되어 한쪽만 수정되는 사고가 난다.
+export type RangePresetId = '1m' | '3m' | 'all' | 'today' | '1w'
 
-export const RANGE_PRESETS: { id: RangePresetId; label: string; width: number; offsetDays: number | null }[] = [
-  { id: '1m',  label: '한 달',  width: 38, offsetDays: -29  },  // ← Figma: 38×21
-  { id: '3m',  label: '3개월',  width: 43, offsetDays: -89  },  // ← Figma: 43×21
-  { id: 'all', label: '전체',   width: 36, offsetDays: null },  // ← Figma: 36×21 (offsetDays null = ALL_TIME_FROM)
+export interface RangePreset { id: RangePresetId; label: string; width: number; offsetDays: number | null }
+
+/** 기본 세트 — 통계 위젯 8종 공용 (Figma StatusBadge-XS 38/43/36) */
+export const RANGE_PRESETS: RangePreset[] = [
+  { id:'1m',  label:'한 달',  width:38, offsetDays:-29  },
+  { id:'3m',  label:'3개월',  width:43, offsetDays:-89  },
+  { id:'all', label:'전체',   width:36, offsetDays:null },   // ← offsetDays null = ALL_TIME_FROM
+]
+
+/** '최근 생성된 예약' 전용 세트 (Figma 2646:7652 — 36/45/38) */
+export const RANGE_PRESETS_RECENT: RangePreset[] = [
+  { id:'today', label:'오늘',   width:36, offsetDays:0   },
+  { id:'1w',    label:'일주일', width:45, offsetDays:-6  },
+  { id:'1m',    label:'한 달',  width:38, offsetDays:-29 },
 ]
 
 /** base 날짜(YYYY-MM-DD)에 days를 더한 날짜 문자열 — AdminPage.addDaysStr와 동일 로직 */
@@ -54,9 +68,9 @@ function addDaysStr(base: string, days: number): string {
 }
 
 /** 프리셋 id → [from, to] 계산 (to는 항상 오늘) */
-export function presetRange(id: RangePresetId): { from: string; to: string } {
+export function presetRange(id: RangePresetId, presets: RangePreset[] = RANGE_PRESETS): { from: string; to: string } {
   const to = todayStr()
-  const p  = RANGE_PRESETS.find(x => x.id === id)!
+  const p  = presets.find(x => x.id === id) ?? RANGE_PRESETS.find(x => x.id === id)!
   return { from: p.offsetDays === null ? ALL_TIME_FROM : addDaysStr(to, p.offsetDays), to }
 }
 
@@ -66,20 +80,21 @@ export function presetRange(id: RangePresetId): { from: string; to: string } {
  * ※ 활성 pill을 별도 state로 들고 있으면 날짜 직접 변경과 이중 진실이 되므로,
  *   프리셋 활성 여부는 반드시 from/to에서 파생시킨다(저장하지 않는다).
  */
-export function presetIdOf(from: string, to: string): RangePresetId | null {
+export function presetIdOf(from: string, to: string, presets: RangePreset[] = RANGE_PRESETS): RangePresetId | null {
   if (to !== todayStr()) return null
 
-  // ← [2026-07-23] 'all'을 반드시 먼저 판정한다.
+  // ← [2026-07-23] 'all'이 세트에 있으면 반드시 먼저 판정한다.
   //   시뮬레이션에서 발견한 실제 충돌: 오늘이 ALL_TIME_FROM + 89일인 날(예 2026-03-31)에는
-  //   '3개월'의 시작일이 ALL_TIME_FROM과 정확히 같아진다. RANGE_PRESETS 배열 순서대로 돌리면
+  //   '3개월'의 시작일이 ALL_TIME_FROM과 정확히 같아진다. 배열 순서대로 돌리면
   //   사용자가 '전체'를 눌렀는데 '3개월' pill이 켜지는 오표시가 발생한다.
   //   반대로 'all'을 먼저 판정하면 두 범위가 겹치는 날에 '전체'로 표시되는데,
   //   이 경우 조회 결과가 실제로 동일하므로 표시가 어긋나지 않는다.
-  if (from <= ALL_TIME_FROM) return 'all'
+  const hasAll = presets.some(p => p.id === 'all')
+  if (hasAll && from <= ALL_TIME_FROM) return 'all'
 
-  for (const p of RANGE_PRESETS) {
+  for (const p of presets) {
     if (p.id === 'all') continue
-    const r = presetRange(p.id)
+    const r = presetRange(p.id, presets)
     if (r.from === from && r.to === to) return p.id
   }
   return null
@@ -147,12 +162,13 @@ export function SmallDateTrigger({ value, onChange, min, max }: SmallDateTrigger
 interface RangePresetPillsProps {
   activeId: RangePresetId | null
   onPick:   (id: RangePresetId) => void
+  presets:  RangePreset[]
 }
 
-function RangePresetPills({ activeId, onPick }: RangePresetPillsProps) {
+function RangePresetPills({ activeId, onPick, presets }: RangePresetPillsProps) {
   return (
     <div style={{ display:'flex', gap:4, alignItems:'center', flexShrink:0 }}>
-      {RANGE_PRESETS.map(p => {
+      {presets.map(p => {
         const active = p.id === activeId
         return (
           <button
@@ -192,10 +208,12 @@ interface DashboardRangeRowProps {
   from:     string
   to:       string
   onChange: (next: { from: string; to: string }) => void
+  /** 프리셋 세트 — 생략 시 기본(한 달/3개월/전체). '최근 생성된 예약'만 RANGE_PRESETS_RECENT 사용 */
+  presets?: RangePreset[]
 }
 
-export function DashboardRangeRow({ from, to, onChange }: DashboardRangeRowProps) {
-  const activeId = presetIdOf(from, to)
+export function DashboardRangeRow({ from, to, onChange, presets = RANGE_PRESETS }: DashboardRangeRowProps) {
+  const activeId = presetIdOf(from, to, presets)
   return (
     <div style={{
       display:        'flex',
@@ -215,7 +233,7 @@ export function DashboardRangeRow({ from, to, onChange }: DashboardRangeRowProps
       </div>
 
       {/* 우: 프리셋 pill 3종 */}
-      <RangePresetPills activeId={activeId} onPick={id => onChange(presetRange(id))} />
+      <RangePresetPills activeId={activeId} presets={presets} onPick={id => onChange(presetRange(id, presets))} />
     </div>
   )
 }
