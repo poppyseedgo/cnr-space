@@ -54,7 +54,7 @@ import { isNoshow } from '../utils/noshow'
 import { isAwaitingApproval, isExpiredPending, countAwaitingApproval } from '../utils/pendingStatus'
 // ← [2026-07-23 버그수정] 기간 길이별 자동 롤업 — 막대 수 폭발/그래프 소실 방지
 import { buildSeries, BUCKET_LABEL } from '../utils/timeSeries'
-import { getBookingStatusLabel } from '../utils/bookingStatusLabel'  // ← [2026-05-28] CSV 내보내기 단일 라벨 SSOT — 옛 룰 인라인 분기 대체
+import { getBookingStatusLabel, getBookingStatusGroup } from '../utils/bookingStatusLabel'  // ← [2026-07-23] 집계용 그룹 매핑 추가  // ← [2026-05-28] CSV 내보내기 단일 라벨 SSOT — 옛 룰 인라인 분기 대체
 // ← [2026-07-23 대시보드 개편 Phase 1] 카드 헤더 날짜행 공통화
 //   기존: DatePickerPopup을 직접 import + SmallDateTrigger를 이 파일에 정의 + 6개 위젯이 인라인 조립
 //   변경: DashboardRangeFilter.tsx로 이동 — SmallDateTrigger·프리셋 pill·⎯ 를 DashboardRangeRow 하나로 캡슐화
@@ -348,16 +348,19 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
     // ── [2026-07-23] 상태 분포 자동 계산 (필터 적용 전 원본 기준) ──
     //   비율의 분모는 반드시 '필터 전 전체'다. 필터된 목록을 분모로 쓰면
     //   어떤 상태를 골라도 항상 100%가 나와 지표가 무의미해진다.
+    //   ← [2026-07-23] 집계 기준을 getBookingStatusLabel → getBookingStatusGroup으로 교체.
+    //     '조기반납'은 체크인 후 일찍 끝낸 것으로 실제 사용한 건이므로 '사용완료'에 합산한다.
+    //     개별 행의 상태 배지와 CSV는 여전히 '조기반납'을 그대로 보여준다(원본 보존).
     const statusCounts = new Map<string, number>()
     source.forEach(b => {
-      const l = getBookingStatusLabel(b)
+      const l = getBookingStatusGroup(b)
       statusCounts.set(l, (statusCounts.get(l) ?? 0) + 1)
     })
     const statusChips = Array.from(statusCounts.entries())
       .map(([label, n]) => ({ label, n, pct: source.length > 0 ? (n / source.length) * 100 : 0 }))
       .sort((a, b) => b.n - a.n)
-    if (statusFilter && !statusCounts.has(statusFilter)) source = source   // 필터 대상이 없으면 그대로
-    const scoped = statusFilter ? source.filter(b => getBookingStatusLabel(b) === statusFilter) : source
+    // 필터도 같은 그룹 기준 — '사용완료'를 누르면 조기반납 건이 함께 걸린다
+    const scoped = statusFilter ? source.filter(b => getBookingStatusGroup(b) === statusFilter) : source
     // ← [2026-05-28] sort 비교 함수 — createdAt(number)과 start_at(ISO string) 둘 다 안전 처리
     //   기존: a[sortKey] ?? '' — number와 string 혼합 시 '' fallback이 정상 비교 깨뜨림
     //   변경: 양쪽 모두 0/'' fallback 명확화. createdAt 누락(과거 데이터) 시 0 → 가장 후순위 배치
