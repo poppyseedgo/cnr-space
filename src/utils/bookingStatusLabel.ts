@@ -32,6 +32,7 @@
 
 import type { Booking } from '../types'
 import { isNoshow } from './noshow'
+import { isExpiredPending } from './pendingStatus'  // ← [2026-07-23] 만료 pending 판정 SSOT
 import { tsMin, tsDate, nowMinutes, todayStr } from './time'
 
 /**
@@ -65,7 +66,25 @@ export function getBookingStatusLabel(b: Booking): string {
     return '기한초과 취소'
   }
 
-  // ⑥ 승인 대기 (Emerald 룸 pending — 자동취소되지 않은 진짜 대기)
+  // ⑤-2 기한초과 — DB에 `status='pending'` 그대로 남아 있는 만료 건
+  //
+  //  🐞 [2026-07-23 버그수정] 과거 에메랄드 예약이 목록에서 '승인 대기'로 표시되던 문제
+  //
+  //   원인: auto-cancel cron의 pending 처리 블록이 비활성 상태라 DB에는 마감이 지난 건도
+  //         `status='pending', auto_cancelled=false` 그대로 남는다.
+  //         DetailDrawer 테이블은 loadBookingsByRange로 **DB를 직접 조회**하므로 그 원본을 보고
+  //         ⑥번 분기에 걸려 '승인 대기'로 찍혔다.
+  //         (반면 상세 모달은 App.tsx tick이 `status:'cancelled'`로 낙관 마킹한 전역 state를
+  //          참조하므로 같은 예약이 다른 상태로 보였다 — 화면 간 불일치의 정체)
+  //
+  //   수정: 마감 경과 여부를 **시각 기준**으로 직접 판정한다. DB 상태나 tick 마킹 여부와
+  //         무관하게 항상 같은 답이 나오므로, 어느 화면에서 보든 일치한다.
+  //
+  //  ⚠ 기한초과 ≠ 노쇼. 기한초과는 '관리자가 승인하지 않은 것'이고
+  //    노쇼는 '승인된 예약에 사용자가 나타나지 않은 것'이다. 절대 합치지 말 것.
+  if (isExpiredPending(b)) return '기한초과 취소'
+
+  // ⑥ 승인 대기 (Emerald 룸 pending — 마감 전, 관리자가 지금 처리할 수 있는 건)
   if (b.status === 'pending' && !b.autoCancelled) return '승인 대기'
 
   // ⑦ 조기반납 (체크인 후 조기 종료)
