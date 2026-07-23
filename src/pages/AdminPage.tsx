@@ -56,6 +56,12 @@ import { getBookingStatusLabel } from '../utils/bookingStatusLabel'  // ← [202
 //   변경: DashboardRangeFilter.tsx로 이동 — SmallDateTrigger·프리셋 pill·⎯ 를 DashboardRangeRow 하나로 캡슐화
 //   ※ DatePickerPopup의 유일한 사용처가 SmallDateTrigger였으므로 이 파일에서 import 제거
 import { DashboardRangeRow, SmallDateTrigger } from '../components/admin/DashboardRangeFilter'
+// ← [2026-07-23 Phase 2] 신규 위젯 2종 + 집계 SSOT + 기간조회 훅 분리
+//   aggregateUsers: DetailDrawer userAgg 본문을 utils로 추출 — 카드와 드로어가 같은 집계를 쓰도록 강제
+//   useBookingsByRange: AdminPage에 있던 훅을 이동 (신규 카드 파일이 import하면 순환참조가 되므로)
+import { UserRankingCard, UserNoshowCard } from '../components/admin/DashboardUserCards'
+import { useBookingsByRange } from '../components/admin/useBookingsByRange'
+import { aggregateUsers } from '../utils/dashboardAgg'
 
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
 function addDaysStr(base: string, days: number): string {
@@ -286,29 +292,10 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
   //   매핑 키 변경: b.user(이름) → b.user_id (UUID 우선, 없으면 b.user fallback)
   //     · 동명이인 안전 — 이름이 같아도 user_id가 다르면 별도 행
   //     · user_id 없는 외부 게스트는 b.user 키로 fallback (기존 동작 보존)
-  const userAgg = useMemo(() => {
-    const map = new Map<string, { user_id?:string; name:string; dept:string; count:number; noshow:number; lastNoshowAt:number }>()
-    filtered.forEach(b => {
-      const key = b.user_id ?? b.user                              // ← UUID 우선, 없으면 이름 (외부 게스트 fallback)
-      if (!map.has(key)) {
-        // 표시명: users 배열에서 live name 우선 (퇴사자도 안전)
-        const liveUser = b.user_id ? users.find(u => u.user_id === b.user_id) : null
-        const displayName = liveUser?.name ?? b.user
-        const displayDept = liveUser?.dept ?? b.dept
-        map.set(key, { user_id: b.user_id, name: displayName, dept: displayDept, count:0, noshow:0, lastNoshowAt: 0 })
-      }
-      const s = map.get(key)!
-      if (!b.autoCancelled && b.status !== 'rejected') s.count++
-      if (isNoshow(b)) {
-        s.noshow++
-        // 가장 최근 노쇼 시점 추적 — start_at ISO 문자열을 timestamp로 변환
-        const t = new Date(b.start_at).getTime()
-        if (t > s.lastNoshowAt) s.lastNoshowAt = t
-      }
-    })
-    // 기본 정렬은 예약 많은 순 (기존 호환). 정렬 변경은 sortKey/sortAsc로 처리
-    return Array.from(map.values()).sort((a,b) => b.count - a.count)
-  }, [filtered, users])
+  // ← [2026-07-23 Phase 2] 본문을 utils/dashboardAgg.aggregateUsers()로 추출 (로직 1:1 무변경)
+  //   사유: 신규 카드 '사용자 예약 순위'/'사용자 누적 노쇼'가 같은 값을 표시한다.
+  //         집계를 두 벌 두면 조건이 한쪽만 바뀌는 순간 카드와 드로어 숫자가 어긋난다.
+  const userAgg = useMemo(() => aggregateUsers(filtered, users), [filtered, users])
 
   // 테이블 렌더
   // 공통 예약 목록 렌더 (drill-down 시에도 재사용)
@@ -1044,42 +1031,9 @@ function ApprovalPendingCard({ count }: { count: number }) {
 //   [2026-05-11 Phase 4] 카드별 날짜 필터 인프라 + 위젯 ② 노쇼 현황
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ─── Booking range fetch cache (dedupe) ─────────────────────────────────────
-//   목적: 6개 위젯이 동시에 같은 default 30일 range로 fetch 호출 → 1번만 실제 fetch
-//   동작: module-level Map에 in-flight Promise 저장, 동일 key 요청은 같은 Promise 반환
-//   만료: 60초 후 자동 제거 (stale 방지)
-//   주의: 이후 위젯 데이터 mutation 발생 시 invalidate 필요 — 현재는 read-only 대시보드라 안전
-const bookingRangeCache = new Map<string, Promise<Booking[]>>()
-function fetchBookingsRangeCached(from: string, to: string): Promise<Booking[]> {
-  const key = `${from}|${to}`
-  const existing = bookingRangeCache.get(key)
-  if (existing) return existing
-  const promise = loadBookingsByRange(from, to)
-  bookingRangeCache.set(key, promise)
-  // 60초 후 자동 만료 (동일 range 추가 fetch 시 fresh data)
-  setTimeout(() => bookingRangeCache.delete(key), 60_000)
-  return promise
-}
-
-// ─── useBookingsByRange — 위젯 공통 date filter + fetch hook ───────────────
-//   사용: 각 위젯이 자체 dateFrom/dateTo state를 보유, 이 hook으로 데이터 + loading 받음
-//   dedupe: 동일 (from,to) 요청은 fetchBookingsRangeCached에서 자동 dedupe
-function useBookingsByRange(dateFrom: string, dateTo: string) {
-  const [data,    setData]    = useState<Booking[]>([])
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    fetchBookingsRangeCached(dateFrom, dateTo)
-      .then(d => { if (!cancelled) setData(d) })
-      .catch(e => console.error('[useBookingsByRange] fetch failed', e))
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [dateFrom, dateTo])
-
-  return { data, loading }
-}
+// ─── [2026-07-23 Phase 2] fetchBookingsRangeCached / useBookingsByRange 는
+//     components/admin/useBookingsByRange.ts 로 이동 (로직 1:1 무변경).
+//     사유: 신규 카드 파일이 이 훅을 필요로 하는데 AdminPage에서 export하면 순환참조가 됨.
 
 // ─── SmallDateTrigger — [2026-07-23 Phase 1] components/admin/DashboardRangeFilter.tsx 로 이동 ──
 //   사유: 6개 위젯이 각자 인라인으로 날짜행을 조립하던 구조 → 프리셋 pill 추가 시 6곳 중복 수정 필요.
@@ -2822,13 +2776,11 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
 
       {/* ── Row 2: ③ 사용자 예약 순위 / ④ 부서 예약 순위 / ⑤ 일일 예약 추이 (3-col 389×400) ── */}
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
-        {/* ③ 사용자 예약 순위 [Phase 2 구현 예정] */}
-        <DashboardPlaceholderCard
-          height={400}
-          title="사용자 예약 순위"
-          subtitle={null}
-          phaseNote="Phase 2 구현 예정"
-        />
+        {/* ③ 사용자 예약 순위 → users 통계 (count desc — 카드 정렬과 동일 진입) */}
+        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'users', sortKey: 'count', sortAsc: false })}>
+          <UserRankingCard users={users} />
+        </div>
         {/* ④ 부서 예약 순위 → dept 통계 (동작 유지) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'dept' })}>
@@ -2848,13 +2800,11 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
           onClick={() => setCardDrawer({ type: 'noshow' })}>
           <NoshowChartCard />
         </div>
-        {/* ⑦ 사용자 누적 노쇼 [Phase 2 구현 예정] */}
-        <DashboardPlaceholderCard
-          height={400}
-          title="사용자 누적 노쇼"
-          subtitle={null}
-          phaseNote="Phase 2 구현 예정"
-        />
+        {/* ⑦ 사용자 누적 노쇼 → users 통계 (noshow desc — 카드 정렬과 동일 진입) */}
+        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'users', sortKey: 'noshow', sortAsc: false })}>
+          <UserNoshowCard users={users} />
+        </div>
         {/* ⑧ 회의실 노쇼 현황 → rooms 통계 (noshow desc 진입 정렬 — 동작 유지) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'noshow', sortAsc: false })}>
