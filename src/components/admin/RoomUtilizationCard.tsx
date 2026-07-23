@@ -132,8 +132,11 @@ export function RoomUtilizationCard({ rooms }: { rooms: Room[] }) {
         <span style={{ fontFamily:FONT, fontWeight:400, fontSize:28, lineHeight:1.4, color:'#111' }}>
           {loading ? '—' : pct(util.overall.rate)}
         </span>
+        {/* ← [2026-07-23] 산정 기준을 카드에 명시한다.
+              옆 카드(시간대별 예약 분포)가 "운영시간 오전 7시 부터 오후 7시"를 표기하고 있어
+              같은 행에 놓이면 가동률도 7~19시 기준으로 오인된다. 기준을 눈에 보이게 박아둔다. */}
         <span style={{ fontFamily:FONT, fontWeight:400, fontSize:11, lineHeight:1.5, color:'#AEB5C4' }}>
-          {loading ? '' : `워킹데이 ${util.workdays}일 · 최다 ${busiest !== null ? WEEKDAY_LABELS[busiest] : '—'} / 최소 ${idle !== null ? WEEKDAY_LABELS[idle] : '—'}`}
+          {loading ? '' : `09–18시 · 점심 제외 (${DAILY_USABLE_MIN / 60}h) · 워킹데이 ${util.workdays}일 · 최다 ${busiest !== null ? WEEKDAY_LABELS[busiest] : '—'} / 최소 ${idle !== null ? WEEKDAY_LABELS[idle] : '—'}`}
         </span>
       </div>
 
