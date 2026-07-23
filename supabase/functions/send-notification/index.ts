@@ -495,8 +495,12 @@ Deno.serve(async (req: Request) => {
       start_at:      booking.start_at,
       end_at:        booking.end_at,
       room_name:     booking.room_name ?? '',
-      user_name:     recipients.booker?.name ?? booking.user_name ?? '',
-      user_dept:     recipients.booker?.dept ?? booking.user_dept ?? '',
+      // ← [2026-07-23] owner 폴백 추가.
+      //   booker 는 "메일을 받는 예약자" 라 booker_* 규칙에서만 채워진다.
+      //   book_admins 규칙에서는 null 이라 인앱 관리자 본문의 대여자 이름이 비었다.
+      //   owner 는 규칙과 무관하게 booking.user_id(=대여자)로 해석된 DB live 값이다.
+      user_name:     recipients.booker?.name ?? recipients.owner?.name ?? booking.user_name ?? '',
+      user_dept:     recipients.booker?.dept ?? recipients.owner?.dept ?? booking.user_dept ?? '',
       admin_name:    booking.admin_name,
       admin_avatar:  booking.admin_avatar,
       admin_force:   booking.admin_force,
@@ -509,6 +513,9 @@ Deno.serve(async (req: Request) => {
       book_title:    booking.book_title,
       due_date_kst:  booking.due_date_kst,
       days_overdue:  booking.days_overdue,
+      // ← [2026-07-23] 대여일 — 관리자 통지(book_checkout_created) 본문에 필요.
+      //   미래 예약이면 반납기한만으로는 언제 나가는 책인지 알 수 없다.
+      checkout_date_kst: booking.checkout_date_kst,
     }
 
     const recurBookings: { start_at: string; end_at: string }[] = booking.recurBookings ?? []
@@ -537,6 +544,7 @@ Deno.serve(async (req: Request) => {
       book_title:   bookingData.book_title,
       due_date_kst: bookingData.due_date_kst,
       days_overdue: bookingData.days_overdue,
+      checkout_date_kst: bookingData.checkout_date_kst,   // ← [2026-07-23]
     }
     // 인앱 알림은 이메일과 독립적으로 진행 (await하지 않고 Promise.allSettled 안에서)
     await sendInAppForAllRoles(type as NotificationType, inAppBooking, recipients)

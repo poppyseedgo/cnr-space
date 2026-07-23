@@ -31,6 +31,52 @@ export const MAX_EXTENSION = 1
  */
 export const RESERVE_MAX_DAYS = 3
 
+// ─── 대여 시작 판정 SSOT (← [2026-07-23]) ───────────────────────────────────
+//
+// ★근본 원인 기록 — "대여했는데 대여자가 안 보이다가 오후에 보인다"
+//
+//   대여일은 KST 정오로 고정 저장한다(`${date}T12:00:00+09:00`).
+//   그런데 "이 대여가 시작되었는가" 를 두 가지 기준으로 판정하고 있었다.
+//
+//     · 잠금(user_checkout_books / admin_checkout_books)
+//         → KST **날짜** 비교  (v_req_kst <= v_today_kst)
+//         → 오늘 날짜로 대여하면 시각과 무관하게 즉시 books.status='borrowed'
+//     · 표시·취소·배치·알림 (프론트 4곳 + DB 3곳)
+//         → 절대 **시각** 비교  (checkout_at <= now())
+//         → KST 00:00~11:59 구간에는 아직 "시작 전"으로 판정
+//
+//   그래서 매일 오전에만 다음이 동시에 성립했다.
+//     ① 카드는 '대여중'(books.status) 인데 대여자·반납기한 행이 통째로 누락
+//     ② 마이페이지는 이미 시작된 대여를 '대여 예정' 으로 표시
+//     ③ ★그 상태에서 취소하면 book_checkouts='cancelled' 인데
+//        books.status='borrowed' 가 남아 영구 고착 (활성 대여가 없어 반납 버튼도 안 나옴)
+//     ④ 09:00 배치가 정오 시작 건을 탈락시켜 시작일 알림이 하루 밀림
+//
+//   해결은 판정식을 하나로 합치는 것이고, 합칠 기준은 **잠금 쪽(KST 날짜)** 이다.
+//   반대로 시각 기준으로 통일하면 "책은 잠겼는데 아직 시작 안 된" 구간이 남아
+//   ③ 고착이 그대로 재현된다.
+//
+//   ※ DB 의 public.book_checkout_started() 와 반드시 같은 식이어야 한다.
+
+/** timestamptz(ISO) / epoch → KST 'YYYY-MM-DD'. 한국은 서머타임이 없어 +9h 고정 */
+export function kstDateStr(v: string | number | Date): string {
+  const t = typeof v === 'number' ? v : new Date(v).getTime()
+  return new Date(t + 9 * 3600 * 1000).toISOString().slice(0, 10)
+}
+
+/**
+ * 대여가 시작되었는가 — 표시·취소·알림 전 경로의 유일한 판정식
+ *
+ * checkout_at 이 비어 있으면 '시작됨'으로 본다. 값이 없는 대여 건은
+ * 즉시 대여(서버 default now())이므로 시작 전일 수 없다.
+ */
+export function hasCheckoutStarted(
+  checkoutAt: string | null | undefined, now: Date = new Date(),
+): boolean {
+  if (!checkoutAt) return true
+  return kstDateStr(checkoutAt) <= kstDateStr(now.getTime())
+}
+
 // ─── 연체 패널티 (← [2026-07-21]) ───────────────────────────────────────────
 //
 // 제재는 반납기한(due_at)이 아니라 "최대 대여 가능 기한"부터 센다.
@@ -127,7 +173,9 @@ export function isLoanOverdue(loan: MyBookLoan, now: Date = new Date()): boolean
  *   승인 대기(pending)를 대체하는 개념이다.
  */
 export function isScheduledLoan(loan: MyBookLoan, now: Date = new Date()): boolean {
-  return loan.status === 'active' && !!loan.checkout_at && new Date(loan.checkout_at) > now
+  // ← [2026-07-23] 절대 시각 비교 → hasCheckoutStarted(KST 날짜) 위임.
+  //   시각으로 비교하면 KST 오전 내내 이미 시작된 대여가 '대여 예정'으로 표시된다.
+  return loan.status === 'active' && !hasCheckoutStarted(loan.checkout_at, now)
 }
 
 /**
@@ -160,7 +208,7 @@ export function loanDisplayStatus(loan: MyBookLoan, now: Date = new Date()): Loa
   // ← [2026-07-20] 대여 예정 — 관리자가 미래 날짜로 등록(예약)한 건.
   //   DB status 는 'active' 지만 아직 시작 전이라 "대여중"으로 보이면 안 된다.
   //   반납기한도 미래이므로 D-day/연체 판정보다 먼저 걸러야 한다.
-  if (loan.checkout_at && new Date(loan.checkout_at) > now) return 'scheduled'
+  if (!hasCheckoutStarted(loan.checkout_at, now)) return 'scheduled'   // ← [2026-07-23] SSOT 위임
 
   const d = daysUntilDue(loan.due_at, now)
   if (d < 0)               return 'overdue'
@@ -180,7 +228,7 @@ export function canExtend(loan: MyBookLoan, now: Date = new Date()): boolean {
   if (loan.status !== 'active')                return false
   // ← [2026-07-20] 아직 시작하지 않은 예약은 연장 대상이 아니다.
   //   DB status 는 'active' 라 위 검사만으로는 걸러지지 않는다.
-  if (loan.checkout_at && new Date(loan.checkout_at) > now) return false
+  if (!hasCheckoutStarted(loan.checkout_at, now)) return false          // ← [2026-07-23] SSOT 위임
   if (loan.extension_count >= MAX_EXTENSION)   return false
   // 연체일수 = -daysUntilDue. 이 값이 유예 한도를 넘으면 불가.
   if (-daysUntilDue(loan.due_at, now) > OVERDUE_EXTEND_GRACE_DAYS) return false
@@ -195,7 +243,7 @@ export function extendBlockedReason(loan: MyBookLoan, now: Date = new Date()): s
   if (loan.status === 'returned')              return '반납완료'
   if (loan.status === 'lost')                  return '분실'
   if (loan.status !== 'active')                return '연장 불가'
-  if (loan.checkout_at && new Date(loan.checkout_at) > now) return '대여 시작 전'
+  if (!hasCheckoutStarted(loan.checkout_at, now)) return '대여 시작 전'  // ← [2026-07-23] SSOT 위임
   // ← [2026-07-20] 연장완료 판정을 연체 판정보다 앞으로 이동.
   //   연체이면서 이미 연장한 건은 "연장완료"가 더 정확한 사유다.
   if (loan.extension_count >= MAX_EXTENSION)   return '연장완료'

@@ -105,6 +105,9 @@ export interface EmailBookingData {
   //   book_title 이 있으면 renderInfoCard 가 도서 포맷으로 분기한다.
   book_title?:    string         // 도서명
   due_date_kst?:  string         // 반납예정일 (KST 'YYYY-MM-DD' 문자열)
+  /** ← [2026-07-23] 대여일 (KST 'YYYY-MM-DD'). 관리자 통지에 필수 —
+   *   미래 예약이면 "언제부터 나가는 책인지" 가 반납기한만으로는 안 보인다. */
+  checkout_date_kst?: string
   days_overdue?:  number         // 연체 일수 (book_overdue 전용)
 }
 
@@ -412,6 +415,17 @@ function renderInfoCard(input: EmailRenderInput): string {
   //   메일 본문이 깨진다. 도서 전용 행으로 대체한다.
   //   (도서명은 이미 renderTitleSection 이 booking.title 로 크게 렌더하므로 중복 제외)
   if (input.booking.book_title) {
+    // ← [2026-07-23] 대여일 행. 반납기한보다 먼저 둔다 — 기간은 시작→끝 순서로 읽힌다.
+    //   값이 없으면 행 자체를 그리지 않는다(빈 행이 남으면 본문이 깨져 보인다).
+    const outStr = escapeHtml(fmtKstDateStr(input.booking.checkout_date_kst))
+    if (outStr) {
+      rows.push(renderInfoRow(
+        '대여일',
+        `<a href="#" style="color:${C.TEXT};text-decoration:none;pointer-events:none;cursor:default;">${outStr}</a>`,
+        { nowrap: true },
+      ))
+    }
+
     const dueStr = escapeHtml(fmtKstDateStr(input.booking.due_date_kst))
     if (dueStr) {
       // iOS Mail 자동 링크화 방지 — 회의 DATE 행과 동일 처리

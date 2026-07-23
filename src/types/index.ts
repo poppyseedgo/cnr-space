@@ -276,6 +276,14 @@ export interface MyBookLoan {
    *   정책 시행 전에 대여된 건과, 관리자가 사정을 인정한 건에 세워진다.
    */
   penalty_exempt?:    boolean
+  /**
+   * ← [2026-07-23] 대여 레코드 생성 시각(book_checkouts.created_at).
+   *
+   *   checkout_at(대여일)과 다른 값이다. 대여일은 사용자가 고른 날짜(미래 예약 가능,
+   *   관리자 소급 등록 가능)이고 created_at 은 "언제 신청·등록됐는가" 다.
+   *   어드민이 '방금 들어온 대여'를 보려면 이 값으로 조회·정렬해야 한다.
+   */
+  created_at?:        string
 }
 
 /**

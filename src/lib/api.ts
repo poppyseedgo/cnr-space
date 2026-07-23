@@ -1819,6 +1819,8 @@ function toLoanRow(r: any): MyBookLoan {
     notes:             r.notes ?? null,
     // ← [2026-07-21] 어드민 연체 관리 탭의 '면제' 토글이 현재 상태를 알아야 한다
     penalty_exempt:    r.penalty_exempt ?? false,
+    // ← [2026-07-23] 대여 생성순 조회/정렬용. select 에 없으면 undefined 로 남는다
+    created_at:        r.created_at ?? undefined,
   }
 }
 
@@ -1867,6 +1869,9 @@ export async function adminCheckoutBooks(
 /** PostgREST 기본 max-rows. 이 값 단위로 페이징한다. */
 const BOOK_PAGE_SIZE = 1000
 
+/** 대여 이력 기간 조회의 기준 컬럼 (← [2026-07-23] 'created_at' 추가) */
+export type BookLoanDateField = 'checkout_at' | 'created_at' | 'requested_at'
+
 /**
  * 전체 도서 목록 (카테고리 조인) — 페이징 루프 적용
  *
@@ -1908,7 +1913,14 @@ export async function loadBookCategories(): Promise<BookCategory[]> {
  * @param to   'YYYY-MM-DD' (KST 23:59:59 까지 — 종료일 당일 포함)
  * @param dateField 기간 판정 기준 컬럼
  *        'checkout_at'  = 대여일 기준 (기본. "그 기간에 빌려간 건")
- *        'requested_at' = 신청일 기준 (승인 리드타임 분석용)
+ *        'created_at'   = 생성일 기준 (← [2026-07-23] "그 기간에 접수된 건")
+ *        'requested_at' = 신청일 기준 (폐지된 승인 플로우의 리드타임 분석용)
+ *
+ * ★ 'created_at' 이 필요한 이유
+ *   대여일은 사용자가 고르는 값이라 최대 3일 뒤 미래일 수 있다. 오늘 접수된
+ *   예약이 checkout_at 기준 조회(기본 기간 = 오늘까지)에서는 **아예 빠진다**.
+ *   "방금 들어온 대여"를 보려면 생성 시각으로 조회해야 한다.
+ *   정렬도 이 컬럼을 따른다(서버 ORDER BY dateField DESC).
  *
  * 반환은 status 제한 없이 전량이다(pending/rejected/cancelled 포함).
  * 화면에서 목적에 맞게 필터한다 — 서버 쿼리를 목적별로 쪼개면 같은 기간에
@@ -1921,7 +1933,7 @@ export async function loadBookCategories(): Promise<BookCategory[]> {
 export async function loadBookCheckoutsByRange(
   from: string,
   to: string,
-  dateField: 'checkout_at' | 'requested_at' = 'checkout_at',
+  dateField: BookLoanDateField = 'checkout_at',
 ): Promise<AdminBookLoan[]> {
   // KST 경계를 명시적으로 ISO 로 변환한다.
   // 'YYYY-MM-DD' 를 그대로 넘기면 UTC 자정으로 해석돼 KST 기준 9시간이 밀린다.
@@ -1937,6 +1949,7 @@ export async function loadBookCheckoutsByRange(
         id, book_id, user_id, checkout_at, due_at, returned_at,
         extension_count, last_extended_at, status, notes,
         requested_at, processed_at, processed_by_name, reject_reason, penalty_exempt,
+        created_at,
         books ( title, author, publisher, cover_url )
       `)
       .gte(dateField, fromISO)
@@ -1974,6 +1987,7 @@ export async function loadOutstandingBookLoans(): Promise<AdminBookLoan[]> {
         id, book_id, user_id, checkout_at, due_at, returned_at,
         extension_count, last_extended_at, status, notes,
         requested_at, processed_at, processed_by_name, reject_reason, penalty_exempt,
+        created_at,
         books ( title, author, publisher, cover_url )
       `)
       .in('status', ['active', 'overdue'])
@@ -2297,6 +2311,10 @@ export async function adminCheckoutBooksWithNotify(
   //   이 메일이 나가면 대여자가 오늘 책을 받은 것으로 오해한다.
   //   ※ 시작일 자동 통지는 book-due-reminder cron 에 '대여 시작' 타입과
   //     notified_started 컬럼을 추가해야 한다 (별도 작업 — 미구현).
+  // ← [2026-07-23] 관리자 통지는 시작 시점과 무관하게 항상 보낸다.
+  //   대여자에게는 '대여 확정' 을 미루지만, 관리자에게는 접수 사실 자체가 필요하다.
+  notifyBookAdminsCheckoutCreated(res.rows ?? [], label, userId)
+
   const startsInFuture = !!checkoutAt && checkoutAt > todayKSTStr()
   if (startsInFuture) return { ...res, deferredNotify: true }
 
@@ -2322,6 +2340,56 @@ export async function adminCheckoutBooksWithNotify(
 function todayKSTStr(): string {
   const d = new Date(Date.now() + 9 * 3600 * 1000)
   return d.toISOString().slice(0, 10)
+}
+
+/** ISO → KST 'YYYY-MM-DD' (utils/bookLoan.kstDateStr 와 동일 식) */
+function toKstDate(iso: string | null | undefined): string | undefined {
+  if (!iso) return undefined
+  return new Date(new Date(iso).getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10)
+}
+
+/**
+ * [2026-07-23] 대여 접수 → 도서 담당 관리자 통지 (메일 + 인앱)
+ *
+ * ★ 왜 별도 타입인가
+ *   book_borrowed 는 대여자 본인용 문구("도서가 대여되었습니다")다. 수신자 규칙도
+ *   book_borrower 라 관리자에게 보낼 수 없다. 같은 사건이지만 수신자와 문구가
+ *   다르므로 타입을 나누는 것이 이 시스템의 기존 규칙(POLICIES 단위 = 수신자+문구)이다.
+ *
+ * ★ 미래 예약도 보낸다
+ *   대여자에게는 시작 전 '대여 확정' 알림을 보내지 않지만(아직 책을 받지 않았다),
+ *   관리자에게는 "예약이 접수됐다" 는 사실 자체가 필요하다. 대여일을 본문에 실어
+ *   언제부터 나가는 책인지 구분하게 한다.
+ *
+ * ★ 실패해도 대여는 성립한다
+ *   await 하지 않는다. 메일 게이트웨이 지연으로 대여 등록이 느려지면 안 되고,
+ *   알림 실패가 이미 성립한 대여를 되돌리지도 않는다. (기존 book_borrowed 와 동일)
+ *
+ * 딥링크 규약: booking.id 는 **항상 book_checkouts.id** — 알림 클릭 시
+ * NotificationBell 이 'book_' 접두사를 보고 BookLoanDetailModal 로 연결한다.
+ */
+function notifyBookAdminsCheckoutCreated(
+  rows: MyBookLoan[], label: string, borrowerUserId: string,
+): void {
+  const first = rows[0]
+  if (!first) return
+
+  supabase.functions.invoke('send-notification', {
+    body: {
+      type: 'book_checkout_created',
+      booking: {
+        id:                first.id,
+        title:             label,
+        user_id:           borrowerUserId,     // 수신자가 아니라 '주체'(대여자) — 본문 대여자 행
+        book_title:        label,
+        due_at:            first.due_at,
+        due_date_kst:      toKstDate(first.due_at),
+        // 화면이 고른 날짜가 아니라 DB 가 확정한 checkout_at 을 쓴다.
+        // 즉시 대여는 화면에 날짜 입력이 없어 서버 값만이 유일한 사실이다.
+        checkout_date_kst: toKstDate(first.checkout_at),
+      },
+    },
+  }).catch(err => console.warn('[api] 대여 접수 관리자 알림 실패:', err))
 }
 
 
@@ -2364,6 +2432,9 @@ export async function userCheckoutBooksWithNotify(
   // 미래 시작 예약에는 '대여 확정' 알림을 보내지 않는다.
   //   book_borrowed 는 "지금 대여되었습니다" 문구다. 시작일이 오면
   //   book-due-reminder 배치가 book_started 알림을 보낸다.
+  // ← [2026-07-23] 관리자 통지 (예약 포함 — 위 관리자 경로와 동일 규칙)
+  notifyBookAdminsCheckoutCreated(rows, label, rows[0]?.user_id ?? '')
+
   const startsInFuture = !!checkoutAt && checkoutAt > todayKSTStr()
   if (startsInFuture) return { ok: true, rows, deferredNotify: true }
 
@@ -2535,6 +2606,7 @@ export async function fetchBookLoanById(
       id, book_id, user_id, checkout_at, due_at, returned_at,
       extension_count, last_extended_at, status, notes, penalty_exempt,
       requested_at, processed_at, processed_by_name, reject_reason,
+      created_at,
       books ( title, author, publisher, cover_url )
     `)
     .eq('id', checkoutId)

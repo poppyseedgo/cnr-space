@@ -190,6 +190,60 @@ async function fetchAdmins(supabase: SupabaseClient, excludeUserId?: string): Pr
 }
 
 /**
+ * 도서 담당 관리자 조회 (← [2026-07-23])
+ *
+ * ★ 왜 profiles.role='ADMIN' 이 아닌가
+ *   이 프로젝트는 관리자 체계가 둘로 나뉜다.
+ *     · profiles.role='ADMIN'  → 프론트 화면 진입 권한 (11명)
+ *     · admin_roles.role       → 모듈별 담당 권한 ('book','pointer','super' …)
+ *   도서 대여는 하루에도 여러 건 발생하므로, 화면 권한자 전원에게 보내면
+ *   알림이 곧 소음이 되고 결국 아무도 안 본다. 실제 도서 담당자에게만 보낸다.
+ *
+ * 폴백: 담당자가 한 명도 없으면 profiles.role='ADMIN' 으로 되돌린다.
+ *   "아무에게도 안 갔는데 아무도 모르는" 상태가 가장 나쁘다. 폴백이 발동하면
+ *   경고 로그를 남겨 admin_roles 설정 누락을 알 수 있게 한다.
+ */
+async function fetchBookAdmins(supabase: SupabaseClient, excludeUserId?: string): Promise<Person[]> {
+  try {
+    const { data, error } = await supabase
+      .from('admin_roles')
+      .select('user_id, role, profiles!inner ( id, email, name, dept, avatar_url, is_active )')
+      .in('role', ['book', 'super'])
+
+    if (error) {
+      console.warn('[resolver] 도서 관리자 조회 실패:', error.message)
+      return await fetchAdmins(supabase, excludeUserId)
+    }
+
+    const seen = new Set<string>()
+    const list: Person[] = []
+    for (const r of (data ?? []) as any[]) {
+      const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles
+      if (!p || p.is_active === false) continue          // 퇴사자 제외
+      if (excludeUserId && p.id === excludeUserId) continue
+      if (seen.has(p.id)) continue                        // book + super 중복 보유
+      seen.add(p.id)
+      list.push({
+        user_id:    p.id,
+        email:      p.email ?? '',
+        name:       p.name ?? '',
+        dept:       p.dept ?? '',
+        avatar_url: p.avatar_url ?? null,
+      })
+    }
+
+    if (list.length === 0) {
+      console.warn('[resolver] 도서 담당 관리자(admin_roles book/super) 0명 — profiles ADMIN 으로 폴백')
+      return await fetchAdmins(supabase, excludeUserId)
+    }
+    return list.filter(p => p.email || p.user_id)
+  } catch (e: any) {
+    console.warn('[resolver] 도서 관리자 조회 예외:', e?.message ?? String(e))
+    return await fetchAdmins(supabase, excludeUserId)
+  }
+}
+
+/**
  * booking_attendees + profiles JOIN으로 참석자 전원 조회
  * · 예약자 이메일 제외 (동일 인물 중복 방지)
  * · profiles에 없는 참석자(외부인 또는 퇴사자)는 booking_attendees 기록만 사용 — user_id 빈 문자열
@@ -386,6 +440,22 @@ export async function resolveRecipients(
     result.bookBorrower = await fetchBooker(supabase, ownerUserId)
     // 도서 알림은 수신자 == 주체다. 같은 사람이므로 재조회하지 않는다.
     result.owner = result.bookBorrower
+    return result
+  }
+
+  // ← [2026-07-23] book_admins — 도서 담당 관리자에게만.
+  //   결과를 result.admins 에 담는 이유: send-notification 의 이메일/인앱
+  //   '관리자' 분기가 이미 이 필드를 role='admin' 으로 렌더한다.
+  //   새 수신자 배열을 만들면 렌더 분기를 양쪽에 복제해야 하고, 한쪽만
+  //   고치는 순간 "인앱은 오는데 메일은 안 오는" 결함이 생긴다.
+  //   owner(대여자)는 별도로 해석한다 — 본문의 '대여자' 행과 인앱 본문에 쓰인다.
+  if (rule === 'book_admins') {
+    const [admins, owner] = await Promise.all([
+      fetchBookAdmins(supabase, ownerUserId),   // 대여자 본인이 관리자여도 중복 발송 안 함
+      fetchBooker(supabase, ownerUserId),
+    ])
+    result.admins = admins
+    result.owner  = owner
     return result
   }
 

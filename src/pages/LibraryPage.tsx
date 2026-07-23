@@ -52,7 +52,7 @@ import {
   BookSortRow, type BookSort,
 } from '../components/library/libraryListShared'
 // ← [2026-07-21] 연체 판정 SSOT — 마이페이지·알림·어드민과 동일 기준 사용
-import { daysUntilDue } from '../utils/bookLoan'
+import { daysUntilDue, hasCheckoutStarted } from '../utils/bookLoan'   // ← [2026-07-23] 시작 판정 SSOT
 import type { BookPenaltyState } from '../types'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 // ← [2026-07-21] Figma 1347:1991 New Collection — 최근 3개월 입고 도서 자동 슬라이드
@@ -245,8 +245,14 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
 
       // 카드에 "지금 대여중"으로 표시할 건은 이미 시작된 것만.
       // 미래 예약은 도서를 잠그지 않으므로 카드에 대여자를 띄우면 안 된다.
-      const nowMs = Date.now()
-      const checkouts = allCheckouts.filter(c => new Date(c.checkout_at).getTime() <= nowMs)
+      //
+      // ← [2026-07-23] 절대 시각 비교(new Date(checkout_at) <= now)를
+      //   hasCheckoutStarted(KST 날짜)로 교체했다. 대여일은 KST 정오로 저장되는데
+      //   books.status 잠금은 KST '날짜' 기준이라, 오전(00:00~11:59)에는
+      //   카드가 '대여중'인데 대여자·반납기한 행만 사라지는 상태가 됐었다.
+      //   판정식은 utils/bookLoan.hasCheckoutStarted / DB book_checkout_started() 가 SSOT.
+      const now = new Date()
+      const checkouts = allCheckouts.filter(c => hasCheckoutStarted(c.checkout_at, now))
 
       // 보유 권수 맵 (예약 포함 — 서버 한도 산식과 동일)
       const heldMap: Record<string, number> = {}

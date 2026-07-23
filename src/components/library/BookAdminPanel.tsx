@@ -41,6 +41,8 @@ import {
   // ← [2026-07-21] 연체 제재 조회/해제
   adminListBookPenalties, revokeBookPenalty, adminExemptCheckout,
 } from '../../lib/api'
+// ← [2026-07-23] 대여 이력 조회 기준 컬럼 타입
+import type { BookLoanDateField } from '../../lib/api'
 import { SegmentTabBar } from '../common/SegmentTabBar'
 import { DateRangeFilter } from '../common/DateRangeFilter'
 import { DataTable, type Column } from '../common/DataTable'
@@ -82,6 +84,27 @@ type BookFilter = 'all' | 'available' | 'borrowed' | 'maintenance' | 'lost'
 
 const PER_PAGE = 15
 
+/**
+ * 대여 이력 조회 기준 컬럼 메타 (← [2026-07-23])
+ *
+ * 라벨/설명/파일명 접미사를 한 곳에서 관리한다. 화면 문구와 CSV 파일명이
+ * 따로 놀면 "이 파일이 무슨 기준이었는지" 를 알 수 없게 된다.
+ */
+const LOAN_DATE_FIELD_META: Record<'checkout_at' | 'created_at', {
+  label: string; short: string; desc: string
+}> = {
+  checkout_at: {
+    label: '대여일',
+    short: '대여일순',
+    desc: '대여가 시작되는(또는 시작된) 날짜 기준입니다. 오늘 접수된 미래 예약은 조회 기간 밖이라 빠질 수 있습니다.',
+  },
+  created_at: {
+    label: '생성일',
+    short: '생성순',
+    desc: '대여가 접수된 시각 기준입니다. 미래 예약·소급 등록을 포함해 최근 접수 순으로 정렬됩니다.',
+  },
+}
+
 /** 대여 기간 — DB(admin_checkout_books)의 7일과 반드시 일치 */
 const BORROW_DAYS = 7
 
@@ -119,6 +142,13 @@ function dateOf(iso: string | null | undefined): string {
 /** ISO → 'YYYY-MM' (dateOf 와 동일 기준) */
 function monthOf(iso: string | null | undefined): string {
   return dateOf(iso).slice(0, 7)
+}
+/** ISO → 'MM-DD HH:mm' (← [2026-07-23] 생성일시 열 — 같은 날 접수 순서를 봐야 한다) */
+function dateTimeOf(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 // ─── 공통 스타일 ──────────────────────────────────────────────────────────────
@@ -283,6 +313,19 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
   const [loanFilter, setLoanFilter] = useState<LoanFilter>('all')
   const [loanPage,   setLoanPage]   = useState(1)
 
+  // ── 조회 기준 컬럼 (← [2026-07-23]) ───────────────────────────────────────
+  //
+  //   '대여일'(checkout_at)은 사용자가 고르는 값이라 최대 3일 뒤 미래일 수 있다.
+  //   기본 기간이 '오늘까지'이므로, 오늘 접수된 미래 예약은 대여일 기준 조회에서
+  //   **아예 빠진다**. "방금 들어온 대여"를 보려면 생성 시각으로 조회해야 한다.
+  //
+  //   정렬은 서버가 ORDER BY <기준> DESC 로 이미 처리하므로 별도 정렬 UI 를 두지
+  //   않는다. 기준과 정렬을 따로 두면 "생성순 정렬인데 목록에 없는 건"이 생겨
+  //   같은 혼란이 반복된다.
+  //
+  //   기본값은 'checkout_at' — 기존 동작과 개요 통계 모수를 그대로 유지한다.
+  const [loanDateField, setLoanDateField] = useState<BookLoanDateField>('checkout_at')
+
   const [overdueOnly, setOverdueOnly] = useState(true)   // false = 미반납 전체
   const [overduePage, setOverduePage] = useState(1)
 
@@ -323,7 +366,7 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
   async function loadRange() {
     setLoadingRange(true)
     try {
-      setRangeLoans(await loadBookCheckoutsByRange(dateFrom, dateTo))
+      setRangeLoans(await loadBookCheckoutsByRange(dateFrom, dateTo, loanDateField))
     } catch (e: any) {
       showToast(`대여 이력을 불러오지 못했습니다: ${e.message}`, 'error')
     } finally {
@@ -417,7 +460,7 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
   }
 
   useEffect(() => { loadMaster() }, [])   // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { loadRange() }, [dateFrom, dateTo])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadRange() }, [dateFrom, dateTo, loanDateField])   // eslint-disable-line react-hooks/exhaustive-deps
 
   /** 상태를 바꾸는 처리 후 공통 재조회 */
   async function reloadAll() {
@@ -652,7 +695,7 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
 
   // 필터 변경 시 페이지 초기화 — 3페이지에서 필터를 바꾸면 빈 화면이 뜬다
   useEffect(() => { setBookPage(1) },    [bookQ, bookCat, bookFilter])
-  useEffect(() => { setLoanPage(1) },    [loanQ, loanFilter, dateFrom, dateTo])
+  useEffect(() => { setLoanPage(1) },    [loanQ, loanFilter, dateFrom, dateTo, loanDateField])
   useEffect(() => { setOverduePage(1) }, [overdueOnly])
 
   // ─── CSV ───────────────────────────────────────────────────────────────────
@@ -682,6 +725,7 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
       대여자:    u?.name ?? '(알 수 없음)',
       부서:      u?.dept ?? '',
       상태:      loanStatusStyle(loanDisplayStatus(l)).label,
+      생성일시:  l.created_at ? dateTimeOf(l.created_at) : '',   // ← [2026-07-23]
       대여일:    dateOf(l.checkout_at),
       반납기한:  dateOf(l.due_at),
       반납일:    dateOf(l.returned_at),
@@ -692,7 +736,12 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
       메모:      l.notes ?? '',
     }
   }
-  function csvLoans()   { exportCSV(filteredLoans.map(loanCsvRow), `대여이력_${dateFrom}_${dateTo}`) }
+  function csvLoans() {
+    // ← [2026-07-23] 파일명에 조회 기준을 남긴다. 기준이 다르면 모수가 다른 파일이라
+    //   나중에 두 파일을 비교할 때 왜 건수가 다른지 설명이 안 된다.
+    const basis = LOAN_DATE_FIELD_META[loanDateField].short
+    exportCSV(filteredLoans.map(loanCsvRow), `대여이력_${basis}_${dateFrom}_${dateTo}`)
+  }
   function csvOverdue() {
     // ← [2026-07-21] 제재 관련 열 추가.
     //   연체일수(due_at 기준)와 제재초과일(effective_due 기준)은 다른 숫자다.
@@ -805,6 +854,17 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
     },
     { key: 'user',   label: '대여자', width: 170, render: l => <BorrowerCell userId={l.user_id} /> },
     { key: 'status', label: '상태',   width: 90,  render: l => <LoanStatusCell loan={l} /> },
+    // ← [2026-07-23] 생성일시 — checkout_at 과 다른 값이다.
+    //   미래 예약(대여일 +3일)·소급 등록(대여일 과거)이 있으므로
+    //   "언제 접수됐는가" 는 이 열로만 알 수 있다.
+    {
+      key: 'created', label: '생성일시', width: 110,
+      render: l => (
+        <span style={{ fontSize: 12, color: l.created_at ? '#64748B' : '#C3C9D6' }}>
+          {dateTimeOf(l.created_at) || '-'}
+        </span>
+      ),
+    },
     {
       key: 'period', label: '대여 → 기한', width: 160,
       render: l => (
@@ -849,7 +909,8 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
         )
       },
     },
-    ...loanColumns.filter(c => c.key !== 'returned'),
+    // ← [2026-07-23] 'created'(생성일시)도 제외 — 연체 탭은 기한 중심이라 폭을 아낀다
+    ...loanColumns.filter(c => c.key !== 'returned' && c.key !== 'created'),
     // ── 제재 상태 + 면제 토글 (← [2026-07-21]) ─────────────────────────────
     //   연체 일수(due_at 기준)와 제재 기준(effective_due 기준)이 다르므로
     //   "연체 10일인데 왜 제재가 아직?" 을 여기서 바로 설명해야 한다.
@@ -960,6 +1021,17 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
             onQuickClick={onQuick}
             quickButtons={quickButtons}
           />
+
+          {/* ← [2026-07-23] 개요 통계는 대여 이력 탭과 같은 rangeLoans 를 쓴다.
+              조회 기준을 바꾸면 여기 모수도 함께 바뀌므로 기준을 명시한다.
+              기본값(대여일)일 때는 문구를 띄우지 않아 화면을 어지럽히지 않는다. */}
+          {loanDateField !== 'checkout_at' && (
+            <div style={{ fontSize: 12, color: '#A5AEC0' }}>
+              기간 통계 기준: <b style={{ color: '#64748B' }}>
+                {LOAN_DATE_FIELD_META[loanDateField].label}
+              </b> (대여 이력 탭에서 변경)
+            </div>
+          )}
 
           <div style={{
             display: 'grid', gap: 12,
@@ -1088,8 +1160,35 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
             csvLabel="CSV 추출"
           />
 
+          {/* ── 조회 기준 전환 (← [2026-07-23]) ─────────────────────────────
+              정렬 옵션이 아니라 '기간 판정 기준' 을 바꾼다.
+              대여일 기준으로는 오늘 접수된 미래 예약이 목록에 아예 안 잡히므로,
+              정렬만 추가하면 "생성순인데 없는 건" 이 남는다. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#64748B' }}>조회 기준</span>
+            <div style={{ display: 'inline-flex', background: '#F1F5F9', borderRadius: 8, padding: 2 }}>
+              {(['checkout_at', 'created_at'] as const).map(f => (
+                <button
+                  key={f}
+                  className="btn"
+                  onClick={() => setLoanDateField(f)}
+                  style={{
+                    padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700,
+                    border: 'none', cursor: 'pointer',
+                    background: loanDateField === f ? '#fff' : 'transparent',
+                    color:      loanDateField === f ? '#1E1E1E' : '#94A3B8',
+                    boxShadow:  loanDateField === f ? '0 1px 2px rgba(15,23,42,0.08)' : 'none',
+                  }}>
+                  {LOAN_DATE_FIELD_META[f].label}
+                </button>
+              ))}
+            </div>
+            <span style={{ fontSize: 12, color: '#A5AEC0' }}>
+              {LOAN_DATE_FIELD_META[loanDateField].desc}
+            </span>
+          </div>
+
           <div style={{ fontSize: 12, color: '#A5AEC0' }}>
-            조회 기준은 <b style={{ color: '#64748B' }}>대여일</b>입니다.
             기간 밖에 시작된 미반납 건은 연체 관리 탭에서 확인하세요.
           </div>
 

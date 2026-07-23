@@ -107,6 +107,7 @@ export type NotificationType =
   | 'book_request_approved'   // [폐지]
   | 'book_request_rejected'   // [폐지]
   | 'book_started'            // 대여 시작일 도래 09:00 KST → 대여자 (← [2026-07-21])
+  | 'book_checkout_created'   // 대여 생성 즉시 → 도서 담당 관리자 (← [2026-07-23])
   // ── [2026-07-21] 연체 패널티 ────────────────────────────────────────────
   | 'book_penalty_applied'    // 반납 시 제재 확정 → 대여자
   | 'book_penalty_cleared'    // 제재 해제(만료·관리자) → 대여자
@@ -123,6 +124,7 @@ export type RecipientRule =
   | 'removed_attendees'        // 제거된 참석자 (attendee_removed 전용)
   | 'former_booker'            // ← [2026-06-12] 원래 예약자 1명 (former_booker 전용)
   | 'book_borrower'            // ← [2026-07-20] 도서 대여자 본인 1명 (도서관 알림 전용)
+  | 'book_admins'              // ← [2026-07-23] 도서 담당 관리자 (admin_roles 'book'/'super')
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 3. 헤더 색상 체계 (5색)
@@ -238,6 +240,9 @@ const CTA_MY_LOANS_EXT   = { label: '연장하러 가기',    urlTemplate: '{APP
 const CTA_MY_LOANS_WARN  = { label: '대여 현황 확인',   urlTemplate: '{APP_URL}#myloans', color: COLORS.RED    }
 // ← [2026-07-22] 도서 대여 신청 승인 — 관리자용 / 신청자용
 const CTA_BOOK_APPROVE   = { label: '신청 승인하러 가기', urlTemplate: '{APP_URL}#library', color: COLORS.AMBER  }
+// ← [2026-07-23] 관리자용 — 대여 건 하나로 포커싱한다. 도서관 목록으로 보내면
+//   방금 접수된 건을 관리자가 다시 찾아야 한다.
+const CTA_BOOK_LOAN_ADMIN = { label: '대여 내역 확인하기', urlTemplate: '{APP_URL}#library', color: COLORS.INDIGO }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 7. 정책 정의 — 이벤트별 전체 매트릭스
@@ -730,6 +735,40 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
     },
     cta: { booker: CTA_MY_LOANS },
     isCancelledStyle: true,
+  },
+
+  // ── [2026-07-23] 대여 생성 → 도서 담당 관리자 통지 ──────────────────────
+  //
+  //   승인 플로우 폐지 후 사용자가 직접 대여를 성립시키므로, 관리자가
+  //   화면을 열어보기 전에는 누가 무엇을 가져갔는지 알 수 없다.
+  //   오프라인(1층 책장)에서 책이 실제로 나가는 운영이라 접수 사실을
+  //   즉시 알아야 대조가 가능하다.
+  //
+  //   수신자는 'book_admins' — profiles.role='ADMIN' 전원(11명)이 아니라
+  //   admin_roles 에 'book'/'super' 를 가진 도서 담당자다. 대여 1건마다
+  //   전체 관리자에게 메일이 가면 알림이 곧 소음이 된다.
+  //
+  //   즉시 대여와 미래 예약을 한 타입으로 처리한다. 관리자에게는 둘 다
+  //   "접수됐다" 는 같은 사실이고, 시작일 차이는 본문의 대여일로 구분된다.
+  book_checkout_created: {
+    subjectTag:         '[대여접수]',
+    headerLabel:        '도서 대여가 접수되었습니다',
+    headerColor:        COLORS.INDIGO,
+    recipients:         'book_admins',
+    inappType:          'book_checkout_created',
+    inappTitleBooker:   '',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '도서 대여가 접수되었습니다',
+    contextBanner: {
+      admin: {
+        ...BANNER_PRESETS.info,
+        title: '새 도서 대여가 접수되었습니다.',
+        body:  '대여자·도서·대여일·반납기한은 아래에서 확인하세요. '
+             + '반납 처리는 어드민 도서 관리 화면에서 진행합니다.',
+      },
+    },
+    cta: { admin: CTA_BOOK_LOAN_ADMIN },
+    isCancelledStyle: false,
   },
 
   book_borrowed: {

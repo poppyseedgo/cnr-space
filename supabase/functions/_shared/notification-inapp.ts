@@ -58,6 +58,8 @@ export interface InAppBookingData {
   book_title?:   string          // 도서명
   due_date_kst?: string          // 반납예정일 (KST 'YYYY-MM-DD')
   days_overdue?: number          // 연체 일수 (book_overdue 전용)
+  /** ← [2026-07-23] 대여일 (KST 'YYYY-MM-DD') — 관리자 통지 본문 전용 */
+  checkout_date_kst?: string
 
   // ── 연체 제재 전용 (← [2026-07-21]) ──────────────────────────────────
   //   제재 알림은 반납기한이 아니라 "제한 기간" 을 알려야 한다.
@@ -167,6 +169,20 @@ export function buildInAppBody(booking: InAppBookingData, role: 'booker' | 'atte
     const od   = booking.days_overdue ?? 0
 
     const dueShort = fmtDueShortKo(due)
+
+    // ← [2026-07-23] 관리자 수신 본문은 대여자와 대여 기간을 함께 보여준다.
+    //   관리자에게 "도서명 · 7월 30일 이내 반납" 만 오면 누가 가져갔는지 알 수 없고,
+    //   결국 어드민 화면을 열어 다시 찾아야 한다.
+    //   회의실 알림의 admin 분기(" · 신청자: 이름")와 같은 규칙을 도서에도 적용한다.
+    if (role === 'admin') {
+      const who   = booking.user_name ? `${booking.user_name} · ` : ''
+      const start = fmtDueShortKo(booking.checkout_date_kst ?? '')
+      const range = start && dueShort ? `${start} ~ ${dueShort}`
+                  : dueShort          ? `${dueShort} 이내 반납`
+                  :                     ''
+      return [who + name, range].filter(Boolean).join(' · ')
+    }
+
     if (od > 0) {
       const tail = dueShort ? ` (${dueShort} 마감)` : ''
       return `${name} · ${od}일 연체${tail}`

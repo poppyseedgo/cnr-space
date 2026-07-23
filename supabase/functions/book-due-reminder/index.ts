@@ -111,6 +111,20 @@ function dueDayDiff(dueAt: string, nowMs: number): number {
   return (kstDayEpoch(dueAt) - kstDayEpoch(nowMs)) / 86400000
 }
 
+/**
+ * "시작된 대여" 의 checkout_at 상한 (KST 익일 자정의 ISO)  ← [2026-07-23]
+ *
+ * 대여일은 KST 정오로 저장된다. 그래서 09:00 배치 시점에 `checkout_at <= now()`
+ * 로 거르면 **오늘 시작한 대여가 전부 탈락**한다(정오 < 09:00 이 거짓).
+ * 시작 판정 SSOT 는 "KST 날짜" 이므로(DB book_checkout_started),
+ * 오늘 날짜에 속하는 모든 시각을 포함하도록 상한을 KST 익일 00:00 으로 둔다.
+ *
+ *   started(c)  ==  c.checkout_at < KST(오늘+1일) 00:00
+ */
+function kstStartedUpperBoundISO(nowMs: number): string {
+  return new Date(kstDayEpoch(nowMs) + 86400000 - KST_OFFSET_MS).toISOString()
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
@@ -262,7 +276,9 @@ Deno.serve(async (req) => {
         books ( title, author )
       `)
       .eq('status', 'active')
-      .lte('checkout_at', new Date(nowMs).toISOString())
+      // ← [2026-07-23] .lte(now) → .lt(KST 익일 자정).
+      //   now() 비교는 정오 저장 규칙과 어긋나 오늘 시작 건을 통째로 떨어뜨렸다.
+      .lt('checkout_at', kstStartedUpperBoundISO(nowMs))
 
     if (error) throw new Error(`대여 목록 조회 실패: ${error.message}`)
 
