@@ -50,6 +50,10 @@ import { exportCSV } from '../utils/csv'  // ← [2026-07-23] 지역 함수에�
 //   변경 사유: cron ②③ 비활성화 후 markNoshow API가 status='confirmed' 유지 → 확정 룰이 더 정확
 //   영향: contaminated 데이터(status='cancelled' 시절) 제외 + 강제취소 자동 분리
 import { isNoshow } from '../utils/noshow'
+// ← [2026-07-23 버그수정] 승인 대기 판정 SSOT — 기한 초과 pending을 첫 렌더부터 제외
+import { isAwaitingApproval, isExpiredPending, countAwaitingApproval } from '../utils/pendingStatus'
+// ← [2026-07-23 버그수정] 기간 길이별 자동 롤업 — 막대 수 폭발/그래프 소실 방지
+import { buildSeries, BUCKET_LABEL } from '../utils/timeSeries'
 import { getBookingStatusLabel } from '../utils/bookingStatusLabel'  // ← [2026-05-28] CSV 내보내기 단일 라벨 SSOT — 옛 룰 인라인 분기 대체
 // ← [2026-07-23 대시보드 개편 Phase 1] 카드 헤더 날짜행 공통화
 //   기존: DatePickerPopup을 직접 import + SmallDateTrigger를 이 파일에 정의 + 6개 위젯이 인라인 조립
@@ -235,6 +239,11 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
   // ← [2026-07-23] 목적 진입은 개별 예약이 아니라 '부서별 집계'(2단 드릴다운 1단계)로 시작한다.
   //   개별 예약 목록은 부서까지 고른 뒤 2단계에서 나온다 → purposeDrill state가 담당.
   const [drill, setDrill] = useState<{ label: string; fn: (b:Booking)=>boolean } | null>(null)
+
+  // ← [2026-07-23] 예약 목록의 '상태' 선택 필터.
+  //   null이면 전체. 칩을 누르면 그 상태만 남고, 각 칩에 건수와 비율이 자동 계산돼 표시된다.
+  //   ※ 라벨은 getBookingStatusLabel(우선순위 SSOT)을 그대로 쓴다 — 새 상태 정의를 만들지 않는다.
+  const [statusFilter, setStatusFilter] = useState<string | null>(null)
   const PER = 30
 
   // ← [2026-05-28] fetchData에 dateField 동적 적용 + dateMode 의존성 추가
@@ -336,10 +345,23 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
   // 테이블 렌더
   // 공통 예약 목록 렌더 (drill-down 시에도 재사용)
   const renderBookingList = (source: Booking[], drillLabel?: string) => {
+    // ── [2026-07-23] 상태 분포 자동 계산 (필터 적용 전 원본 기준) ──
+    //   비율의 분모는 반드시 '필터 전 전체'다. 필터된 목록을 분모로 쓰면
+    //   어떤 상태를 골라도 항상 100%가 나와 지표가 무의미해진다.
+    const statusCounts = new Map<string, number>()
+    source.forEach(b => {
+      const l = getBookingStatusLabel(b)
+      statusCounts.set(l, (statusCounts.get(l) ?? 0) + 1)
+    })
+    const statusChips = Array.from(statusCounts.entries())
+      .map(([label, n]) => ({ label, n, pct: source.length > 0 ? (n / source.length) * 100 : 0 }))
+      .sort((a, b) => b.n - a.n)
+    if (statusFilter && !statusCounts.has(statusFilter)) source = source   // 필터 대상이 없으면 그대로
+    const scoped = statusFilter ? source.filter(b => getBookingStatusLabel(b) === statusFilter) : source
     // ← [2026-05-28] sort 비교 함수 — createdAt(number)과 start_at(ISO string) 둘 다 안전 처리
     //   기존: a[sortKey] ?? '' — number와 string 혼합 시 '' fallback이 정상 비교 깨뜨림
     //   변경: 양쪽 모두 0/'' fallback 명확화. createdAt 누락(과거 데이터) 시 0 → 가장 후순위 배치
-    const sorted = [...source].sort((a,b) => {
+    const sorted = [...scoped].sort((a,b) => {   // ← [2026-07-23] source → scoped (상태 필터 반영)
       const av = (a as any)[sortKey] ?? (sortKey === 'createdAt' ? 0 : '')   // ← [2026-05-28] createdAt fallback 0 (number)
       const bv = (b as any)[sortKey] ?? (sortKey === 'createdAt' ? 0 : '')
       return sortAsc ? (av<bv?-1:av>bv?1:0) : (av>bv?-1:av<bv?1:0)
@@ -359,6 +381,35 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
     })
     return (
       <>
+        {/* ── [2026-07-23] 상태별 건수·비율 칩 + 선택 필터 ──
+              · 비율은 필터 전 전체를 분모로 자동 계산된다.
+              · 칩을 누르면 그 상태만 남고, 다시 누르면 해제된다. */}
+        {statusChips.length > 0 && (
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:12 }}>
+            <button className="btn"
+              onClick={() => { setStatusFilter(null); setPage(1) }}
+              style={{
+                padding:'4px 10px', borderRadius:999, fontSize:11, fontWeight:600, cursor:'pointer',
+                border:'1px solid #000',
+                background: statusFilter === null ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.9)',
+                color:      statusFilter === null ? '#fff' : '#1E1E1E',
+              }}>전체 {source.length}건</button>
+            {statusChips.map(c => {
+              const on = statusFilter === c.label
+              return (
+                <button key={c.label} className="btn"
+                  onClick={() => { setStatusFilter(on ? null : c.label); setPage(1) }}
+                  style={{
+                    padding:'4px 10px', borderRadius:999, fontSize:11, fontWeight:600, cursor:'pointer',
+                    border:'1px solid #000',
+                    background: on ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.9)',
+                    color:      on ? '#fff' : '#1E1E1E',
+                  }}>{c.label} {c.n}건 · {c.pct.toFixed(1)}%</button>
+              )
+            })}
+          </div>
+        )}
+
         {/* 드릴다운 브레드크럼 */}
         {drillLabel && (
           <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14, padding:'8px 12px', background:'#F5F5FF', borderRadius:8 }}>
@@ -767,10 +818,10 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
   //         사용 중이라 일단 보존 (Phase B/C에서 정리)
 
   // 승인 대기 건수 — 사이드 네비 dot 표시용
-  const pendingCount = useMemo(
-    () => bookings.filter((b: any) => b.status === 'pending' && !b.autoCancelled).length,
-    [bookings]
-  )
+  // ← [2026-07-23 버그수정] 기한 초과 pending 제외.
+  //   기존 공식은 마감이 지난 건까지 대기로 세어, App.tsx tick이 마킹하기 전까지
+  //   "대기 2건"이 잘못 표시됐다가 몇 초 뒤 사라지는 현상을 만들었다.
+  const pendingCount = useMemo(() => countAwaitingApproval(bookings as Booking[]), [bookings])
 
   return (
     /* ═══════════════════════════════════════════════════════════════════
@@ -1128,19 +1179,32 @@ function NoshowChartCard() {
   //      · 노쇼 ⊆ total (그 날 booking) 보장 → rate ∈ [0, 1] 안전
   //      · 이전 v4 (옵션 A: confirmed + system cancelled): 일부 케이스 여전히 100% → 폐기
   //   isNoshow는 Phase 2 SSOT 그대로 (status='confirmed' + cancelledBy='system' + !checkedIn)
-  const dailyStats = useMemo(() => {
-    const diffDays = Math.round(
-      (new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000
-    ) + 1
-    if (diffDays <= 0 || diffDays > 365) return []   // ← 가드: 비정상 range 차단
-    return Array.from({ length: diffDays }, (_, i) => {
-      const date        = addDaysStr(dateFrom, i)
-      const dayBookings = bookings.filter(b => tsDate(b.start_at) === date)
-      const total       = dayBookings.length                  // ← 그 날의 모든 booking row
-      const noshow      = dayBookings.filter(isNoshow).length // ← Phase 2 SSOT
-      const rate        = total > 0 ? noshow / total : 0      // ← 0~1 (안전)
-      return { date, total, noshow, rate }
+  // ← [2026-07-23 버그수정] 일 단위 고정 → 기간별 자동 롤업 (utils/timeSeries)
+  //   기존: 90일 선택 시 막대 90개(폭 2.5px), 365일 초과 시 빈 배열 → 그래프 소실.
+  //   변경: ~31일 일별 / ~120일 주별 / 그 이상 월별 → 막대 수가 항상 판독 가능 범위.
+  //   ※ 노쇼 판정(isNoshow)과 rate 공식은 1:1 그대로다. 묶는 단위만 바뀐다.
+  const { bucket, points: dailyStats } = useMemo(() => {
+    // 날짜별 사전 집계 — buildSeries가 버킷마다 다시 순회하지 않도록 O(n) 1회로 끝낸다
+    const byDate = new Map<string, { total: number; noshow: number }>()
+    bookings.forEach(b => {
+      const d = tsDate(b.start_at)
+      if (!byDate.has(d)) byDate.set(d, { total: 0, noshow: 0 })
+      const s2 = byDate.get(d)!
+      s2.total++
+      if (isNoshow(b)) s2.noshow++
     })
+    const r = buildSeries(dateFrom, dateTo, dates => {
+      let total = 0, noshow = 0
+      dates.forEach(d => { const v = byDate.get(d); if (v) { total += v.total; noshow += v.noshow } })
+      return { total, noshow, rate: total > 0 ? noshow / total : 0 }
+    })
+    return {
+      bucket: r.bucket,
+      points: r.points.map(p => ({
+        date: p.key, label: p.label,
+        total: p.value.total, noshow: p.value.noshow, rate: p.value.rate,
+      })),
+    }
   }, [bookings, dateFrom, dateTo])
 
   // ── 4. 활성 봉(hover/click) 상태 ─────────────────────────────────────
@@ -1157,15 +1221,14 @@ function NoshowChartCard() {
     if (!activeDate) return null
     const active = dailyStats.find(d => d.date === activeDate)
     if (!active) return null
-    const dt = new Date(active.date)
-    return `${dt.getMonth() + 1}월 ${dt.getDate()}일 ${active.noshow}건`
+    // ← [2026-07-23] 버킷 라벨 사용 (일별 "7/23" / 주별 "7/20~" / 월별 "7월")
+    return `${active.label} ${active.noshow}건`
   }, [activeDate, dailyStats])
 
   // ── Date 라벨 (차트 아래) — dateFrom 표시 ─────────────────────────────
-  const dateLabel = useMemo(() => {
-    const dt = new Date(dateFrom)
-    return `${dt.getMonth() + 1}월 ${dt.getDate()}일`
-  }, [dateFrom])
+  // ← [2026-07-23] 좌하단 라벨을 집계 단위 표기로 교체.
+  //   기간에 따라 막대 1개가 뜻하는 단위가 달라지므로 반드시 화면에 밝혀야 오독이 없다.
+  const dateLabel = useMemo(() => BUCKET_LABEL[bucket], [bucket])
 
   // ── 일 평균 노쇼율 (Figma 2645:7209 — 라벨 '일 평균 노쇼율' + 큰 숫자) ──
   //   ← [2026-07-23] 기획 의도 복원. Figma 헤더 블록 h144 = 타이틀22 + 날짜행21 + 이 블록 85.
@@ -1206,7 +1269,7 @@ function NoshowChartCard() {
           fontFamily:"'Pretendard', -apple-system, sans-serif",
           fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
           whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-        }}>일일 노쇼 현황</p>{/* ← [2026-07-23 Phase 1] Figma 문구: 노쇼 현황 → 일일 노쇼 현황 */}
+        }}>노쇼 현황</p>{/* ← [2026-07-23] Figma 문구: '일일' 제거 */}
         {/* ── 날짜 범위 (SmallDateTrigger × 2 + ⎯) — Figma 1:1 ── */}
         {/* ← [2026-07-23 Phase 1] SmallDateTrigger×2 인라인 조립 → DashboardRangeRow 공통 행 (프리셋 pill 한 달/3개월/전체 포함) */}
         <DashboardRangeRow
@@ -2073,7 +2136,7 @@ function BookingTrendsAreaCard() {
           fontWeight:500,                                  // ← Pretendard:Medium
           fontSize:16, lineHeight:1.4, color:'#111', margin:0,
           whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-        }}>일일 예약 추이</p>{/* ← [2026-07-23 Phase 1] Figma 문구: 예약추이 → 일일 예약 추이 */}
+        }}>예약 추이</p>{/* ← [2026-07-23] Figma 문구: '일일' 제거 */}
         {/* ← [2026-07-23 Phase 1] SmallDateTrigger×2 인라인 조립 → DashboardRangeRow 공통 행 (프리셋 pill 한 달/3개월/전체 포함) */}
         <DashboardRangeRow
           from={dateFrom}
@@ -2655,7 +2718,8 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
   //   · rooms / users / onDetail props: Phase 4-10 위젯 구현 시 사용 예정 → 시그니처 보존
 
   // 위젯 ① 승인 대기용 — bookings prop에서 직접 계산 (날짜 필터 없음)
-  const pendingCount = bookings.filter(b => b.status === 'pending' && !b.autoCancelled).length
+  // ← [2026-07-23 버그수정] 기한 초과 pending 제외 (utils/pendingStatus SSOT)
+  const pendingCount = countAwaitingApproval(bookings)
 
   // ═══════════════════════════════════════════════════════════════════════════
   // ← [2026-05-26 신규] 카드 클릭 → DetailDrawer 활성화 (사용자 결정 2026-05-26)
@@ -3837,7 +3901,11 @@ export function AdminApprovals({ bookings, rooms, users, onApprove, onReject, sh
 
   const classify = (b: Booking) => {
     if (b.status === 'pending' && b.autoCancelled)  return 'expired'
-    if (b.status === 'pending' && !b.autoCancelled) return 'pending'
+    // ← [2026-07-23 버그수정] 마감이 지난 pending은 '대기'가 아니라 '기한초과'다.
+    //   기존엔 autoCancelled 플래그만 봤기 때문에, cron이 아직 마킹하지 않은 건이
+    //   대기 탭에 떴다가 tick 후 사라졌다.
+    if (isExpiredPending(b))                        return 'expired'
+    if (isAwaitingApproval(b))                      return 'pending'
     if (b.status === 'confirmed') return 'confirmed'
     if (b.status === 'rejected')  return 'rejected'
     return 'other'

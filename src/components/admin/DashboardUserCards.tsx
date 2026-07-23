@@ -65,6 +65,21 @@ function CardShell({ height, title, from, to, onRange, children }: {
   )
 }
 
+// ─── 랭크 서클 (Figma 2665:8433 — '순위'가 들어가는 카드 공통) ──────────────
+//   [2026-07-23] 부서 예약 순위에만 있던 랭크 숫자를 사용자 예약 순위 / 사용자 누적 노쇼에도 적용.
+//   순위 카드인데 번호가 없으면 몇 위인지 세어야 한다.
+function RankBadge({ rank }: { rank: number }) {
+  return (
+    <div style={{
+      width:16, height:16, flexShrink:0,
+      border:'1px solid #000', borderRadius:999,
+      display:'flex', alignItems:'center', justifyContent:'center',
+    }}>
+      <span style={{ fontFamily:FONT, fontWeight:400, fontSize:8, lineHeight:1.5, color:'#000' }}>{rank}</span>
+    </div>
+  )
+}
+
 // ─── 공통 테이블 헤더 셀 ─────────────────────────────────────────────────────
 function Th({ label, flex, align = 'left', color = '#AEB5C4' }: {
   label: string; flex: number; align?: 'left' | 'right'; color?: string
@@ -119,14 +134,16 @@ export function UserRankingCard({ users }: { users: AppUser[] }) {
       <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
         {/* 헤더행 h33 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, height: 33 }}>
+          <div style={{ width: 16, flexShrink: 0 }} />{/* ← [2026-07-23] 랭크 서클 자리 */}
           <Th label="이름" flex={1} />
           <Th label="부서" flex={1} />
           <Th label="누적 예약 건 수" flex={1} />
         </div>
 
-        {rows.length === 0 ? <EmptyRow height={RANK_ROWS * 34} /> : rows.map(row => (
+        {rows.length === 0 ? <EmptyRow height={RANK_ROWS * 34} /> : rows.map((row, i) => (
           <div key={row.user_id ?? row.name}
             style={{ display: 'flex', alignItems: 'center', gap: 12, height: 34 }}>
+            <RankBadge rank={i + 1} />{/* ← [2026-07-23] 순위 숫자 */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <DashboardUserCell name={row.name} avatarUrl={row.avatarUrl} />
             </div>
@@ -153,7 +170,7 @@ export function UserRankingCard({ users }: { users: AppUser[] }) {
 //    테이블: 헤더행 33 + 데이터행 35 × 5 = 208
 //    컬럼:   이름 / 부서 / 누적 노쇼(StatusBadge-XS 32×19)
 // ════════════════════════════════════════════════════════════════════════════
-const NOSHOW_ROWS = 5
+const NOSHOW_ROWS = 8   // ← [2026-07-23] 5 → 8 (고지 지시)
 
 export function UserNoshowCard({ users }: { users: AppUser[] }) {
   const [dateFrom, setDateFrom] = useState<string>(defaultFrom)
@@ -181,14 +198,16 @@ export function UserNoshowCard({ users }: { users: AppUser[] }) {
       <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
         {/* 헤더행 h33 — '누적 노쇼'만 경고색 (Figma/스크린샷 1:1) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 33 }}>
+          <div style={{ width: 16, flexShrink: 0 }} />{/* ← [2026-07-23] 랭크 서클 자리 */}
           <Th label="이름" flex={1} />
           <Th label="부서" flex={1} />
           <Th label="누적 노쇼" flex={1} color="#DC2626" />
         </div>
 
-        {rows.length === 0 ? <EmptyRow height={NOSHOW_ROWS * 35} /> : rows.map(row => (
+        {rows.length === 0 ? <EmptyRow height={NOSHOW_ROWS * 35} /> : rows.map((row, i) => (
           <div key={row.user_id ?? row.name}
             style={{ display: 'flex', alignItems: 'center', gap: 8, height: 35 }}>
+            <RankBadge rank={i + 1} />{/* ← [2026-07-23] 순위 숫자 */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <DashboardUserCell name={row.name} avatarUrl={row.avatarUrl} />
             </div>
