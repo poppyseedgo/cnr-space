@@ -233,13 +233,18 @@ export function RoomUtilizationByRoomCard({ rooms, onRangeChange }: { rooms: Roo
       flexDirection: 'column',
       alignItems:    'flex-start',
       justifyContent:'space-between',
+      // ← [2026-07-24 #9] 헤더 ↔ 그래프 최소 간격 32px (옆 '예약 많은 회의실'과 동일 값).
+      //   Graph 블록이 flex:1 로 남는 공간을 전부 흡수하는 구조라 space-between 만으로는
+      //   '남는 공간'이 0 이 되어 기간 버튼 바로 아래에 막대가 붙어 버린다.
+      //   gap 은 남는 공간과 무관한 하한이므로 flex:1 과 같이 써야 간격이 보장된다.
+      gap:           32,
       // ← [2026-07-24 #7] 하한 364 → 457 — 옆 '예약 많은 회의실'(Figma 2680:11508)과
       //   같은 행에 놓이므로 하한을 맞춰야 둘 중 하나만 먼저 늘어나는 일이 없다.
       minHeight:     457,
       width:         '100%',
     }}>
-      {/* ── 헤더 (Figma 2662:7845 h51 — 타이틀 22 + gap8 + 날짜행 21) ── */}
-      <div style={{ display:'flex', flexDirection:'column', gap:8, width:'100%' }}>
+      {/* ── 헤더 (Figma 2662:7845 — 타이틀 + gap8 + 날짜행 + 산정 기준) ── */}
+      <div style={{ display:'flex', flexDirection:'column', gap:8, width:'100%', flexShrink:0 }}>
         <p style={{
           fontFamily:FONT, fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
           whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
@@ -248,10 +253,13 @@ export function RoomUtilizationByRoomCard({ rooms, onRangeChange }: { rooms: Roo
           from={dateFrom} to={dateTo}
           onChange={r => { setDateFrom(r.from); setDateTo(r.to) }}
         />
-      </div>
 
-      {/* ── 산정 기준 한 줄 ──────────────────────────────────────────────
-            ★ [2026-07-24 #5] 전체 평균 % 를 뺐다 — 고지 결정.
+        {/* ── 산정 기준 한 줄 ────────────────────────────────────────────
+              ★ [2026-07-24 #9] 헤더 블록 **안**으로 이동.
+                이 문구는 조회 기간에 딸린 캡션(워킹데이 N일)이라 날짜행과 붙어 있어야 하고,
+                바깥 자식으로 두면 카드의 gap 32 가 타이틀↔캡션 사이에도 걸려 헤더가 통째로 벌어진다.
+
+              ★ [2026-07-24 #5] 전체 평균 % 를 뺐다 — 고지 결정.
               옆 '요일별 가동률' 카드와 값이 반드시 같아(같은 overall) 화면에
               같은 숫자가 두 번 뜨는 문제가 있었다. 이 카드는 막대 길이로
               회의실 간 비교를 하는 카드라 기준값이 없어도 읽힌다.
@@ -259,8 +267,7 @@ export function RoomUtilizationByRoomCard({ rooms, onRangeChange }: { rooms: Roo
             ※ 산정 기준 문구는 **남긴다**. 숫자와 함께 지우면, 옆 카드
               '시간대별 예약 분포'의 "운영시간 오전 7시 부터 오후 7시" 표기 때문에
               이 카드도 7~19시 기준으로 오인된다(원래 이 문구를 넣은 이유).
-              워킹데이 수가 남아 있어 이 카드가 어느 기간을 보고 있는지도 드러난다. */}
-      <div style={{ display:'flex', alignItems:'baseline', width:'100%' }}>
+                워킹데이 수가 남아 있어 이 카드가 어느 기간을 보고 있는지도 드러난다. */}
         <span style={{ fontFamily:FONT, fontWeight:400, fontSize:11, lineHeight:1.5, color:'#AEB5C4' }}>
           {loading ? '' : `09–18시 · 점심 제외 (8h) · 워킹데이 ${util.workdays}일`}
         </span>
