@@ -45,6 +45,8 @@ import { AdminSideNav, type AdminTabId } from '../components/layout/AdminSideNav
 import { NotificationSettingsPanel } from '../components/common/NotificationSettingsPanel'
 // ← [2026-07-24] 공지 배너 관리 패널
 import { AnnouncementPanel } from '../components/common/AnnouncementPanel'
+// ← [2026-07-24 Phase 4] 역할 정리용 매트릭스 (사용자 × 역할)
+import { AdminRoleMatrix } from '../components/common/AdminRoleMatrix'
 // ← [2026-07-24] 관리자 권한 Phase 1 — 역할 카탈로그 + 부여 API
 import { ADMIN_ROLES, GRANTABLE_ROLES, NORMAL_ROLES, SUPER_ROLE,
          visibleTabs, roleSummary } from '../data/adminRoles'
@@ -3457,6 +3459,10 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
   const [roleDraft, setRoleDraft] = useState<string[]>([])
   const [roleSaving, setRoleSaving] = useState(false)
   const [roleLog,   setRoleLog]   = useState<RoleGrantLog[]>([])   // ← [2026-07-24 P2] 권한 변경 이력
+  // ← [2026-07-24 P4] 목록 ↔ 권한 매트릭스 전환.
+  //   별도 탭을 만들지 않은 이유: 권한은 '사용자'에 붙는 속성이라 같은 탭 안에서
+  //   보는 방식만 바꾸는 게 맞고, 탭이 늘면 역할 게이트 대상도 같이 늘어난다.
+  const [roleView,  setRoleView]  = useState(false)
   const [iAmSuper,  setIAmSuper]  = useState(false)
 
   const loadRoles = useCallback(async () => {
@@ -3690,6 +3696,13 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14, flexWrap:'wrap', gap:10 }}>
         <div style={{ fontSize:15, fontWeight:600, color:'#111' }}>사용자 관리</div>
         <div style={{ display:'flex', gap:8 }}>
+          {/* ← [2026-07-24 P4] 권한 매트릭스 토글 */}
+          <button className="btn" onClick={() => setRoleView(v => !v)}
+            style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', fontSize:11, borderRadius:8,
+              background: roleView ? '#111' : '#F8FAFC', border: roleView ? 'none' : '1px solid #E2E8F0',
+              color: roleView ? '#fff' : '#374151', fontWeight:600, cursor:'pointer' }}>
+            {roleView ? '사용자 목록' : '권한 매트릭스'}
+          </button>
           <button className="btn" onClick={handleSync} disabled={syncing}
             style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', fontSize:11, borderRadius:8,
               background: syncing ? '#F1F5F9' : '#EFF6FF', border:'1px solid #BFDBFE',
@@ -3921,8 +3934,16 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
         )}
       </div>
 
+      {/* ── 권한 매트릭스 (← [2026-07-24 P4]) ── */}
+      {roleView && (
+        <AdminRoleMatrix
+          users={activeUsers} roleMap={roleMap} canEdit={iAmSuper}
+          showToast={showToast} onSaved={loadRoles}
+        />
+      )}
+
       {/* ── 사용자 목록 ── */}
-      {filter !== 'departed' && (
+      {!roleView && filter !== 'departed' && (
         <div style={{ background:'#fff', borderRadius:16, overflow:'hidden' }}>
           {isMobile ? (
             // 모바일: 카드 리스트
@@ -4066,7 +4087,7 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
       )}
 
       {/* ── 퇴사자 목록 ── */}
-      {filter === 'departed' && (
+      {!roleView && filter === 'departed' && (
         <div style={{ background:'#fff', borderRadius:16, overflow:'hidden' }}>
           {isMobile ? (
             <div>
