@@ -53,12 +53,14 @@ import {
   AsteriskIcon,
   BooksIcon,
   VisitorLogIcon,   // ← [2026-07-10] 방문 기록 메뉴 아이콘
+  BellIcon,         // ← [2026-07-23] 알림 설정 메뉴 아이콘
 } from '../icons/AdminMenuIcons'
 
 // ─── 활성 탭 ID (외부 export — 라우팅용) ────────────────────────────────────
 //   ※ AdminPage.tsx의 TABS 배열·setTab과 동기화. 비활성 메뉴는 여기 포함 안 됨.
 export type AdminTabId = 'dashboard' | 'approvals' | 'bookings' | 'users' | 'rooms' | 'visitors'
-  | 'books'  // ← [2026-07-23] 도서 관리 활성화 (전사 오픈 후 어드민 개설)
+  | 'books'          // ← [2026-07-23] 도서 관리 활성화 (전사 오픈 후 어드민 개설)
+  | 'notifications'  // ← [2026-07-23] 알림 설정 (채널 on/off + 관리자 수신자 지정)
 
 // ─── 메뉴 ID (내부 전용) ─────────────────────────────────────────────────────
 //   · [2026-07-23] 도서 관리가 활성으로 전환되어 비활성은 'resources' 1개만 남았다.
@@ -83,6 +85,8 @@ const MENU_ITEMS: MenuItem[] = [
   { id: 'visitors',  label: '방문 기록',   icon: <VisitorLogIcon   /> },  // ← [2026-07-10] 방문로그 관리
   // ← [2026-07-23] 도서 서비스 전사 오픈에 따라 활성화
   { id: 'books',     label: '도서 관리',   icon: <BooksIcon        /> },
+  // ← [2026-07-23] 알림 설정 — 회의실·도서 전 알림의 채널 on/off 와 관리자 수신자 지정
+  { id: 'notifications', label: '알림 설정', icon: <BellIcon       /> },
   // ── [2026-05-11 Phase 1 신규] 비활성 메뉴 (Figma 542:2227) — 포인터 화면 구현 대기 ──
   { id: 'resources', label: '자원 관리',   icon: <AsteriskIcon     />, disabled: true },
 ]

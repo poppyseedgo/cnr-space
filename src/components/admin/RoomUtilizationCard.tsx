@@ -158,3 +158,118 @@ export function RoomUtilizationCard({ rooms }: { rooms: Room[] }) {
     </div>
   )
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  회의실별 가동률 (Figma 2662:7844, 389.33×364)
+//
+//  [2026-07-23] Figma 본문이 비어 있고 "클로드 추천"만 있어 아래 방침으로 설계했다.
+//
+//  📌 옆 카드 '예약 많은 회의실'과 무엇이 다른가
+//    · 예약 많은 회의실 = **건수** 순위. 30분 회의 10건이 3시간 회의 2건보다 위로 온다.
+//    · 회의실별 가동률  = **시간 점유율**. 실제로 그 방이 얼마나 채워졌는지를 본다.
+//    두 카드가 나란히 놓이므로 시각 언어를 일부러 다르게 했다:
+//    건수 카드는 순위별 회색 그라데이션, 가동률 카드는 **막대 길이 자체가 값**이다.
+//    (그라데이션은 순위를 뜻할 뿐 값이 아니라 가동률에는 부적절하다)
+//
+//  📌 계산은 utils/roomUtilization.calcUtilization().byRoom 을 그대로 쓴다.
+//    요일별 가동률 카드와 **같은 함수**이므로 두 카드의 숫자가 구조적으로 일치한다.
+// ════════════════════════════════════════════════════════════════════════════
+
+const ROOM_ROW_H = 26   // ← Figma '예약 많은 회의실'(2659:7719) 행 높이 25.78과 정렬
+
+export function RoomUtilizationByRoomCard({ rooms }: { rooms: Room[] }) {
+  const [dateFrom, setDateFrom] = useState<string>(defaultFrom)
+  const [dateTo,   setDateTo]   = useState<string>(todayStr)
+  const { data: bookings, loading } = useBookingsByRange(dateFrom, dateTo)
+
+  const util = useMemo(
+    () => calcUtilization(bookings, rooms, dateFrom, dateTo),
+    [bookings, rooms, dateFrom, dateTo]
+  )
+  // 가동률 내림차순 — "어느 방이 포화이고 어느 방이 노는가"가 이 카드의 질문이다
+  const rows = useMemo(
+    () => [...util.byRoom].sort((a, b) => b.util.rate - a.util.rate),
+    [util]
+  )
+
+  const pct = (r: number) => `${Math.round(r * 100)}%`
+
+  return (
+    <div style={{
+      background:    '#fff',
+      borderRadius:  24,
+      padding:       '12px 16px 16px 16px',
+      display:       'flex',
+      flexDirection: 'column',
+      alignItems:    'flex-start',
+      justifyContent:'space-between',
+      height:        364,                       // ← Figma 2662:7844
+      width:         '100%',
+    }}>
+      {/* ── 헤더 (Figma 2662:7845 h51 — 타이틀 22 + gap8 + 날짜행 21) ── */}
+      <div style={{ display:'flex', flexDirection:'column', gap:8, width:'100%' }}>
+        <p style={{
+          fontFamily:FONT, fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
+          whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+        }}>회의실별 가동률</p>
+        <DashboardRangeRow
+          from={dateFrom} to={dateTo}
+          onChange={r => { setDateFrom(r.from); setDateTo(r.to) }}
+        />
+      </div>
+
+      {/* ── 요약 한 줄 — 전체 평균과 산정 기준 ────────────────────────────── */}
+      <div style={{ display:'flex', alignItems:'baseline', gap:8, width:'100%' }}>
+        <span style={{ fontFamily:FONT, fontWeight:400, fontSize:28, lineHeight:1.4, color:'#111' }}>
+          {loading ? '—' : pct(util.overall.rate)}
+        </span>
+        <span style={{ fontFamily:FONT, fontWeight:400, fontSize:11, lineHeight:1.5, color:'#AEB5C4' }}>
+          {loading ? '' : `전체 평균 · 09–18시 점심 제외 · 워킹데이 ${util.workdays}일`}
+        </span>
+      </div>
+
+      {/* ── 회의실별 막대 ────────────────────────────────────────────────
+            막대 폭 = 가동률. 100%면 트랙을 가득 채운다.
+            값이 0인 방도 행을 지우지 않는다 — "안 쓰이는 방"이 곧 정보이기 때문. */}
+      <div style={{ display:'flex', flexDirection:'column', width:'100%' }}>
+        {rows.length === 0 ? (
+          <div style={{
+            padding:'40px 0', textAlign:'center',
+            fontFamily:FONT, fontSize:11, color:'#CBD5E1',
+          }}>{loading ? '로딩 중…' : '회의실 데이터 없음'}</div>
+        ) : rows.map(({ room, util: u }) => (
+          <div key={room.room_id}
+            title={`${room.room_name} · 가동률 ${pct(u.rate)} (점유 ${Math.round(u.usedMin / 60)}시간 / 가용 ${Math.round(u.capMin / 60)}시간)`}
+            style={{
+              position:'relative', width:'100%', height:ROOM_ROW_H,
+              background:'#F6F7FA', overflow:'hidden',
+              display:'flex', alignItems:'center',
+              marginBottom:2,
+            }}>
+            {/* 채움 막대 — 폭이 곧 값 */}
+            <div style={{
+              position:'absolute', left:0, top:0, bottom:0,
+              width:`${Math.min(100, u.rate * 100)}%`,
+              background:'#111',
+              transition:'width 0.4s ease',
+            }} />
+            {/* 라벨 — 막대 위에 얹되, 막대가 짧으면 글자가 안 보이므로 항상 어두운 배경 위 흰색은 쓰지 않는다.
+                대신 mix-blend-mode로 배경 대비를 자동 반전시킨다. */}
+            <span style={{
+              position:'relative', zIndex:1, paddingLeft:12,
+              fontFamily:FONT, fontWeight:400, fontSize:10, lineHeight:1.5,
+              color:'#fff', mixBlendMode:'difference',
+              whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+              flex:1, minWidth:0,
+            }}>{room.room_name}</span>
+            <span style={{
+              position:'relative', zIndex:1, paddingRight:12,
+              fontFamily:FONT, fontWeight:400, fontSize:10, lineHeight:1.5,
+              color:'#fff', mixBlendMode:'difference', flexShrink:0,
+            }}>{loading ? '' : pct(u.rate)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}

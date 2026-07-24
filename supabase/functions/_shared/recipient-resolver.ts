@@ -118,6 +118,11 @@ export interface ResolveInput {
   formerBookerUserId?: string
   // ← [2026-07-20] book_borrower 규칙 시 도서 대여자 user_id 외부 주입
   borrowerUserId?: string
+  /**
+   * ← [2026-07-23] 알림 타입. 관리자 수신자 '지정 명단'(notification_recipients)을
+   *   조회하는 데 쓴다. 넘기지 않으면 지정 명단을 무시하고 기존 규칙대로 동작한다.
+   */
+  notificationType?: string
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -186,6 +191,56 @@ async function fetchAdmins(supabase: SupabaseClient, excludeUserId?: string): Pr
   } catch (e: any) {
     console.warn('[resolver] admins 조회 예외:', e?.message ?? String(e))
     return []
+  }
+}
+
+/**
+ * 관리자 수신자 '지정 명단' 조회 (← [2026-07-23])
+ *
+ * notification_recipients 에 그 타입의 행이 하나라도 있으면 **그 명단만** 수신한다.
+ * 없으면 null 을 돌려 호출부가 기존 규칙(profiles ADMIN / 도서 담당)을 타게 한다.
+ *
+ * ★ 조회 실패 시에도 null 이다 — 설정 테이블 장애가 알림을 멈추게 하면 안 된다.
+ *   (미설정 = 켜짐과 같은 fail-open 원칙)
+ *
+ * ★ 퇴사자는 INNER JOIN + is_active 로 자동 제외된다. 담당자가 퇴사한 채로
+ *   남아 있으면 반송 메일만 쌓이고 아무도 그 사실을 모른다.
+ */
+async function fetchDesignatedRecipients(
+  supabase: SupabaseClient, type?: string, excludeUserId?: string,
+): Promise<Person[] | null> {
+  if (!type) return null
+  try {
+    const { data, error } = await supabase
+      .from('notification_recipients')
+      .select('user_id, profiles!inner ( id, email, name, dept, avatar_url, is_active )')
+      .eq('type', type)
+
+    if (error) {
+      console.warn('[resolver] 지정 수신자 조회 실패 — 기본 규칙으로 진행:', error.message)
+      return null
+    }
+    if (!data || data.length === 0) return null
+
+    const list: Person[] = []
+    for (const r of data as any[]) {
+      const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles
+      if (!p || p.is_active === false) continue
+      if (excludeUserId && p.id === excludeUserId) continue
+      list.push({
+        user_id:    p.id,
+        email:      p.email ?? '',
+        name:       p.name ?? '',
+        dept:       p.dept ?? '',
+        avatar_url: p.avatar_url ?? null,
+      })
+    }
+    // 지정은 있었는데 전원이 퇴사/제외된 경우: 빈 배열을 그대로 돌려준다.
+    // null 로 되돌리면 "3명만" 이라고 설정해 둔 알림이 갑자기 관리자 전원에게 간다.
+    return list
+  } catch (e: any) {
+    console.warn('[resolver] 지정 수신자 조회 예외 — 기본 규칙으로 진행:', e?.message ?? String(e))
+    return null
   }
 }
 
@@ -391,7 +446,8 @@ export async function resolveRecipients(
   supabase: SupabaseClient,
   input: ResolveInput,
 ): Promise<ResolvedRecipients> {
-  const { rule, bookerUserId, bookingId, removedEmails, formerBookerUserId, borrowerUserId } = input
+  const { rule, bookerUserId, bookingId, removedEmails, formerBookerUserId, borrowerUserId,
+          notificationType } = input
 
   // 기본값
   const result: ResolvedRecipients = {
@@ -450,11 +506,12 @@ export async function resolveRecipients(
   //   고치는 순간 "인앱은 오는데 메일은 안 오는" 결함이 생긴다.
   //   owner(대여자)는 별도로 해석한다 — 본문의 '대여자' 행과 인앱 본문에 쓰인다.
   if (rule === 'book_admins') {
-    const [admins, owner] = await Promise.all([
-      fetchBookAdmins(supabase, ownerUserId),   // 대여자 본인이 관리자여도 중복 발송 안 함
+    // ← [2026-07-23] 지정 명단이 있으면 그것이 우선. 없을 때만 도서 담당 권한으로 해석한다.
+    const [designated, owner] = await Promise.all([
+      fetchDesignatedRecipients(supabase, notificationType, ownerUserId),
       fetchBooker(supabase, ownerUserId),
     ])
-    result.admins = admins
+    result.admins = designated ?? await fetchBookAdmins(supabase, ownerUserId)
     result.owner  = owner
     return result
   }
@@ -476,6 +533,14 @@ export async function resolveRecipients(
   result.booker = booker
   result.admins = admins
   result.owner  = booker ?? ownerOnly
+
+  // ← [2026-07-23] 관리자 수신 규칙에 지정 명단이 있으면 대체한다.
+  //   admins_only / booker_attendees_admins 둘 다 해당한다. 예약자·참석자 수신은
+  //   지정 명단과 무관하게 그대로 유지한다 — 그들은 '당사자'이지 '관리자'가 아니다.
+  if (needAdmins) {
+    const designated = await fetchDesignatedRecipients(supabase, notificationType, bookerUserId)
+    if (designated) result.admins = designated
+  }
 
   // 2차: attendees (예약자 이메일 제외)
   if (needAttendees && bookingId) {

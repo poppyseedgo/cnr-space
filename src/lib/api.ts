@@ -2625,3 +2625,95 @@ export async function fetchBookLoanById(
     book: Array.isArray(r.books) ? (r.books[0] ?? null) : (r.books ?? null),
   }
 }
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// [2026-07-23] 알림 설정 — 채널 on/off + 관리자 수신자 지정
+//
+// 설계 원칙
+//   ① 미설정 = 켜짐 (fail-open). 화면도 서버와 같은 규칙으로 읽어야 한다.
+//      행이 없다고 '꺼짐'으로 그리면, 관리자가 "꺼져 있네" 하고 켜는 순간
+//      비로소 enabled=true 행이 생겨 동작은 그대로인데 화면만 바뀐다.
+//   ② 상태 전이는 SECURITY DEFINER RPC 경유 — 클라 직접 UPDATE 금지.
+//   ③ 저장 실패는 조용히 넘기지 않는다. 알림 설정은 "안 왔는데 왜?"의
+//      원인이 되는 자리라, 실패를 숨기면 추적이 불가능해진다.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** notification_settings 한 행 */
+export interface NotificationChannelSetting {
+  type:    string
+  channel: 'email' | 'inapp' | 'teams'
+  enabled: boolean
+}
+
+/** 지정 수신자 한 행 (profiles 조인 결과) */
+export interface NotificationRecipientRow {
+  type:    string
+  user_id: string
+  name:    string
+  email:   string
+  dept:    string | null
+}
+
+/**
+ * 채널 설정 전량 조회
+ *
+ * 반환은 "저장된 행" 뿐이다. 화면은 `설정에 없으면 켜짐`으로 해석해야 한다
+ * (isChannelEnabled 헬퍼 사용).
+ */
+export async function loadNotificationSettings(): Promise<NotificationChannelSetting[]> {
+  const { data, error } = await supabase
+    .from('notification_settings')
+    .select('type, channel, enabled')
+  if (error) throw new Error(error.message)
+  return (data ?? []) as NotificationChannelSetting[]
+}
+
+/** 서버(loadChannelFlags)와 동일한 해석: 행이 없으면 켜짐 */
+export function isChannelEnabled(
+  settings: NotificationChannelSetting[], type: string, channel: 'email' | 'inapp' | 'teams',
+): boolean {
+  const row = settings.find(s => s.type === type && s.channel === channel)
+  return row ? row.enabled : true
+}
+
+/** 채널 on/off 저장 */
+export async function setNotificationChannel(
+  type: string, channel: 'email' | 'inapp' | 'teams', enabled: boolean,
+): Promise<{ ok: boolean; message?: string }> {
+  const { error } = await supabase.rpc('admin_set_notification_channel', {
+    p_type: type, p_channel: channel, p_enabled: enabled,
+  })
+  if (!error) return { ok: true }
+  const m = error.message ?? ''
+  if (m.includes('NOT_ADMIN'))        return { ok: false, message: '알림 설정 권한이 없습니다' }
+  if (m.includes('INVALID_CHANNEL'))  return { ok: false, message: '알 수 없는 채널입니다' }
+  if (m.includes('INVALID_TYPE'))     return { ok: false, message: '알 수 없는 알림 종류입니다' }
+  return { ok: false, message: `저장 실패: ${m}` }
+}
+
+/** 지정 수신자 전량 조회 (타입 무관 — 화면에서 그룹핑) */
+export async function loadNotificationRecipients(): Promise<NotificationRecipientRow[]> {
+  const { data, error } = await supabase.rpc('admin_list_notification_recipients')
+  if (error) throw new Error(error.message)
+  return (data ?? []) as NotificationRecipientRow[]
+}
+
+/**
+ * 지정 수신자 저장 — **전체 교체**
+ *
+ * 빈 배열을 넘기면 지정이 해제되어 기존 규칙(관리자 전원 / 도서 담당)으로
+ * 되돌아간다. "아무에게도 안 보냄"이 아니다 — 그건 채널 토글로 처리한다.
+ */
+export async function setNotificationRecipients(
+  type: string, userIds: string[],
+): Promise<{ ok: boolean; saved?: number; message?: string }> {
+  const { data, error } = await supabase.rpc('admin_set_notification_recipients', {
+    p_type: type, p_user_ids: userIds,
+  })
+  if (!error) return { ok: true, saved: Number(data) || 0 }
+  const m = error.message ?? ''
+  if (m.includes('NOT_ADMIN'))    return { ok: false, message: '알림 설정 권한이 없습니다' }
+  if (m.includes('INVALID_TYPE')) return { ok: false, message: '알 수 없는 알림 종류입니다' }
+  return { ok: false, message: `저장 실패: ${m}` }
+}

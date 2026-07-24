@@ -40,6 +40,8 @@ import { BookingListTable } from '../components/common/BookingListTable'
 import { BookingStatusBadge } from '../components/common/BookingStatusBadge'  // ← [2026-05-28] DetailDrawer 테이블 인라인 status 판정 → 공통 컴포넌트 교체용
 // ← [2026-05-06 Admin Phase A] 좌측 사이드 네비게이션 컴포넌트 신설 (Figma node 451:3522)
 import { AdminSideNav, type AdminTabId } from '../components/layout/AdminSideNav'
+// ← [2026-07-23] 알림 설정 패널 — 알림 종류×채널 on/off + 관리자 수신자 지정
+import { NotificationSettingsPanel } from '../components/common/NotificationSettingsPanel'
 // ← [2026-05-06 Admin Phase C] 승인 관리 테이블 컴포넌트 신설 (Figma node 451:3534, Phase B 공통 컴포넌트 사용)
 import { AdminApprovalTable } from '../components/common/AdminApprovalTable'
 import { VisitorLogPanel } from '../components/common/VisitorLogPanel'  // ← [2026-07-10] 방문로그 관리 패널
@@ -66,7 +68,7 @@ import { DashboardRangeRow, SmallDateTrigger, RANGE_PRESETS_RECENT } from '../co
 import { UserRankingCard, UserNoshowCard } from '../components/admin/DashboardUserCards'
 import { MeetingPurposeCard } from '../components/admin/MeetingPurposeCard'      // ← [2026-07-23 Phase 3] 위젯 ⑨
 import { DashboardUserCell } from '../components/admin/DashboardUserCell'         // ← [2026-07-23] 사용자 표시 공통 셀
-import { RoomUtilizationCard } from '../components/admin/RoomUtilizationCard'     // ← [2026-07-23] 요일별 가동률 (Figma 2662:7844)
+import { RoomUtilizationCard, RoomUtilizationByRoomCard } from '../components/admin/RoomUtilizationCard'  // ← [2026-07-23] 요일별 가동률 + 회의실별 가동률
 import { aggregatePurposes, aggregatePurposeByDept, classifyPurpose, PURPOSE_DEFS, type PurposeCode } from '../utils/meetingPurpose'  // ← [2026-07-23] 분류·집계 SSOT (DetailDrawer 공용) + 드릴다운 판정
 import { useBookingsByRange } from '../components/admin/useBookingsByRange'
 import { aggregateUsers } from '../utils/dashboardAgg'
@@ -782,7 +784,7 @@ function AggTable({ rows, cols, onExport, onRowClick, onHeaderClick, activeSortK
 // ← [2026-05-06 Admin Phase C] currentUserId/currentUserEmail 추가 — AdminApprovalTable 내 BookingStatusBadge 판정용
 // ← [2026-05-06 사이드 sticky 핫픽스] headerHeight 추가 — 사이드 네비 fixed top 위치 계산용
 export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject, onForceCancel, onDetail, currentUserId = '', currentUserEmail = '', headerHeight = 0 }) {
-  const TABS = ['dashboard','bookings','approvals','rooms','users','visitors','books']  // ← [2026-07-10] visitors / [2026-07-23] books(도서 관리) 추가
+  const TABS = ['dashboard','bookings','approvals','rooms','users','visitors','books','notifications']  // ← [2026-07-10] visitors / [2026-07-23] books(도서 관리) + notifications(알림 설정) 추가
   const getTabFromHash = () => {
     const hash = window.location.hash.replace('#', '')
     if (hash.startsWith('admin-booking-')) return 'approvals'  // 딥링크: 승인 관리 탭으로
@@ -901,6 +903,11 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
             LibraryPage(사용자 화면)의 관리 기능은 그대로 두고, 여기서는 같은
             모달·API·판정 기준을 재사용해 운영자 관점의 테이블/통계를 제공한다. */}
       {activeTab==='books'     && <BookAdminPanel users={users} currentUserId={currentUserId} showToast={showToast} isMobile={isMobile}/>}
+      {/* ← [2026-07-23] 알림 설정 — 알림 29종 × 채널(메일/인앱/Teams) on/off + 관리자 수신자 지정.
+            발송 '정의'(문구·수신자 규칙·CTA)는 Edge Function 의 POLICIES 가 그대로 SSOT 이고,
+            이 화면은 "보낼지 / 누구에게" 라는 운영 데이터(notification_settings·
+            notification_recipients)만 다룬다. 문구를 여기서 고치는 화면이 아니다. */}
+      {activeTab==='notifications' && <NotificationSettingsPanel users={users} showToast={showToast} isMobile={isMobile}/>}
         </div>
       </div>
     </>
@@ -2859,7 +2866,8 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
              Row2 3-col 389×400 : ③사용자예약순위 ④일일예약추이 ⑤부서예약순위   ← [2026-07-23] ④⑤ 교환
              Row3 3-col 389×400 : ⑥사용자누적노쇼 ⑦일일노쇼현황 ⑧회의실노쇼현황  ← [2026-07-23] ⑥⑦ 교환
              Row4 1-col 1200    : ⑨회의실사용목적AI분석 (풀폭 — 스택바 + 10분류 표)  ← [2026-07-23] 592→풀폭
-             Row5 3-col 389×364 : ⑩예약많은회의실 ⑪요일별가동률[신규] ⑫시간대별예약분포  ← [2026-07-23]
+             Row5 3-col 389×364 : ⑩예약많은회의실 ⑪회의실별가동률[신규] ⑫요일별가동률   ← [2026-07-23]
+             Row6 1-col 1200    : ⑬시간대별예약분포 (풀폭)                            ← [2026-07-23]
 
            · 신규 위젯 3종(③⑦⑨)은 Phase 2·3에서 구현 — 현재는 DashboardPlaceholderCard로 자리만 확보.
              자리를 비워두지 않는 이유: 그리드 컬럼 수가 달라지면 나머지 카드 폭이 전부 틀어져
@@ -2940,20 +2948,32 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
         </div>
       </div>
 
-      {/* ── Row 5: ⑩ 예약 많은 회의실 / ⑪ 요일별 가동률 / ⑫ 시간대별 예약 분포 (3-col 389×364) ──
-            ← [2026-07-23] Figma 갱신: 2-col → 3-col, 가운데에 요일별 가동률 신규 카드 */}
+      {/* ── Row 5: ⑩ 예약 많은 회의실 / ⑪ 회의실별 가동률 / ⑫ 요일별 가동률 (3-col 389×364) ──
+            ← [2026-07-23] Figma 갱신: 회의실별 가동률 카드(2662:7844) 신설로 가운데 진입,
+              시간대별 예약 분포는 아래 Row6 풀폭으로 이동.
+            ※ ⑩과 ⑪은 나란히 놓이지만 서로 다른 질문에 답한다 —
+              ⑩ '몇 건 잡혔나(건수)' / ⑪ '얼마나 채워졌나(시간 점유율)' */}
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
         {/* ⑩ 예약 많은 회의실 → rooms 통계 (confirmed desc — 동작 유지) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'confirmed', sortAsc: false })}>
           <RoomRankingCard rooms={rooms} />
         </div>
-        {/* ⑪ 요일별 가동률 [2026-07-23 신규] — 클릭 시 회의실별 가동률(rooms 드로어)로 이동 */}
+        {/* ⑪ 회의실별 가동률 [2026-07-23 신규] */}
+        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'confirmed', sortAsc: false })}>
+          <RoomUtilizationByRoomCard rooms={rooms} />
+        </div>
+        {/* ⑫ 요일별 가동률 */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'confirmed', sortAsc: false })}>
           <RoomUtilizationCard rooms={rooms} />
         </div>
-        {/* ⑫ 시간대별 예약 분포 → hours 통계 (본문 차트는 고지 지시로 현행 유지) */}
+      </div>
+
+      {/* ── Row 6: ⑬ 시간대별 예약 분포 (1200 풀폭) ──
+            ← [2026-07-23] Figma 갱신으로 Row5 3-col에서 빠져 단독 풀폭으로 이동 */}
+      <div className="grid gap-4 grid-cols-1">
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'hours' })}>
           <HourlyDistributionCard />
