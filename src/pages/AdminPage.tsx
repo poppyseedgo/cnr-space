@@ -453,6 +453,12 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
    *   · 표 마크업은 BookingTable 이 소유한다. 컬럼 순서를 호출부가 조립하면
    *     화면마다 순서가 갈라지므로, 여기서는 '생성일을 켤지'만 정한다.
    */
+  /** CSV 파일명용 경로 라벨 — 브레드크럼과 같은 조립 규칙 */
+  const csvScopeLabel = [
+    type === 'purpose' && purposeDrill ? PURPOSE_DEFS.find(d => d.code === purposeDrill)?.label : null,
+    drill?.label,
+  ].filter(Boolean).join('_') || DETAIL_META[type].title
+
   const renderBookingList = (source: Booking[]) => {
     // ── 상태 분포 ────────────────────────────────────────────────────────
     //   비율의 분모는 반드시 '필터 전 전체'다. 필터된 목록을 분모로 쓰면
@@ -512,7 +518,9 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
                       gap:12, flexWrap:'wrap', marginBottom:16 }}>
           <DrawerStatChips chips={chips} activeKey={statusFilter}
             onPick={k => { setStatusFilter(k); setPage(1) }} />
-          <DrawerCsvButton onClick={() => exportCSV(csvRows, `${drill?.label ?? DETAIL_META[type].title}_${dateFrom}_${dateTo}`)} />
+          {/* ← [2026-07-24 #10] 파일명은 경로 전체(목적_부서). drill.label 만 쓰면
+                '부서'만 남아 어떤 목적의 부서인지 알 수 없는 파일이 된다 */}
+          <DrawerCsvButton onClick={() => exportCSV(csvRows, `${csvScopeLabel}_${dateFrom}_${dateTo}`)} />
         </div>
 
         <BookingTable
@@ -582,15 +590,19 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
           <>
             {/* ← [2026-07-24] 인라인 브레드크럼 제거 — DrawerShell 헤더가 담당.
                   안내 문구만 남긴다(행을 눌러 더 들어갈 수 있다는 사실은 표 근처에 있어야 한다) */}
-            {/* ← [2026-07-24 #8] 회색 배경(#F1F5F9) 위라 #94A3B8 은 거의 안 보였다 */}
+            {/* ← [2026-07-24 #10] 앞의 '{def.label} ·' 제거 — 목적명은 헤더 브레드크럼이 말한다 */}
             <div style={{ fontSize:13, color:'#64748B', marginBottom:12 }}>
-              {def.label} · 부서별 · 행 클릭 시 개별 예약
+              부서별 · 행 클릭 시 개별 예약
             </div>
             <AggTable rows={purposeDeptAgg}
               cols={[{k:'dept',l:'부서'},{k:'count',l:'건 수'},{k:'ratio',l:'비중'},{k:'noshow',l:'노쇼 (율)'},{k:'userCancel',l:'사용자 취소 (율)'}]}
               onRowClick={row => {
                 setDrill({
-                  label: `${def.label} · ${row.dept}`,
+                  // ← [2026-07-24 #10] '목적 · 부서' → '부서'.
+                  //   상위 목적은 이미 브레드크럼 첫 조각이 말하고 있어서,
+                  //   여기에도 붙이면 헤더에 "부서별 회의  부서별 회의 · Medical" 로 겹친다.
+                  //   drill.label 은 **그 단계의 이름만** 담는다(경로 조립은 크럼이 담당).
+                  label: row.dept,
                   fn: (b) => classifyPurpose(b.title).code === purposeDrill
                           && (b.dept?.trim() || '(부서 미상)') === row.dept,
                 })
@@ -785,6 +797,18 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
   //   "대기 2건"이 잘못 표시됐다가 몇 초 뒤 사라지는 현상을 만들었다.
   const pendingCount = useMemo(() => countAwaitingApproval(bookings as Booking[]), [bookings])
 
+  /**
+   * 탭별 최대 폭 (← [2026-07-24 #10] 고지 지시)
+   *
+   *   대시보드만 1920, 나머지 탭은 1400.
+   *   대시보드는 카드가 3열까지 늘어나므로 넓을수록 이득이지만, 예약·승인·사용자 탭은
+   *   컬럼 수가 고정된 표라 폭을 늘리면 셀만 늘어나 시선 이동 거리가 길어진다.
+   *
+   *   ★ 사이드 네비의 left 계산과 **반드시 같은 값**이어야 한다.
+   *     둘이 다르면 네비와 본문의 좌측 정렬이 어긋난다(이전에 1400/1920 이 갈렸던 자리).
+   */
+  const shellMaxW = activeTab === 'dashboard' ? 1920 : 1400
+
   // ── 사이드 네비 배치 (← [2026-07-24 #4] iPad 세로 대응) ──────────────────
   //
   //   데스크톱은 사이드를 body 에 fixed 로 띄우고 본문에 paddingLeft 244 를 준다.
@@ -818,10 +842,10 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
           position: 'fixed',
           top:      headerHeight + 32,                    // ← 헤더 높이 + 여유 32
           // viewport 1400 이상: (vw - 1400)/2 + 24 padding / 1400 미만: 24
-          // → max((100vw - 1920px) / 2, 0px) + 24px (CSS calc + max)
-          //   ← [2026-07-24] 1400 → 1920. 카드가 3열일 때 한 장이 389px 밖에 안 돼
-          //     9행 표와 히트맵이 답답했다. 넓은 모니터에서는 남는 폭을 실제로 쓰게 한다.
-          left:     'calc(max((100vw - 1920px) / 2, 0px) + 24px)',
+          // → max((100vw - {shellMaxW}px) / 2, 0px) + 24px (CSS calc + max)
+          //   ← [2026-07-24 #10] 고정 1920 → 탭별 폭(shellMaxW)에 연동.
+          //     대시보드 1920 / 그 외 1400. 본문 maxWidth 와 같은 값을 써야 정렬이 맞는다.
+          left:     `calc(max((100vw - ${shellMaxW}px) / 2, 0px) + 24px)`,
           width:    160,                                   // ← Figma: 160
           zIndex:   50,                                    // ← 콘텐츠 위에 표시 (헤더 100보다 낮게)
         }}>
@@ -838,7 +862,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
           · 데스크톱: paddingLeft 244 = 24(좌) + 160(사이드) + 60(gap) — 사이드 자리 확보
           · 모바일: 일반 padding 12, 사이드는 콘텐츠 위 인라인 */}
       <div style={{
-        maxWidth: 1920,   // ← [2026-07-24] 1400 → 1920 (사이드 네비 left 계산과 같은 값이어야 정렬이 맞는다)
+        maxWidth: shellMaxW,   // ← [2026-07-24 #10] 대시보드 1920 / 그 외 1400 (네비 left 와 동일 값)
         margin:   '0 auto',
         // ← [2026-07-24] 태블릿은 사이드가 인라인이므로 좌측 244 여백이 필요 없다
         padding:  isMobile ? '16px 12px' : navInline ? '24px 20px' : '32px 24px 32px 244px',

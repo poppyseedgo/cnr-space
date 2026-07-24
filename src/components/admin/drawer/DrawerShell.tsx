@@ -35,7 +35,7 @@
  *   본문          p32
  */
 
-import { IcoClose, IcoArrowLeftAlt } from './DrawerIcons'
+import { IcoClose, IcoArrowLeftAlt, IcoChevronForward } from './DrawerIcons'
 
 /** 드로어 공통 토큰 — 색·치수를 문자열로 흩뿌리지 않기 위한 SSOT */
 export const DT = {
@@ -148,22 +148,38 @@ export function DrawerShell({
                   </span>
                 </button>
               )}
-              {/* 경로 — 마지막 조각이 현재 위치. 앞 조각은 클릭해 되돌아간다 */}
+              {/* ── 경로 ─────────────────────────────────────────────────
+                    ★ [2026-07-24 #10] 마지막 조각(현재 위치)을 강조한다.
+
+                      전부 같은 파란색이면 "어디까지 들어왔는지"가 안 읽힌다.
+                      지금 보고 있는 표가 무엇인지가 이 화면에서 가장 중요한 정보이므로,
+                      마지막 조각만 **진한 검정 + SemiBold**로 두고 앞 조각은 파란 링크로 남긴다.
+                      색만으로 링크/현재를 구분할 수 있어 밑줄도 링크에만 붙인다.
+                      조각 사이에는 chevron_forward(Figma 아이콘)로 방향을 준다. */}
               {crumbs.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
-                  {crumbs.map((c, i) => (
-                    <button key={i} className="btn"
-                      onClick={c.onClick}
-                      disabled={!c.onClick}
-                      style={{
-                        fontFamily: DT.font, fontWeight: 500, fontSize: 16, lineHeight: '16px',
-                        color: DT.navLink, background: 'transparent', border: 'none', padding: 0,
-                        cursor: c.onClick ? 'pointer' : 'default',
-                        textDecoration: c.onClick ? 'underline' : 'none',
-                        textUnderlineOffset: 3,
-                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 320,
-                      }}>{c.label}</button>
-                  ))}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flexWrap: 'wrap' }}>
+                  {crumbs.map((c, i) => {
+                    const isLast = i === crumbs.length - 1
+                    return (
+                      <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                        {i > 0 && <IcoChevronForward size={16} color="#A9B9D5" />}
+                        <button className="btn"
+                          onClick={c.onClick}
+                          disabled={!c.onClick}
+                          style={{
+                            fontFamily: DT.font,
+                            fontWeight: isLast ? 600 : 500,
+                            fontSize: 16, lineHeight: '16px',
+                            color: isLast ? DT.title : DT.navLink,
+                            background: 'transparent', border: 'none', padding: 0,
+                            cursor: c.onClick ? 'pointer' : 'default',
+                            textDecoration: c.onClick ? 'underline' : 'none',
+                            textUnderlineOffset: 3,
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 320,
+                          }}>{c.label}</button>
+                      </span>
+                    )
+                  })}
                 </div>
               )}
             </div>
