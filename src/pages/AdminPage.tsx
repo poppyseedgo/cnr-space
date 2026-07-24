@@ -1705,7 +1705,13 @@ function RoomRankingCard({ rooms, onRangeChange }: { rooms: Room[] } & CardRange
       display:       'flex',
       flexDirection: 'column',
       alignItems:    'flex-start',
-      justifyContent:'space-between',                // ← Figma: 헤더↔리스트 양 끝 분배 (no gap)
+      justifyContent:'space-between',                // ← Figma: 헤더↔리스트 양 끝 분배
+      // ← [2026-07-24 #2] 헤더(기간 버튼) ↔ 리스트 최소 간격 32px.
+      //   space-between 은 '남는 공간'을 나눠줄 뿐이라, 카드 높이가 내용과 같아지는
+      //   순간 간격이 0이 된다. 고정 504 를 걷어내면서 실제로 그렇게 됐다.
+      //   gap 은 남는 공간과 무관한 **하한**이므로 space-between 과 같이 써야
+      //   "붙지도 않고, 남으면 벌어지는" 동작이 된다.
+      gap:           32,
       // ← [2026-07-24] 고정 504 → 최소 364.
       //   Row5 세 카드가 각자 고정 높이를 들고 있어 이 카드만 길게 보였다.
       //   높이를 감싸는 그리드 셀에 맡기고(아래 cardWrapStretch), 여기서는 하한만 준다.
@@ -2956,8 +2962,8 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
              Row1 2-col 592×367 : ①승인대기 ②최근생성된예약   ← [2026-07-23] 342→367
              Row2 3-col 389×400 : ③사용자예약순위 ④일일예약추이 ⑤부서예약순위   ← [2026-07-23] ④⑤ 교환
              Row3 3-col 389×400 : ⑥사용자누적노쇼 ⑦일일노쇼현황 ⑧회의실노쇼현황  ← [2026-07-23] ⑥⑦ 교환
-             Row4 1-col 1200    : ⑨회의실사용목적AI분석 (풀폭 — 스택바 + 10분류 표)  ← [2026-07-23] 592→풀폭
-             Row5 3-col 389×364 : ⑩예약많은회의실 ⑪회의실별가동률[신규] ⑫요일별가동률   ← [2026-07-23]
+             Row4 3-col 389×364 : ⑨예약많은회의실 ⑩회의실별가동률 ⑪요일별가동률       ← [2026-07-24] Row5에서 올라옴
+             Row5 1-col 1200    : ⑫회의실사용목적AI분석 (풀폭 — 스택바 + 10분류 표)  ← [2026-07-24] Row4에서 내려감
              Row6 1-col 1200    : ⑬시간대별예약분포 (풀폭)                            ← [2026-07-23]
 
            · 신규 위젯 3종(③⑦⑨)은 Phase 2·3에서 구현 — 현재는 DashboardPlaceholderCard로 자리만 확보.
@@ -3027,7 +3033,34 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
         </div>
       </div>
 
-      {/* ── Row 4: ⑨ 회의실 사용 목적 AI 분석 (1200 풀폭) ──
+      {/* ── Row 4: ⑨ 예약 많은 회의실 / ⑩ 회의실별 가동률 / ⑪ 요일별 가동률 (3-col) ──
+            ← [2026-07-24 #2] 고지 지시로 '회의실 사용 목적 AI 분석' 과 위치 교환.
+              회의실 3종(건수·가동률)이 같은 대상을 다른 각도로 보는 묶음이라 위로 올리고,
+              목적 분석은 성격이 다른 단독 분석이라 아래로 내린다.
+            ※ ⑨와 ⑩은 나란히 놓이지만 서로 다른 질문에 답한다 —
+              ⑨ '몇 건 잡혔나(건수)' / ⑩ '얼마나 채워졌나(시간 점유율)' */}
+      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
+        {/* ⑨ 예약 많은 회의실 → rooms 통계 · 건수 desc 진입 */}
+        <div style={cardWrapStretch} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'confirmed', sortAsc: false, ...rangeOf('roomRank') })}>
+          <RoomRankingCard rooms={rooms} onRangeChange={reportRange('roomRank')} />
+        </div>
+        {/* ⑩ 회의실별 가동률 → 같은 표를 열되 ★가동률 desc 로 진입 (← [2026-07-24])
+              카드가 답하는 질문이 "얼마나 채워졌나"이므로 드릴다운도 그 순서여야 한다.
+              기존엔 세 카드가 모두 건수 desc 로 들어가 "같은 화면"으로 보였다. */}
+        <div style={cardWrapStretch} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'util', sortAsc: false, ...rangeOf('utilRoom') })}>
+          <RoomUtilizationByRoomCard rooms={rooms} onRangeChange={reportRange('utilRoom')} />
+        </div>
+        {/* ⑪ 요일별 가동률 → 회의실별 가동률과 같은 계산이므로 동일하게 가동률 desc 진입 */}
+        <div style={cardWrapStretch} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'util', sortAsc: false, ...rangeOf('utilWeekday') })}>
+          <RoomUtilizationCard rooms={rooms} onRangeChange={reportRange('utilWeekday')} />
+        </div>
+      </div>
+
+      {/* ── Row 5: ⑫ 회의실 사용 목적 AI 분석 (1200 풀폭) ──
+            ← [2026-07-24 #2] Row4 ↔ Row5 위치 교환 (고지 지시).
             ← [2026-07-23] Figma 갱신: 592 2-col → 풀폭 1행 단독.
               10분류 스택 바 + 10행 표가 592폭에서는 라벨이 전부 잘린다. */}
       <div className="grid gap-4 grid-cols-1">
@@ -3038,31 +3071,6 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
             onPickPurpose={(code) => setCardDrawer({ type: 'purpose', initialPurpose: code, ...rangeOf('purpose') })}
             onRangeChange={reportRange('purpose')}
           />
-        </div>
-      </div>
-
-      {/* ── Row 5: ⑩ 예약 많은 회의실 / ⑪ 회의실별 가동률 / ⑫ 요일별 가동률 (3-col 389×364) ──
-            ← [2026-07-23] Figma 갱신: 회의실별 가동률 카드(2662:7844) 신설로 가운데 진입,
-              시간대별 예약 분포는 아래 Row6 풀폭으로 이동.
-            ※ ⑩과 ⑪은 나란히 놓이지만 서로 다른 질문에 답한다 —
-              ⑩ '몇 건 잡혔나(건수)' / ⑪ '얼마나 채워졌나(시간 점유율)' */}
-      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
-        {/* ⑩ 예약 많은 회의실 → rooms 통계 · 건수 desc 진입 */}
-        <div style={cardWrapStretch} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'confirmed', sortAsc: false, ...rangeOf('roomRank') })}>
-          <RoomRankingCard rooms={rooms} onRangeChange={reportRange('roomRank')} />
-        </div>
-        {/* ⑪ 회의실별 가동률 → 같은 표를 열되 ★가동률 desc 로 진입 (← [2026-07-24])
-              카드가 답하는 질문이 "얼마나 채워졌나"이므로 드릴다운도 그 순서여야 한다.
-              기존엔 세 카드가 모두 건수 desc 로 들어가 "같은 화면"으로 보였다. */}
-        <div style={cardWrapStretch} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'util', sortAsc: false, ...rangeOf('utilRoom') })}>
-          <RoomUtilizationByRoomCard rooms={rooms} onRangeChange={reportRange('utilRoom')} />
-        </div>
-        {/* ⑫ 요일별 가동률 → 회의실별 가동률과 같은 계산이므로 동일하게 가동률 desc 진입 */}
-        <div style={cardWrapStretch} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'util', sortAsc: false, ...rangeOf('utilWeekday') })}>
-          <RoomUtilizationCard rooms={rooms} onRangeChange={reportRange('utilWeekday')} />
         </div>
       </div>
 
