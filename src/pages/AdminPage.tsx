@@ -43,6 +43,8 @@ import { useBreakpoint } from '../hooks/useBreakpoint'   // ← [2026-07-24] 대
 import { AdminSideNav, type AdminTabId } from '../components/layout/AdminSideNav'
 // ← [2026-07-23] 알림 설정 패널 — 알림 종류×채널 on/off + 관리자 수신자 지정
 import { NotificationSettingsPanel } from '../components/common/NotificationSettingsPanel'
+// ← [2026-07-24] 공지 배너 관리 패널
+import { AnnouncementPanel } from '../components/common/AnnouncementPanel'
 // ← [2026-05-06 Admin Phase C] 승인 관리 테이블 컴포넌트 신설 (Figma node 451:3534, Phase B 공통 컴포넌트 사용)
 import { AdminApprovalTable } from '../components/common/AdminApprovalTable'
 import { VisitorLogPanel } from '../components/common/VisitorLogPanel'  // ← [2026-07-10] 방문로그 관리 패널
@@ -753,7 +755,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
 // ← [2026-05-06 Admin Phase C] currentUserId/currentUserEmail 추가 — AdminApprovalTable 내 BookingStatusBadge 판정용
 // ← [2026-05-06 사이드 sticky 핫픽스] headerHeight 추가 — 사이드 네비 fixed top 위치 계산용
 export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject, onForceCancel, onDetail, currentUserId = '', currentUserEmail = '', headerHeight = 0 }) {
-  const TABS = ['dashboard','bookings','approvals','rooms','users','visitors','books','notifications']  // ← [2026-07-10] visitors / [2026-07-23] books(도서 관리) + notifications(알림 설정) 추가
+  const TABS = ['dashboard','bookings','approvals','rooms','users','visitors','books','notifications','notices']  // ← [2026-07-10] visitors / [2026-07-23] books(도서 관리) + notifications(알림 설정) 추가
   const getTabFromHash = () => {
     const hash = window.location.hash.replace('#', '')
     if (hash.startsWith('admin-booking-')) return 'approvals'  // 딥링크: 승인 관리 탭으로
@@ -901,6 +903,10 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
             이 화면은 "보낼지 / 누구에게" 라는 운영 데이터(notification_settings·
             notification_recipients)만 다룬다. 문구를 여기서 고치는 화면이 아니다. */}
       {activeTab==='notifications' && <NotificationSettingsPanel users={users} showToast={showToast} isMobile={isMobile}/>}
+      {/* ← [2026-07-24] 공지 배너 — 헤더 상단 한 줄 배너의 내용·색·게시기간 관리.
+            데이터가 App.tsx 하드코딩(MOCK_ANNOUNCEMENT)이라 공지를 바꾸려면 배포가 필요했고,
+            게시 기간이 없어 5/12 핫픽스 안내가 두 달 넘게 떠 있던 자리다. */}
+      {activeTab==='notices' && <AnnouncementPanel showToast={showToast} isMobile={isMobile}/>}
         </div>
       </div>
     </>

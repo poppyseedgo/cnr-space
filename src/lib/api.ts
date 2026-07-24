@@ -2717,3 +2717,106 @@ export async function setNotificationRecipients(
   if (m.includes('INVALID_TYPE')) return { ok: false, message: '알 수 없는 알림 종류입니다' }
   return { ok: false, message: `저장 실패: ${m}` }
 }
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// [2026-07-24] 헤더 공지 배너
+//
+//   NoticeBar 데이터가 App.tsx 의 하드코딩 상수(MOCK_ANNOUNCEMENT)였다.
+//   공지를 바꾸려면 배포가 필요했고, 게시 기간이 없어 5/12 핫픽스 안내가
+//   두 달 넘게 떠 있었다. DB 로 옮기고 기간이 지나면 자동으로 내려가게 한다.
+//
+//   ★ "지금 보여줄 공지인가" 판정은 **RLS 가 한다**(20260729_announcements.sql).
+//     프론트에서 다시 거르지 않는다 — 조건이 두 곳에 생기면 한쪽만 고쳐져
+//     기간이 끝난 공지가 어딘가에서 계속 보인다.
+// ═════════════════════════════════════════════════════════════════════════════
+
+export interface Announcement {
+  id:         string
+  message:    string
+  bg_color:   string
+  text_color: string
+  starts_at:  string
+  ends_at:    string
+  is_active:  boolean
+  created_at?: string
+}
+
+/**
+ * 지금 게시 중인 공지 1건 (없으면 null)
+ *
+ * 기간이 겹치는 공지가 여럿이면 **최근 시작한 것**을 보여준다.
+ * 배너는 한 줄뿐이라 여러 개를 동시에 띄울 수 없고, 나중에 등록한 공지가
+ * 더 최신 상황을 담고 있을 가능성이 높다.
+ */
+export async function loadActiveAnnouncement(): Promise<Announcement | null> {
+  if (!isSupabaseEnabled) return null
+  const { data, error } = await supabase
+    .from('announcements')
+    .select('id, message, bg_color, text_color, starts_at, ends_at, is_active')
+    .eq('is_active', true)
+    .order('starts_at', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+  if (error) { console.warn('[api] 공지 조회 실패:', error.message); return null }
+  return (data?.[0] as Announcement) ?? null
+}
+
+/** 관리자 — 전체 목록 (지난 공지 포함). RLS 가 관리자에게만 전체를 준다 */
+export async function loadAllAnnouncements(): Promise<Announcement[]> {
+  const { data, error } = await supabase
+    .from('announcements')
+    .select('id, message, bg_color, text_color, starts_at, ends_at, is_active, created_at')
+    .order('starts_at', { ascending: false })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as Announcement[]
+}
+
+export interface AnnouncementInput {
+  /** null = 새 공지 */
+  id:         string | null
+  message:    string
+  bg_color:   string
+  text_color: string
+  /** KST 하루 단위 — 화면에서 'YYYY-MM-DD' 를 받아 경계를 붙여 보낸다 */
+  starts_at:  string
+  ends_at:    string
+  is_active:  boolean
+}
+
+/** 저장 (생성/수정 공용) — 상태 전이는 SECURITY DEFINER RPC 경유 */
+export async function saveAnnouncement(
+  input: AnnouncementInput,
+): Promise<{ ok: boolean; row?: Announcement; message?: string }> {
+  const { data, error } = await supabase.rpc('admin_save_announcement', {
+    p_id:         input.id,
+    p_message:    input.message,
+    p_bg_color:   input.bg_color,
+    p_text_color: input.text_color,
+    p_starts_at:  input.starts_at,
+    p_ends_at:    input.ends_at,
+    p_is_active:  input.is_active,
+  })
+  if (!error) return { ok: true, row: data as Announcement }
+  const m = error.message ?? ''
+  if (m.includes('NOT_ADMIN'))       return { ok: false, message: '공지 관리 권한이 없습니다' }
+  if (m.includes('EMPTY_MESSAGE'))   return { ok: false, message: '공지 내용을 입력하세요' }
+  if (m.includes('INVALID_PERIOD'))  return { ok: false, message: '종료일이 시작일보다 빠릅니다' }
+  if (m.includes('INVALID_COLOR'))   return { ok: false, message: '색상은 #RRGGBB 형식이어야 합니다' }
+  if (m.includes('ANNOUNCEMENT_NOT_FOUND')) return { ok: false, message: '이미 삭제된 공지입니다' }
+  return { ok: false, message: `저장 실패: ${m}` }
+}
+
+export async function deleteAnnouncement(id: string): Promise<{ ok: boolean; message?: string }> {
+  const { error } = await supabase.rpc('admin_delete_announcement', { p_id: id })
+  if (!error) return { ok: true }
+  if ((error.message ?? '').includes('NOT_ADMIN')) return { ok: false, message: '공지 관리 권한이 없습니다' }
+  return { ok: false, message: `삭제 실패: ${error.message}` }
+}
+
+/** 'YYYY-MM-DD' → KST 하루 경계 timestamptz 문자열 */
+export const kstDayStart = (d: string) => `${d}T00:00:00+09:00`
+export const kstDayEnd   = (d: string) => `${d}T23:59:59+09:00`
+/** timestamptz → 'YYYY-MM-DD' (KST) — 폼에 되돌려 넣을 때 */
+export const toKstDayStr = (iso: string) =>
+  new Date(new Date(iso).getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10)

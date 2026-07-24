@@ -240,6 +240,8 @@ import { NoticeBar, type AnnouncementConfig } from './components/layout/NoticeBa
 import { ProfileDropdown } from './components/layout/ProfileDropdown'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 2)
 import { BookLoanDetailModal } from './components/library/BookLoanDetailModal'
 import { fetchBookLoanById } from './lib/api'
+// ← [2026-07-24] 헤더 공지 — 게시 중인 1건 조회 (판정은 RLS)
+import { loadActiveAnnouncement } from './lib/api'
 import type { AdminBookLoan } from './types'
 import { NotificationBell } from './components/layout/NotificationBell'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 3)
 import { ResourceDropdown } from './components/layout/ResourceDropdown'  // ← [2026-05-13 v7] 헤더 우측 자원 예약 드롭다운 (Figma 572:462)
@@ -283,27 +285,38 @@ const AdminView  = lazy(() => import('./pages/AdminPage').then(m => ({ default: 
 // [2026-05-04] LazyErrorBoundary는 src/components/common/LazyErrorBoundary.tsx로 분리됨 (Phase 1+2 Step 1)
 //              로직 무수정, 사용처(view==="mypage"/"admin")는 그대로 유지
 
-// ─── 공지 영역 mock 데이터 ────────────────────────────────────────────────
-// ← [2026-04-30] Figma node 410:6876 공지 배너 영역 신규 도입
-//    · 현재 단계: 하드코딩된 mock 데이터로 UI 동작 확인
-//    · 추후 단계: Supabase `announcements` 테이블 fetch → useState로 전환
-//      (Admin이 활성화/비활성화/메시지/배경색 관리 → 이 인터페이스 그대로 사용 가능)
-//    · null 또는 active=false면 NoticeBar는 렌더되지 않음 (헤더만 표시)
-// ─── [2026-05-12] 체크인 활성 5분 전 핫픽스 안내 — 활성화 ──────────────────
-//    · id 갱신: 이전에 X로 닫은 사용자도 새 공지로 자동 재표시
-//    · active: false → true
-//    · message: 5/12 HOTFIX 안내 (브라우저 새로고침 유도)
-//    · 충분히 전파된 후 active: false로 비활성화 권장 (UX상 영구 노출 비추)
-const MOCK_ANNOUNCEMENT: AnnouncementConfig | null = {
-  id: 'notice-2026-05-12-hotfix-checkin-5min-v2',  // ← [2026-05-12 v2] id 갱신 — 이전 dismiss 무효화
-  active: true,
-  message: '✳︎ HOTFIX ✳︎  이제 회의 시작 5분 전부터 ✱체크인✱ 가능합니다. 브라우저를 새로고침 하세요.',
-  bgColor: '#E6F2FF',
-  textColor: '#1E1E1E',
-}
+// ─── 공지 영역 ────────────────────────────────────────────────────────────
+// ← [2026-07-24] 하드코딩 MOCK_ANNOUNCEMENT 제거 → DB(announcements) 조회로 전환.
+//
+//   기존에는 공지 문구·색이 이 파일의 상수였다. 그래서 공지를 바꾸려면 코드 수정 +
+//   배포가 필요했고, **게시 기간이라는 개념이 아예 없어서** 5/12 핫픽스 안내가
+//   두 달 넘게 헤더에 떠 있었다. 내리는 것을 사람 기억에 맡긴 결과다.
+//
+//   이제 관리는 어드민 '공지 배너' 탭에서 하고, 기간이 지나면 자동으로 사라진다.
+//   "지금 보여줄 공지인가" 판정은 RLS 가 하므로(20260729_announcements.sql)
+//   여기서 다시 거르지 않는다 — 조건이 두 곳에 있으면 한쪽만 고쳐진다.
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 function AppContent() {
+  // ← [2026-07-24] 헤더 공지 — DB 에서 게시 중인 1건. 없으면 배너 미표시
+  const [announcement, setAnnouncement] = useState<AnnouncementConfig | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    loadActiveAnnouncement()
+      .then(a => {
+        if (cancelled) return
+        setAnnouncement(a ? {
+          id:        a.id,
+          active:    true,          // RLS 가 이미 걸러 내려주므로 여기서는 항상 true
+          message:   a.message,
+          bgColor:   a.bg_color,
+          textColor: a.text_color,
+        } : null)
+      })
+      .catch(e => console.warn('[App] 공지 조회 실패:', e))
+    return () => { cancelled = true }
+  }, [])
+
   const [dark, setDark] = useState(() =>
     typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches
   );
@@ -1678,7 +1691,7 @@ function AppContent() {
           right: 0,
           zIndex: 100,
         }}>
-        <NoticeBar announcement={MOCK_ANNOUNCEMENT} />
+        <NoticeBar announcement={announcement} />   {/* ← [2026-07-24] DB 조회 결과 */}
         <header
           className="dark:bg-slate-800 dark:border-b dark:border-slate-700"
           style={{

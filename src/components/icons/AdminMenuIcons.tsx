@@ -125,6 +125,19 @@ export function BellIcon({ size = 24 }: IconProps) {
   )
 }
 
+// ─── 7-c. notices (공지 배너) ───────────────────────────────────────────────
+//   [2026-07-24] 신규 메뉴. Material 'campaign'(확성기) 아웃라인을 currentColor 로.
+export function CampaignIcon({ size = 24 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path
+        d="M18 15.05V13H21.5V15.05H18ZM19.1 21.05L16.3 18.95L17.55 17.3L20.35 19.4L19.1 21.05ZM17.5 10.7L16.25 9.05L19.05 6.95L20.3 8.6L17.5 10.7ZM5 19V15H4C3.45 15 2.97917 14.8042 2.5875 14.4125C2.19583 14.0208 2 13.55 2 13V11C2 10.45 2.19583 9.97917 2.5875 9.5875C2.97917 9.19583 3.45 9 4 9H8L13 6V18L8 15H7V19H5ZM11 14.45V9.55L8.55 11H4V13H8.55L11 14.45Z"
+        fill="currentColor"
+      />
+    </svg>
+  )
+}
+
 // ─── 8. visitor_log (방문 기록) ──────────────────────────────────────────────
 //   [2026-07-10] 방문로그 메뉴용. 신규 메뉴(Figma 미지정)라 stroke 스타일 아이콘.
 //   클립보드 + 서명 squiggle. currentColor 상속(활성/비활성 색 자동).
