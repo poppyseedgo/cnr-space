@@ -1663,8 +1663,20 @@ const ROOM_RANK_COLORS: string[] = [
   '#F4F4F4',   // 9위 — 가장 밝음
 ]
 
-/** 행 높이 — 기존 리스트 총높이(351)를 9행 균등으로 환산 (351 ≒ 37×9 + 2×8) */
-const ROOM_RANK_ROW_H = 37
+/**
+ * 막대 위 라벨 색 (← [2026-07-24 #7])
+ *
+ * ⚠ Figma(2680:11555 등)는 9행 **전부 흰색 글자**로 지정돼 있다. 그런데 8·9위 막대는
+ *   #F4F4F4 라서 흰 글자가 배경에 묻혀 사실상 안 보인다(실제 화면에서 확인됨).
+ *   명도 대비를 지키기 위해 밝은 막대에서만 어두운 글자로 바꾼다.
+ *   — 색 값은 Figma 팔레트 그대로, 글자색만 대비 기준으로 보정.
+ */
+const rankLabelColor = (rank: number) => (rank <= 4 ? '#fff' : '#4A4A4A')
+
+/** Graph 블록 최소 높이 — Figma 2680:11523 h280 (9행 × 30.22 + 8 × 1px gap) */
+const ROOM_RANK_GRAPH_MIN_H = 280
+/** 우측 값 칸 폭 + 막대와의 간격 — Figma: 값칸 35 + 여백 19.33 ≒ 54 */
+const ROOM_RANK_VALUE_RESERVE = 54
 
 function RoomRankingCard({ rooms, onRangeChange }: { rooms: Room[] } & CardRangeReporter) {
   // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
@@ -1708,15 +1720,14 @@ function RoomRankingCard({ rooms, onRangeChange }: { rooms: Room[] } & CardRange
       //   gap 은 남는 공간과 무관한 **하한**이므로 space-between 과 같이 써야
       //   "붙지도 않고, 남으면 벌어지는" 동작이 된다.
       gap:           32,
-      // ← [2026-07-24] 고정 504 → 최소 364.
-      //   Row5 세 카드가 각자 고정 높이를 들고 있어 이 카드만 길게 보였다.
-      //   높이를 감싸는 그리드 셀에 맡기고(아래 cardWrapStretch), 여기서는 하한만 준다.
-      //   하한이 없으면 데이터 0건일 때 헤더만 남고 카드가 납작해진다.
-      minHeight:     364,
+      // ← [2026-07-24 #7] 하한 364 → 457 (Figma 2680:11508 카드 높이).
+      //   헤더 51 + gap 32 + Graph 280 + padding 28 = 391 이 물리적 최소인데,
+      //   그 값으로 두면 행이 30px 로 눌려 라벨(11px)이 답답해진다. Figma 높이를 하한으로 쓴다.
+      minHeight:     457,
       width:         '100%',
     }}>
-      {/* ── 헤더 (gap 2) ────────────────────────────────────── */}
-      <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2, width:'100%' }}>
+      {/* ── 헤더 (Figma 2680:11509 — gap 8) ─────────────────── */}
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:8, width:'100%', flexShrink:0 }}>
         <p style={{
           fontFamily:"'Pretendard', -apple-system, sans-serif",
           fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
@@ -1731,11 +1742,26 @@ function RoomRankingCard({ rooms, onRangeChange }: { rooms: Room[] } & CardRange
         />
       </div>
 
-      {/* ── 리스트 (9 rows · 막대 폭 = 건수) ──────────────────────────────
-            행 구성: [회의실명] [트랙 + 채움막대] [건수]
+      {/* ── Graph (Figma 2680:11523) ───────────────────────────────────────
+            행 구성: [트랙 #F4F5FB [채움막대 + 라벨]] ……… [건수]
+
+            ★ [2026-07-24 #7] 간격·크기 재설계
+              · 행 높이를 고정하지 않는다. Figma 는 Graph 블록을 h280 으로 잡고
+                9행에 flex:1 을 줘 균등 분배한다. 여기서는 블록을 **flex:1 + minHeight 280**
+                으로 두어, 카드가 그리드 셀 높이만큼 늘어나면 행도 같이 늘어난다.
+                고정 높이로 두면 늘어난 만큼이 그대로 빈 공간이 되어(지금 화면의 그 여백)
+                "그래프는 작은데 카드만 큰" 상태가 된다.
+              · 행 사이 간격은 Figma 대로 1px. 2px 이상 벌리면 9행이 리스트처럼 끊겨 보이고
+                막대 길이 비교가 어려워진다.
+              · 라벨을 막대 **안**으로 되돌렸다(Figma 2680:11554). 폭이 곧 값이므로
+                막대 밖에 라벨을 두면 그만큼 막대에 쓸 폭이 줄어든다.
+
             1위 대비 비율로 폭을 잡는다. 절대 기준(예: 200건=100%)을 쓰면
             한산한 기간에는 모든 막대가 뭉개져 비교가 안 된다. */}
-      <div style={{ display:'flex', flexDirection:'column', width:'100%' }}>
+      <div style={{
+        display:'flex', flexDirection:'column', gap:1, width:'100%',
+        flex:1, minHeight:ROOM_RANK_GRAPH_MIN_H,
+      }}>
         {roomStats.length === 0 ? (
           <div style={{ padding:'40px 0', textAlign:'center', fontSize:11, color:'#CBD5E1' }}>
             {loading ? '로딩 중…' : '회의실 데이터 없음'}
@@ -1749,36 +1775,41 @@ function RoomRankingCard({ rooms, onRangeChange }: { rooms: Room[] } & CardRange
                 key={s.room.room_id}
                 title={`${s.room.room_name} · ${s.count}건`}
                 style={{
+                  // Figma 2680:11553 — 행 자체가 트랙. flex:1 로 블록 높이를 균등 분배
+                  flex:          '1 0 0',
+                  minHeight:     0,
                   display:       'flex',
                   alignItems:    'center',
-                  gap:           8,
-                  height:        ROOM_RANK_ROW_H,
+                  justifyContent:'space-between',
                   width:         '100%',
+                  background:    '#F4F5FB',
+                  borderRadius:  1,
+                  overflow:      'hidden',
                   fontFamily:    "'Pretendard', -apple-system, sans-serif",
                   fontWeight:    400,
-                  fontSize:      10,
+                  fontSize:      11,
                   lineHeight:    1.25,
-                  letterSpacing: '0.1px',
-                  color:         '#1E1E1E',
+                  letterSpacing: '0.11px',
                 }}>
-                {/* 회의실명 — 막대 바깥이라 명도와 무관하게 항상 읽힌다 */}
-                <span style={{
-                  flex:'0 0 44%', minWidth:0,
-                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                }}>{s.room.room_name}</span>
-
-                {/* 트랙 + 채움막대 — 폭이 곧 값 */}
-                <div style={{ flex:1, minWidth:0, height:14, background:'#F6F7FA' }}>
-                  <div style={{
-                    width:      `${ratio * 100}%`,
-                    height:     '100%',
-                    background: ROOM_RANK_COLORS[i],
-                    transition: 'width 0.4s ease',
-                  }} />
+                {/* 채움막대 — 폭이 곧 값. 우측 값 칸(54px)을 뺀 폭에 비율을 곱한다 */}
+                <div style={{
+                  width:      `calc((100% - ${ROOM_RANK_VALUE_RESERVE}px) * ${ratio})`,
+                  height:     '100%',
+                  minWidth:   s.count > 0 ? 2 : 0,   // 1건이라도 있으면 존재는 보이게
+                  background: ROOM_RANK_COLORS[i],
+                  display:    'flex', alignItems:'center',
+                  padding:    '0 12px',
+                  transition: 'width 0.4s ease',
+                  boxSizing:  'border-box',
+                }}>
+                  <span style={{
+                    color: rankLabelColor(i),
+                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                  }}>{s.room.room_name}</span>
                 </div>
 
-                {/* 건수 — 자릿수가 달라도 정렬이 흐트러지지 않게 폭 고정 */}
-                <span style={{ flex:'0 0 26px', textAlign:'right' }}>{s.count}</span>
+                {/* 건수 — Figma 2680:11556 (px8 · #4A4A4A) */}
+                <span style={{ padding:'0 8px', color:'#4A4A4A', flexShrink:0 }}>{s.count}</span>
               </div>
             )
           })

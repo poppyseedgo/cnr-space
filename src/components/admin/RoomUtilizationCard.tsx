@@ -88,10 +88,9 @@ export function RoomUtilizationCard({ rooms, onRangeChange }: { rooms: Room[] } 
       flexDirection: 'column',
       alignItems:    'flex-start',
       justifyContent:'space-between',
-      // ← [2026-07-24] 고정 364 → 최소 364.
-      //   Row5 세 카드 높이를 가장 긴 카드에 맞추기 위해, 높이 결정권을 그리드 셀에
-      //   넘긴다(AdminPage cardWrapStretch). 하한은 남겨 데이터 0건일 때를 방어한다.
-      minHeight:     364,                       // ← Figma 2662:7844
+      // ← [2026-07-24 #7] 하한 364 → 457 — 옆 '예약 많은 회의실'(Figma 2680:11508)과
+      //   같은 행에 놓이므로 하한을 맞춰야 둘 중 하나만 먼저 늘어나는 일이 없다.
+      minHeight:     457,
       width:         '100%',
     }}>
       {/* ── 헤더 (Figma 2662:7845 h51 — 타이틀 22 + gap8 + 날짜행 21) ── */}
@@ -199,7 +198,11 @@ export function RoomUtilizationCard({ rooms, onRangeChange }: { rooms: Room[] } 
 //    요일별 가동률 카드와 **같은 함수**이므로 두 카드의 숫자가 구조적으로 일치한다.
 // ════════════════════════════════════════════════════════════════════════════
 
-const ROOM_ROW_H = 26   // ← Figma '예약 많은 회의실'(2659:7719) 행 높이 25.78과 정렬
+// ← [2026-07-24 #7] 행 높이 고정 폐기 — Graph 블록을 flex 로 채운다 (Figma 2680:11523)
+/** Graph 블록 최소 높이 — 9행 × 30.22 + 8 × 1px gap */
+const UTIL_GRAPH_MIN_H = 280
+/** 우측 값 칸 폭 + 막대와의 간격 (Figma: 값칸 35 + 여백 19.33 ≒ 54) */
+const UTIL_VALUE_RESERVE = 54
 
 export function RoomUtilizationByRoomCard({ rooms, onRangeChange }: { rooms: Room[] } & CardRangeReporter) {
   const [dateFrom, setDateFrom] = useState<string>(defaultFrom)
@@ -230,10 +233,9 @@ export function RoomUtilizationByRoomCard({ rooms, onRangeChange }: { rooms: Roo
       flexDirection: 'column',
       alignItems:    'flex-start',
       justifyContent:'space-between',
-      // ← [2026-07-24] 고정 364 → 최소 364.
-      //   Row5 세 카드 높이를 가장 긴 카드에 맞추기 위해, 높이 결정권을 그리드 셀에
-      //   넘긴다(AdminPage cardWrapStretch). 하한은 남겨 데이터 0건일 때를 방어한다.
-      minHeight:     364,                       // ← Figma 2662:7844
+      // ← [2026-07-24 #7] 하한 364 → 457 — 옆 '예약 많은 회의실'(Figma 2680:11508)과
+      //   같은 행에 놓이므로 하한을 맞춰야 둘 중 하나만 먼저 늘어나는 일이 없다.
+      minHeight:     457,
       width:         '100%',
     }}>
       {/* ── 헤더 (Figma 2662:7845 h51 — 타이틀 22 + gap8 + 날짜행 21) ── */}
@@ -264,10 +266,21 @@ export function RoomUtilizationByRoomCard({ rooms, onRangeChange }: { rooms: Roo
         </span>
       </div>
 
-      {/* ── 회의실별 막대 ────────────────────────────────────────────────
-            막대 폭 = 가동률. 100%면 트랙을 가득 채운다.
-            값이 0인 방도 행을 지우지 않는다 — "안 쓰이는 방"이 곧 정보이기 때문. */}
-      <div style={{ display:'flex', flexDirection:'column', width:'100%' }}>
+      {/* ── 회의실별 막대 (← [2026-07-24 #7] Figma 2680:11523 문법으로 통일) ──
+            막대 폭 = 가동률. 값이 0인 방도 행을 지우지 않는다 — "안 쓰이는 방"이 곧 정보.
+
+            ★ 무엇을 바꿨나
+              · mixBlendMode difference 폐기 — 채움색 #111 위에서는 잘 보였지만
+                막대가 짧아 라벨이 트랙(#F4F5FB) 위로 넘어가면 대비가 무너졌고,
+                실제 화면에서 8·9위 행의 값이 사라졌다. 값을 **막대 밖 우측**으로 빼
+                어떤 폭에서도 읽히게 한다(옆 '예약 많은 회의실' 카드와 같은 배치).
+              · 행 높이 고정(26) → Graph 블록 flex:1 + 행 flex:1 균등 분배.
+                카드가 늘어나면 행도 같이 늘어나 카드 아래에 빈 공간이 남지 않는다.
+              · 행 간격 2 → 1 (Figma). 넓히면 9행이 리스트처럼 끊겨 길이 비교가 어렵다. */}
+      <div style={{
+        display:'flex', flexDirection:'column', gap:1, width:'100%',
+        flex:1, minHeight:UTIL_GRAPH_MIN_H,
+      }}>
         {rows.length === 0 ? (
           <div style={{
             padding:'40px 0', textAlign:'center',
@@ -277,32 +290,25 @@ export function RoomUtilizationByRoomCard({ rooms, onRangeChange }: { rooms: Roo
           <div key={room.room_id}
             title={`${room.room_name} · 가동률 ${pct(u.rate)} (점유 ${Math.round(u.usedMin / 60)}시간 / 가용 ${Math.round(u.capMin / 60)}시간)`}
             style={{
-              position:'relative', width:'100%', height:ROOM_ROW_H,
-              background:'#F6F7FA', overflow:'hidden',
-              display:'flex', alignItems:'center',
-              marginBottom:2,
+              flex:'1 0 0', minHeight:0, width:'100%',
+              background:'#F4F5FB', borderRadius:1, overflow:'hidden',
+              display:'flex', alignItems:'center', justifyContent:'space-between',
+              fontFamily:FONT, fontWeight:400, fontSize:11, lineHeight:1.25, letterSpacing:'0.11px',
             }}>
-            {/* 채움 막대 — 폭이 곧 값 */}
+            {/* 채움 막대 — 폭이 곧 값. 우측 값 칸(54px)을 뺀 폭에 비율을 곱한다 */}
             <div style={{
-              position:'absolute', left:0, top:0, bottom:0,
-              width:`${Math.min(100, u.rate * 100)}%`,
-              background:'#111',
-              transition:'width 0.4s ease',
-            }} />
-            {/* 라벨 — 막대 위에 얹되, 막대가 짧으면 글자가 안 보이므로 항상 어두운 배경 위 흰색은 쓰지 않는다.
-                대신 mix-blend-mode로 배경 대비를 자동 반전시킨다. */}
-            <span style={{
-              position:'relative', zIndex:1, paddingLeft:12,
-              fontFamily:FONT, fontWeight:400, fontSize:10, lineHeight:1.5,
-              color:'#fff', mixBlendMode:'difference',
-              whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-              flex:1, minWidth:0,
-            }}>{room.room_name}</span>
-            <span style={{
-              position:'relative', zIndex:1, paddingRight:12,
-              fontFamily:FONT, fontWeight:400, fontSize:10, lineHeight:1.5,
-              color:'#fff', mixBlendMode:'difference', flexShrink:0,
-            }}>{loading ? '' : pct(u.rate)}</span>
+              width:`calc((100% - ${UTIL_VALUE_RESERVE}px) * ${Math.min(1, u.rate)})`,
+              height:'100%', minWidth: u.rate > 0 ? 2 : 0,
+              background:'#111', display:'flex', alignItems:'center',
+              padding:'0 12px', boxSizing:'border-box', transition:'width 0.4s ease',
+            }}>
+              <span style={{
+                color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+              }}>{room.room_name}</span>
+            </div>
+            <span style={{ padding:'0 8px', color:'#4A4A4A', flexShrink:0 }}>
+              {loading ? '' : pct(u.rate)}
+            </span>
           </div>
         ))}
       </div>
