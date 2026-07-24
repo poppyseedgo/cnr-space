@@ -21,7 +21,7 @@
  *      - "전체"   StatusBadge-XS 36×21
  *  · 활성 pill = 배경 #111 / 글자 #fff, 비활성 = 배경 #F4F6FA / 글자 #697077
  */
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { DatePickerPopup } from '../common/DatePickerPopup'
 import { todayStr } from '../../utils/time'
 
@@ -34,6 +34,40 @@ const FONT = "'Pretendard', -apple-system, sans-serif"
  * "전체"와 동일한 결과를 낸다. 임의의 매직값을 코드 곳곳에 흩뿌리지 않기 위해 상수로 고정한다.
  * ※ 과거 데이터 이관 등으로 더 오래된 예약이 생기면 이 값만 앞당기면 된다.
  */
+// ═══════════════════════════════════════════════════════════════════════════
+//  카드 → 드로어 기간 인계 (← [2026-07-24])
+//
+//  ★ 배경
+//    카드마다 자기 조회 기간(dateFrom/dateTo)을 따로 들고 있는데, 카드를 클릭해
+//    열리는 DetailDrawer 는 항상 기본값(−29일 ~ 오늘)으로 열렸다.
+//    카드 기본값도 −29일이라 평소엔 우연히 일치했지만, '3개월'로 바꿔 86% 를 보고
+//    클릭하면 드로어는 한 달치를 보여준다 → 같은 화면 안에서 숫자가 어긋난다.
+//
+//  ★ 방식
+//    카드는 기간이 바뀔 때마다 상위로 알리기만 한다(보고). 드로어를 여는 주체는
+//    여전히 AdminPage 의 래퍼 onClick 이고, 클릭 시점에 마지막으로 보고된 값을 쓴다.
+//    카드가 직접 드로어를 열게 바꾸지 않은 이유: 12개 카드가 전부 클릭 주체가 되면
+//    래퍼의 hover·클릭 영역과 이중으로 얽혀 기존 동작이 흔들린다.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface CardRange { from: string; to: string }
+
+/** 대시보드 카드 공통 prop — 자기 조회 기간을 상위에 보고한다 */
+export interface CardRangeReporter {
+  onRangeChange?: (r: CardRange) => void
+}
+
+/**
+ * 카드의 현재 기간을 상위로 보고한다. 마운트 직후 1회 + 기간 변경 시마다.
+ *
+ * ※ onRangeChange 를 의존성에 넣지 않는다 — 호출부가 인라인 화살표 함수를 넘기면
+ *   매 렌더마다 새 참조가 되어 무한 루프가 된다. 보고 시점을 결정하는 것은
+ *   어디까지나 from/to 값이다.
+ */
+export function useReportRange(from: string, to: string, onRangeChange?: (r: CardRange) => void) {
+  useEffect(() => { onRangeChange?.({ from, to }) }, [from, to])   // eslint-disable-line react-hooks/exhaustive-deps
+}
+
 export const ALL_TIME_FROM = '2026-01-01'
 
 // ─── 프리셋 정의 ──────────────────────────────────────────────────────────────

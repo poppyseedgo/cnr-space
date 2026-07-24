@@ -15,7 +15,7 @@
  *    이 파일에 판정식은 없다 — DetailDrawer도 같은 함수를 쓰므로 숫자가 구조적으로 일치한다.
  */
 import { useState, useMemo } from 'react'
-import { DashboardRangeRow } from './DashboardRangeFilter'
+import { DashboardRangeRow, useReportRange, type CardRangeReporter } from './DashboardRangeFilter'
 import { useBookingsByRange } from './useBookingsByRange'
 import { aggregatePurposes, segmentAlpha, type PurposeCode } from '../../utils/meetingPurpose'
 import { todayStr } from '../../utils/time'
@@ -31,12 +31,15 @@ function defaultFrom(): string {
   return d.toISOString().slice(0, 10)
 }
 
-export function MeetingPurposeCard({ onPickPurpose }: {
+export function MeetingPurposeCard({ onPickPurpose, onRangeChange }: {
   /** 분류 하나 선택 → 그 분류의 개별 예약 목록으로 드릴다운 (AdminPage가 DetailDrawer를 연다) */
   onPickPurpose?: (code: PurposeCode) => void
-}) {
+} & CardRangeReporter) {
   const [dateFrom, setDateFrom] = useState<string>(defaultFrom)
   const [dateTo,   setDateTo]   = useState<string>(todayStr)
+  // ← [2026-07-24] 이 카드의 조회 기간을 상위로 보고 → 클릭 시 드로어가 같은 기간으로 열린다
+  useReportRange(dateFrom, dateTo, onRangeChange)
+
   const { data: bookings, loading } = useBookingsByRange(dateFrom, dateTo)
 
   // ← [2026-07-23] slice(0,5) 제거 — 10분류 전부 노출 (고지 지시)

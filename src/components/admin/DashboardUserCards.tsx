@@ -16,7 +16,7 @@
  */
 import { useState, useMemo } from 'react'
 import { DashboardUserCell, DashboardDeptText } from './DashboardUserCell'  // ← [2026-07-23] 사용자 표시·부서 표기 공통화
-import { DashboardRangeRow } from './DashboardRangeFilter'
+import { DashboardRangeRow, useReportRange, type CardRangeReporter } from './DashboardRangeFilter'
 import { useBookingsByRange } from './useBookingsByRange'
 import { aggregateUsers } from '../../utils/dashboardAgg'
 import { todayStr } from '../../utils/time'
@@ -113,9 +113,12 @@ function EmptyRow({ height }: { height: number }) {
 // ════════════════════════════════════════════════════════════════════════════
 const RANK_ROWS = 8
 
-export function UserRankingCard({ users }: { users: AppUser[] }) {
+export function UserRankingCard({ users, onRangeChange }: { users: AppUser[] } & CardRangeReporter) {
   const [dateFrom, setDateFrom] = useState<string>(defaultFrom)
   const [dateTo,   setDateTo]   = useState<string>(todayStr)
+  // ← [2026-07-24] 이 카드의 조회 기간을 상위로 보고 → 클릭 시 드로어가 같은 기간으로 열린다
+  useReportRange(dateFrom, dateTo, onRangeChange)
+
   const { data } = useBookingsByRange(dateFrom, dateTo)
 
   // count desc — aggregateUsers 기본 정렬이 이미 count desc이므로 그대로 상위 N개만 사용
@@ -172,9 +175,12 @@ export function UserRankingCard({ users }: { users: AppUser[] }) {
 // ════════════════════════════════════════════════════════════════════════════
 const NOSHOW_ROWS = 8   // ← [2026-07-23] 5 → 8 (고지 지시)
 
-export function UserNoshowCard({ users }: { users: AppUser[] }) {
+export function UserNoshowCard({ users, onRangeChange }: { users: AppUser[] } & CardRangeReporter) {
   const [dateFrom, setDateFrom] = useState<string>(defaultFrom)
   const [dateTo,   setDateTo]   = useState<string>(todayStr)
+  // ← [2026-07-24] 이 카드의 조회 기간을 상위로 보고 → 클릭 시 드로어가 같은 기간으로 열린다
+  useReportRange(dateFrom, dateTo, onRangeChange)
+
   const { data } = useBookingsByRange(dateFrom, dateTo)
 
   // 노쇼 0건인 사용자는 순위에 의미가 없으므로 제외 후 noshow desc 정렬

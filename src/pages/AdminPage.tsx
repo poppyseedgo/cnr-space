@@ -61,7 +61,8 @@ import { getBookingStatusLabel, getBookingStatusGroup } from '../utils/bookingSt
 //   기존: DatePickerPopup을 직접 import + SmallDateTrigger를 이 파일에 정의 + 6개 위젯이 인라인 조립
 //   변경: DashboardRangeFilter.tsx로 이동 — SmallDateTrigger·프리셋 pill·⎯ 를 DashboardRangeRow 하나로 캡슐화
 //   ※ DatePickerPopup의 유일한 사용처가 SmallDateTrigger였으므로 이 파일에서 import 제거
-import { DashboardRangeRow, SmallDateTrigger, RANGE_PRESETS_RECENT } from '../components/admin/DashboardRangeFilter'
+import { DashboardRangeRow, SmallDateTrigger, RANGE_PRESETS_RECENT,
+         useReportRange, type CardRangeReporter, type CardRange } from '../components/admin/DashboardRangeFilter'
 // ← [2026-07-23 Phase 2] 신규 위젯 2종 + 집계 SSOT + 기간조회 훅 분리
 //   aggregateUsers: DetailDrawer userAgg 본문을 utils로 추출 — 카드와 드로어가 같은 집계를 쓰도록 강제
 //   useBookingsByRange: AdminPage에 있던 훅을 이동 (신규 카드 파일이 import하면 순환참조가 되므로)
@@ -1226,10 +1227,12 @@ function ApprovalPendingCard({ count }: { count: number }) {
 // ← [2026-07-23] 노쇼 차트 Y축(노쇼율 %) 라벨 폭 — 고지 지시로 신설
 const NOSHOW_Y_AXIS_W = 24
 
-function NoshowChartCard() {
+function NoshowChartCard({ onRangeChange }: CardRangeReporter) {
   // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
   const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
   const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
+  // ← [2026-07-24] 이 카드의 조회 기간을 상위로 보고 → 클릭 시 드로어가 같은 기간으로 열린다
+  useReportRange(dateFrom, dateTo, onRangeChange)
 
   // ── 2. 자체 fetch (dedupe cache 통해) ────────────────────────────────
   const { data: bookings, loading } = useBookingsByRange(dateFrom, dateTo)
@@ -1497,11 +1500,12 @@ function RecentBookingsCard({
   users,
   rooms,
   onDetail,
+  onRangeChange,
 }: {
   users:    AppUser[]
   rooms:    Room[]
   onDetail?: (b: Booking) => void
-}) {
+} & CardRangeReporter) {
   // ── [2026-07-23 Figma 갱신 반영] 카드 전면 재설계 ─────────────────────────
   //   변경 전: bookings prop(대시보드 전역 목록)에서 createdAt desc top5만 뽑아 표시.
   //            헤더는 타이틀 한 줄, 건수 블록·컬럼 헤더·기간 필터가 모두 없었다.
@@ -1513,6 +1517,8 @@ function RecentBookingsCard({
   //   ※ 기준 날짜는 start_at이 아니라 created_at(생성일)이다 — 카드 이름이 '생성된 예약'이다.
   const [dateFrom, setDateFrom] = useState<string>(() => todayStr())   // ← 기본 '오늘' (Figma 첫 pill)
   const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
+  // ← [2026-07-24] 이 카드의 조회 기간을 상위로 보고 → 클릭 시 드로어가 같은 기간으로 열린다
+  useReportRange(dateFrom, dateTo, onRangeChange)
 
   const [rows,    setRows]    = useState<Booking[]>([])
   const [loading, setLoading] = useState(false)
@@ -1670,10 +1676,12 @@ const ROOM_RANKING_STYLES: { h: number; bg: string; color: string }[] = [
   { h: 29, bg: '#F4F4F4', color: '#111'  },   // rank 8 (9위) — 가장 밝음
 ]
 
-function RoomRankingCard({ rooms }: { rooms: Room[] }) {
+function RoomRankingCard({ rooms, onRangeChange }: { rooms: Room[] } & CardRangeReporter) {
   // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
   const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
   const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
+  // ← [2026-07-24] 이 카드의 조회 기간을 상위로 보고 → 클릭 시 드로어가 같은 기간으로 열린다
+  useReportRange(dateFrom, dateTo, onRangeChange)
 
   // ── 2. 자체 fetch (Phase 4 cache 재사용, 위젯 ②와 dedupe) ────────────
   const { data: bookings, loading } = useBookingsByRange(dateFrom, dateTo)
@@ -1832,10 +1840,12 @@ function RankListRow({ rank, label, count, first, empty = false }: {
 //   데이터: 자체 dateFrom/dateTo (default 30일) + useBookingsByRange + isNoshow SSOT
 //   동작: 9 회의실 모두 차트 + Top 5 ranked list + bar hover/click 시 label
 //   ※ Figma 1:1: 3-section (헤더 + 세로 bar 차트 + ranked list)
-function RoomNoshowCard({ rooms }: { rooms: Room[] }) {
+function RoomNoshowCard({ rooms, onRangeChange }: { rooms: Room[] } & CardRangeReporter) {
   // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
   const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
   const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
+  // ← [2026-07-24] 이 카드의 조회 기간을 상위로 보고 → 클릭 시 드로어가 같은 기간으로 열린다
+  useReportRange(dateFrom, dateTo, onRangeChange)
 
   // ── 2. 자체 fetch (Phase 4 cache 공유, 위젯 ②④와 dedupe) ────────────
   const { data: bookings, loading } = useBookingsByRange(dateFrom, dateTo)
@@ -2102,10 +2112,12 @@ const TREND_MARKER_LINE_H = 40    // ← Figma 570:7429: 활성 marker 수직 �
 // ← [2026-07-23] Y축 라벨 영역 폭 (고지 지시로 신설 — Figma에는 없던 요소)
 const TREND_Y_AXIS_W = 28
 
-function BookingTrendsAreaCard() {
+function BookingTrendsAreaCard({ onRangeChange }: CardRangeReporter) {
   // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
   const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
   const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
+  // ← [2026-07-24] 이 카드의 조회 기간을 상위로 보고 → 클릭 시 드로어가 같은 기간으로 열린다
+  useReportRange(dateFrom, dateTo, onRangeChange)
 
   // ── 2. 자체 fetch (Phase 4 cache 공유, 위젯 ②④⑤⑦⑧와 dedupe) ──────
   const { data: bookings, loading } = useBookingsByRange(dateFrom, dateTo)
@@ -2472,10 +2484,12 @@ function BookingTrendsAreaCard() {
 //   (dead code를 남기면 다음 작업자가 '색상 규칙이 있다'고 오인한다)
 
 
-function DepartmentBookingsCard() {
+function DepartmentBookingsCard({ onRangeChange }: CardRangeReporter) {
   // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
   const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
   const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
+  // ← [2026-07-24] 이 카드의 조회 기간을 상위로 보고 → 클릭 시 드로어가 같은 기간으로 열린다
+  useReportRange(dateFrom, dateTo, onRangeChange)
 
   // ── 2. 자체 fetch (Phase 4 cache 공유, 위젯 ②④⑤⑥와 dedupe) ──────────
   const { data: bookings, loading } = useBookingsByRange(dateFrom, dateTo)
@@ -2576,10 +2590,12 @@ function DepartmentBookingsCard() {
 const OPERATING_HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]   // ← Q3: 7~19시 13 columns
 const HOURLY_OUTER_H  = 93                                                    // ← Figma: 외곽 봉 height
 
-function HourlyDistributionCard() {
+function HourlyDistributionCard({ onRangeChange }: CardRangeReporter) {
   // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
   const [dateFrom, setDateFrom] = useState<string>(() => addDaysStr(todayStr(), -29))
   const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
+  // ← [2026-07-24] 이 카드의 조회 기간을 상위로 보고 → 클릭 시 드로어가 같은 기간으로 열린다
+  useReportRange(dateFrom, dateTo, onRangeChange)
 
   // ── 2. 자체 fetch (Phase 4 cache 공유, 위젯 ②④⑤⑥⑦와 dedupe) ────────
   const { data: bookings, loading } = useBookingsByRange(dateFrom, dateTo)
@@ -2883,10 +2899,26 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
   // ← [2026-05-28] initialDateMode 추가 — '최근 생성된 예약' 카드 진입 시 'createdAt' 모드로 시작
   // ← [2026-07-23] initialPurpose 추가 — 목적 카드에서 분류를 직접 골라 들어오면
   //   드로어가 그 분류의 개별 예약 목록(드릴다운)부터 보여준다.
-  type CardDrawer = { type: DetailType; sortKey?: string; sortAsc?: boolean; initialDateMode?: 'createdAt' | 'startAt'; initialPurpose?: PurposeCode }
+  // ← [2026-07-24] from/to 추가 — 클릭한 카드의 조회 기간을 드로어가 그대로 이어받는다
+  type CardDrawer = { type: DetailType; sortKey?: string; sortAsc?: boolean; initialDateMode?: 'createdAt' | 'startAt'; initialPurpose?: PurposeCode; from?: string; to?: string }
   const [cardDrawer, setCardDrawer] = useState<CardDrawer | null>(null)
   const drawerInitFrom = addDaysStr(todayStr(), -29)
   const drawerInitTo   = todayStr()
+
+  // ── 카드별 조회 기간 보관소 (← [2026-07-24]) ─────────────────────────────
+  //
+  //   각 카드가 useReportRange 로 자기 기간을 보고하면 여기에 쌓아두고,
+  //   래퍼를 클릭할 때 그 값을 드로어 초기 기간으로 넘긴다.
+  //
+  //   ★ useState 가 아니라 useRef 인 이유
+  //     보고는 카드 12개가 마운트·기간변경 때마다 발생한다. state 로 받으면
+  //     그때마다 AdminDashboard 전체가 리렌더되고, 리렌더가 카드의 fetch effect 를
+  //     다시 건드릴 여지가 생긴다. 이 값은 '클릭 순간'에만 읽히므로 렌더와 무관하다.
+  const cardRangeRef = useRef<Record<string, CardRange>>({})
+  const reportRange  = (key: string) => (r: CardRange) => { cardRangeRef.current[key] = r }
+  /** 카드가 아직 보고 전이면(이론상 없음) 기존 기본값으로 안전하게 폴백 */
+  const rangeOf = (key: string): { from: string; to: string } =>
+    cardRangeRef.current[key] ?? { from: drawerInitFrom, to: drawerInitTo }
 
   // 카드 wrapper 공통 스타일 — hover 시 살짝 그림자 (cursor pointer)
   const cardWrapStyle: React.CSSProperties = {
@@ -2945,11 +2977,12 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
 
         {/* ② 최근 생성된 예약 → 헤더 클릭은 bookings drawer(생성일 최신순), 행 클릭은 onDetail (동작 유지) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'bookings', initialDateMode: 'createdAt', sortKey: 'createdAt', sortAsc: false })}>
+          onClick={() => setCardDrawer({ type: 'bookings', initialDateMode: 'createdAt', sortKey: 'createdAt', sortAsc: false, ...rangeOf('recent') })}>
           <RecentBookingsCard
             users={users}
             rooms={rooms}
             onDetail={onDetail}
+            onRangeChange={reportRange('recent')}
           />
         </div>
       </div>
@@ -2958,19 +2991,19 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
         {/* ③ 사용자 예약 순위 → users 통계 (count desc — 카드 정렬과 동일 진입) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'users', sortKey: 'count', sortAsc: false })}>
-          <UserRankingCard users={users} />
+          onClick={() => setCardDrawer({ type: 'users', sortKey: 'count', sortAsc: false, ...rangeOf('userRank') })}>
+          <UserRankingCard users={users} onRangeChange={reportRange('userRank')} />
         </div>
         {/* ④ 일일 예약 추이 → 전체 예약 목록 (동작 유지)
               ← [2026-07-23] Figma 갱신으로 부서 예약 순위와 위치 교환 (Row2 Col2) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'bookings' })}>
-          <BookingTrendsAreaCard />
+          onClick={() => setCardDrawer({ type: 'bookings', ...rangeOf('trend') })}>
+          <BookingTrendsAreaCard onRangeChange={reportRange('trend')} />
         </div>
         {/* ⑤ 부서 예약 순위 → dept 통계 (동작 유지) ← [2026-07-23] Row2 Col3으로 이동 */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'dept' })}>
-          <DepartmentBookingsCard />
+          onClick={() => setCardDrawer({ type: 'dept', ...rangeOf('dept') })}>
+          <DepartmentBookingsCard onRangeChange={reportRange('dept')} />
         </div>
       </div>
 
@@ -2979,18 +3012,18 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
         {/* ⑥ 사용자 누적 노쇼 → users 통계 (noshow desc — 카드 정렬과 동일 진입)
               ← [2026-07-23] Figma 갱신으로 일일 노쇼 현황과 위치 교환 (Row3 Col1) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'users', sortKey: 'noshow', sortAsc: false })}>
-          <UserNoshowCard users={users} />
+          onClick={() => setCardDrawer({ type: 'users', sortKey: 'noshow', sortAsc: false, ...rangeOf('userNoshow') })}>
+          <UserNoshowCard users={users} onRangeChange={reportRange('userNoshow')} />
         </div>
         {/* ⑦ 일일 노쇼 현황 → 노쇼 목록 (동작 유지) ← [2026-07-23] Row3 Col2로 이동 */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'noshow' })}>
-          <NoshowChartCard />
+          onClick={() => setCardDrawer({ type: 'noshow', ...rangeOf('noshow') })}>
+          <NoshowChartCard onRangeChange={reportRange('noshow')} />
         </div>
         {/* ⑧ 회의실 노쇼 현황 → rooms 통계 (noshow desc 진입 정렬 — 동작 유지) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'noshow', sortAsc: false })}>
-          <RoomNoshowCard rooms={rooms} />
+          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'noshow', sortAsc: false, ...rangeOf('roomNoshow') })}>
+          <RoomNoshowCard rooms={rooms} onRangeChange={reportRange('roomNoshow')} />
         </div>
       </div>
 
@@ -2999,10 +3032,11 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
               10분류 스택 바 + 10행 표가 592폭에서는 라벨이 전부 잘린다. */}
       <div className="grid gap-4 grid-cols-1">
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'purpose' })}>
+          onClick={() => setCardDrawer({ type: 'purpose', ...rangeOf('purpose') })}>
           <MeetingPurposeCard
             /* 분류 선택 → 그 분류의 개별 예약 목록으로 바로 진입 (드로어 드릴다운 상태로 오픈) */
-            onPickPurpose={(code) => setCardDrawer({ type: 'purpose', initialPurpose: code })}
+            onPickPurpose={(code) => setCardDrawer({ type: 'purpose', initialPurpose: code, ...rangeOf('purpose') })}
+            onRangeChange={reportRange('purpose')}
           />
         </div>
       </div>
@@ -3015,20 +3049,20 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
         {/* ⑩ 예약 많은 회의실 → rooms 통계 · 건수 desc 진입 */}
         <div style={cardWrapStretch} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'confirmed', sortAsc: false })}>
-          <RoomRankingCard rooms={rooms} />
+          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'confirmed', sortAsc: false, ...rangeOf('roomRank') })}>
+          <RoomRankingCard rooms={rooms} onRangeChange={reportRange('roomRank')} />
         </div>
         {/* ⑪ 회의실별 가동률 → 같은 표를 열되 ★가동률 desc 로 진입 (← [2026-07-24])
               카드가 답하는 질문이 "얼마나 채워졌나"이므로 드릴다운도 그 순서여야 한다.
               기존엔 세 카드가 모두 건수 desc 로 들어가 "같은 화면"으로 보였다. */}
         <div style={cardWrapStretch} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'util', sortAsc: false })}>
-          <RoomUtilizationByRoomCard rooms={rooms} />
+          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'util', sortAsc: false, ...rangeOf('utilRoom') })}>
+          <RoomUtilizationByRoomCard rooms={rooms} onRangeChange={reportRange('utilRoom')} />
         </div>
         {/* ⑫ 요일별 가동률 → 회의실별 가동률과 같은 계산이므로 동일하게 가동률 desc 진입 */}
         <div style={cardWrapStretch} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'util', sortAsc: false })}>
-          <RoomUtilizationCard rooms={rooms} />
+          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'util', sortAsc: false, ...rangeOf('utilWeekday') })}>
+          <RoomUtilizationCard rooms={rooms} onRangeChange={reportRange('utilWeekday')} />
         </div>
       </div>
 
@@ -3036,8 +3070,8 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
             ← [2026-07-23] Figma 갱신으로 Row5 3-col에서 빠져 단독 풀폭으로 이동 */}
       <div className="grid gap-4 grid-cols-1">
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'hours' })}>
-          <HourlyDistributionCard />
+          onClick={() => setCardDrawer({ type: 'hours', ...rangeOf('hours') })}>
+          <HourlyDistributionCard onRangeChange={reportRange('hours')} />
         </div>
       </div>
 
@@ -3052,8 +3086,10 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
           type={cardDrawer.type}
           rooms={rooms}
           users={users}
-          initFrom={drawerInitFrom}
-          initTo={drawerInitTo}
+          /* ← [2026-07-24] 카드가 보고한 기간으로 연다. 카드에서 3개월을 보고
+                클릭했는데 드로어가 한 달치를 보여주던 불일치를 없앤다. */
+          initFrom={cardDrawer.from ?? drawerInitFrom}
+          initTo={cardDrawer.to ?? drawerInitTo}
           initialSortKey={cardDrawer.sortKey}
           initialSortAsc={cardDrawer.sortAsc}
           initialDateMode={cardDrawer.initialDateMode}  /* ← [2026-05-28] 카드별 진입 모드 (예: 최근 생성→'createdAt', 예약추이→default 'startAt') */
