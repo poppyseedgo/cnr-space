@@ -106,37 +106,26 @@ export function RoomUtilizationCard({ rooms, onRangeChange }: { rooms: Room[] } 
         />
       </div>
 
-      {/* ── 요약 ─────────────────────────────────────────────────────────
-            🔧 [2026-07-24 #4] 헤드라인을 '전체 평균' → '가장 바쁜 요일'로 교체.
+      {/* ── 요약 한 줄 — 전체 평균 + 산정 기준 ───────────────────────────
+            ★ [2026-07-24 #5] 전체 평균(overall)은 **이 카드에만** 둔다 — 고지 결정.
 
-            ★ 왜 바꾸나 — 숫자가 틀려서가 아니다
-              이 카드와 '회의실별 가동률'은 같은 calcUtilization().overall 을
-              헤드라인에 쓰고 있었다. 같은 총량을 요일로 자르느냐 회의실로 자르느냐만
-              다르므로 **두 값은 반드시 같다**(요일별 합 = 회의실별 합 = 전체).
-              하지만 화면에는 같은 72%가 나란히 두 번 뜨고, 이 카드의 부제는
-              요일 이야기만 하고 있어서 "요일 지표인데 왜 옆 카드와 같지?" 로 읽힌다.
-              수치 신뢰를 깎는 건 계산이 아니라 이 표현이었다.
+              이 값은 원래 '회의실별 가동률' 카드에도 같이 떠 있었다. 같은 총량을
+              요일로 자르느냐 회의실로 자르느냐의 차이일 뿐이라 두 값은 반드시 같은데
+              (요일별 합 = 회의실별 합 = 전체), 화면에는 같은 %가 나란히 두 번 뜨니
+              "왜 두 지표가 똑같지?" 로 읽혀 수치 신뢰를 떨어뜨렸다.
+              라벨로 설명하는 대신 **한쪽에서 지워** 중복 자체를 없앴다.
+              요일별에 남긴 이유: 요일 표는 5개 요일의 평균선 역할을 할 기준값이
+              필요하지만, 회의실별은 막대 길이 비교만으로 충분하다.
 
-            ★ 무엇을 보여주나
-              이 카드가 답하는 질문은 "가장 바쁜/한가한 요일" 이므로 헤드라인도 그것으로
-              바꾸고, 공유 지표인 전체 평균은 **'전체 평균'이라고 명시해** 아래 줄에 남긴다.
-              그러면 두 카드에 같은 값이 보여도 같은 것을 가리킨다는 게 드러난다. */}
-      <div style={{ display:'flex', flexDirection:'column', gap:2, width:'100%' }}>
-        <div style={{ display:'flex', alignItems:'baseline', gap:8, width:'100%' }}>
-          <span style={{ fontFamily:FONT, fontWeight:400, fontSize:28, lineHeight:1.4, color:'#111' }}>
-            {loading || busiest === null ? '—' : pct(util.byWeekday[busiest].rate)}
-          </span>
-          <span style={{ fontFamily:FONT, fontWeight:400, fontSize:11, lineHeight:1.5, color:'#AEB5C4' }}>
-            {loading || busiest === null ? '' :
-              `가장 바쁜 ${WEEKDAY_LABELS[busiest]}요일` +
-              (idle !== null ? ` · 가장 한가한 ${WEEKDAY_LABELS[idle]} ${pct(util.byWeekday[idle].rate)}` : '')}
-          </span>
-        </div>
-        {/* ← [2026-07-23] 산정 기준을 카드에 명시한다.
+            ← [2026-07-23] 산정 기준을 카드에 명시한다.
               옆 카드(시간대별 예약 분포)가 "운영시간 오전 7시 부터 오후 7시"를 표기하고 있어
               같은 행에 놓이면 가동률도 7~19시 기준으로 오인된다. 기준을 눈에 보이게 박아둔다. */}
+      <div style={{ display:'flex', alignItems:'baseline', gap:8, width:'100%' }}>
+        <span style={{ fontFamily:FONT, fontWeight:400, fontSize:28, lineHeight:1.4, color:'#111' }}>
+          {loading ? '—' : pct(util.overall.rate)}
+        </span>
         <span style={{ fontFamily:FONT, fontWeight:400, fontSize:11, lineHeight:1.5, color:'#AEB5C4' }}>
-          {loading ? '' : `전체 평균 ${pct(util.overall.rate)} · 09–18시 점심 제외 (8h) · 워킹데이 ${util.workdays}일`}
+          {loading ? '' : `전체 평균 · 09–18시 점심 제외 (8h) · 워킹데이 ${util.workdays}일 · 최다 ${busiest !== null ? WEEKDAY_LABELS[busiest] : '—'} / 최소 ${idle !== null ? WEEKDAY_LABELS[idle] : '—'}`}
         </span>
       </div>
 
@@ -259,13 +248,19 @@ export function RoomUtilizationByRoomCard({ rooms, onRangeChange }: { rooms: Roo
         />
       </div>
 
-      {/* ── 요약 한 줄 — 전체 평균과 산정 기준 ────────────────────────────── */}
-      <div style={{ display:'flex', alignItems:'baseline', gap:8, width:'100%' }}>
-        <span style={{ fontFamily:FONT, fontWeight:400, fontSize:28, lineHeight:1.4, color:'#111' }}>
-          {loading ? '—' : pct(util.overall.rate)}
-        </span>
+      {/* ── 산정 기준 한 줄 ──────────────────────────────────────────────
+            ★ [2026-07-24 #5] 전체 평균 % 를 뺐다 — 고지 결정.
+              옆 '요일별 가동률' 카드와 값이 반드시 같아(같은 overall) 화면에
+              같은 숫자가 두 번 뜨는 문제가 있었다. 이 카드는 막대 길이로
+              회의실 간 비교를 하는 카드라 기준값이 없어도 읽힌다.
+
+            ※ 산정 기준 문구는 **남긴다**. 숫자와 함께 지우면, 옆 카드
+              '시간대별 예약 분포'의 "운영시간 오전 7시 부터 오후 7시" 표기 때문에
+              이 카드도 7~19시 기준으로 오인된다(원래 이 문구를 넣은 이유).
+              워킹데이 수가 남아 있어 이 카드가 어느 기간을 보고 있는지도 드러난다. */}
+      <div style={{ display:'flex', alignItems:'baseline', width:'100%' }}>
         <span style={{ fontFamily:FONT, fontWeight:400, fontSize:11, lineHeight:1.5, color:'#AEB5C4' }}>
-          {loading ? '' : `전체 평균 · 09–18시 점심 제외 (8h) · 워킹데이 ${util.workdays}일`}   /* ← [2026-07-24] 요일별 카드 부제와 표기 통일 — 같은 값임을 같은 문구로 드러낸다 */
+          {loading ? '' : `09–18시 · 점심 제외 (8h) · 워킹데이 ${util.workdays}일`}
         </span>
       </div>
 
