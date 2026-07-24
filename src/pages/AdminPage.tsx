@@ -1660,21 +1660,40 @@ function RecentBookingsCard({
 //   동작: 9 회의실 모두 표시, count desc 정렬, count 0도 마지막에 표시 (Q2)
 //   ※ Figma 1:1: 9-row 점진적 height + 점진적 색상 그라데이션 (rank 시각화)
 
-// ─── ROOM_RANKING_STYLES — Figma 1:1 색상/높이 매핑 ──────────────────────
-//   rank 0 = 1위 (가장 어두운 #393939) → rank 8 = 9위 (가장 밝은 #F4F4F4)
-//   text color: rank 0-4 = white, rank 5-8 = #111 (어두운 텍스트)
-//   total list height = 52 + 46*3 + 29*5 + 8*2 (gap) = 351 (Figma 1:1)
-const ROOM_RANKING_STYLES: { h: number; bg: string; color: string }[] = [
-  { h: 52, bg: '#393939', color: '#fff'  },   // rank 0 (1위) — 가장 진함
-  { h: 46, bg: '#525252', color: '#fff'  },
-  { h: 46, bg: '#6F6F6F', color: '#fff'  },
-  { h: 46, bg: '#8D8D8D', color: '#fff'  },
-  { h: 29, bg: '#A8A8A8', color: '#fff'  },   // 마지막 white text
-  { h: 29, bg: '#C6C6C6', color: '#111'  },   // 5위부터 #111 텍스트
-  { h: 29, bg: '#E0E0E0', color: '#111'  },
-  { h: 29, bg: '#F4F4F4', color: '#111'  },
-  { h: 29, bg: '#F4F4F4', color: '#111'  },   // rank 8 (9위) — 가장 밝음
+// ─── ROOM_RANK_COLORS — 순위 명도 (Figma 551:3513 팔레트 유지) ──────────
+//
+//  🔧 [2026-07-24 #3] 그래프 문법 변경 — 고지 승인 (코드 선반영, Figma 미반영)
+//
+//  ★ 왜 바꾸는가
+//    기존 행은 **막대 폭이 전부 100% 고정**이었다. 값을 담은 건 우측 숫자뿐이고,
+//    그래프가 표현하던 것은 순위(회색 명도)와 계단식 높이(52/46/29)뿐이었다.
+//    그 높이조차 값 비례가 아니라 임의 단계라, 실측 1위 123건 vs 9위 47건(0.38배)
+//    차이가 그림에 전혀 드러나지 않았다. 차트가 아니라 순위표였던 셈이다.
+//
+//  ★ 무엇을 바꿨나
+//    · 막대 **폭 = 건수 비율**(1위 기준 100%)  ← 값 인코딩 신설
+//    · 행 높이는 균일(계단 폐기) — 폭이 값을 맡았는데 높이까지 값처럼 보이면
+//      서로 다른 두 인코딩이 충돌한다
+//    · 회색 명도는 **순위 표시로 그대로 유지**(Figma 팔레트 보존)
+//    · 라벨·건수는 막대 **바깥**에 둔다 — 옆 '회의실별 가동률'은 막대 안에
+//      mixBlendMode 로 얹지만, 그건 채움색이 #111 단색이라 가능한 방식이다.
+//      여기는 중간 회색(#8D8D8D 등)이 섞여 difference 블렌드가 중간톤 위에서
+//      대비를 잃는다. 바깥 배치가 어떤 명도에서도 안전하고, 덤으로 옆 카드와
+//      시각적으로도 구분된다.
+const ROOM_RANK_COLORS: string[] = [
+  '#393939',   // 1위 — 가장 진함
+  '#525252',
+  '#6F6F6F',
+  '#8D8D8D',
+  '#A8A8A8',
+  '#C6C6C6',
+  '#E0E0E0',
+  '#F4F4F4',
+  '#F4F4F4',   // 9위 — 가장 밝음
 ]
+
+/** 행 높이 — 기존 리스트 총높이(351)를 9행 균등으로 환산 (351 ≒ 37×9 + 2×8) */
+const ROOM_RANK_ROW_H = 37
 
 function RoomRankingCard({ rooms, onRangeChange }: { rooms: Room[] } & CardRangeReporter) {
   // ── 1. 자체 날짜 state (default 지난 30일) ────────────────────────────
@@ -1695,6 +1714,12 @@ function RoomRankingCard({ rooms, onRangeChange }: { rooms: Room[] } & CardRange
       }))
       .sort((a, b) => b.count - a.count)                              // Q2: count desc, 0도 마지막에 표시
   }, [bookings, rooms])
+
+  /** 막대 폭 기준값 = 1위 건수 (← [2026-07-24 #3]) */
+  const maxRoomCount = useMemo(
+    () => roomStats.reduce((m, s) => Math.max(m, s.count), 0),
+    [roomStats]
+  )
 
   return (
     <div style={{
@@ -1735,45 +1760,54 @@ function RoomRankingCard({ rooms, onRangeChange }: { rooms: Room[] } & CardRange
         />
       </div>
 
-      {/* ── 리스트 (9 rows, gap 2, 점진적 height/색상) ────── */}
-      <div style={{
-        display:      'flex',
-        flexDirection:'column',
-        gap:          2,                              // ← Figma: gap 2 (row 사이)
-        width:        '100%',
-      }}>
+      {/* ── 리스트 (9 rows · 막대 폭 = 건수) ──────────────────────────────
+            행 구성: [회의실명] [트랙 + 채움막대] [건수]
+            1위 대비 비율로 폭을 잡는다. 절대 기준(예: 200건=100%)을 쓰면
+            한산한 기간에는 모든 막대가 뭉개져 비교가 안 된다. */}
+      <div style={{ display:'flex', flexDirection:'column', width:'100%' }}>
         {roomStats.length === 0 ? (
           <div style={{ padding:'40px 0', textAlign:'center', fontSize:11, color:'#CBD5E1' }}>
             {loading ? '로딩 중…' : '회의실 데이터 없음'}
           </div>
         ) : (
-          roomStats.slice(0, ROOM_RANKING_STYLES.length).map((s, i) => {
-            const style = ROOM_RANKING_STYLES[i]
+          roomStats.slice(0, ROOM_RANK_COLORS.length).map((s, i) => {
+            // 0으로 나누기 방지 — 전 회의실 0건이면 막대는 전부 0폭
+            const ratio = maxRoomCount > 0 ? s.count / maxRoomCount : 0
             return (
               <div
                 key={s.room.room_id}
+                title={`${s.room.room_name} · ${s.count}건`}
                 style={{
-                  // ── Figma row 1:1 ─────────────────────────────────────
-                  background:     style.bg,
-                  color:          style.color,
-                  height:         style.h,
-                  display:        'flex',
-                  alignItems:     'flex-start',          // ← Figma: items-start (텍스트 상단 정렬)
-                  justifyContent: 'space-between',
-                  padding:        '8px 12px',            // ← Figma: px 12 py 8
-                  borderRadius:   1,                     // ← Figma: radius 1 (거의 직각)
-                  // ── Figma 텍스트: Regular 10 / lh 1.25 / tracking 0.1 ──
-                  fontFamily:     "'Pretendard', -apple-system, sans-serif",
-                  fontWeight:     400,
-                  fontSize:       10,
-                  lineHeight:     1.25,
-                  letterSpacing:  '0.1px',
+                  display:       'flex',
+                  alignItems:    'center',
+                  gap:           8,
+                  height:        ROOM_RANK_ROW_H,
+                  width:         '100%',
+                  fontFamily:    "'Pretendard', -apple-system, sans-serif",
+                  fontWeight:    400,
+                  fontSize:      10,
+                  lineHeight:    1.25,
+                  letterSpacing: '0.1px',
+                  color:         '#1E1E1E',
                 }}>
+                {/* 회의실명 — 막대 바깥이라 명도와 무관하게 항상 읽힌다 */}
                 <span style={{
+                  flex:'0 0 44%', minWidth:0,
                   overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                  flexShrink:1, minWidth:0, paddingRight:8,
                 }}>{s.room.room_name}</span>
-                <span style={{ flexShrink:0 }}>{s.count}</span>
+
+                {/* 트랙 + 채움막대 — 폭이 곧 값 */}
+                <div style={{ flex:1, minWidth:0, height:14, background:'#F6F7FA' }}>
+                  <div style={{
+                    width:      `${ratio * 100}%`,
+                    height:     '100%',
+                    background: ROOM_RANK_COLORS[i],
+                    transition: 'width 0.4s ease',
+                  }} />
+                </div>
+
+                {/* 건수 — 자릿수가 달라도 정렬이 흐트러지지 않게 폭 고정 */}
+                <span style={{ flex:'0 0 26px', textAlign:'right' }}>{s.count}</span>
               </div>
             )
           })
