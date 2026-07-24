@@ -2869,3 +2869,23 @@ export async function setUserAdminRoles(
   if (m.includes('DEPRECATED_ROLE'))        return { ok: false, message: '폐기된 역할은 부여할 수 없습니다' }
   return { ok: false, message: `저장 실패: ${m}` }
 }
+
+/** 권한 변경 이력 (Phase 2) — 특정 사용자 것만. actor 는 처리자, NULL 이면 시스템 */
+export interface RoleGrantLog {
+  id:         string
+  role:       string
+  action:     'grant' | 'revoke'
+  actor:      string | null
+  created_at: string
+}
+
+export async function loadRoleGrantLog(userId: string, limit = 20): Promise<RoleGrantLog[]> {
+  const { data, error } = await supabase
+    .from('admin_role_grants')
+    .select('id, role, action, actor, created_at')
+    .eq('target_user', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) { console.warn('[api] 권한 이력 조회 실패:', error.message); return [] }
+  return (data ?? []) as RoleGrantLog[]
+}

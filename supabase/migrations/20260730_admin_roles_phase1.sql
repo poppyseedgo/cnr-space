@@ -47,7 +47,13 @@ ALTER TABLE public.admin_roles ADD CONSTRAINT admin_roles_role_check
   CHECK (role IN (
     'dashboard','booking','approval','room','user','visitor',
     'book','notification','notice','pointer','super',
-    'zoom'   -- 폐기(신규 부여 금지) · 기존 데이터 보존용
+    -- ── 레거시 값 (신규 부여 금지 · 기존 행 보존용) ──────────────────────
+    --   ⚠ 원본 정의(20260511_v2_extension_schema.sql:66)의 CHECK 는
+    --     ('meeting_room','zoom','pointer','book','super') 였다.
+    --     이 둘을 빼면 **기존 행이 있을 때 ALTER 자체가 실패**하고
+    --     BEGIN..COMMIT 이 통째로 롤백된다. 값 목록에서 지우기 전에
+    --     아래 [E] 쿼리로 실제 사용 여부를 먼저 확인할 것.
+    'zoom', 'meeting_room'
   ));
 
 -- 같은 사람에게 같은 역할이 두 번 들어가지 않게
@@ -292,6 +298,9 @@ COMMIT;
 --   LEFT JOIN public.profiles t ON t.id = g.target_user
 --   LEFT JOIN public.profiles a ON a.id = g.actor
 --  ORDER BY g.created_at DESC LIMIT 50;
+--
+-- -- [E] 레거시 역할 사용 현황 — 'meeting_room' / 'zoom' 이 0 이면 CHECK 에서 빼도 된다
+-- SELECT role, count(*) FROM public.admin_roles GROUP BY role ORDER BY role;
 --
 -- -- [D] 퇴사자가 역할을 들고 있는지 (Phase 2 에서 자동화 예정)
 -- SELECT p.name, array_agg(a.role) FROM public.admin_roles a

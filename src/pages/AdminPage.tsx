@@ -48,7 +48,7 @@ import { AnnouncementPanel } from '../components/common/AnnouncementPanel'
 // ← [2026-07-24] 관리자 권한 Phase 1 — 역할 카탈로그 + 부여 API
 import { ADMIN_ROLES, GRANTABLE_ROLES, NORMAL_ROLES, SUPER_ROLE,
          visibleTabs, roleSummary } from '../data/adminRoles'
-import { loadMyAdminRoles, loadAllUserRoles, setUserAdminRoles } from '../lib/api'
+import { loadMyAdminRoles, loadAllUserRoles, setUserAdminRoles, loadRoleGrantLog, type RoleGrantLog } from '../lib/api'
 // ← [2026-05-06 Admin Phase C] 승인 관리 테이블 컴포넌트 신설 (Figma node 451:3534, Phase B 공통 컴포넌트 사용)
 import { AdminApprovalTable } from '../components/common/AdminApprovalTable'
 import { VisitorLogPanel } from '../components/common/VisitorLogPanel'  // ← [2026-07-10] 방문로그 관리 패널
@@ -3456,6 +3456,7 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
   const [roleMap,   setRoleMap]   = useState<Record<string, string[]>>({})
   const [roleDraft, setRoleDraft] = useState<string[]>([])
   const [roleSaving, setRoleSaving] = useState(false)
+  const [roleLog,   setRoleLog]   = useState<RoleGrantLog[]>([])   // ← [2026-07-24 P2] 권한 변경 이력
   const [iAmSuper,  setIAmSuper]  = useState(false)
 
   const loadRoles = useCallback(async () => {
@@ -3613,6 +3614,8 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
   const openDetail = (u: AppUser) => {
     setForm({ name: u.name, dept: u.dept, email: u.email, role: u.role })
     setRoleDraft(roleMap[u.user_id] ?? [])   // ← [2026-07-24] 현재 역할로 체크 상태 초기화
+    setRoleLog([])
+    loadRoleGrantLog(u.user_id).then(setRoleLog).catch(() => {})   // ← [2026-07-24 P2]
     setEditUser(u)
   }
 
@@ -3627,6 +3630,7 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
       if (!res.ok) { showToast(res.message ?? '권한 저장 실패', 'error'); return }
       showToast('권한을 저장했습니다', 'success')
       await loadRoles()
+      loadRoleGrantLog(editUser.user_id).then(setRoleLog).catch(() => {})
       // profiles.role 이 RPC 안에서 함께 바뀌므로 목록도 갱신한다
       setUsers(users.map(u => u.user_id === editUser.user_id
         ? { ...u, role: roleDraft.length > 0 ? 'ADMIN' : 'USER' } : u))
@@ -3853,6 +3857,37 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
           )}
         </div>
       )}
+
+      {/* ── 정리 유도 배너 (← [2026-07-24 Phase 2]) ──────────────────────
+            백필로 기존 관리자 전원이 일반 역할 10개를 전부 갖고 있다. 이걸 정리해야
+            세분화가 실제 효과를 갖는데, "정리한다"를 사람 기억에 맡기면 그대로 남는다
+            (공지 배너가 두 달 방치된 그 패턴). 남아 있는 동안 눈에 보이게 둔다. */}
+      {(() => {
+        const allRoleUsers = activeUsers.filter(u => {
+          const rs = roleMap[u.user_id] ?? []
+          return !rs.includes(SUPER_ROLE) && rs.length === NORMAL_ROLES.length
+        })
+        if (allRoleUsers.length === 0) return null
+        return (
+          <div style={{
+            display:'flex', alignItems:'center', gap:10, padding:'10px 14px', marginBottom:12,
+            background:'#FFFBEB', border:'1px solid #FDE68A', borderRadius:10, flexWrap:'wrap',
+          }}>
+            <AlertTriangle size={14} strokeWidth={1.8} color="#D97706"/>
+            <span style={{ fontSize:12, fontWeight:700, color:'#92400E' }}>
+              전 역할 보유 {allRoleUsers.length}명
+            </span>
+            <span style={{ fontSize:12, color:'#A16207' }}>
+              권한 세분화 도입 시 기존 관리자에게 일괄 부여된 상태입니다.
+              담당이 아닌 역할을 빼면 해당 메뉴가 그 사람 화면에서 사라집니다.
+            </span>
+            <span style={{ fontSize:11, color:'#C2A14D', marginLeft:'auto', whiteSpace:'nowrap' }}>
+              {allRoleUsers.slice(0, 3).map(u => u.name).join(', ')}
+              {allRoleUsers.length > 3 ? ` 외 ${allRoleUsers.length - 3}명` : ''}
+            </span>
+          </div>
+        )
+      })()}
 
       {/* ── 필터 탭 ── */}
       <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' }}>
@@ -4186,6 +4221,43 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
                       <Button variant='secondary' size='sm' loading={roleSaving} onClick={saveRoles}>권한 저장</Button>
                     )}
                   </div>
+
+                  {/* ── 권한 변경 이력 (← [2026-07-24 Phase 2]) ─────────────────
+                        granted_by 만으로는 **회수 이력이 남지 않는다**(행이 사라지므로).
+                        "언제부터 이 사람이 도서 관리를 못 하게 됐나" 에 답할 수 있어야 한다.
+                        actor 가 비어 있으면 시스템(퇴사 자동 회수·마이그레이션 백필)이다. */}
+                  {roleLog.length > 0 && (
+                    <details style={{ marginTop:12 }}>
+                      <summary style={{ fontSize:11, fontWeight:600, color:'#64748B', cursor:'pointer' }}>
+                        권한 변경 이력 {roleLog.length}건
+                      </summary>
+                      <div style={{ marginTop:8, maxHeight:180, overflowY:'auto',
+                                    border:'1px solid #F1F5F9', borderRadius:8 }}>
+                        {roleLog.map(g => {
+                          const actor = users.find(u => u.user_id === g.actor)
+                          const label = ADMIN_ROLES.find(r => r.id === g.role)?.label ?? g.role
+                          return (
+                            <div key={g.id} style={{
+                              display:'flex', alignItems:'center', gap:8, padding:'7px 10px',
+                              borderBottom:'1px solid #F8FAFC', fontSize:11,
+                            }}>
+                              <span style={{ color:'#94A3B8', whiteSpace:'nowrap' }}>
+                                {g.created_at.slice(0, 10)}
+                              </span>
+                              <span style={{
+                                padding:'1px 7px', borderRadius:999, fontWeight:700,
+                                background: g.action === 'grant' ? '#DCFCE7' : '#FEE2E2',
+                                color:      g.action === 'grant' ? '#166534' : '#B91C1C',
+                              }}>{g.action === 'grant' ? '부여' : '회수'}</span>
+                              <span style={{ color:'#374151', fontWeight:600 }}>{label}</span>
+                              <div style={{ flex:1 }} />
+                              <span style={{ color:'#CBD5E1' }}>{actor?.name ?? '시스템'}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </details>
+                  )}
                 </div>
 
                 {/* 저장 / 취소 */}
