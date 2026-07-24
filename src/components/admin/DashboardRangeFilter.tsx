@@ -23,7 +23,7 @@
  */
 import { useState, useRef, useEffect } from 'react'
 import { DatePickerPopup } from '../common/DatePickerPopup'
-import { todayStr } from '../../utils/time'
+import { todayStr, addDays } from '../../utils/time'
 
 // ─── 공통 폰트 스택 (AdminPage 카드와 동일) ──────────────────────────────────
 const FONT = "'Pretendard', -apple-system, sans-serif"
@@ -95,10 +95,12 @@ export const RANGE_PRESETS_RECENT: RangePreset[] = [
 ]
 
 /** base 날짜(YYYY-MM-DD)에 days를 더한 날짜 문자열 — AdminPage.addDaysStr와 동일 로직 */
+// ⚠ [2026-07-24 #4] 자체 구현 → utils/time.addDays 위임.
+//   로컬 파싱 + UTC 포맷(toISOString) 조합이라 KST 에서 하루가 밀렸다.
+//   '한 달' pill 이 6/24 를 만들고 다른 카드는 6/25 를 써서, 같은 프리셋인데
+//   카드마다 조회 구간이 달라지는 원인이었다.
 function addDaysStr(base: string, days: number): string {
-  const d = new Date(base + 'T00:00:00')
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
+  return addDays(base, days)
 }
 
 /** 프리셋 id → [from, to] 계산 (to는 항상 오늘) */

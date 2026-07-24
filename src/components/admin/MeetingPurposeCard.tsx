@@ -18,17 +18,25 @@ import { useState, useMemo } from 'react'
 import { DashboardRangeRow, useReportRange, type CardRangeReporter } from './DashboardRangeFilter'
 import { useBookingsByRange } from './useBookingsByRange'
 import { aggregatePurposes, segmentAlpha, type PurposeCode } from '../../utils/meetingPurpose'
-import { todayStr } from '../../utils/time'
+import { todayStr, addDays } from '../../utils/time'
 
 const FONT = "'Pretendard', -apple-system, sans-serif"
 
 // Figma 2646:7629 — 스택 바 높이
 const BAR_H = 40
 
+/**
+ * 기본 기간 시작일 = 오늘 −29일 (오늘 포함 30일)
+ *
+ * ⚠ [2026-07-24 #4] utils/time.addDays 로 교체.
+ *   기존 구현은 `new Date(todayStr()+'T00:00:00')`(로컬 파싱) 뒤
+ *   `.toISOString().slice(0,10)`(UTC 포맷)이라 KST(UTC+9)에서 **하루가 밀렸다**.
+ *   그 결과 이 카드들만 6/24 부터, 나머지 카드는 6/25 부터 조회해
+ *   워킹데이 수와 분모가 달라졌다. addDays 는 로컬 파싱·로컬 포맷이라
+ *   어느 타임존에서도 달력 그대로 계산된다.
+ */
 function defaultFrom(): string {
-  const d = new Date(todayStr() + 'T00:00:00')
-  d.setDate(d.getDate() - 29)
-  return d.toISOString().slice(0, 10)
+  return addDays(todayStr(), -29)
 }
 
 export function MeetingPurposeCard({ onPickPurpose, onRangeChange }: {

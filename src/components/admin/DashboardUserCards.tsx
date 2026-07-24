@@ -19,16 +19,24 @@ import { DashboardUserCell, DashboardDeptText } from './DashboardUserCell'  // �
 import { DashboardRangeRow, useReportRange, type CardRangeReporter } from './DashboardRangeFilter'
 import { useBookingsByRange } from './useBookingsByRange'
 import { aggregateUsers } from '../../utils/dashboardAgg'
-import { todayStr } from '../../utils/time'
+import { todayStr, addDays } from '../../utils/time'
 import type { AppUser } from '../../types'
 
 const FONT = "'Pretendard', -apple-system, sans-serif"
 
 // 기본 기간 = 오늘 포함 30일 (기존 위젯 전부와 동일 — DashboardRangeFilter '한 달' 프리셋과 일치)
+/**
+ * 기본 기간 시작일 = 오늘 −29일 (오늘 포함 30일)
+ *
+ * ⚠ [2026-07-24 #4] utils/time.addDays 로 교체.
+ *   기존 구현은 `new Date(todayStr()+'T00:00:00')`(로컬 파싱) 뒤
+ *   `.toISOString().slice(0,10)`(UTC 포맷)이라 KST(UTC+9)에서 **하루가 밀렸다**.
+ *   그 결과 이 카드들만 6/24 부터, 나머지 카드는 6/25 부터 조회해
+ *   워킹데이 수와 분모가 달라졌다. addDays 는 로컬 파싱·로컬 포맷이라
+ *   어느 타임존에서도 달력 그대로 계산된다.
+ */
 function defaultFrom(): string {
-  const d = new Date(todayStr() + 'T00:00:00')
-  d.setDate(d.getDate() - 29)
-  return d.toISOString().slice(0, 10)
+  return addDays(todayStr(), -29)
 }
 
 // ─── 공통 카드 셸 (Figma: bg #fff / radius 24 / pt12 px16 pb16) ─────────────

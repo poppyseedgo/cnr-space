@@ -17,7 +17,7 @@ import { Button } from '../components/common/Button'
 import { ModalCloseButton } from '../components/common/ModalCloseButton' // ← [2026-04-22] 모달 X 버튼 공통화
 import {
   todayStr, tsDate, tsMin, tsTime, fmtTime, fmtTSDateFull, fmtTSRangeFull,
-  fmt2, objToStr,
+  fmt2, objToStr, addDays,
 } from '../utils/time'
 import { FLOORS, getFloor } from '../data/floors'
 import {
@@ -39,6 +39,7 @@ import { UserChip } from '../components/common/UserChip'
 import { BookingListTable } from '../components/common/BookingListTable'
 import { BookingStatusBadge } from '../components/common/BookingStatusBadge'  // ← [2026-05-28] DetailDrawer 테이블 인라인 status 판정 → 공통 컴포넌트 교체용
 // ← [2026-05-06 Admin Phase A] 좌측 사이드 네비게이션 컴포넌트 신설 (Figma node 451:3522)
+import { useBreakpoint } from '../hooks/useBreakpoint'   // ← [2026-07-24] 대시보드 반응형 컬럼 계산
 import { AdminSideNav, type AdminTabId } from '../components/layout/AdminSideNav'
 // ← [2026-07-23] 알림 설정 패널 — 알림 종류×채널 on/off + 관리자 수신자 지정
 import { NotificationSettingsPanel } from '../components/common/NotificationSettingsPanel'
@@ -78,9 +79,12 @@ import { aggregateUsers } from '../utils/dashboardAgg'
 import { calcUtilization } from '../utils/roomUtilization'
 
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
+// ⚠ [2026-07-24 #4] utils/time.addDays 위임 — 날짜 계산 SSOT 통일.
+//   기존은 `new Date(base)`(UTC 파싱) + objToStr(로컬 포맷) 조합이라
+//   KST 에서는 우연히 맞았지만 UTC−오프셋 지역에서는 하루가 밀린다.
+//   대시보드 전 카드가 같은 함수를 쓰도록 한 곳으로 모은다.
 function addDaysStr(base: string, days: number): string {
-  const d = new Date(base); d.setDate(d.getDate() + days)
-  return objToStr(d)
+  return addDays(base, days)
 }
 function getMonthStart(offset = 0): string {
   const d = new Date(); d.setMonth(d.getMonth() + offset, 1)
@@ -877,6 +881,15 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
   //   "대기 2건"이 잘못 표시됐다가 몇 초 뒤 사라지는 현상을 만들었다.
   const pendingCount = useMemo(() => countAwaitingApproval(bookings as Booking[]), [bookings])
 
+  // ── 사이드 네비 배치 (← [2026-07-24 #4] iPad 세로 대응) ──────────────────
+  //
+  //   데스크톱은 사이드를 body 에 fixed 로 띄우고 본문에 paddingLeft 244 를 준다.
+  //   그런데 iPad 세로(820~834)에서도 그 244px 를 그대로 떼가는 바람에
+  //   본문이 576px 밖에 안 남아, 2열로 줄여도 카드가 270px 로 찌그러졌다.
+  //   1024 미만에서는 모바일과 같이 사이드를 본문 위 인라인으로 흘려보낸다.
+  //   → 같은 iPad 세로에서 카드 폭 268px → 382px (Figma 389 에 근접)
+  const navInline = isMobile || isTablet
+
   return (
     /* ═══════════════════════════════════════════════════════════════════
        ↓ Admin 외곽 wrapper — Figma node 451:3521 1:1
@@ -896,7 +909,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
        ═══════════════════════════════════════════════════════════════════ */
     <>
       {/* ── 데스크톱: 사이드 네비를 body에 portal mount + fixed 위치 ──── */}
-      {!isMobile && createPortal(
+      {!navInline && createPortal(
         <aside style={{
           position: 'fixed',
           top:      headerHeight + 32,                    // ← 헤더 높이 + 여유 32
@@ -921,10 +934,11 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
       <div style={{
         maxWidth: 1400,
         margin:   '0 auto',
-        padding:  isMobile ? '16px 12px' : '32px 24px 32px 244px',
+        // ← [2026-07-24] 태블릿은 사이드가 인라인이므로 좌측 244 여백이 필요 없다
+        padding:  isMobile ? '16px 12px' : navInline ? '24px 20px' : '32px 24px 32px 244px',
       }}>
-        {/* 모바일: 사이드 인라인 표시 (자연 흐름) */}
-        {isMobile && (
+        {/* 모바일·태블릿: 사이드 인라인 표시 (자연 흐름) */}
+        {navInline && (
           <div style={{ marginBottom: 16 }}>
             <AdminSideNav
               activeTab={activeTab as AdminTabId}
@@ -2924,6 +2938,21 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
   //   · 유지: pendingCount — bookings prop에서 직접 (실시간 pending count, 위젯 ①)
   //   · rooms / users / onDetail props: Phase 4-10 위젯 구현 시 사용 예정 → 시그니처 보존
 
+  // ── 반응형 컬럼 수 (← [2026-07-24 #4] iPad 대응) ────────────────────────
+  //
+  //   기존은 isMobile(768 미만) 하나로만 갈라 3열/1열이었다. 그 사이 구간 —
+  //   iPad 세로 820, iPad 가로 1180~1194, 10.2" 가로 1024 — 이 전부 3열로 떨어져
+  //   카드 한 장이 200~300px 로 찌그러졌다. 9행 표와 히트맵이 들어가는 카드라
+  //   그 폭에서는 라벨이 전부 잘린다.
+  //
+  //   Figma 카드 실폭 389.33 을 기준으로, 카드가 그 폭 근처를 유지하도록
+  //   가용 폭에서 열 수를 역산한다. 임의의 브레이크포인트가 아니라
+  //   "카드가 읽히는 최소 폭"이 기준이다.
+  const { width: vw } = useBreakpoint()
+  const cols3 = isMobile ? 1 : vw < 1280 ? 2 : 3   // 3열 행 → 태블릿에선 2열
+  const cols2 = isMobile ? 1 : 2                    // 2열 행 → 태블릿에서도 2열 유지(카드가 넓어 문제 없음)
+  const gridCls = (n: number) => `grid gap-4 ${n === 1 ? 'grid-cols-1' : n === 2 ? 'grid-cols-2' : 'grid-cols-3'}`
+
   // 위젯 ① 승인 대기용 — bookings prop에서 직접 계산 (날짜 필터 없음)
   // ← [2026-07-23 버그수정] 기한 초과 pending 제외 (utils/pendingStatus SSOT)
   const pendingCount = countAwaitingApproval(bookings)
@@ -3008,7 +3037,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
          ═══════════════════════════════════════════════════════════════════════ */}
 
       {/* ── Row 1: ① 승인 대기 / ② 최근 생성된 예약 (2-col 592×342) ── */}
-      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-2'}`}>
+      <div className={gridCls(cols2)}>
         {/* ① 승인 대기 → [2026-06-10] 드로어 대신 '승인 관리' 탭으로 즉시 이동 (동작 유지) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => onGoApprovals()}>
@@ -3028,7 +3057,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
       </div>
 
       {/* ── Row 2: ③ 사용자 예약 순위 / ④ 부서 예약 순위 / ⑤ 일일 예약 추이 (3-col 389×400) ── */}
-      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
+      <div className={gridCls(cols3)}>
         {/* ③ 사용자 예약 순위 → users 통계 (count desc — 카드 정렬과 동일 진입) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'users', sortKey: 'count', sortAsc: false, ...rangeOf('userRank') })}>
@@ -3048,7 +3077,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
       </div>
 
       {/* ── Row 3: ⑥ 일일 노쇼 현황 / ⑦ 사용자 누적 노쇼 / ⑧ 회의실 노쇼 현황 (3-col 389×400) ── */}
-      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
+      <div className={gridCls(cols3)}>
         {/* ⑥ 사용자 누적 노쇼 → users 통계 (noshow desc — 카드 정렬과 동일 진입)
               ← [2026-07-23] Figma 갱신으로 일일 노쇼 현황과 위치 교환 (Row3 Col1) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
@@ -3073,7 +3102,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
               목적 분석은 성격이 다른 단독 분석이라 아래로 내린다.
             ※ ⑨와 ⑩은 나란히 놓이지만 서로 다른 질문에 답한다 —
               ⑨ '몇 건 잡혔나(건수)' / ⑩ '얼마나 채워졌나(시간 점유율)' */}
-      <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
+      <div className={gridCls(cols3)}>
         {/* ⑨ 예약 많은 회의실 → rooms 통계 · 건수 desc 진입 */}
         <div style={cardWrapStretch} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'confirmed', sortAsc: false, ...rangeOf('roomRank') })}>

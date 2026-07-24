@@ -26,17 +26,25 @@ import {
   calcUtilization, busiestIdleWeekday, buildUtilizationGrid,
   WEEKDAY_LABELS, ROW_BUCKET_LABEL,
 } from '../../utils/roomUtilization'
-import { todayStr } from '../../utils/time'
+import { todayStr, addDays } from '../../utils/time'
 import type { Room } from '../../types'
 
 const FONT = "'Pretendard', -apple-system, sans-serif"
 const MAX_ROWS = 5        // ← Figma: 데이터행 5 (행 수는 고정, 행이 담는 기간을 늘려 대응)
 const ROW_LABEL_W = 34    // ← [2026-07-23] 행 라벨 컬럼 — 행 단위가 기간마다 달라져 라벨 없이는 읽을 수 없다
 
+/**
+ * 기본 기간 시작일 = 오늘 −29일 (오늘 포함 30일)
+ *
+ * ⚠ [2026-07-24 #4] utils/time.addDays 로 교체.
+ *   기존 구현은 `new Date(todayStr()+'T00:00:00')`(로컬 파싱) 뒤
+ *   `.toISOString().slice(0,10)`(UTC 포맷)이라 KST(UTC+9)에서 **하루가 밀렸다**.
+ *   그 결과 이 카드들만 6/24 부터, 나머지 카드는 6/25 부터 조회해
+ *   워킹데이 수와 분모가 달라졌다. addDays 는 로컬 파싱·로컬 포맷이라
+ *   어느 타임존에서도 달력 그대로 계산된다.
+ */
 function defaultFrom(): string {
-  const d = new Date(todayStr() + 'T00:00:00')
-  d.setDate(d.getDate() - 29)
-  return d.toISOString().slice(0, 10)
+  return addDays(todayStr(), -29)
 }
 
 /** 셀 배경 — 가동률이 높을수록 진하게 (히트맵) */
@@ -98,16 +106,37 @@ export function RoomUtilizationCard({ rooms, onRangeChange }: { rooms: Room[] } 
         />
       </div>
 
-      {/* ── 요약 한 줄 — 고지 요구 "가장 바쁜/한가한 요일" ────────────────── */}
-      <div style={{ display:'flex', alignItems:'baseline', gap:8, width:'100%' }}>
-        <span style={{ fontFamily:FONT, fontWeight:400, fontSize:28, lineHeight:1.4, color:'#111' }}>
-          {loading ? '—' : pct(util.overall.rate)}
-        </span>
+      {/* ── 요약 ─────────────────────────────────────────────────────────
+            🔧 [2026-07-24 #4] 헤드라인을 '전체 평균' → '가장 바쁜 요일'로 교체.
+
+            ★ 왜 바꾸나 — 숫자가 틀려서가 아니다
+              이 카드와 '회의실별 가동률'은 같은 calcUtilization().overall 을
+              헤드라인에 쓰고 있었다. 같은 총량을 요일로 자르느냐 회의실로 자르느냐만
+              다르므로 **두 값은 반드시 같다**(요일별 합 = 회의실별 합 = 전체).
+              하지만 화면에는 같은 72%가 나란히 두 번 뜨고, 이 카드의 부제는
+              요일 이야기만 하고 있어서 "요일 지표인데 왜 옆 카드와 같지?" 로 읽힌다.
+              수치 신뢰를 깎는 건 계산이 아니라 이 표현이었다.
+
+            ★ 무엇을 보여주나
+              이 카드가 답하는 질문은 "가장 바쁜/한가한 요일" 이므로 헤드라인도 그것으로
+              바꾸고, 공유 지표인 전체 평균은 **'전체 평균'이라고 명시해** 아래 줄에 남긴다.
+              그러면 두 카드에 같은 값이 보여도 같은 것을 가리킨다는 게 드러난다. */}
+      <div style={{ display:'flex', flexDirection:'column', gap:2, width:'100%' }}>
+        <div style={{ display:'flex', alignItems:'baseline', gap:8, width:'100%' }}>
+          <span style={{ fontFamily:FONT, fontWeight:400, fontSize:28, lineHeight:1.4, color:'#111' }}>
+            {loading || busiest === null ? '—' : pct(util.byWeekday[busiest].rate)}
+          </span>
+          <span style={{ fontFamily:FONT, fontWeight:400, fontSize:11, lineHeight:1.5, color:'#AEB5C4' }}>
+            {loading || busiest === null ? '' :
+              `가장 바쁜 ${WEEKDAY_LABELS[busiest]}요일` +
+              (idle !== null ? ` · 가장 한가한 ${WEEKDAY_LABELS[idle]} ${pct(util.byWeekday[idle].rate)}` : '')}
+          </span>
+        </div>
         {/* ← [2026-07-23] 산정 기준을 카드에 명시한다.
               옆 카드(시간대별 예약 분포)가 "운영시간 오전 7시 부터 오후 7시"를 표기하고 있어
               같은 행에 놓이면 가동률도 7~19시 기준으로 오인된다. 기준을 눈에 보이게 박아둔다. */}
         <span style={{ fontFamily:FONT, fontWeight:400, fontSize:11, lineHeight:1.5, color:'#AEB5C4' }}>
-          {loading ? '' : `09–18시 · 점심 제외 (8h) · 워킹데이 ${util.workdays}일 · 최다 ${busiest !== null ? WEEKDAY_LABELS[busiest] : '—'} / 최소 ${idle !== null ? WEEKDAY_LABELS[idle] : '—'}`}
+          {loading ? '' : `전체 평균 ${pct(util.overall.rate)} · 09–18시 점심 제외 (8h) · 워킹데이 ${util.workdays}일`}
         </span>
       </div>
 
@@ -236,7 +265,7 @@ export function RoomUtilizationByRoomCard({ rooms, onRangeChange }: { rooms: Roo
           {loading ? '—' : pct(util.overall.rate)}
         </span>
         <span style={{ fontFamily:FONT, fontWeight:400, fontSize:11, lineHeight:1.5, color:'#AEB5C4' }}>
-          {loading ? '' : `전체 평균 · 09–18시 점심 제외 · 워킹데이 ${util.workdays}일`}
+          {loading ? '' : `전체 평균 · 09–18시 점심 제외 (8h) · 워킹데이 ${util.workdays}일`}   /* ← [2026-07-24] 요일별 카드 부제와 표기 통일 — 같은 값임을 같은 문구로 드러낸다 */
         </span>
       </div>
 
