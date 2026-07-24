@@ -72,6 +72,9 @@ import { RoomUtilizationCard, RoomUtilizationByRoomCard } from '../components/ad
 import { aggregatePurposes, aggregatePurposeByDept, classifyPurpose, PURPOSE_DEFS, type PurposeCode } from '../utils/meetingPurpose'  // ← [2026-07-23] 분류·집계 SSOT (DetailDrawer 공용) + 드릴다운 판정
 import { useBookingsByRange } from '../components/admin/useBookingsByRange'
 import { aggregateUsers } from '../utils/dashboardAgg'
+// ← [2026-07-24] 회의실 드로어에 '가동률' 컬럼 추가 — 카드와 같은 calcUtilization 을 쓴다.
+//   집계를 새로 짜면 카드는 86%, 드로어는 다른 값이 되는 이중 진실이 생긴다.
+import { calcUtilization } from '../utils/roomUtilization'
 
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
 function addDaysStr(base: string, days: number): string {
@@ -285,12 +288,37 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
       if (isNoshow(b)) s.noshow++
       if (b.checkedIn) s.checkin++
     })
+    // ← [2026-07-24] 가동률 병합.
+    //   '예약 많은 회의실'(건수)과 '회의실별 가동률'(시간 점유율)이 같은 드로어를 여는데
+    //   표에는 건수만 있어서 "두 카드가 같은 지표 아니냐"는 혼동이 있었다.
+    //   두 값을 한 표에 나란히 놓으면 서로 다른 질문이라는 게 드러난다.
+    //   ※ 행 집합은 그대로 둔다(예약이 1건이라도 있는 방만). byRoom 은 예약 0건 방도
+    //     포함하지만, 여기서 행을 늘리면 기존 '예약 많은 회의실' 드릴다운 모수가 바뀐다.
+    const utilByRoom = new Map<number, number>()
+    calcUtilization(filtered, rooms, dateFrom, dateTo).byRoom.forEach(({ room, util }) => {
+      utilByRoom.set(room.room_id, Math.round(util.rate * 100))
+    })
     return Array.from(map.entries()).map(([rid, s]) => {
       const r = rooms.find(rm => rm.room_id === rid)
-      return { room_name: r?.room_name || String(rid), ...s,
-        noshow_rate: s.confirmed + s.noshow > 0 ? Math.round(s.noshow / (s.confirmed + s.noshow) * 100) : 0 }
+      return { room_id: rid, room_name: r?.room_name || String(rid), ...s,
+        noshow_rate: s.confirmed + s.noshow > 0 ? Math.round(s.noshow / (s.confirmed + s.noshow) * 100) : 0,
+        util: utilByRoom.get(rid) ?? 0 }
     }).sort((a,b) => b.confirmed - a.confirmed)
-  }, [filtered, rooms])
+  }, [filtered, rooms, dateFrom, dateTo])
+
+  // ← [2026-07-24] 진입 정렬 적용.
+  //   기존에는 roomAgg 가 항상 건수 desc 고정이라, 노쇼·가동률 카드에서 들어와도
+  //   "예약 많은 순"으로만 보였다(카드가 넘긴 sortKey 가 rooms 타입에서 무시됨).
+  //   이제 카드별 sortKey 로 진입하고, 헤더 클릭으로 재정렬할 수 있다.
+  const ROOM_SORT_KEYS = ['room_name','confirmed','checkin','noshow','noshow_rate','util']
+  const sortedRoomAgg = useMemo(() => {
+    const key = ROOM_SORT_KEYS.includes(sortKey) ? sortKey : 'confirmed'
+    return [...roomAgg].sort((a: any, b: any) => {
+      const av = a[key], bv = b[key]
+      if (typeof av === 'string') return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av)
+      return sortAsc ? av - bv : bv - av
+    })
+  }, [roomAgg, sortKey, sortAsc])
 
   const deptAgg = useMemo(() => {
     const map = new Map<string, { confirmed:number; noshow:number }>()
@@ -523,10 +551,21 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
     }
 
     // 집계 테이블 타입 (드릴다운 콜백 포함)
-    if (type === 'rooms') return <AggTable rows={roomAgg}
-      cols={[{k:'room_name',l:'회의실'},{k:'confirmed',l:'예약'},{k:'checkin',l:'체크인'},{k:'noshow',l:'노쇼'},{k:'noshow_rate',l:'노쇼율(%)',fmt:v=>`${v}%`}]}
-      onExport={() => exportCSV(roomAgg.map(r=>({회의실:r.room_name,예약:r.confirmed,체크인:r.checkin,노쇼:r.noshow,'노쇼율(%)':r.noshow_rate})), `회의실별통계_${dateFrom}_${dateTo}`)}
-      onRowClick={row => { const rm = rooms.find(r=>r.room_name===row.room_name); if(rm) { setDrill({ label:row.room_name, fn:(b)=>b.room_id===rm.room_id }); setPage(1) } }}/>
+    if (type === 'rooms') return <AggTable rows={sortedRoomAgg}
+      cols={[{k:'room_name',l:'회의실'},{k:'confirmed',l:'예약'},{k:'checkin',l:'체크인'},{k:'noshow',l:'노쇼'},{k:'noshow_rate',l:'노쇼율(%)',fmt:v=>`${v}%`},{k:'util',l:'가동률(%)',fmt:v=>`${v}%`}]}
+      /* ← [2026-07-24] 두 지표의 단위·모수가 다르다는 것을 표 위에 명시한다.
+            문구가 없으면 '예약'과 '가동률'이 같은 걸 다르게 센 값으로 읽힌다. */
+      note={'예약 = 건수(취소·거절 제외) · 가동률 = 확정 예약 점유 시간 ÷ (워킹데이 × 8시간, 09–18시 점심 제외). '
+          + '건수가 많아도 회의가 짧으면 가동률은 낮다.'}
+      onHeaderClick={(k) => {
+        if (!ROOM_SORT_KEYS.includes(k)) return
+        if (sortKey === k) setSortAsc(v => !v)
+        else { setSortKey(k); setSortAsc(false) }
+      }}
+      activeSortKey={ROOM_SORT_KEYS.includes(sortKey) ? sortKey : 'confirmed'}
+      activeSortAsc={sortAsc}
+      onExport={() => exportCSV(sortedRoomAgg.map(r=>({회의실:r.room_name,예약:r.confirmed,체크인:r.checkin,노쇼:r.noshow,'노쇼율(%)':r.noshow_rate,'가동률(%)':r.util})), `회의실별통계_${dateFrom}_${dateTo}`)}
+      onRowClick={row => { const rm = rooms.find(r=>r.room_id===row.room_id); if(rm) { setDrill({ label:row.room_name, fn:(b)=>b.room_id===rm.room_id }); setPage(1) } }}/>
 
     if (type === 'dept') return <AggTable rows={deptAgg}
       cols={[{k:'dept',l:'부서'},{k:'confirmed',l:'예약'},{k:'noshow',l:'노쇼'}]}
@@ -717,10 +756,12 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
 
 // 집계 테이블 컴포넌트
 // ← [2026-05-26] onHeaderClick 옵션 추가 — 사용자별 노쇼 테이블에서 헤더 클릭 정렬 지원
-function AggTable({ rows, cols, onExport, onRowClick, onHeaderClick, activeSortKey, activeSortAsc }: {
+function AggTable({ rows, cols, onExport, onRowClick, onHeaderClick, activeSortKey, activeSortAsc, note }: {
   rows: any[]
   cols: {k:string;l:string;fmt?:(v:any)=>string}[]
   onExport: () => void
+  // ← [2026-07-24] 표 위 산정 기준 문구 (지표 단위가 섞인 표에서만 사용)
+  note?: string
   onRowClick?: (row: any) => void
   // ← [2026-05-26 신규] 헤더 클릭으로 정렬 변경 (없으면 정렬 UI 비활성, 기존 호환)
   onHeaderClick?: (key: string) => void
@@ -732,6 +773,13 @@ function AggTable({ rows, cols, onExport, onRowClick, onHeaderClick, activeSortK
   const canSort  = !!onHeaderClick
   return (
     <>
+      {note && (
+        <div style={{
+          fontSize:11, lineHeight:1.6, color:'#64748B',
+          background:'#F8FAFC', border:'1px solid #EEF1F6', borderRadius:8,
+          padding:'8px 12px', marginBottom:10,
+        }}>{note}</div>
+      )}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
         <div style={{ fontSize:12, color:'#64748B' }}>총 <b style={{ color:'#111' }}>{rows.length}</b>개
           {canDrill && <span style={{ marginLeft:8, fontSize:11, color:'#6366F1' }}>행 클릭 → 예약 목록</span>}
@@ -1650,7 +1698,11 @@ function RoomRankingCard({ rooms }: { rooms: Room[] }) {
       flexDirection: 'column',
       alignItems:    'flex-start',
       justifyContent:'space-between',                // ← Figma: 헤더↔리스트 양 끝 분배 (no gap)
-      height:        504,                         // ← [2026-07-23 Phase 1] Figma Row4 592×504 — 높이 유지, 폭만 542→592 (grid 2-col)
+      // ← [2026-07-24] 고정 504 → 최소 364.
+      //   Row5 세 카드가 각자 고정 높이를 들고 있어 이 카드만 길게 보였다.
+      //   높이를 감싸는 그리드 셀에 맡기고(아래 cardWrapStretch), 여기서는 하한만 준다.
+      //   하한이 없으면 데이터 0건일 때 헤더만 남고 카드가 납작해진다.
+      minHeight:     364,
       width:         '100%',
     }}>
       {/* ── 헤더 (gap 2) ────────────────────────────────────── */}
@@ -2842,6 +2894,13 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
     borderRadius: 24,
     transition: 'box-shadow 0.15s',
   }
+  // ← [2026-07-24] Row5 전용 — 카드를 그리드 셀 높이에 맞춰 늘린다.
+  //   그리드는 이미 align-items:stretch 라 '셀'은 늘어나 있었는데, 카드가 그 안에서
+  //   고정 높이로 버티고 있어 효과가 없었다. 셀을 flex 로 만들면 자식(카드)이
+  //   교차축으로 stretch 되어 행에서 가장 긴 카드 높이에 자동으로 맞는다.
+  //   ※ cardWrapStyle 자체를 고치지 않는 이유: 다른 행은 이미 카드 높이가 서로 같아
+  //     변경 이유가 없고, 공통 스타일을 건드리면 6개 행 전부가 영향권에 들어온다.
+  const cardWrapStretch: React.CSSProperties = { ...cardWrapStyle, display: 'flex' }
   const cardWrapHover = (e: React.MouseEvent<HTMLDivElement>) => {
     (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 20px rgba(0,0,0,0.06)'
   }
@@ -2954,19 +3013,21 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
             ※ ⑩과 ⑪은 나란히 놓이지만 서로 다른 질문에 답한다 —
               ⑩ '몇 건 잡혔나(건수)' / ⑪ '얼마나 채워졌나(시간 점유율)' */}
       <div className={`grid gap-4 ${isMobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
-        {/* ⑩ 예약 많은 회의실 → rooms 통계 (confirmed desc — 동작 유지) */}
-        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+        {/* ⑩ 예약 많은 회의실 → rooms 통계 · 건수 desc 진입 */}
+        <div style={cardWrapStretch} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'confirmed', sortAsc: false })}>
           <RoomRankingCard rooms={rooms} />
         </div>
-        {/* ⑪ 회의실별 가동률 [2026-07-23 신규] */}
-        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'confirmed', sortAsc: false })}>
+        {/* ⑪ 회의실별 가동률 → 같은 표를 열되 ★가동률 desc 로 진입 (← [2026-07-24])
+              카드가 답하는 질문이 "얼마나 채워졌나"이므로 드릴다운도 그 순서여야 한다.
+              기존엔 세 카드가 모두 건수 desc 로 들어가 "같은 화면"으로 보였다. */}
+        <div style={cardWrapStretch} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'util', sortAsc: false })}>
           <RoomUtilizationByRoomCard rooms={rooms} />
         </div>
-        {/* ⑫ 요일별 가동률 */}
-        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
-          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'confirmed', sortAsc: false })}>
+        {/* ⑫ 요일별 가동률 → 회의실별 가동률과 같은 계산이므로 동일하게 가동률 desc 진입 */}
+        <div style={cardWrapStretch} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => setCardDrawer({ type: 'rooms', sortKey: 'util', sortAsc: false })}>
           <RoomUtilizationCard rooms={rooms} />
         </div>
       </div>

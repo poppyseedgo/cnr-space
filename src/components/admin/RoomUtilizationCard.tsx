@@ -77,7 +77,10 @@ export function RoomUtilizationCard({ rooms }: { rooms: Room[] }) {
       flexDirection: 'column',
       alignItems:    'flex-start',
       justifyContent:'space-between',
-      height:        364,                       // ← Figma 2662:7844
+      // ← [2026-07-24] 고정 364 → 최소 364.
+      //   Row5 세 카드 높이를 가장 긴 카드에 맞추기 위해, 높이 결정권을 그리드 셀에
+      //   넘긴다(AdminPage cardWrapStretch). 하한은 남겨 데이터 0건일 때를 방어한다.
+      minHeight:     364,                       // ← Figma 2662:7844
       width:         '100%',
     }}>
       {/* ── 헤더 (Figma 2662:7845 h51 — 타이틀 22 + gap8 + 날짜행 21) ── */}
@@ -203,7 +206,10 @@ export function RoomUtilizationByRoomCard({ rooms }: { rooms: Room[] }) {
       flexDirection: 'column',
       alignItems:    'flex-start',
       justifyContent:'space-between',
-      height:        364,                       // ← Figma 2662:7844
+      // ← [2026-07-24] 고정 364 → 최소 364.
+      //   Row5 세 카드 높이를 가장 긴 카드에 맞추기 위해, 높이 결정권을 그리드 셀에
+      //   넘긴다(AdminPage cardWrapStretch). 하한은 남겨 데이터 0건일 때를 방어한다.
+      minHeight:     364,                       // ← Figma 2662:7844
       width:         '100%',
     }}>
       {/* ── 헤더 (Figma 2662:7845 h51 — 타이틀 22 + gap8 + 날짜행 21) ── */}
