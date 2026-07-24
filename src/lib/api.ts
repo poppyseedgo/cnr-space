@@ -2820,3 +2820,52 @@ export const kstDayEnd   = (d: string) => `${d}T23:59:59+09:00`
 /** timestamptz → 'YYYY-MM-DD' (KST) — 폼에 되돌려 넣을 때 */
 export const toKstDayStr = (iso: string) =>
   new Date(new Date(iso).getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10)
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// [2026-07-24] 관리자 권한 (Phase 1)
+//
+//   권한 체계가 profiles.role / admin_roles 두 벌로 갈라져 있었고 부여 화면이 없어
+//   SQL 을 직접 실행해야 했다. admin_roles 를 단일 원장으로 삼고, profiles.role 은
+//   저장 RPC 안에서 함께 재계산한다(트리거 아님 — 20260730 주석 참조).
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** 내 역할 — admin_roles SELECT 정책이 본인 것은 항상 허용한다 */
+export async function loadMyAdminRoles(userId: string): Promise<string[]> {
+  if (!isSupabaseEnabled || !userId) return []
+  const { data, error } = await supabase
+    .from('admin_roles').select('role').eq('user_id', userId)
+  if (error) { console.warn('[api] 내 권한 조회 실패:', error.message); return [] }
+  return (data ?? []).map((r: any) => r.role)
+}
+
+/** 사용자별 역할 맵 — 사용자 관리 목록의 배지용 (N+1 회피) */
+export async function loadAllUserRoles(): Promise<Record<string, string[]>> {
+  const { data, error } = await supabase.rpc('admin_list_user_roles')
+  if (error) throw new Error(error.message)
+  const map: Record<string, string[]> = {}
+  ;(data ?? []).forEach((r: any) => { map[r.user_id] = r.roles ?? [] })
+  return map
+}
+
+/**
+ * 한 사람의 역할 전체 교체 (super 전용)
+ *
+ * 부분 add/remove 가 아니라 교체다 — 화면이 보여준 체크 상태가 곧 결과여야 하고,
+ * 두 관리자가 동시에 편집할 때 한쪽 변경이 조용히 사라지지 않는다.
+ */
+export async function setUserAdminRoles(
+  userId: string, roles: string[],
+): Promise<{ ok: boolean; message?: string }> {
+  const { error } = await supabase.rpc('admin_set_user_roles', {
+    p_user_id: userId, p_roles: roles,
+  })
+  if (!error) return { ok: true }
+  const m = error.message ?? ''
+  if (m.includes('NOT_SUPER'))              return { ok: false, message: '권한 부여는 최고 관리자만 가능합니다' }
+  if (m.includes('CANNOT_REVOKE_OWN_SUPER'))return { ok: false, message: '자신의 최고 관리자 권한은 회수할 수 없습니다. 다른 최고 관리자에게 요청하세요' }
+  if (m.includes('LAST_SUPER'))             return { ok: false, message: '마지막 최고 관리자입니다. 회수하면 아무도 권한을 부여할 수 없습니다' }
+  if (m.includes('USER_NOT_FOUND'))         return { ok: false, message: '존재하지 않는 사용자입니다' }
+  if (m.includes('DEPRECATED_ROLE'))        return { ok: false, message: '폐기된 역할은 부여할 수 없습니다' }
+  return { ok: false, message: `저장 실패: ${m}` }
+}

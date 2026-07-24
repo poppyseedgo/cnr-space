@@ -45,6 +45,10 @@ import { AdminSideNav, type AdminTabId } from '../components/layout/AdminSideNav
 import { NotificationSettingsPanel } from '../components/common/NotificationSettingsPanel'
 // ← [2026-07-24] 공지 배너 관리 패널
 import { AnnouncementPanel } from '../components/common/AnnouncementPanel'
+// ← [2026-07-24] 관리자 권한 Phase 1 — 역할 카탈로그 + 부여 API
+import { ADMIN_ROLES, GRANTABLE_ROLES, NORMAL_ROLES, SUPER_ROLE,
+         visibleTabs, roleSummary } from '../data/adminRoles'
+import { loadMyAdminRoles, loadAllUserRoles, setUserAdminRoles } from '../lib/api'
 // ← [2026-05-06 Admin Phase C] 승인 관리 테이블 컴포넌트 신설 (Figma node 451:3534, Phase B 공통 컴포넌트 사용)
 import { AdminApprovalTable } from '../components/common/AdminApprovalTable'
 import { VisitorLogPanel } from '../components/common/VisitorLogPanel'  // ← [2026-07-10] 방문로그 관리 패널
@@ -755,7 +759,22 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
 // ← [2026-05-06 Admin Phase C] currentUserId/currentUserEmail 추가 — AdminApprovalTable 내 BookingStatusBadge 판정용
 // ← [2026-05-06 사이드 sticky 핫픽스] headerHeight 추가 — 사이드 네비 fixed top 위치 계산용
 export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject, onForceCancel, onDetail, currentUserId = '', currentUserEmail = '', headerHeight = 0 }) {
-  const TABS = ['dashboard','bookings','approvals','rooms','users','visitors','books','notifications','notices']  // ← [2026-07-10] visitors / [2026-07-23] books(도서 관리) + notifications(알림 설정) 추가
+  // ── 내 역할 (← [2026-07-24] Phase 1) ────────────────────────────────────
+  //   역할이 없는 탭은 사이드 네비에서 숨기고, 해시 딥링크로도 못 들어가게 막는다.
+  //   숨기기만 하고 라우팅을 안 막으면 #admin-tab-books 로 우회된다.
+  const [myRoles, setMyRoles] = useState<string[] | null>(null)   // null = 아직 로딩 중
+  useEffect(() => {
+    let cancelled = false
+    loadMyAdminRoles(currentUserId)
+      .then(r => { if (!cancelled) setMyRoles(r) })
+      .catch(() => { if (!cancelled) setMyRoles([]) })
+    return () => { cancelled = true }
+  }, [currentUserId])
+
+  // 로딩 중에는 기존 전체 탭을 유지한다. 빈 배열로 시작하면 진입 직후 한 프레임 동안
+  // 메뉴가 통째로 사라졌다가 다시 나타나 깜빡인다.
+  const ALL_TABS = ['dashboard','bookings','approvals','rooms','users','visitors','books','notifications','notices']
+  const TABS = myRoles === null ? ALL_TABS : (visibleTabs(myRoles) as string[])  // ← [2026-07-10] visitors / [2026-07-23] books(도서 관리) + notifications(알림 설정) 추가
   const getTabFromHash = () => {
     const hash = window.location.hash.replace('#', '')
     if (hash.startsWith('admin-booking-')) return 'approvals'  // 딥링크: 승인 관리 탭으로
@@ -767,6 +786,15 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
     setActiveTab(t)
     window.location.hash = `admin-tab-${t}`
   }
+
+  // ← [2026-07-24] 권한 없는 탭에 있으면 내가 가진 첫 탭으로 이동.
+  //   기본 탭이 'dashboard' 인데 dashboard 역할이 없으면 빈 화면을 보게 된다.
+  //   해시 딥링크로 직접 들어온 경우도 여기서 걸린다.
+  useEffect(() => {
+    if (myRoles === null) return
+    if (TABS.length === 0) return           // 역할 0개 — 아래에서 안내 화면
+    if (!TABS.includes(activeTab)) setTab(TABS[0])
+  }, [myRoles, activeTab])   // eslint-disable-line react-hooks/exhaustive-deps
 
   // 딥링크 처리: #admin-booking-{id} 또는 sessionStorage(OAuth 후 복원) 로 진입 시 예약 모달 자동 오픈
   useEffect(() => {
@@ -855,6 +883,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
             activeTab={activeTab as AdminTabId}
             onTabChange={(id) => setTab(id)}
             pendingCount={pendingCount}
+            allowedTabs={myRoles === null ? undefined : TABS}   /* ← [2026-07-24] 역할 없는 탭 숨김 */
           />
         </aside>,
         document.body
@@ -876,6 +905,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
               activeTab={activeTab as AdminTabId}
               onTabChange={(id) => setTab(id)}
               pendingCount={pendingCount}
+              allowedTabs={myRoles === null ? undefined : TABS}   /* ← [2026-07-24] 역할 없는 탭 숨김 */
             />
           </div>
         )}
@@ -892,7 +922,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
             · 기존 AdminApprovals 함수 자체는 보존 (혹시 다른 곳에서 import 시 안전) */}
       {activeTab==='approvals' && <AdminApprovalTable bookings={bookings} rooms={rooms} users={users} currentUserId={currentUserId} currentUserEmail={currentUserEmail} onApprove={onApprove} onReject={onReject} onDetail={onDetail} onCsvClick={() => showToast('CSV 다운로드 기능은 추후 구현 예정입니다.', 'info')}/>}
       {activeTab==='rooms'     && <AdminRooms     showToast={showToast} isMobile={isMobile}/>}
-      {activeTab==='users'     && <AdminUsers     users={users} setUsers={setUsers} rooms={rooms} showToast={showToast} isMobile={isMobile}/>}{/* ← [2026-05-26] rooms prop 추가 — 노쇼 현황 DetailDrawer 드릴다운에서 회의실 이름 표시용 */}
+      {activeTab==='users'     && <AdminUsers     users={users} setUsers={setUsers} rooms={rooms} showToast={showToast} isMobile={isMobile} currentUserId={currentUserId}/>}{/* ← [2026-05-26] rooms prop 추가 — 노쇼 현황 DetailDrawer 드릴다운에서 회의실 이름 표시용 */}
       {activeTab==='visitors'  && <VisitorLogPanel showToast={showToast} isMobile={isMobile}/>}{/* ← [2026-07-10] 방문로그 관리 (2차 비번 잠금 → 조회/반납/삭제/Excel) */}
       {/* ← [2026-07-23] 도서 관리 — 개요/도서/대여이력/연체/승인 5개 서브탭.
             LibraryPage(사용자 화면)의 관리 기능은 그대로 두고, 여기서는 같은
@@ -3411,7 +3441,7 @@ export function AdminRooms({ showToast, isMobile }) {
 //      · 영향: 사용자 목록 화면에서 '로그인'·'미로그인' 탭 사라짐, dept 빈값은 '-'로 표시
 //      · 후속 [2026-05-14] '전체' 라벨 → '재직자'로 변경 (퇴사자와 대구되는 명확한 표현)
 
-export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile }) {
+export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, currentUserId = '' }) {
   // ← [2026-05-26] rooms prop 추가 — 노쇼 현황 DetailDrawer 드릴다운 시 회의실 이름 표시용
   //   기본값 [] — 외부에서 미전달 시도 안전 동작 (회의실 컬럼만 빈 값)
   type FilterType = 'all' | 'admin' | 'departed' // ← [2026-05-14] 'logged' | 'unlogged' 제거
@@ -3419,6 +3449,24 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile })
   const [filter,     setFilter]     = useState<FilterType>('all')
   const [searchQ,    setSearchQ]    = useState('')
   // 사용자 상세 모달
+  // ── 관리자 역할 (← [2026-07-24] Phase 1) ───────────────────────────────
+  //   목록 배지 + 상세 모달 체크박스 그리드에서 쓴다.
+  //   USER/ADMIN 토글은 제거했다 — profiles.role 은 이제 역할 개수에서 파생되는 값이라
+  //   직접 바꾸면 admin_roles 와 어긋난다(권한 체계가 두 벌로 갈라졌던 원인).
+  const [roleMap,   setRoleMap]   = useState<Record<string, string[]>>({})
+  const [roleDraft, setRoleDraft] = useState<string[]>([])
+  const [roleSaving, setRoleSaving] = useState(false)
+  const [iAmSuper,  setIAmSuper]  = useState(false)
+
+  const loadRoles = useCallback(async () => {
+    try { setRoleMap(await loadAllUserRoles()) }
+    catch (e: any) { console.warn('[AdminUsers] 역할 조회 실패:', e.message) }
+  }, [])
+  useEffect(() => { loadRoles() }, [loadRoles])
+  useEffect(() => {
+    loadMyAdminRoles(currentUserId).then(r => setIAmSuper(r.includes(SUPER_ROLE))).catch(() => {})
+  }, [currentUserId])
+
   const [editUser,   setEditUser]   = useState<AppUser | null>(null)
   const [form,       setForm]       = useState<Record<string,any>>({})
   const [saving,     setSaving]     = useState(false)
@@ -3564,10 +3612,26 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile })
 
   const openDetail = (u: AppUser) => {
     setForm({ name: u.name, dept: u.dept, email: u.email, role: u.role })
+    setRoleDraft(roleMap[u.user_id] ?? [])   // ← [2026-07-24] 현재 역할로 체크 상태 초기화
     setEditUser(u)
   }
 
   const closeModal = () => setEditUser(null)
+
+  /** 역할 저장 — 전체 교체. 실패 사유는 RPC 가 코드로 알려준다(마지막 super 등) */
+  const saveRoles = async () => {
+    if (!editUser) return
+    setRoleSaving(true)
+    try {
+      const res = await setUserAdminRoles(editUser.user_id, roleDraft)
+      if (!res.ok) { showToast(res.message ?? '권한 저장 실패', 'error'); return }
+      showToast('권한을 저장했습니다', 'success')
+      await loadRoles()
+      // profiles.role 이 RPC 안에서 함께 바뀌므로 목록도 갱신한다
+      setUsers(users.map(u => u.user_id === editUser.user_id
+        ? { ...u, role: roleDraft.length > 0 ? 'ADMIN' : 'USER' } : u))
+    } finally { setRoleSaving(false) }
+  }
 
   // ── 저장
   const saveEdit = async () => {
@@ -3577,7 +3641,9 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile })
     const prev = users.find(u => u.user_id === editUser.user_id)
     setUsers(users.map(u => u.user_id === editUser.user_id ? { ...u, ...form } : u))
     try {
-      await updateProfile(editUser.user_id, { name: form.name, dept: form.dept, role: form.role })
+      // ← [2026-07-24] role 제거 — profiles.role 은 admin_roles 개수에서 파생되는 값이라
+      //   여기서 직접 쓰면 권한 체계가 다시 두 벌로 갈라진다. 역할은 아래 saveRoles 가 담당.
+      await updateProfile(editUser.user_id, { name: form.name, dept: form.dept })
       showToast('수정되었습니다.')
       closeModal()
     } catch (err: any) {
@@ -3586,19 +3652,11 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile })
     } finally { setSaving(false) }
   }
 
-  // ── 권한 토글
-  const toggleRole = async (uid: string) => {
-    const prev = users.find(u => u.user_id === uid)?.role
-    const next = prev === 'ADMIN' ? 'USER' : 'ADMIN'
-    setUsers(users.map(u => u.user_id === uid ? { ...u, role: next } : u))
-    try {
-      await updateProfile(uid, { role: next })
-      showToast(`권한이 ${next}로 변경되었습니다.`, 'info')
-    } catch (err: any) {
-      setUsers(users.map(u => u.user_id === uid ? { ...u, role: prev ?? 'USER' } : u))
-      showToast(err.message, 'error')
-    }
-  }
+  // ── 권한 토글 — [2026-07-24] 제거
+  //   `updateProfile({ role })` 로 profiles.role 을 직접 뒤집던 함수였다.
+  //   이제 profiles.role 은 admin_roles 개수에서 파생되는 값이라, 여기서 직접 쓰면
+  //   권한 체계가 다시 두 벌로 갈라진다(도서관 RLS 차단의 원인이었던 그 구조).
+  //   권한 변경은 상세 모달의 역할 그리드 → admin_set_user_roles RPC 한 경로뿐이다.
 
   // ── Azure AD 동기화
   const handleSync = async () => {
@@ -3936,13 +3994,23 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile })
                         {u.dept || '-'}
                       </td>
                       <td style={{ padding:'10px 14px', color:'#64748B' }}>{u.email}</td>
+                      {/* ← [2026-07-24] USER/ADMIN 배지 → 역할 요약.
+                            'ADMIN' 만으로는 무엇을 할 수 있는 사람인지 알 수 없다 */}
                       <td style={{ padding:'10px 14px' }}>
-                        <span style={{
-                          padding:'3px 10px', borderRadius:999, fontSize:11, fontWeight:600,
-                          background: u.role==='ADMIN' ? '#111' : '#F8FAFC',
-                          color:      u.role==='ADMIN' ? '#fff' : '#64748B',
-                          border:     u.role==='ADMIN' ? 'none' : '1px solid #E2E8F0',
-                        }}>{u.role}</span>
+                        {(() => {
+                          const rs = roleMap[u.user_id] ?? []
+                          const isSuper = rs.includes(SUPER_ROLE)
+                          if (rs.length === 0) return <span style={{ fontSize:11, color:'#CBD5E1' }}>-</span>
+                          return (
+                            <span title={rs.join(', ')} style={{
+                              padding:'3px 10px', borderRadius:999, fontSize:11, fontWeight:600,
+                              background: isSuper ? '#FEF2F2' : '#F8FAFC',
+                              color:      isSuper ? '#B91C1C' : '#64748B',
+                              border:     `1px solid ${isSuper ? '#FECACA' : '#E2E8F0'}`,
+                              whiteSpace:'nowrap',
+                            }}>{roleSummary(rs)}</span>
+                          )
+                        })()}
                       </td>
                       {/* ← [2026-05-26] 누적 노쇼 뱃지 — 0=회색, 1~2=노랑, 3+=빨강 (사용자 결정) */}
                       <td style={{ padding:'10px 14px' }}>
@@ -4062,19 +4130,61 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile })
                   <label style={{ fontSize:11, fontWeight:600, color:'#94A3B8', display:'block', marginBottom:5 }}>이메일</label>
                   <input value={form.email || ''} readOnly style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:'1px solid #F1F5F9', fontSize:14, background:'#F8FAFC', outline:'none', color:'#94A3B8', boxSizing:'border-box' }}/>
                 </div>
-                {/* 권한 */}
+                {/* ── 관리자 권한 (← [2026-07-24] Phase 1) ─────────────────────
+                      USER/ADMIN 토글을 역할 체크박스 그리드로 교체.
+                      체크된 역할의 탭만 그 사람에게 보인다. 역할 0개 = 어드민 진입 불가.
+                      부여·회수는 최고 관리자(super)만 가능하다. */}
                 <div style={{ marginBottom:20 }}>
-                  <label style={{ fontSize:11, fontWeight:600, color:'#94A3B8', display:'block', marginBottom:8 }}>권한</label>
-                  <div style={{ display:'flex', gap:8 }}>
-                    {['USER','ADMIN'].map(r => (
-                      <button key={r} className="btn" onClick={() => setForm(p => ({ ...p, role: r }))}
-                        style={{ flex:1, padding:'10px', borderRadius:10, fontSize:13, fontWeight:600,
-                          border:`1.5px solid ${form.role===r?'#111':'#E2E8F0'}`,
-                          background: form.role===r?'#111':'#F8FAFC',
-                          color:      form.role===r?'#fff':'#64748B', cursor:'pointer' }}>
-                        {r}
-                      </button>
-                    ))}
+                  <label style={{ fontSize:11, fontWeight:600, color:'#94A3B8', display:'block', marginBottom:8 }}>
+                    관리자 권한
+                    {!iAmSuper && <span style={{ marginLeft:6, fontWeight:400, color:'#CBD5E1' }}>— 최고 관리자만 변경할 수 있습니다</span>}
+                  </label>
+
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:10 }}>
+                    {NORMAL_ROLES.map(r => {
+                      const on = roleDraft.includes(r.id)
+                      return (
+                        <label key={r.id} title={r.desc}
+                          style={{
+                            display:'flex', alignItems:'center', gap:8, padding:'9px 10px',
+                            borderRadius:8, border:`1px solid ${on ? '#111' : '#E2E8F0'}`,
+                            background: on ? '#F8FAFC' : '#fff',
+                            cursor: iAmSuper ? 'pointer' : 'not-allowed', opacity: iAmSuper ? 1 : 0.6,
+                            fontSize:12, fontWeight:600, color:'#374151',
+                          }}>
+                          <input type="checkbox" checked={on} disabled={!iAmSuper}
+                            onChange={e => setRoleDraft(d =>
+                              e.target.checked ? [...d, r.id] : d.filter(x => x !== r.id))} />
+                          {r.label}
+                          {r.tab === null && <span style={{ fontSize:10, color:'#CBD5E1' }}>미구현</span>}
+                        </label>
+                      )
+                    })}
+                  </div>
+
+                  {/* super 는 같은 그리드에 두되 시각적으로 분리한다 —
+                      권한 부여 권한까지 넘기는 것이라 실수로 체크되면 안 된다 */}
+                  <label style={{
+                    display:'flex', alignItems:'center', gap:8, padding:'10px 12px', borderRadius:8,
+                    border:`1.5px solid ${roleDraft.includes(SUPER_ROLE) ? '#DC2626' : '#FECACA'}`,
+                    background: roleDraft.includes(SUPER_ROLE) ? '#FEF2F2' : '#fff',
+                    cursor: iAmSuper ? 'pointer' : 'not-allowed', opacity: iAmSuper ? 1 : 0.6,
+                  }}>
+                    <input type="checkbox" checked={roleDraft.includes(SUPER_ROLE)} disabled={!iAmSuper}
+                      onChange={e => setRoleDraft(d =>
+                        e.target.checked ? [...d, SUPER_ROLE] : d.filter(x => x !== SUPER_ROLE))} />
+                    <span style={{ fontSize:12, fontWeight:700, color:'#B91C1C' }}>최고 관리자 (super)</span>
+                    <span style={{ fontSize:11, color:'#94A3B8' }}>모든 메뉴 + 다른 사람 권한 부여·회수</span>
+                  </label>
+
+                  <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:10 }}>
+                    <span style={{ fontSize:11, color:'#94A3B8' }}>
+                      {roleDraft.length === 0 ? '역할 없음 — 어드민에 진입할 수 없습니다' : `${roleDraft.length}개 선택`}
+                    </span>
+                    <div style={{ flex:1 }} />
+                    {iAmSuper && (
+                      <Button variant='secondary' size='sm' loading={roleSaving} onClick={saveRoles}>권한 저장</Button>
+                    )}
                   </div>
                 </div>
 

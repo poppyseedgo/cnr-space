@@ -103,10 +103,18 @@ interface AdminSideNavProps {
   onTabChange:  (id: AdminTabId) => void
   /** 승인 대기 건수 — > 0 시 '승인 관리' 옆 dot 표시 */
   pendingCount: number
+  /**
+   * 표시할 탭 목록 (← [2026-07-24] 관리자 권한 Phase 1)
+   *
+   *   내 역할로 볼 수 있는 탭만 넘어온다. undefined 면 전부 표시(로딩 중·구버전 호출부).
+   *   비활성 메뉴(resources 등)는 기존대로 disabled 로 남는다 — '권한이 없어서'와
+   *   '아직 안 만들어서'는 다른 상태이므로 같은 방식으로 감추면 안 된다.
+   */
+  allowedTabs?: string[]
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
-export function AdminSideNav({ activeTab, onTabChange, pendingCount }: AdminSideNavProps) {
+export function AdminSideNav({ activeTab, onTabChange, pendingCount, allowedTabs }: AdminSideNavProps) {
   return (
     <nav
       role="navigation"
@@ -120,7 +128,7 @@ export function AdminSideNav({ activeTab, onTabChange, pendingCount }: AdminSide
         gap:          8,                       // ← Figma: gap 8
         width:        '100%',
       }}>
-      {MENU_ITEMS.map(item => {
+      {MENU_ITEMS.filter(item => !allowedTabs || item.disabled || allowedTabs.includes(item.id)).map(item => {
         const isDisabled = item.disabled === true                          // ← [2026-05-11] 비활성 가드
         const isActive   = !isDisabled && activeTab === item.id            // ← 비활성은 active 될 수 없음
         const showDot    = item.id === 'approvals' && pendingCount > 0     // ← 승인 관리만 dot
