@@ -84,6 +84,9 @@ import { DrawerShell, type Crumb } from '../components/admin/drawer/DrawerShell'
 import { DrawerRangeFilter, DrawerStatChips, DrawerCsvButton, DrawerPagination,
          type DrawerChip } from '../components/admin/drawer/DrawerControls'
 import { BookingTable } from '../components/admin/drawer/BookingTable'
+// ← [2026-07-24 #8] 집계 표를 드로어 공통 컴포넌트로 이동.
+//   AggTable 이라는 이름으로 6개 호출부가 쓰고 있어 별칭으로 받는다(호출부 무변경).
+import { AggregateTable as AggTable } from '../components/admin/drawer/AggregateTable'
 
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
 // ⚠ [2026-07-24 #4] utils/time.addDays 위임 — 날짜 계산 SSOT 통일.
@@ -520,13 +523,28 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
           currentUserId={currentUserId} currentUserEmail={currentUserEmail}
         />
 
-        <DrawerPagination page={page} pages={pages} onChange={setPage} />
+        {/* ← [2026-07-24 #8] 페이지네이션도 흰 배경.
+              Figma(2669:10835)는 표 카드 **안쪽** 요소인데 여기서는 별도 블록이라,
+              회색 배경 위에 버튼만 떠 있으면 표와 무관한 컨트롤처럼 보인다. */}
+        {pages > 1 && (
+          <div style={{ background:'#fff', borderRadius:16, marginTop:8 }}>
+            <DrawerPagination page={page} pages={pages} onChange={setPage} />
+          </div>
+        )}
       </>
     )
   }
 
   const renderTable = () => {
-    if (loading) return <div style={{ textAlign:'center', padding:40, color:'#94A3B8', fontSize:13 }}><RefreshCw size={20} strokeWidth={1.8}/> 불러오는 중...</div>
+    // ← [2026-07-24 #8] 로딩 상태도 흰 카드 안에서. 회색 배경 위 맨 텍스트로 두면
+    //   "표가 있는데 비었다" 와 "아직 안 왔다" 가 시각적으로 구분되지 않는다.
+    if (loading) return (
+      <div style={{ background:'#fff', borderRadius:16, padding:'48px 0', textAlign:'center',
+                    color:'#94A3B8', fontSize:13, display:'flex', alignItems:'center',
+                    justifyContent:'center', gap:8 }}>
+        <RefreshCw size={16} strokeWidth={1.8}/> 불러오는 중...
+      </div>
+    )
 
     // drill-down 활성화 시 → 예약 목록 표시
     if (drill) {
@@ -564,7 +582,8 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
           <>
             {/* ← [2026-07-24] 인라인 브레드크럼 제거 — DrawerShell 헤더가 담당.
                   안내 문구만 남긴다(행을 눌러 더 들어갈 수 있다는 사실은 표 근처에 있어야 한다) */}
-            <div style={{ fontSize:12, color:'#94A3B8', marginBottom:12 }}>
+            {/* ← [2026-07-24 #8] 회색 배경(#F1F5F9) 위라 #94A3B8 은 거의 안 보였다 */}
+            <div style={{ fontSize:13, color:'#64748B', marginBottom:12 }}>
               {def.label} · 부서별 · 행 클릭 시 개별 예약
             </div>
             <AggTable rows={purposeDeptAgg}
@@ -716,76 +735,6 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
 
 // 집계 테이블 컴포넌트
 // ← [2026-05-26] onHeaderClick 옵션 추가 — 사용자별 노쇼 테이블에서 헤더 클릭 정렬 지원
-function AggTable({ rows, cols, onExport, onRowClick, onHeaderClick, activeSortKey, activeSortAsc, note }: {
-  rows: any[]
-  cols: {k:string;l:string;fmt?:(v:any)=>string}[]
-  onExport: () => void
-  // ← [2026-07-24] 표 위 산정 기준 문구 (지표 단위가 섞인 표에서만 사용)
-  note?: string
-  onRowClick?: (row: any) => void
-  // ← [2026-05-26 신규] 헤더 클릭으로 정렬 변경 (없으면 정렬 UI 비활성, 기존 호환)
-  onHeaderClick?: (key: string) => void
-  activeSortKey?: string
-  activeSortAsc?: boolean
-}) {
-  if (!rows.length) return <div style={{ textAlign:'center', padding:40, color:'#CBD5E1', fontSize:12 }}>데이터 없음</div>
-  const canDrill = !!onRowClick
-  const canSort  = !!onHeaderClick
-  return (
-    <>
-      {note && (
-        <div style={{
-          fontSize:11, lineHeight:1.6, color:'#64748B',
-          background:'#F8FAFC', border:'1px solid #EEF1F6', borderRadius:8,
-          padding:'8px 12px', marginBottom:10,
-        }}>{note}</div>
-      )}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-        <div style={{ fontSize:12, color:'#64748B' }}>총 <b style={{ color:'#111' }}>{rows.length}</b>개
-          {canDrill && <span style={{ marginLeft:8, fontSize:11, color:'#6366F1' }}>행 클릭 → 예약 목록</span>}
-        </div>
-        <button className="btn" onClick={onExport}
-          style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', borderRadius:8, background:'#F8FAFC', border:'1px solid #E2E8F0', fontSize:11, fontWeight:600, color:'#374151' }}>
-          <Download size={11} strokeWidth={1.8}/> CSV 내보내기
-        </button>
-      </div>
-      <div style={{ overflowX:'auto', borderRadius:10, border:'1px solid #F1F5F9' }}>
-        {/* ← [2026-05-26 UI HOTFIX] minWidth 600 — 다양한 컬럼 수 (3~5) 압축 방지 */}
-        <table style={{ width:'100%', minWidth:600, borderCollapse:'collapse', fontSize:13 }}>
-          <thead><tr style={{ background:'#F8FAFC' }}>
-            {cols.map(c => {
-              const isActive = canSort && activeSortKey === c.k
-              return (
-                <th key={c.k}
-                  onClick={canSort ? () => onHeaderClick!(c.k) : undefined}
-                  style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:600,
-                    color: isActive ? '#111' : '#94A3B8', borderBottom:'1px solid #F1F5F9',
-                    whiteSpace:'nowrap', cursor: canSort ? 'pointer' : 'default',
-                    userSelect:'none' }}>
-                  {c.l}
-                  {canSort && <ArrowUpDown size={9} strokeWidth={1.8} style={{ marginLeft:4, opacity: isActive ? 1 : 0.4, verticalAlign:'middle' }}/>}
-                  {/* ← [2026-05-26] 활성 컬럼에 방향 표시 (▲▼) */}
-                  {isActive && <span style={{ marginLeft:2, fontSize:9 }}>{activeSortAsc ? '▲' : '▼'}</span>}
-                </th>
-              )
-            })}
-            {canDrill && <th style={{ width:24, borderBottom:'1px solid #F1F5F9' }}/>}
-          </tr></thead>
-          <tbody>{rows.map((r,i) => (
-            <tr key={i}
-              onClick={() => onRowClick?.(r)}
-              style={{ borderBottom:'1px solid #F8FAFC', cursor: canDrill ? 'pointer' : 'default' }}
-              onMouseEnter={e => { e.currentTarget.style.background = canDrill ? '#F5F5FF' : '#FAFBFD' }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
-              {cols.map(c => <td key={c.k} style={{ padding:'10px 14px', color:'#374151' }}>{c.fmt ? c.fmt(r[c.k]) : r[c.k]}</td>)}
-              {canDrill && <td style={{ padding:'10px 14px', color:'#A5B4FC', fontSize:14 }}>›</td>}
-            </tr>
-          ))}</tbody>
-        </table>
-      </div>
-    </>
-  )
-}
 
 
 // ─── AdminView ─────────────────────────────────────────────────────────────────
