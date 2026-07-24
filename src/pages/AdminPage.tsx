@@ -77,6 +77,13 @@ import { aggregateUsers } from '../utils/dashboardAgg'
 // ← [2026-07-24] 회의실 드로어에 '가동률' 컬럼 추가 — 카드와 같은 calcUtilization 을 쓴다.
 //   집계를 새로 짜면 카드는 86%, 드로어는 다른 값이 되는 이중 진실이 생긴다.
 import { calcUtilization } from '../utils/roomUtilization'
+// ← [2026-07-24] 드로어 공통 컴포넌트 (Figma 2669:10902)
+//   셸·조작부·표를 각각 파일로 분리했다. 드로어 안에서만 쓰는 마크업을
+//   AdminPage(4000줄)에 인라인으로 두면 Figma 개정 때마다 이 파일을 헤집게 된다.
+import { DrawerShell, type Crumb } from '../components/admin/drawer/DrawerShell'
+import { DrawerRangeFilter, DrawerStatChips, DrawerCsvButton, DrawerPagination,
+         type DrawerChip } from '../components/admin/drawer/DrawerControls'
+import { BookingTable } from '../components/admin/drawer/BookingTable'
 
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
 // ⚠ [2026-07-24 #4] utils/time.addDays 위임 — 날짜 계산 SSOT 통일.
@@ -203,6 +210,60 @@ const DETAIL_META: Record<DetailType, { title: string; icon: React.ReactNode }> 
   pending:  { title: '승인 대기 목록',     icon: <Inbox size={16} strokeWidth={1.8}/> },
   users:    { title: '사용자 예약 현황',   icon: <Users size={16} strokeWidth={1.8}/> },
   purpose:  { title: '회의 목적별 통계',   icon: <BarChart2 size={16} strokeWidth={1.8}/> },  // ← [2026-07-23 Phase 3]
+}
+
+/**
+ * 드로어 서브타이틀 (← [2026-07-24])
+ *
+ * 제목만으로는 "이 표의 숫자가 무엇인지" 를 알 수 없다. 특히 가동률처럼 분모가 있는
+ * 지표는 정의가 제목 옆에 붙어 있어야 하고, 표 위 주석으로 밀어넣으면 스크롤로 갈라진다.
+ */
+const DETAIL_SUBTITLE: Record<DetailType, string> = {
+  bookings: '선택한 기간에 등록된 예약 전체입니다.',
+  noshow:   '체크인 없이 자동 취소된 예약입니다. 승인 기한이 지나 취소된 건은 포함하지 않습니다.',
+  rooms:    '예약 = 건수(취소·거절 제외) · 가동률 = 확정 예약 점유 시간 ÷ (워킹데이 × 8시간, 09–18시 점심 제외).',
+  dept:     '예약자의 소속 부서 기준으로 집계합니다.',
+  hours:    '회의 시작 시각 기준 분포입니다.',
+  pending:  '승인 대기 중인 예약입니다.',
+  users:    '예약자별 누적 건수와 노쇼입니다.',
+  purpose:  '예약 제목에서 회의 목적을 자동 분류한 결과입니다. 노쇼·사용자 취소는 각각 분리해 표시합니다.',
+}
+
+/**
+ * 드로어 기간 프리셋 (Figma 2669:11492 — 이번 달 / 3개월 / 6개월 / 1년)
+ *
+ * 대시보드 카드의 프리셋(한 달·3개월·전체)과 세트가 다르다. 카드는 "최근 N일" 을 보는
+ * 도구이고, 드로어는 목록을 파고드는 화면이라 달·년 단위가 더 자연스럽다는 Figma 판단.
+ */
+const DRAWER_PRESETS = [
+  { id: 'thisMonth', label: '이번 달' },
+  { id: '3m',        label: '3개월'  },
+  { id: '6m',        label: '6개월'  },
+  { id: '1y',        label: '1년'    },
+]
+
+function drawerPresetRange(id: string): { from: string; to: string } {
+  const to = todayStr()
+  switch (id) {
+    case 'thisMonth': return { from: getMonthStart(0),        to }
+    case '3m':        return { from: addDaysStr(to, -89),     to }
+    case '6m':        return { from: addDaysStr(to, -179),    to }
+    case '1y':        return { from: addDaysStr(to, -364),    to }
+    default:          return { from: addDaysStr(to, -29),     to }
+  }
+}
+
+/**
+ * 현재 from/to 가 어느 프리셋인지 역산 — 활성 상태를 state 로 따로 들지 않는다.
+ * 들고 있으면 날짜 직접 지정과 이중 진실이 된다(DashboardRangeFilter 와 같은 원칙).
+ * 어느 것에도 안 맞으면 null = 직접 지정 상태.
+ */
+function drawerPresetIdOf(from: string, to: string): string | null {
+  for (const p of DRAWER_PRESETS) {
+    const r = drawerPresetRange(p.id)
+    if (r.from === from && r.to === to) return p.id
+  }
+  return null
 }
 
 // ─── DetailDrawer ──────────────────────────────────────────────────────────────
@@ -379,169 +440,87 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
 
   // 테이블 렌더
   // 공통 예약 목록 렌더 (drill-down 시에도 재사용)
-  const renderBookingList = (source: Booking[], drillLabel?: string) => {
-    // ── [2026-07-23] 상태 분포 자동 계산 (필터 적용 전 원본 기준) ──
+  /**
+   * 예약 목록 렌더 (← [2026-07-24] Figma 2669:10396 로 전면 교체)
+   *
+   *   구조: [상태 칩 + CSV] → [표] → [페이지네이션]
+   *   · 브레드크럼은 여기서 그리지 않는다 — DrawerShell 헤더로 올라갔다(스크롤 고정).
+   *   · '총 N건' 별도 표기도 없앴다. '전체 N건' 칩이 같은 값을 이미 말하고 있어
+   *     같은 숫자가 한 화면에 두 번 나오던 자리였다.
+   *   · 표 마크업은 BookingTable 이 소유한다. 컬럼 순서를 호출부가 조립하면
+   *     화면마다 순서가 갈라지므로, 여기서는 '생성일을 켤지'만 정한다.
+   */
+  const renderBookingList = (source: Booking[]) => {
+    // ── 상태 분포 ────────────────────────────────────────────────────────
     //   비율의 분모는 반드시 '필터 전 전체'다. 필터된 목록을 분모로 쓰면
     //   어떤 상태를 골라도 항상 100%가 나와 지표가 무의미해진다.
-    //   ← [2026-07-23] 집계 기준을 getBookingStatusLabel → getBookingStatusGroup으로 교체.
-    //     '조기반납'은 체크인 후 일찍 끝낸 것으로 실제 사용한 건이므로 '사용완료'에 합산한다.
-    //     개별 행의 상태 배지와 CSV는 여전히 '조기반납'을 그대로 보여준다(원본 보존).
+    //   집계 기준은 getBookingStatusGroup — '조기반납'은 실제 사용한 건이므로 '사용완료'에 합산.
     const statusCounts = new Map<string, number>()
     source.forEach(b => {
       const l = getBookingStatusGroup(b)
       statusCounts.set(l, (statusCounts.get(l) ?? 0) + 1)
     })
-    const statusChips = Array.from(statusCounts.entries())
-      .map(([label, n]) => ({ label, n, pct: source.length > 0 ? (n / source.length) * 100 : 0 }))
-      .sort((a, b) => b.n - a.n)
-    // 필터도 같은 그룹 기준 — '사용완료'를 누르면 조기반납 건이 함께 걸린다
+    // Figma 색: 사용완료 #067EFF / 노쇼 #FF1010 / 그 외 #000
+    const pctColor = (label: string) =>
+      label === '사용완료' ? '#067EFF' : label === '노쇼' ? '#FF1010' : '#000'
+
+    const chips: DrawerChip[] = [
+      { key: null, label: '전체', count: source.length },
+      ...Array.from(statusCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([label, n]) => ({
+          key: label, label, count: n,
+          pct: source.length > 0 ? (n / source.length) * 100 : 0,
+          pctColor: pctColor(label),
+        })),
+    ]
+
     const scoped = statusFilter ? source.filter(b => getBookingStatusGroup(b) === statusFilter) : source
-    // ← [2026-05-28] sort 비교 함수 — createdAt(number)과 start_at(ISO string) 둘 다 안전 처리
-    //   기존: a[sortKey] ?? '' — number와 string 혼합 시 '' fallback이 정상 비교 깨뜨림
-    //   변경: 양쪽 모두 0/'' fallback 명확화. createdAt 누락(과거 데이터) 시 0 → 가장 후순위 배치
-    const sorted = [...scoped].sort((a,b) => {   // ← [2026-07-23] source → scoped (상태 필터 반영)
-      const av = (a as any)[sortKey] ?? (sortKey === 'createdAt' ? 0 : '')   // ← [2026-05-28] createdAt fallback 0 (number)
+
+    // ── 정렬 ─────────────────────────────────────────────────────────────
+    //   createdAt(number)과 start_at(ISO string)이 섞이므로 타입별 fallback 을 구분한다.
+    //   createdAt 누락(과거 데이터)은 0 → 항상 후순위.
+    const sorted = [...scoped].sort((a, b) => {
+      const av = (a as any)[sortKey] ?? (sortKey === 'createdAt' ? 0 : '')
       const bv = (b as any)[sortKey] ?? (sortKey === 'createdAt' ? 0 : '')
-      return sortAsc ? (av<bv?-1:av>bv?1:0) : (av>bv?-1:av<bv?1:0)
+      return sortAsc ? (av < bv ? -1 : av > bv ? 1 : 0) : (av > bv ? -1 : av < bv ? 1 : 0)
     })
-    const total = sorted.length, pages = Math.max(1, Math.ceil(total/PER))
-    const paged = sorted.slice((page-1)*PER, page*PER)
+    const total = sorted.length
+    const pages = Math.max(1, Math.ceil(total / PER))
+    const paged = sorted.slice((page - 1) * PER, page * PER)
+
     const csvRows = sorted.map(b => {
       const r = rooms.find(rm => rm.room_id === b.room_id)
-      // ← [2026-05-28] CSV 상태 라벨 SSOT 통일
-      //   기존(옛 룰): b.autoCancelled?'취소':b.checkedIn?'완료':b.status==='pending'?'승인대기':'예정'
-      //     · 노쇼/거절/사용자 취소/관리자 강제취소/기한초과 모두 미분류 → 분석 무의미
-      //   변경: getBookingStatusLabel(b) — BookingStatusBadge와 동일 우선순위, isNoshow SSOT 사용
-      // ← [2026-05-28] 생성일 컬럼 추가 + 라벨 '날짜' → '회의 날짜' (생성일과 명확히 구분)
-      //   생성일: b.createdAt(number ms) → ISO 변환 후 KST 날짜 표시
-      const createdDateStr = b.createdAt ? tsDate(new Date(b.createdAt).toISOString()) : ''
-      return { 회의명:b.title, 회의실:r?.room_name??'', 생성일:createdDateStr, '회의 날짜':tsDate(b.start_at), 시작:b.start_at.slice(11,16), 종료:b.end_at.slice(11,16), 예약자:b.user, 부서:b.dept, 상태:getBookingStatusLabel(b) }
+      // CSV 컬럼 순서 = 화면 순서 (회의 → 회의실 → 회의 날짜 → 생성일 → 시간 → 예약자 → 상태)
+      return {
+        회의: b.title, 회의실: r?.room_name ?? '',
+        '회의 날짜': tsDate(b.start_at),
+        생성일: b.createdAt ? tsDate(new Date(b.createdAt).toISOString()) : '',
+        시간: `${b.start_at.slice(11,16)}–${b.end_at.slice(11,16)}`,
+        예약자: b.user, 부서: b.dept,
+        상태: getBookingStatusLabel(b),
+      }
     })
+
     return (
       <>
-        {/* ── [2026-07-23] 상태별 건수·비율 칩 + 선택 필터 ──
-              · 비율은 필터 전 전체를 분모로 자동 계산된다.
-              · 칩을 누르면 그 상태만 남고, 다시 누르면 해제된다. */}
-        {statusChips.length > 0 && (
-          <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:12 }}>
-            <button className="btn"
-              onClick={() => { setStatusFilter(null); setPage(1) }}
-              style={{
-                padding:'4px 10px', borderRadius:999, fontSize:11, fontWeight:600, cursor:'pointer',
-                border:'1px solid #000',
-                background: statusFilter === null ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.9)',
-                color:      statusFilter === null ? '#fff' : '#1E1E1E',
-              }}>전체 {source.length}건</button>
-            {statusChips.map(c => {
-              const on = statusFilter === c.label
-              return (
-                <button key={c.label} className="btn"
-                  onClick={() => { setStatusFilter(on ? null : c.label); setPage(1) }}
-                  style={{
-                    padding:'4px 10px', borderRadius:999, fontSize:11, fontWeight:600, cursor:'pointer',
-                    border:'1px solid #000',
-                    background: on ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.9)',
-                    color:      on ? '#fff' : '#1E1E1E',
-                  }}>{c.label} {c.n}건 · {c.pct.toFixed(1)}%</button>
-              )
-            })}
-          </div>
-        )}
+        {/* ── 상태 칩 + CSV (Figma 2669:11326) ── */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                      gap:12, flexWrap:'wrap', marginBottom:16 }}>
+          <DrawerStatChips chips={chips} activeKey={statusFilter}
+            onPick={k => { setStatusFilter(k); setPage(1) }} />
+          <DrawerCsvButton onClick={() => exportCSV(csvRows, `${drill?.label ?? DETAIL_META[type].title}_${dateFrom}_${dateTo}`)} />
+        </div>
 
-        {/* 드릴다운 브레드크럼 */}
-        {drillLabel && (
-          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14, padding:'8px 12px', background:'#F5F5FF', borderRadius:8 }}>
-            <button className="btn" onClick={() => { setDrill(null); setPage(1) }}
-              style={{ display:'flex', alignItems:'center', gap:4, fontSize:12, color:'#6366F1', padding:'4px 8px', borderRadius:6, background:'#fff', border:'1px solid #C7D2FE' }}>
-              ← 전체 보기
-            </button>
-            <span style={{ fontSize:12, color:'#6366F1', fontWeight:600 }}>{drillLabel}</span>
-            <span style={{ fontSize:11, color:'#94A3B8' }}>예약 {total}건</span>
-          </div>
-        )}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-          <div style={{ fontSize:12, color:'#64748B' }}>총 <b style={{ color:'#111' }}>{total}</b>건</div>
-          <button className="btn" onClick={() => exportCSV(csvRows, `${drillLabel??DETAIL_META[type].title}_${dateFrom}_${dateTo}`)}
-            style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', borderRadius:8, background:'#F8FAFC', border:'1px solid #E2E8F0', fontSize:11, fontWeight:600, color:'#374151' }}>
-            <Download size={11} strokeWidth={1.8}/> CSV 내보내기
-          </button>
-        </div>
-        <div style={{ overflowX:'auto', borderRadius:10, border:'1px solid #F1F5F9' }}>
-          {/* ← [2026-05-28] minWidth 720 → 860 — 7컬럼(회의명/회의실/생성일/회의 날짜/시간/예약자/상태) 압축 방지
-                · 생성일 컬럼 추가 + '날짜' 라벨 → '회의 날짜'로 명확화 (AdminApprovalTable 패턴 일관) */}
-          <table style={{ width:'100%', minWidth:860, borderCollapse:'collapse', fontSize:12 }}>
-            <thead>
-              <tr style={{ background:'#F8FAFC' }}>
-                {/* ← [2026-05-28] '생성일'(createdAt) 컬럼 추가 + '날짜' → '회의 날짜' 라벨 변경
-                      · 정렬 키: 'createdAt'(camelCase Booking 필드) — DB 'created_at'과 매핑됨
-                      · 회의 날짜 정렬 키: 'start_at'(ISO string 사전순 = 시간순) */}
-                {[{k:'title',l:'회의명'},{k:'room_id',l:'회의실'},{k:'createdAt',l:'생성일'},{k:'start_at',l:'회의 날짜'},{k:'start_at',l:'시간'},{k:'user',l:'예약자'},{k:'',l:'상태'}].map((h,i) => (
-                  <th key={i} onClick={() => { if(h.k){ setSortKey(h.k); setSortAsc(s => sortKey===h.k?!s:false) } }}
-                    style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600, color:'#94A3B8', whiteSpace:'nowrap', borderBottom:'1px solid #F1F5F9', cursor:h.k?'pointer':'default' }}>
-                    {h.l}{h.k && <ArrowUpDown size={9} strokeWidth={1.8}/>}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {paged.map(b => {
-                const r = rooms.find(rm => rm.room_id === b.room_id)
-                // ← [2026-05-28 SSOT 통일] 인라인 status 객체 + 인라인 아바타 박스 전부 제거
-                //   배경: 같은 파일 L36 isNoshow SSOT import해두고 인라인은 옛 룰 사용 → 노쇼 오판정
-                //         (사용자 취소·관리자 강제취소·기한초과 등이 모두 '노쇼'/'예정'으로 잘못 분류)
-                //   해결: BookingStatusBadge + UserChip 공통 컴포넌트로 교체 — BookingListTable 동일 패턴
-                // ← [2026-04-24 P6-B] 예약자 정보 live (profiles.name/avatar_url 우선, snapshot fallback)
-                const owner = (users as any[]).find(u => u.user_id === b.user_id)
-                const displayName = owner?.name ?? b.user ?? '?'
-                const avatarUrl   = (owner as any)?.avatar_url ?? null  // ← [2026-05-28] 실제 프로필 사진 표시용 (인라인 단색 박스 → UserChip)
-                return (
-                  <tr key={b.id}
-                    onClick={() => { onDetail?.(b) }}
-                    style={{ borderBottom:'1px solid #F8FAFC', cursor: onDetail ? 'pointer' : 'default' }}
-                    onMouseEnter={e => e.currentTarget.style.background = onDetail ? '#F0F4FF' : '#FAFBFD'}
-                    onMouseLeave={e => { e.currentTarget.style.background='transparent' }}>
-                    <td style={{ padding:'8px 12px', fontWeight:600, color:'#111', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{b.title}</td>
-                    <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{r?.room_name??''}</td>
-                    {/* ← [2026-05-28] 생성일 컬럼 신규 — b.createdAt(number ms) → ISO 변환 후 KST 날짜 표시
-                          · createdAt 누락(과거 데이터 fallback) 시 '—' 표시 (AdminApprovalTable 동일 패턴) */}
-                    <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{b.createdAt ? fmtTSDateFull(new Date(b.createdAt).toISOString()) : '—'}</td>
-                    <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{fmtTSDateFull(b.start_at)}</td>
-                    <td style={{ padding:'8px 12px', color:'#64748B', whiteSpace:'nowrap' }}>{fmtTSRangeFull(b.start_at,b.end_at)}</td>
-                    {/* ← [2026-05-28] 인라인 아바타 박스 → UserChip variant="sm" (BookingListTable과 동일 패턴) */}
-                    <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
-                      <UserChip
-                        name={displayName}
-                        avatarUrl={avatarUrl}
-                        variant="sm"
-                      />
-                    </td>
-                    {/* ← [2026-05-28] 인라인 status 객체+span → BookingStatusBadge size="sm" (BookingListTable과 동일 패턴)
-                          · isAdminRoom 전달 → 에메랄드 룸 '승인완료' 칩 정확 표시
-                          · currentUserId/Email 전달 → 어드민 본인 예약 '내 예약' 칩 표시 (P4-B) */}
-                    <td style={{ padding:'8px 12px' }}>
-                      <BookingStatusBadge
-                        booking={b}
-                        room={r}
-                        isAdminRoom={!!r?.is_admin_only}
-                        size="sm"
-                        currentUserId={currentUserId}
-                        currentUserEmail={currentUserEmail}
-                      />
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-        {pages > 1 && (
-          <div style={{ display:'flex', justifyContent:'center', gap:4, paddingTop:12 }}>
-            <button className="btn" disabled={page===1} onClick={() => setPage(p=>p-1)} style={{ padding:'5px 10px', fontSize:11, borderRadius:7, background:'#F1F5F9', color:page===1?'#CBD5E1':'#64748B' }}>‹</button>
-            {Array.from({length:Math.min(pages,7)},(_,i)=>{const p=pages<=7?i+1:page<=4?i+1:page>=pages-3?pages-6+i:page-3+i
-              return <button key={p} className="btn" onClick={() => setPage(p)} style={{ padding:'5px 9px', fontSize:11, borderRadius:7, minWidth:28, background:page===p?'#111':'#F8FAFC', color:page===p?'#fff':'#64748B', fontWeight:page===p?700:400 }}>{p}</button>})}
-            <button className="btn" disabled={page===pages} onClick={() => setPage(p=>p+1)} style={{ padding:'5px 10px', fontSize:11, borderRadius:7, background:'#F1F5F9', color:page===pages?'#CBD5E1':'#64748B' }}>›</button>
-          </div>
-        )}
+        <BookingTable
+          rows={paged} rooms={rooms} users={users}
+          sortKey={sortKey} sortAsc={sortAsc}
+          onSort={f => { if (sortKey === f) setSortAsc(v => !v); else { setSortKey(f); setSortAsc(false) } }}
+          onRowClick={onDetail}
+          currentUserId={currentUserId} currentUserEmail={currentUserEmail}
+        />
+
+        <DrawerPagination page={page} pages={pages} onChange={setPage} />
       </>
     )
   }
@@ -552,7 +531,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
     // drill-down 활성화 시 → 예약 목록 표시
     if (drill) {
       const drillData = filtered.filter(drill.fn)
-      return renderBookingList(drillData, drill.label)
+      return renderBookingList(drillData)   // ← [2026-07-24] 라벨은 DrawerShell 브레드크럼이 표시
     }
 
     // 집계 테이블 타입 (드릴다운 콜백 포함)
@@ -583,13 +562,10 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
         const def = PURPOSE_DEFS.find(d => d.code === purposeDrill)!
         return (
           <>
-            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
-              <button className="btn" onClick={() => { setPurposeDrill(null); setPage(1) }}
-                style={{ padding:'4px 10px', borderRadius:8, background:'#F8FAFC', border:'1px solid #E2E8F0', fontSize:11, fontWeight:600, color:'#374151' }}>
-                ← 목적 전체
-              </button>
-              <span style={{ fontSize:12, color:'#6366F1', fontWeight:600 }}>{def.label}</span>
-              <span style={{ fontSize:11, color:'#94A3B8' }}>부서별 · 행 클릭 시 개별 예약</span>
+            {/* ← [2026-07-24] 인라인 브레드크럼 제거 — DrawerShell 헤더가 담당.
+                  안내 문구만 남긴다(행을 눌러 더 들어갈 수 있다는 사실은 표 근처에 있어야 한다) */}
+            <div style={{ fontSize:12, color:'#94A3B8', marginBottom:12 }}>
+              {def.label} · 부서별 · 행 클릭 시 개별 예약
             </div>
             <AggTable rows={purposeDeptAgg}
               cols={[{k:'dept',l:'부서'},{k:'count',l:'건 수'},{k:'ratio',l:'비중'},{k:'noshow',l:'노쇼 (율)'},{k:'userCancel',l:'사용자 취소 (율)'}]}
@@ -671,90 +647,69 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
 
 
   const meta = DETAIL_META[type]
+
+  // ── 브레드크럼 (← [2026-07-24]) ──────────────────────────────────────────
+  //   기존에는 본문 첫 줄에 파란 박스로 있어서 스크롤하면 사라졌다.
+  //   드릴다운이 최대 3단(목적 → 부서 → 개별 예약)까지 들어가는 화면에서
+  //   "지금 어디"와 "되돌아가기"가 동시에 사라지는 건 치명적이라 헤더로 올린다.
+  const crumbs: Crumb[] = []
+  if (type === 'purpose' && purposeDrill) {
+    const def = PURPOSE_DEFS.find(d => d.code === purposeDrill)
+    // 마지막 조각이 아니면(= 개별 예약까지 들어갔으면) 눌러서 부서 목록으로 되돌아간다
+    crumbs.push({ label: def?.label ?? '목적', onClick: drill ? () => { setDrill(null); setPage(1) } : undefined })
+  }
+  if (drill) crumbs.push({ label: drill.label })
+
+  const resetDrill = (drill || purposeDrill)
+    ? () => { setDrill(null); setPurposeDrill(null); setPage(1) }
+    : undefined
+
   return (
     <ModalPortal>
-    <div style={{ position:'fixed', inset:0, zIndex:500, display:'flex', justifyContent:'flex-end' }}>
-      {/* 배경 dim */}
-      <div onClick={onClose} style={{ position:'absolute', inset:0, background:'rgba(15,23,42,0.4)', backdropFilter:'blur(4px)' }}/>
-      {/* 드로어 패널 */}
-      {/* ← [2026-05-26 UI HOTFIX] width 700→1100 확장 (사용자 요청: 테이블 가로 잘림 해결) */}
-      {/*    · max width 1100px / 데스크탑 95vw / 모바일 100vw */}
-      {/*    · 컨텐츠 영역 padding 24→20 — 테이블 가용 폭 +8px 확보 */}
-      <div className="anm" style={{
-        position:'relative',
-        width:'min(1100px, 95vw)',
-        height:'100%',
-        background:'#fff',
-        display:'flex',
-        flexDirection:'column',
-        boxShadow:'-8px 0 40px rgba(0,0,0,0.12)'
-      }}>
-        {/* 헤더 */}
-        <div style={{ padding:'20px 24px 16px', borderBottom:'1px solid #F1F5F9', flexShrink:0 }}>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-              <div style={{ color:'#64748B' }}>{meta.icon}</div>
-              <div style={{ fontSize:16, fontWeight:600, color:'#111' }}>{meta.title}</div>
+      <DrawerShell
+        title={meta.title}
+        subtitle={DETAIL_SUBTITLE[type]}
+        crumbs={crumbs}
+        onReset={resetDrill}
+        onClose={onClose}>
+
+        {/* ── 조회 조건 ──────────────────────────────────────────────────
+              Figma 2669:11478 — 날짜(요일 포함) + 프리셋을 한 줄로.
+              기존에는 프리셋 라벨·기간 텍스트·모드 토글이 세 군데 흩어져 있었다. */}
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:16 }}>
+          <DrawerRangeFilter
+            from={dateFrom} to={dateTo}
+            onChange={r => { setDateFrom(r.from); setDateTo(r.to) }}
+            presets={DRAWER_PRESETS}
+            activeId={drawerPresetIdOf(dateFrom, dateTo)}
+            onPreset={id => { const r = drawerPresetRange(id); setDateFrom(r.from); setDateTo(r.to) }}
+          />
+          {/* 조회 기준 전환 — 'bookings' 타입에서만.
+              생성일 기준으로 보면 표에 생성일 컬럼이 따라 붙는다(BookingTable showCreated) */}
+          {type === 'bookings' && (
+            <div style={{ display:'inline-flex', background:'#fff', borderRadius:12, padding:4, gap:2 }}>
+              {([['createdAt','생성일'],['startAt','회의 날짜']] as const).map(([id, label]) => {
+                const on = dateMode === id
+                return (
+                  <button key={id} className="btn" onClick={() => setDateMode(id)}
+                    style={{
+                      padding:'8px 14px', borderRadius:8, border:'none', cursor:'pointer',
+                      background: on ? '#111' : 'transparent', color: on ? '#fff' : '#64748B',
+                      fontFamily:"'Pretendard', -apple-system, sans-serif", fontWeight:500, fontSize:13,
+                    }}>{label}</button>
+                )
+              })}
             </div>
-            <button className="btn" onClick={onClose} style={{ width:32, height:32, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:'50%', background:'#F1F5F9', color:'#64748B' }}>
-              <X size={14} strokeWidth={1.8}/>
-            </button>
-          </div>
-          {/* 기간 선택 */}
-          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-            {/* ← [2026-05-28] 날짜 조회 모드 토글 — 'bookings' 타입에서만 노출
-                  · 생성일 모드: b.created_at 기준 fetch + 정렬 (사용자 요청: '최근 생성된 예약' 카드 진입 시 자연스러움)
-                  · 회의 날짜 모드: b.start_at 기준 fetch + 정렬 (예약추이 등 기존 동작)
-                  · UI 패턴: AdminApprovalTable의 modeToggle과 동일 (요청 날짜 / 회의 날짜)
-                  · 동작: 모드 변경 시 dateMode state 갱신 → fetchData useCallback deps 트리거 → 자동 refetch
-                  · 정렬 정책: 모드 변경 시 정렬은 자동 변경 X (사용자가 헤더 클릭으로 자유롭게 변경 가능) */}
-            {type === 'bookings' && (
-              <div style={{ display:'inline-flex', background:'#F1F5F9', borderRadius:8, padding:2, gap:0 }}>
-                {[
-                  { id: 'createdAt' as const, label: '생성일' },
-                  { id: 'startAt'   as const, label: '회의 날짜' },
-                ].map(opt => {
-                  const active = dateMode === opt.id
-                  return (
-                    <button
-                      key={opt.id}
-                      className="btn"
-                      onClick={() => setDateMode(opt.id)}
-                      style={{
-                        padding: '5px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                        background: active ? '#fff' : 'transparent',
-                        color:      active ? '#111' : '#64748B',
-                        boxShadow:  active ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
-                        border: 'none', cursor: 'pointer',
-                        transition: 'background 0.15s, color 0.15s',
-                      }}>
-                      {opt.label}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-            <DateRangePicker from={dateFrom} to={dateTo} presetId={presetId}
-              onChangeFn={(f,t)=>{ setDateFrom(f); setDateTo(t) }}
-              onPreset={(id,f,t)=>{ setPresetId(id); setDateFrom(f); setDateTo(t) }}
-              compact />
-            <button className="btn" onClick={fetchData} disabled={loading}
-              style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 10px', borderRadius:8, background:loading?'#F8FAFC':'#111', border:'none', color:loading?'#CBD5E1':'#fff', fontSize:11, fontWeight:600 }}>
-              <RefreshCw size={11} strokeWidth={1.8}/>{loading?'조회 중...':'새로고침'}
-            </button>
-            <div style={{ fontSize:11, color:'#94A3B8', marginLeft:'auto' }}>
-              {/* ← [2026-05-28] 날짜 표시에 모드 라벨 추가 — 어느 기준 기간인지 명확화 */}
-              {type === 'bookings' && <span style={{ marginRight:6, color:'#64748B' }}>{dateMode === 'createdAt' ? '생성일' : '회의 날짜'}:</span>}
-              {dateFrom === dateTo ? dateFrom : `${dateFrom} ~ ${dateTo}`}
-            </div>
-          </div>
+          )}
+          {loading && (
+            <span style={{ fontSize:12, color:'#94A3B8', display:'flex', alignItems:'center', gap:5 }}>
+              <RefreshCw size={12} strokeWidth={1.8}/> 조회 중…
+            </span>
+          )}
         </div>
-        {/* 컨텐츠 — [2026-05-26 UI HOTFIX] padding 24→20 (테이블 가용 폭 확보) */}
-        <div style={{ flex:1, overflow:'auto', padding:'20px 20px' }}>
-          {renderTable()}
-        </div>
-      </div>
-    </div>
+
+        {renderTable()}
+      </DrawerShell>
     </ModalPortal>
   )
 }
@@ -914,8 +869,10 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
           position: 'fixed',
           top:      headerHeight + 32,                    // ← 헤더 높이 + 여유 32
           // viewport 1400 이상: (vw - 1400)/2 + 24 padding / 1400 미만: 24
-          // → max((100vw - 1400px) / 2, 0px) + 24px (CSS calc + max)
-          left:     'calc(max((100vw - 1400px) / 2, 0px) + 24px)',
+          // → max((100vw - 1920px) / 2, 0px) + 24px (CSS calc + max)
+          //   ← [2026-07-24] 1400 → 1920. 카드가 3열일 때 한 장이 389px 밖에 안 돼
+          //     9행 표와 히트맵이 답답했다. 넓은 모니터에서는 남는 폭을 실제로 쓰게 한다.
+          left:     'calc(max((100vw - 1920px) / 2, 0px) + 24px)',
           width:    160,                                   // ← Figma: 160
           zIndex:   50,                                    // ← 콘텐츠 위에 표시 (헤더 100보다 낮게)
         }}>
@@ -932,7 +889,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
           · 데스크톱: paddingLeft 244 = 24(좌) + 160(사이드) + 60(gap) — 사이드 자리 확보
           · 모바일: 일반 padding 12, 사이드는 콘텐츠 위 인라인 */}
       <div style={{
-        maxWidth: 1400,
+        maxWidth: 1920,   // ← [2026-07-24] 1400 → 1920 (사이드 네비 left 계산과 같은 값이어야 정렬이 맞는다)
         margin:   '0 auto',
         // ← [2026-07-24] 태블릿은 사이드가 인라인이므로 좌측 244 여백이 필요 없다
         padding:  isMobile ? '16px 12px' : navInline ? '24px 20px' : '32px 24px 32px 244px',
@@ -2949,8 +2906,20 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
   //   가용 폭에서 열 수를 역산한다. 임의의 브레이크포인트가 아니라
   //   "카드가 읽히는 최소 폭"이 기준이다.
   const { width: vw } = useBreakpoint()
-  const cols3 = isMobile ? 1 : vw < 1280 ? 2 : 3   // 3열 행 → 태블릿에선 2열
-  const cols2 = isMobile ? 1 : 2                    // 2열 행 → 태블릿에서도 2열 유지(카드가 넓어 문제 없음)
+
+  //   ← [2026-07-24] 판정 기준을 뷰포트 폭 → **카드 실폭**으로 교체.
+  //
+  //   기존은 vw<1280 이면 2열, 아니면 3열이었다. 그런데 어드민은 사이드 네비가
+  //   244px 를 먼저 떼가므로 같은 vw 라도 카드에 남는 폭이 크게 다르다.
+  //   1512 노트북에서 3열이면 카드가 404px — 9행 표·히트맵·10분류 스택바가 들어가는
+  //   카드로는 답답하다는 지적(고지)이 정확했다.
+  //
+  //   그래서 "카드가 몇 px 남는가" 로 판정한다. 임계값은 임의값이 아니라
+  //   Figma 카드 실폭(389.33)에 여유를 준 값 — 3열은 카드가 480px 이상 나올 때만 허용.
+  const navInlineDash = vw < 1024
+  const contentW = Math.min(vw, 1920) - (vw < 768 ? 36 : navInlineDash ? 40 : 268)
+  const cols3 = contentW >= 1450 ? 3 : contentW >= 740 ? 2 : 1
+  const cols2 = contentW >= 740 ? 2 : 1
   const gridCls = (n: number) => `grid gap-4 ${n === 1 ? 'grid-cols-1' : n === 2 ? 'grid-cols-2' : 'grid-cols-3'}`
 
   // 위젯 ① 승인 대기용 — bookings prop에서 직접 계산 (날짜 필터 없음)
@@ -3010,7 +2979,7 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
   }
 
   return (
-    <div className="flex flex-col gap-4" style={{ maxWidth: 1200, width: '100%' }}>{/* ← [2026-07-23 Phase 1] Figma 551:3316 컨테이너 1100 → 1200 */}
+    <div className="flex flex-col gap-4" style={{ width: '100%' }}>{/* ← [2026-07-24] maxWidth 1200 해제 — 바깥(AdminView 1920)이 상한을 쥔다. 여기서 또 자르면 넓힌 폭이 사라진다 */}
 
       {/* ══════════════════════════════════════════════════════════════════════
            [2026-07-23 Phase 1] 대시보드 외곽 5-row grid 재구성 (Figma node 551:3316 1:1)
