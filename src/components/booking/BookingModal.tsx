@@ -711,6 +711,104 @@ function titleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
   e.currentTarget.blur()      // = 입력 완료 (모바일 키보드 닫힘)
 }
 
+// ─── [2026-07-27 모바일 예약모달 v2] Figma 2697:251 / 2710:1250 / 2715:1952 실측 기반 신규 UI ───
+//   적용 범위: 모바일 한정 (데스크톱 불변 — 고지 확정 ④)
+
+// 순서안내 (Figma 2703:811 활성/대기, 2715:2104 완료) — 헤더 아래 바디 첫 요소
+//   넘버링 32×32 r12: 완료 bg #00DE59+흰 체크24 / 활성 bg #000+흰 숫자14 / 대기 bg #D1D7E1+흰 숫자
+//   라벨 16px Medium: 완료 #00DE59 / 활성 #111 / 대기 #D1D7E1. 요소 gap 24, 라벨 gap 12, 연결선 1px
+function StepIndicatorM({ step }: { step: 1 | 2 }) {
+  const items = [{ n: 1 as const, label: "일정 입력" }, { n: 2 as const, label: "회의실 선택" }]
+  return (
+    <div style={{display:"flex", alignItems:"center", gap:24, padding:"16px 0", flexShrink:0}}>
+      {items.map((it, i) => {
+        const done = step > it.n, active = step === it.n
+        const boxBg      = done ? "#00DE59" : active ? "#000" : "#D1D7E1"
+        const labelColor = done ? "#00DE59" : active ? "#111" : "#D1D7E1"
+        return (
+          <React.Fragment key={it.n}>
+            <div style={{display:"flex", alignItems:"center", gap:12}}>
+              <div style={{width:32, height:32, borderRadius:12, background:boxBg, flexShrink:0,
+                display:"flex", alignItems:"center", justifyContent:"center"}}>
+                {done
+                  ? <Check size={24} strokeWidth={2.4} color="#fff"/>
+                  : <span style={{fontFamily:"Pretendard, sans-serif", fontWeight:400, fontSize:14, lineHeight:1.25, color:"#fff"}}>{it.n}</span>}
+              </div>
+              <span style={{fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:16, lineHeight:1.5,
+                color:labelColor, whiteSpace:"nowrap"}}>{it.label}</span>
+            </div>
+            {i === 0 && <div style={{flex:1, height:1, background:"#111"}}/>}
+          </React.Fragment>
+        )
+      })}
+    </div>
+  )
+}
+
+// 모바일 필드 라벨 (Figma 2697:257 등) — 16px Medium #96A0B3 + 필수 빨간점 4px (gap 2)
+function MLabel({ text, required = false }: { text: string; required?: boolean }) {
+  return (
+    <div style={{display:"flex", gap:2, alignItems:"flex-start"}}>
+      <span style={{fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:16, lineHeight:1.2, color:"#96A0B3"}}>{text}</span>
+      {required && <span style={{width:4, height:4, borderRadius:"50%", background:"#EF4444", display:"inline-block", flexShrink:0}} aria-hidden="true"/>}
+    </div>
+  )
+}
+
+// 시각 칩 한 줄 가로 스크롤 (Figma 2710:1154/1190 실측) — 시작/종료 공용
+//   헤더: 라벨 20px Medium #111 + gap24 + 현재값 20px #111 + 접미사(부터/까지) #D2D2D2 gap4, py8
+//   칩: w90 h41 px16 py10 r12 gap8 — "오전/오후" Regular + 시각 Medium 14px gap4
+//        기본 border #EBEEF4 텍스트 #96A0B3 / 선택 bg #000 border #000 흰색
+//   선택 칩 자동 스크롤: scrollIntoView는 세로 스크롤까지 유발하므로 container.scrollLeft 직접 계산
+function TimeChipRow({ label, valueText, suffix, options, selected, onPick }: {
+  label: string; valueText: string; suffix: string;
+  options: string[]; selected: string; onPick: (t: string) => void;
+}) {
+  const rowRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const row = rowRef.current; if (!row) return
+    const el = row.querySelector<HTMLElement>('[data-sel="1"]'); if (!el) return
+    row.scrollLeft = Math.max(0, el.offsetLeft - (row.clientWidth - el.offsetWidth) / 2)
+  }, [selected, options.length])
+  return (
+    <div style={{display:"flex", flexDirection:"column", gap:16}}>
+      {/* 헤더 행 */}
+      <div style={{display:"flex", alignItems:"center", gap:24, padding:"8px 0"}}>
+        <span style={{fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:20, lineHeight:1, color:"#111", whiteSpace:"nowrap"}}>{label}</span>
+        <div style={{display:"flex", alignItems:"center", gap:4, fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:20, lineHeight:1, whiteSpace:"nowrap"}}>
+          <span style={{color:"#111"}}>{valueText}</span>
+          <span style={{color:"#D2D2D2"}}>{suffix}</span>
+        </div>
+      </div>
+      {/* 칩 줄 — 풀블리드 가로 스크롤 (부모 padding 20 보상) */}
+      <div ref={rowRef} className="bm-chip-scroll"
+        style={{display:"flex", gap:8, overflowX:"auto", WebkitOverflowScrolling:"touch",
+          margin:"0 -20px", padding:"0 20px"}}>
+        {options.map(t => {
+          const sel = t === selected
+          const [ampm, clock] = (() => { const parts = fmtTime(t).split(" "); return [parts[0], parts.slice(1).join(" ")] })()
+          return (
+            <button key={t} type="button" data-sel={sel ? "1" : "0"} onClick={() => onPick(t)}
+              style={{
+                width:90, height:41, flexShrink:0, boxSizing:"border-box",
+                display:"inline-flex", alignItems:"center", justifyContent:"center", gap:4,
+                padding:"10px 16px", borderRadius:12,
+                border:`1px solid ${sel ? "#000" : "#EBEEF4"}`,
+                background: sel ? "#000" : "#fff",
+                color: sel ? "#fff" : "#96A0B3",
+                fontFamily:"Pretendard, sans-serif", fontSize:14, lineHeight:1.5,
+                cursor:"pointer", transition:"background .12s, color .12s",
+              }}>
+              <span style={{fontWeight:400}}>{ampm}</span>
+              <span style={{fontWeight:500}}>{clock}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function PurposeChips({
   value, detail, onPick, onDetailChange, variant,
 }: {
@@ -741,7 +839,8 @@ function PurposeChips({
                 border:`1px solid ${selected ? "transparent" : "#EBEEF4"}`,
                 background: selected ? "#CAEFFF" : "#fff",
                 fontFamily:"Pretendard, sans-serif",
-                fontWeight:500, fontSize:13, lineHeight:1.5,
+                /* ← [2026-07-27 모바일 v2] Figma 2697:263 — 모바일 칩 16px(h32), 데스크톱 13px 유지 */
+                fontWeight:500, fontSize: variant === 'mobile' ? 16 : 13, lineHeight:1.5,
                 color: selected ? "#000" : "#96A0B3",
                 cursor:"pointer",
                 transition:"background .15s, color .15s",
@@ -1217,10 +1316,11 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   // 참석자 UI JSX (재사용: 모바일 Step1 + 데스크톱 폼)
   const AttendeeSection = (compact = false) => (
     <div>
-      <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",
-        marginBottom:6,letterSpacing:"0.4px"}}>
-        참석자 <span style={{fontWeight:400,color:"#CBD5E1"}}>(선택 · 초대 메일 자동 발송)</span>
-      </label>
+      {/* ← [2026-07-27 모바일 v2] 라벨 신규 문법(16px Medium #96A0B3) — AttendeeSection은 모바일 전용(데스크톱은 Field 인라인) */}
+      <div style={{display:"flex", alignItems:"baseline", gap:6, marginBottom:16}}>
+        <span style={{fontFamily:"Pretendard, sans-serif",fontWeight:500,fontSize:16,lineHeight:1.5,color:"#96A0B3"}}>참석자</span>
+        <span style={{fontSize:11,fontWeight:400,color:"#CBD5E1"}}>초대 메일 자동 발송</span>
+      </div>
 
       {/* 선택된 참석자 칩 */}
       {form.attendees.length > 0 && (
@@ -1395,177 +1495,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
     );
   };
 
-  // ── 시간 버튼 picker 단계: "start" | "end"
-  const [timePickerStep, setTimePickerStep] = useState("start");
-  const [startOpen, setStartOpen] = useState(true);
-  const [endOpen,   setEndOpen]   = useState(false);
-
-  // 시간 버튼 선택 핸들러
-  const handleTimeBtn = (t) => {
-    if (timePickerStep === "start") {
-      set("start", t);
-      const newEnd = timeToMin(t) + 15; // ← [2026-04-26] 60→15: 모바일 그리드 시작 클릭 시 기본 15분
-      const clampedEnd = Math.min(newEnd, 19*60);
-      set("end", `${fmt2(Math.floor(clampedEnd/60))}:${fmt2(clampedEnd%60)}`);
-      setTimePickerStep("end");
-      setStartOpen(false);
-      setEndOpen(true);
-    } else {
-      if (timeToMin(t) <= timeToMin(form.start)) return;
-      set("end", t);
-      setTimePickerStep("start");
-      setEndOpen(false);
-    }
-  };
-
-  // 시간 버튼 그리드 공통 JSX
-  const TimeRangePicker = () => {
-    const startMin = timeToMin(form.start);
-    const endMin   = timeToMin(form.end);
-    const isPickingStart = timePickerStep === "start";
-    const isPickingEnd   = timePickerStep === "end";
-
-    const TimeGrid = ({ mode }) => {
-      // 시작: tOpts(07:00~18:45), 종료: 시작보다 늦고 최대 19:00
-      const gridSlots = mode === "end"
-        ? [...new Set([...tOpts, "19:00"])].sort().filter(t => timeToMin(t) > timeToMin(form.start) && timeToMin(t) <= 19*60)
-        : tOpts;
-      return (
-      <div style={{display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:5}}>
-        {gridSlots.map(t => {
-          const tMin     = timeToMin(t);
-          const isActive = mode==="start" ? t===form.start : t===form.end;
-          const inRange  = validTime && tMin > startMin && tMin < endMin;
-          const isDisabled = (mode==="end" && tMin <= startMin)
-                          || (bookingDate===todayStr() && tMin <= nowMinutes());
-          const isPicking = mode==="start" ? isPickingStart : isPickingEnd;
-
-          let bg="#F8FAFC", color="#475569", border="1px solid #E2E8F0", fw=500;
-          if (isActive)        { bg="#111111"; color="#fff"; border="1px solid #111111"; fw=700; }
-          else if (inRange && mode==="end") { bg="#EEF2FF"; color="#6366F1"; border="1px solid #C7D2FE"; }
-          if (isDisabled)      { bg="#F8FAFC"; color="#D1D5DB"; border="1px solid #F1F5F9"; }
-
-          return (
-            <button key={t} disabled={isDisabled}
-              onClick={()=>{ setTimePickerStep(mode); handleTimeBtn(t); }}
-              style={{
-                background:bg, color, border, fontWeight:fw,
-                borderRadius:8, padding:"9px 2px", fontSize:11,
-                cursor:isDisabled?"not-allowed":"pointer",
-                transition:"background 0.1s",
-                outline: isPicking && !isActive ? "2px dashed #E2E8F0" : "none",
-                outlineOffset:"-2px",
-              }}>
-              {fmtTime(t)}
-            </button>
-          );
-        })}
-      </div>
-      );
-    }
-
-    return (
-      <div style={{display:"flex", flexDirection:"column", gap:10}}>
-
-        {/* ── 19시 이후 안내 문구 ── */}
-        {isAfter7pm && (
-          <div style={{
-            display:"flex", alignItems:"center", gap:6,
-            padding:"7px 12px", borderRadius:8,
-            background:"#FFF7ED", border:"1px solid #FED7AA",
-          }}>
-            <AlertCircle size={13} strokeWidth={1.8} color="#F97316" style={{flexShrink:0}}/>
-            <span style={{fontSize:11, fontWeight:600, color:"#C2410C"}}>
-              오후 7시 이후에는 예약할 수 없습니다.
-            </span>
-          </div>
-        )}
-
-        {/* ── 시작 시간 섹션 ── */}
-        <div style={{
-          border:`2px solid ${isPickingStart && startOpen ? "#6366F1" : "#E2E8F0"}`,
-          borderRadius:12, overflow:"hidden", transition:"border-color 0.15s",
-        }}>
-          <div onClick={()=>{ setStartOpen(o=>!o); setTimePickerStep("start"); }}
-            style={{
-              display:"flex", alignItems:"center", justifyContent:"space-between",
-              padding:"10px 14px", cursor:"pointer",
-              background: isPickingStart && startOpen ? "#F5F3FF" : "#F8FAFC",
-              borderBottom: startOpen ? "1px solid #F1F5F9" : "none",
-            }}>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <div style={{
-                width:20,height:20,borderRadius:"50%",
-                background: isPickingStart && startOpen ? "#6366F1" : form.start ? "#111111" : "#E2E8F0",
-                color:"#fff", fontSize:10, fontWeight:600,
-                display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
-              }}>1</div>
-              <span style={{fontSize:12,fontWeight:600,
-                color: isPickingStart && startOpen ? "#6366F1" : "#475569"}}>시작 시간</span>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{fontSize:13,fontWeight:600,
-                color: isPickingStart && startOpen ? "#6366F1" : "#111111"}}>
-                {form.start ? fmtTime(form.start) : <span style={{color:"#CBD5E1",fontWeight:400}}>선택하세요</span>}
-              </span>
-              <span style={{color:"#CBD5E1",fontSize:11}}>startOpen ? <ChevronUp size={11} strokeWidth={1.8}/> : <ChevronDown size={11} strokeWidth={1.8}/></span>
-            </div>
-          </div>
-          {startOpen && (
-            <div style={{padding:"12px 10px", background:"#fff"}}>
-              <TimeGrid mode="start"/>
-            </div>
-          )}
-        </div>
-
-        {/* ── 종료 시간 섹션 ── */}
-        <div style={{
-          border:`2px solid ${isPickingEnd && endOpen ? "#6366F1" : "#E2E8F0"}`,
-          borderRadius:12, overflow:"hidden", transition:"border-color 0.15s",
-        }}>
-          <div onClick={()=>{ setEndOpen(o=>!o); setTimePickerStep("end"); }}
-            style={{
-              display:"flex", alignItems:"center", justifyContent:"space-between",
-              padding:"10px 14px", cursor:"pointer",
-              background: isPickingEnd && endOpen ? "#F5F3FF" : "#F8FAFC",
-              borderBottom: endOpen ? "1px solid #F1F5F9" : "none",
-            }}>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <div style={{
-                width:20,height:20,borderRadius:"50%",
-                background: isPickingEnd && endOpen ? "#6366F1" : form.end && validTime ? "#111111" : "#E2E8F0",
-                color:"#fff", fontSize:10, fontWeight:600,
-                display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
-              }}>2</div>
-              <span style={{fontSize:12,fontWeight:600,
-                color: isPickingEnd && endOpen ? "#6366F1" : "#475569"}}>종료 시간</span>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              {validTime && (
-                <span style={{fontSize:11,color:"#94A3B8"}}>
-                  {Math.floor(durMin/60)>0?`${Math.floor(durMin/60)}시간`:""}
-                  {durMin%60>0?` ${durMin%60}분`:""}
-                </span>
-              )}
-              <span style={{fontSize:13,fontWeight:600,
-                color: isPickingEnd && endOpen ? "#6366F1" : validTime ? "#111111" : "#EF4444"}}>
-                {form.end
-                  ? <>{fmtTime(form.end)}{!validTime&&<AlertTriangle size={10} strokeWidth={1.8} style={{marginLeft:4,flexShrink:0,display:"inline-block",verticalAlign:"middle"}}/>}</>
-                  : <span style={{color:"#CBD5E1",fontWeight:400}}>선택하세요</span>}
-              </span>
-              <span style={{color:"#CBD5E1",fontSize:11}}>endOpen ? <ChevronUp size={11} strokeWidth={1.8}/> : <ChevronDown size={11} strokeWidth={1.8}/></span>
-            </div>
-          </div>
-          {endOpen && (
-            <div style={{padding:"12px 10px", background:"#fff"}}>
-              <TimeGrid mode="end"/>
-            </div>
-          )}
-        </div>
-
-      </div>
-    );
-  };
+  // ← [2026-07-27 모바일 v2] 구 시간 UI(TimeRangePicker 아코디언 + TimeGrid 6열 + handleTimeBtn/timePickerStep/startOpen/endOpen) 전면 제거.
+  //   대체: TimeChipRow(시작/종료 칩 가로 스크롤, 모듈 레벨) + pickStartChip. 옵션 생성(tOpts/endOpts)·자동보정 useEffect는 불변.
 
   // ── Step 상태 (모바일 전용) ─────────────────────────────────────────────────
   const [step, setStep] = useState(1); // 항상 step1(일정입력)부터 시작 — prefill room_id가 있어도 동일
@@ -1573,6 +1504,14 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   //   누락 시: 목적 미완인 채 Step2 진입 → '예약 확정' 영구 비활성인데 Step2엔 목적 UI가
   //   없어 사유 확인 불가(모바일 미작동 신고의 근본 원인). 미완 항목은 그 UI가 있는 Step1에서 차단한다.
   const canGoStep2 = !!(form.title.trim() && validTime && purposeValid);
+
+  // ← [2026-07-27 모바일 v2] 시작 칩 선택 — 데스크톱 select onChange와 동일 계약(종료=시작+15 클램프).
+  //   종료 칩은 endOpts가 이미 시작 이후만 생성하므로 set("end", t)만으로 안전
+  const pickStartChip = (t: string) => {
+    set("start", t);
+    const clamped = Math.min(timeToMin(t) + 15, 19*60);
+    set("end", `${fmt2(Math.floor(clamped/60))}:${fmt2(clamped%60)}`);
+  };
 
   // ── 공통: 회의실 카드 그리드 ────────────────────────────────────────────────
   // 회의실별 상태 판별 (unavailable room용)
@@ -1889,30 +1828,10 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       }}>
 
         {isMobile ? (
-          /* 모바일 헤더: 스텝 인디케이터 포함 */
+          /* 모바일 헤더 — [2026-07-27 모바일 v2] 구 26px 원형 인디케이터 제거.
+             순서안내는 Figma(2697:253/2710:1450)대로 바디 첫 요소(StepIndicatorM)로 이동 */
           <div style={{flex:1}}>
-            <div style={{fontSize:15,fontWeight:600,color:"#111111",marginBottom:10}}>{editBooking ? "예약 변경" : "새 회의 예약"}</div>
-            {/* Step 인디케이터 */}
-            <div style={{display:"flex",alignItems:"center",gap:12,marginTop:4}}>
-              {[{n:1,label:"일정 입력"},{n:2,label:"회의실 선택"}].map(({n,label},i)=>(
-                <React.Fragment key={n}>
-                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <div style={{width:26,height:26,borderRadius:"50%",
-                      display:"flex",alignItems:"center",justifyContent:"center",
-                      fontSize:12,fontWeight:600,flexShrink:0,
-                      background:step>=n?"#111111":"#F1F5F9",
-                      color:step>=n?"#fff":"#94A3B8"}}>
-                      {step>n?<CheckCircle2 size={14} strokeWidth={1.8}/>:n}
-                    </div>
-                    <span style={{fontSize:13,fontWeight:step===n?700:400,
-                      color:step===n?"#111111":step>n?"#16A34A":"#94A3B8"}}>
-                      {label}
-                    </span>
-                  </div>
-                  {i===0&&<div style={{flex:1,height:1,background:step>1?"#111111":"#E2E8F0",margin:"0 4px"}}/>}
-                </React.Fragment>
-              ))}
-            </div>
+            <div style={{fontSize:15,fontWeight:600,color:"#111111"}}>{editBooking ? "예약 변경" : "새 회의 예약"}</div>
           </div>
         ) : (
           // ← [Phase A] 데스크톱 타이틀: 18→24, fontWeight 600→500 (Pretendard Medium)
@@ -1934,13 +1853,17 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
           flex:1, minHeight:0, overflowY:"auto",
           WebkitOverflowScrolling:"touch", overscrollBehavior:"contain"}}>
 
-          {/* Step 1: 일정 입력 */}
+          {/* Step 1: 일정 입력 — [2026-07-27 모바일 v2] Figma 2697:251 전면 재구성.
+                필드 문법: 라벨 16px Medium #96A0B3 + 필수점, 섹션 구분선 #F6FAFF (MLabel).
+                순서안내(StepIndicatorM)는 바디 첫 요소 — 스크롤 영역 포함(Figma 동일) */}
           {step===1 && (
-            <div style={{padding:"16px 20px 8px",
-              display:"flex",flexDirection:"column",gap:14}}>
-              {/* 회의 목적 — [2026-07-27 목적] 카테고리 선택 (데스크톱 Figma의 모바일 대응, 회의 제목 위) */}
-              <div>
-                <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:6}}>회의 목적 *</label>
+            <div style={{padding:"0 20px 8px",
+              display:"flex",flexDirection:"column"}}>
+              <StepIndicatorM step={1}/>
+              {/* 목적 (Figma 2697:256 — py8/16, 라벨↔칩 gap 16) */}
+              <div style={{borderBottom:"1px solid #F6FAFF", padding:"8px 0 16px",
+                display:"flex", flexDirection:"column", gap:16}}>
+                <MLabel text="목적" required/>
                 <PurposeChips
                   variant="mobile"
                   value={form.purpose}
@@ -1949,38 +1872,49 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   onDetailChange={v => set("purposeDetail", v)}
                 />
               </div>
-              {/* 회의 제목 */}
-              <div>
-                <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:6}}>회의 제목 *</label>
-                {/* ← [2026-07-27 iOS 입력 HOTFIX] fontSize 15→16 — iOS는 16px 미만 입력 포커스 시 페이지 자동 줌인.
-                      줌이 blur 후 복원되지 않아 내부 스크롤이 어그나는 게 "완료 후 스크롤 불능"의 근본 원인.
-                      enterKeyHint=done + Enter→blur(한글 조합 가드) 로 키보드 완료 버튼 지원 */}
-                {/* ← [2026-07-27 제목 자동줄바꿈] input → auto-grow textarea — 폭 초과 시 시각적 줄바꿈.
-                      Enter=완료(개행 삽입 금지), 붙여넣기 개행은 공백 치환 — 제목 데이터는 항상 한 줄 문자열 */}
-                <textarea ref={titleRef} rows={1} value={form.title}
-                  onChange={e=>{ set("title", e.target.value.replace(/\r?\n/g," ")); autoGrowTitle(e.currentTarget) }}
-                  placeholder="회의 제목을 입력하세요" maxLength={40}
-                  autoComplete="off"
-                  enterKeyHint="done" onKeyDown={titleKeyDown}
-                  style={{width:"100%",background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:10,
-                    color:"#111111",padding:"12px 14px",fontSize:16,outline:"none",
-                    resize:"none",overflow:"hidden",lineHeight:1.5,fontFamily:"Pretendard, sans-serif",boxSizing:"border-box"}}
-                  onFocus={e=>e.target.style.borderColor="#111111"}
-                  onBlur={e=>e.target.style.borderColor="#E2E8F0"}/>
-                <div style={{textAlign:"right",fontSize:11,color:form.title.length>=38?"#EF4444":"#CBD5E1",marginTop:4}}>
-                  {form.title.length}/40
+              {/* 회의 (Figma 2697:287 — py20, boxless 20px, 카운터 10px 우측 하단 정렬)
+                    ← [2026-07-27 모바일 v2] 박스형 → boxless 20px. iOS 자동줌 무관(≥16px).
+                    auto-grow textarea + Enter=완료(titleKeyDown) + 개행 공백 치환은 기존 그대로.
+                    placeholder는 div 오버레이 — bm-boxless CSS가 16px을 강제하므로 native placeholder 불가(20px 필드) */}
+              <div style={{borderBottom:"1px solid #F6FAFF", padding:"20px 0",
+                display:"flex", flexDirection:"column"}}>
+                <MLabel text="회의" required/>
+                <div style={{display:"flex", alignItems:"flex-end", justifyContent:"space-between", gap:8,
+                  paddingTop:16, position:"relative"}}>
+                  <textarea ref={titleRef} rows={1} value={form.title}
+                    onChange={e=>{ set("title", e.target.value.replace(/\r?\n/g," ")); autoGrowTitle(e.currentTarget) }}
+                    placeholder="" aria-label="회의 제목을 입력하세요" maxLength={40}
+                    autoComplete="off"
+                    enterKeyHint="done" onKeyDown={titleKeyDown}
+                    style={{flex:1, minWidth:0, background:"transparent", border:"none", outline:"none", padding:0,
+                      fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:20, lineHeight:1.5, color:"#111",
+                      resize:"none", overflow:"hidden"}}/>
+                  {!form.title && (
+                    <div style={{position:"absolute", top:16, left:0, pointerEvents:"none",
+                      fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:20, lineHeight:1.5,
+                      color:"#D1D7E1", whiteSpace:"nowrap"}}>
+                      회의 제목을 입력하세요
+                    </div>
+                  )}
+                  <span style={{flexShrink:0, fontFamily:"Pretendard, sans-serif", fontWeight:500,
+                    fontSize:10, lineHeight:1.5,
+                    color: form.title.length>=38 ? "#EF4444" : "#D1D9E7"}}>
+                    {form.title.length}/40
+                  </span>
                 </div>
               </div>
-              {/* 날짜 */}
-              <div ref={pickerRef} style={{position:"relative",zIndex:200}}>
-                <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:6}}>날짜 *</label>
-                <button className="btn" onClick={()=>setShowPicker(v=>!v)}
-                  style={{width:"100%",background:"#F8FAFC",border:`1px solid ${showPicker?"#111111":"#E2E8F0"}`,
-                    borderRadius:10,color:"#111111",padding:"12px 14px",fontSize:14,
-                    display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
-                  <span style={{display:"inline-flex",alignItems:"center",gap:5}}><Calendar size={13} strokeWidth={1.8}/>{bookingDate} ({DAY_NAMES[dateToObj(bookingDate).getDay()]})</span>
-                  <ChevronDown size={10} strokeWidth={1.8} color="#94A3B8"/>
-                </button>
+              {/* 날짜 (Figma 2697:296 — 값 텍스트 20px Medium #111 + 요일 #99A1AF gap4, 버튼 박스 제거)
+                    탭 시 기존 캘린더 팝오버 그대로 (월 이동·셀 로직 무변경) */}
+              <div ref={pickerRef} style={{position:"relative",zIndex:200,
+                borderBottom:"1px solid #F6FAFF", padding:"20px 0",
+                display:"flex", flexDirection:"column", gap:16}}>
+                <MLabel text="날짜" required/>
+                <div onClick={()=>setShowPicker(v=>!v)}
+                  style={{display:"inline-flex", alignItems:"center", gap:4, cursor:"pointer", userSelect:"none",
+                    fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:20, lineHeight:1.5}}>
+                  <span style={{color:"#111"}}>{fmtDateFull(bookingDate)}</span>
+                  <span style={{color:"#99A1AF"}}>{DAY_NAMES[dateToObj(bookingDate).getDay()]}요일</span>
+                </div>
                 {showPicker && (
                   <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:300,
                     background:"#fff",border:"1px solid #E2E8F0",borderRadius:12,
@@ -2022,23 +1956,51 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   </div>
                 )}
               </div>
-              {/* 시간 */}
-              {TimeRangePicker()}
+              {/* 시간 (Figma 2697:304 — pt24 pb40, 라벨↔시작블록·블록간 gap32, 칩 한 줄 가로 스크롤)
+                    ← [2026-07-27 모바일 v2] 아코디언 TimeRangePicker 폐기 → TimeChipRow 시작/종료.
+                    옵션 = 기존 tOpts(오늘 지난 슬롯 자동 제외 — 고지 확정 ②)/endOpts 그대로.
+                    길이 pill 폐기(확정 ③). noTimeLeft/isAfter7pm 안전망 유지 */}
+              <div style={{borderBottom:"1px solid #F6FAFF", padding:"24px 0 40px",
+                display:"flex", flexDirection:"column", gap:32}}>
+                <MLabel text="시간" required/>
+                {isAfter7pm && (
+                  <div style={{display:"flex", alignItems:"center", gap:6, padding:"7px 12px", borderRadius:8,
+                    background:"#FFF7ED", border:"1px solid #FED7AA"}}>
+                    <AlertCircle size={13} strokeWidth={1.8} color="#F97316" style={{flexShrink:0}}/>
+                    <span style={{fontSize:11, fontWeight:600, color:"#C2410C"}}>오후 7시 이후에는 예약할 수 없습니다.</span>
+                  </div>
+                )}
+                {noTimeLeft ? (
+                  <div style={{fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:16, lineHeight:1.5,
+                    color:PLACEHOLDER_COLOR}}>
+                    오늘은 더 예약할 수 없습니다<br/>날짜를 변경하세요
+                  </div>
+                ) : (<>
+                  <TimeChipRow label="시작" valueText={fmtTime(form.start)} suffix="부터"
+                    options={tOpts} selected={form.start} onPick={pickStartChip}/>
+                  <TimeChipRow label="종료" valueText={fmtTime(form.end)} suffix="까지"
+                    options={endOpts} selected={form.end} onPick={t=>set("end",t)}/>
+                </>)}
+              </div>
+              {/* 참석자 (Figma 순서: 시간 다음 참석자 — [2026-07-27 모바일 v2] 메모와 순서 교체.
+                    입력·드롭다운·칩은 기존 검증된 구조 그대로 — 승인 문서 3항 "라벨만 신규 문법" */}
+              <div style={{borderBottom:"1px solid #F6FAFF", padding:"20px 0"}}>
+                {AttendeeSection()}
+              </div>
               {/* 메모 */}
-              <div>
-                <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:6}}>메모 (선택)</label>
+              <div style={{padding:"20px 0", display:"flex", flexDirection:"column", gap:16}}>
+                <MLabel text="메모"/>
                 <textarea value={form.memo} onChange={e=>set("memo",e.target.value)} rows={2} placeholder="안건, 준비물 등"
                   style={{width:"100%",background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:10,
-                    color:"#111111",padding:"12px 14px",fontSize:16,outline:"none",resize:"none"}}  /* ← [2026-07-27 iOS 입력 HOTFIX] 13→16 자동줌 차단. Enter=줄바꿈 유지 */
+                    color:"#111111",padding:"12px 14px",fontSize:16,outline:"none",resize:"none",boxSizing:"border-box"}}  /* ← [2026-07-27 iOS 입력 HOTFIX] 16px 유지. Enter=줄바꿈 */
                   onFocus={e=>e.target.style.borderColor="#111111"}
                   onBlur={e=>e.target.style.borderColor="#E2E8F0"}/>
               </div>
-              {/* 참석자 */}
-              {AttendeeSection()}
-              {/* 예약자(대리) — [2026-06-12] 어드민 전용, 생성 시에만 */}
-              {isAdmin && !editBooking && BookerSection()}
+              {/* 예약자(대리) — [2026-06-12] 어드민 전용, 생성 시에만.
+                    ← [2026-07-27 모바일 v2] 기존 스타일 유지(고지 확정 ①) — 컨테이너 gap 폐기에 따른 간격만 wrapper로 보존 */}
+              {isAdmin && !editBooking && <div style={{padding:"20px 0 0"}}>{BookerSection()}</div>}
               {/* 반복 예약 — [2026-05-28] 어드민 전용 재개방 (게이트 isAdmin, 배너/ disabled 제거) */}
-              {isAdmin && !editBooking && <div>{/* ← [2026-05-28] !editBooking → isAdmin && !editBooking: 비어드민은 섹션 미표시 */}
+              {isAdmin && !editBooking && <div style={{padding:"20px 0 0"}}>{/* ← [2026-05-28] 어드민 전용 · [2026-07-27 모바일 v2] 간격 wrapper */}
                 <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:6,letterSpacing:"0.4px"}}>반복 예약</label>
                 {/* ← [2026-05-28] 점검 중 배너 제거 — 어드민 전용 활성 기능과 모순되므로 삭제 */}
                 <div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -2100,50 +2062,78 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             </div>
           )}
 
-          {/* Step 2: 회의실 선택 — 전체 높이 독립 스크롤 */}
+          {/* Step 2: 회의실 선택 — [2026-07-27 모바일 v2] Figma 2710:1250(선택)/2715:1952(default) 전면 재구성.
+                구 요약칩("수정" 버튼)·구 선택확인 카드(#F0FDF4)·"이용 가능 회의실" 헤더 폐기 →
+                날짜+시간 요약 / "N개 예약 가능" / 선택 요약 카드(X=해제, 미선택 점선)로 교체.
+                Step1 복귀는 CTA "이전". 충돌 경고·RoomGrid2(2)는 유지 */}
           {step===2 && (
-            <div style={{padding:"14px 20px 8px",
-              display:"flex",flexDirection:"column",gap:12}}>
-              {/* 예약 요약 칩 */}
-              <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 14px",
-                display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
-                <div>
-                  <div style={{fontSize:13,fontWeight:600,color:"#111111"}}>{form.title||"(제목 없음)"}</div>
-                  <div style={{fontSize:11,color:"#94A3B8",marginTop:2}}>
-                    {bookingDate} · {fmtTime(form.start)} – {fmtTime(form.end)}
-                  </div>
+            <div style={{padding:"0 20px 8px",
+              display:"flex",flexDirection:"column"}}>
+              <StepIndicatorM step={2}/>
+              {/* 날짜 + 시간 요약 (Figma 2715:1587 — 날짜 20px Regular, 시간 24px Medium "⎯" 18px, 컨테이너 gap4) */}
+              <div style={{padding:"8px 0 0", display:"flex", flexDirection:"column", gap:4, flexShrink:0}}>
+                <div style={{display:"flex", alignItems:"center", gap:4,
+                  fontFamily:"Pretendard, sans-serif", fontWeight:400, fontSize:20, lineHeight:1.5, color:"#111"}}>
+                  <span>{fmtDateFull(bookingDate)}</span>
+                  <span>{DAY_NAMES[dateToObj(bookingDate).getDay()]}요일</span>
                 </div>
-                <button className="btn" onClick={()=>setStep(1)}
-                  style={{background:"#F1F5F9",color:"#64748B",padding:"5px 11px",fontSize:11,borderRadius:999,flexShrink:0}}>수정</button>
+                <div style={{display:"flex", alignItems:"center", gap:8, fontFamily:"Pretendard, sans-serif", fontWeight:500}}>
+                  <span style={{fontSize:24, lineHeight:1.5, color:"#000"}}>{fmtTime(form.start)}</span>
+                  <span style={{fontSize:18, lineHeight:1, color:"#111"}}>⎯</span>
+                  <span style={{fontSize:24, lineHeight:1.5, color:"#000"}}>{fmtTime(form.end)}</span>
+                </div>
               </div>
-              {/* 선택된 회의실 확인 */}
-              {selectedRoom && (
-                <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:10,padding:"10px 14px",
-                  display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:600,color:"#111111"}}><span style={{display:"inline-flex",alignItems:"center",gap:4}}><CheckCircle2 size={12} strokeWidth={1.8}/>{selectedRoom.room_name}</span></div>
-                    <div style={{fontSize:11,color:"#64748B",marginTop:2}}>{selectedFloor?.floor_name} · {selectedRoom.capacity}인</div>
+              {/* 서브타이틀 + 선택 요약 카드 (Figma 2715:1616 — gap12, 카드 h82 r14) */}
+              <div style={{padding:"24px 0 12px", display:"flex", flexDirection:"column", gap:12, flexShrink:0}}>
+                <div style={{display:"flex", alignItems:"flex-start", gap:4,
+                  fontFamily:"Pretendard, sans-serif", fontSize:20, lineHeight:1.5, whiteSpace:"nowrap"}}>
+                  <div style={{display:"flex", alignItems:"center", color:"#000"}}>
+                    <span style={{fontWeight:600}}>{availableRooms.length}</span>
+                    <span style={{fontWeight:400}}>개 예약 가능</span>
                   </div>
-                  <button className="btn" onClick={()=>set("room_id",null)}
-                    style={{background:"#fff",color:"#EF4444",padding:"4px 10px",fontSize:11,border:"1px solid #FCA5A5",borderRadius:999}}>변경</button>
+                  <span style={{fontWeight:400, color:"rgba(150,160,179,0.5)"}}>클릭해서 선택</span>
                 </div>
-              )}
-              {/* 충돌 경고 — 선택된 회의실이 불가능한 경우 */}
+                {selectedRoom ? (
+                  /* 선택시 (Figma 2715:1605): bg rgba(185,248,207,.2) border #B9F8CF r14 h82 p10, 우측 X 20px = 해제 */
+                  <div style={{height:82, boxSizing:"border-box", padding:10, borderRadius:14,
+                    border:"1px solid #B9F8CF", background:"rgba(185, 248, 207, 0.2)",
+                    display:"flex", alignItems:"flex-start", justifyContent:"space-between"}}>
+                    <div style={{display:"flex", flexDirection:"column", gap:4}}>
+                      <span style={{fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:16, lineHeight:1, color:"#111"}}>
+                        {selectedRoom.room_name}
+                      </span>
+                      <div style={{display:"flex", gap:2, alignItems:"center",
+                        fontFamily:"Pretendard, sans-serif", fontWeight:400, fontSize:12, lineHeight:1.5, color:"#727B8E"}}>
+                        <span>{selectedFloor?.floor_name}</span><span>•</span><span>{selectedRoom.capacity}인</span>
+                      </div>
+                    </div>
+                    <button type="button" onClick={()=>set("room_id",null)} aria-label="회의실 선택 해제"
+                      style={{width:20, height:20, padding:0, background:"transparent", border:"none", cursor:"pointer",
+                        display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0}}>
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M5.33464 15.0846L4.91797 14.668L9.58464 10.0013L4.91797 5.33464L5.33464 4.91797L10.0013 9.58464L14.668 4.91797L15.0846 5.33464L10.418 10.0013L15.0846 14.668L14.668 15.0846L10.0013 10.418L5.33464 15.0846Z" fill="#1C1B1F"/>
+                      </svg>
+                    </button>
+                  </div>
+                ) : (
+                  /* default (Figma 2715:2101): bg #fff, dashed rgba(189,197,212,.4) r14 px14 py10 */
+                  <div style={{height:82, boxSizing:"border-box", padding:"10px 14px", borderRadius:14,
+                    border:"1px dashed rgba(189, 197, 212, 0.4)", background:"#fff",
+                    display:"flex", alignItems:"flex-start"}}>
+                    <span style={{fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:14, lineHeight:1.5,
+                      color:"rgba(189, 197, 212, 0.8)", whiteSpace:"nowrap"}}>
+                      회의실을 선택하세요
+                    </span>
+                  </div>
+                )}
+              </div>
+              {/* 충돌 경고 — 선택된 회의실이 불가능한 경우 (기존 안전망 유지) */}
               {form.room_id && validTime && !isSelectedRoomAvailable && (
-                <div style={{background:"#FEF2F2",border:"1px solid #FCA5A5",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#DC2626",flexShrink:0}}>
+                <div style={{background:"#FEF2F2",border:"1px solid #FCA5A5",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#DC2626",flexShrink:0,marginBottom:12}}>
                   선택한 회의실은 이 시간에 이미 예약이 있습니다. 다른 회의실을 선택해주세요.
                 </div>
               )}
-              {/* 회의실 헤더 */}
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-                <div style={{fontSize:12,fontWeight:600,color:"#111111"}}>
-                  {fmtTime(form.start)} – {fmtTime(form.end)} 이용 가능 회의실
-                </div>
-                <span style={{background:"#DCFCE7",color:"#16A34A",fontSize:11,fontWeight:600,display:"inline-flex",alignItems:"center",gap:3,padding:"3px 10px",borderRadius:20}}>
-                  <CheckCircle2 size={11} strokeWidth={1.8} style={{marginRight:3}}/>{availableRooms.length}개
-                </span>
-              </div>
-              {/* 회의실 그리드 */}
+              {/* 회의실 그리드 (기존 카드·상태 배지 그대로) */}
               {RoomGrid2(2)}
             </div>
           )}
@@ -2177,7 +2167,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   setIsSubmitting(false);
                 }
               }}>
-              {editBooking ? "변경 저장" : isApprovalRoom ? "승인 요청" : "예약 확정"}
+              {/* ← [2026-07-27 모바일 v2] "예약 확정" → "예약완료" (Figma 2710:1570). 변경/승인 분기 유지 */}
+              {editBooking ? "변경 저장" : isApprovalRoom ? "승인 요청" : "예약완료"}
             </Button>
           </>)}
         </div>

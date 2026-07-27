@@ -522,3 +522,10 @@ textarea.bm-boxless::-moz-placeholder,
   font-size: 16px !important;
   opacity: 1 !important;  /* Firefox 기본 opacity 0.54 보정 */
 }
+
+/* ← [2026-07-27 모바일 예약모달 v2] 시간 칩 가로 스크롤 줄 — 스크롤바 숨김 (Figma 2697:304 한 줄 스크롤) */
+.bm-chip-scroll {
+  scrollbar-width: none;      /* Firefox */
+  -ms-overflow-style: none;   /* legacy Edge */
+}
+.bm-chip-scroll::-webkit-scrollbar { display: none; }  /* WebKit(iOS Safari/Chrome) */
