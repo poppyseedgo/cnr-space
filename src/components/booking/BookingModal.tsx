@@ -1322,10 +1322,9 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   // 참석자 UI JSX (재사용: 모바일 Step1 + 데스크톱 폼)
   const AttendeeSection = (compact = false) => (
     <div>
-      {/* ← [2026-07-27 모바일 v2] 라벨 신규 문법(16px Medium #96A0B3) — AttendeeSection은 모바일 전용(데스크톱은 Field 인라인) */}
-      <div style={{display:"flex", alignItems:"baseline", gap:6, marginBottom:16}}>
+      {/* ← [2026-07-27 모바일 v2 보충] Figma 2697:341 완전 매칭 — 라벨 16px Medium #96A0B3 단독(부가문구 제거), 라벨↔검색 gap8 */}
+      <div style={{marginBottom:8}}>
         <span style={{fontFamily:"Pretendard, sans-serif",fontWeight:500,fontSize:16,lineHeight:1.5,color:"#96A0B3"}}>참석자</span>
-        <span style={{fontSize:11,fontWeight:400,color:"#CBD5E1"}}>초대 메일 자동 발송</span>
       </div>
 
       {/* 선택된 참석자 칩 */}
@@ -1343,18 +1342,28 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
         </div>
       )}
 
-      {/* 검색 인풋 */}
+      {/* 검색 인풋 — [2026-07-27 모바일 v2 보충] Figma 2697:348 boxless(pb14, placeholder 16px #D1D7E1).
+            native placeholder는 bm-boxless CSS가 색을 강제하므로 div 오버레이 패턴(데스크톱 동일).
+            입력/포커스 시 검정 밑줄 토글 = 데스크톱 참석자 필드 UX 일치. 16px = iOS 자동줌 무관 */}
       <div ref={attendeeRef} style={{position:"relative"}}>
         <input
           value={attendeeQ}
           onChange={e=>{setAttendeeQ(e.target.value);setAttendeeFocus(true);}}
           onFocus={()=>setAttendeeFocus(true)}
           onKeyDown={onAttendeeKeyDown}/* ← [핫픽스 v14] ↓/↑/Enter/Esc 키보드 네비게이션 */
-          placeholder="이름 또는 부서로 검색..."
-          style={{width:"100%",background:"#F8FAFC",border:`1px solid ${attendeeFocus?"#6366F1":"#E2E8F0"}`,
-            borderRadius:10,color:"#111111",padding:"10px 14px",
-            fontSize:isMobile?16:13,  /* ← [2026-07-27 iOS 입력 HOTFIX] 모바일 16 — 자동줌 차단. Enter는 기존 선택 UX(onAttendeeKeyDown) 유지 */
-            outline:"none"}}/>
+          placeholder="" aria-label="팀즈에 등록된 이름으로 검색하세요"
+          style={{width:"100%", background:"transparent", border:"none",
+            borderBottom: (attendeeFocus || attendeeQ.length > 0) ? "1px solid #000" : "1px solid transparent",
+            borderRadius:0, outline:"none", padding:"0 0 14px 0", boxSizing:"border-box",
+            fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:16, lineHeight:1.5, color:"#111",
+            transition:"border-bottom-color 0.15s ease"}}/>
+        {!attendeeQ && (
+          <div style={{position:"absolute", top:0, left:0, pointerEvents:"none",
+            fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:16, lineHeight:1.5,
+            color:"#D1D7E1", whiteSpace:"nowrap"}}>
+            팀즈에 등록된 이름으로 검색하세요
+          </div>
+        )}
         {/* 드롭다운 */}
         {attendeeFocus && attendeeSuggestions.length > 0 && (
           <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:400,
@@ -2027,17 +2036,36 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               </div>
               {/* 참석자 (Figma 순서: 시간 다음 참석자 — [2026-07-27 모바일 v2] 메모와 순서 교체.
                     입력·드롭다운·칩은 기존 검증된 구조 그대로 — 승인 문서 3항 "라벨만 신규 문법" */}
-              <div style={{borderBottom:"1px solid #F6FAFF", padding:"20px 0"}}>
+              <div style={{borderBottom:"1px solid #F6FAFF", padding:"15px 0 24px"}}>{/* ← Figma 2697:341 pt15 pb24 */}
                 {AttendeeSection()}
               </div>
-              {/* 메모 */}
-              <div style={{padding:"20px 0", display:"flex", flexDirection:"column", gap:16}}>
-                <MLabel text="메모"/>
-                <textarea value={form.memo} onChange={e=>set("memo",e.target.value)} rows={2} placeholder="안건, 준비물 등"
-                  style={{width:"100%",background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:10,
-                    color:"#111111",padding:"12px 14px",fontSize:16,outline:"none",resize:"none",boxSizing:"border-box"}}  /* ← [2026-07-27 iOS 입력 HOTFIX] 16px 유지. Enter=줄바꿈 */
-                  onFocus={e=>e.target.style.borderColor="#111111"}
-                  onBlur={e=>e.target.style.borderColor="#E2E8F0"}/>
+              {/* 메모 — [2026-07-27 모바일 v2 보충] Figma 2697:350 완전 매칭: 가로(라벨 72px 좌측) + boxless textarea
+                    minH72 + "회의상세" 오버레이(#D1D7E1) + 카운터 0/100(10px #D1D9E7) + maxLength 100(데스크톱 데이터 계약 동일).
+                    16px = iOS 자동줌 무관, Enter=줄바꿈 유지 */}
+              <div style={{padding:"16px 0", display:"flex", alignItems:"flex-start"}}>
+                <div style={{width:72, flexShrink:0}}>
+                  <span style={{fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:16, lineHeight:1.5, color:"#96A0B3"}}>메모</span>
+                </div>
+                <div style={{flex:1, minWidth:0, minHeight:72, position:"relative",
+                  display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:8}}>
+                  <textarea value={form.memo} onChange={e=>set("memo",e.target.value)} rows={3} maxLength={100}
+                    placeholder="" aria-label="회의상세"
+                    style={{flex:1, minWidth:0, background:"transparent", border:"none", outline:"none", padding:0,
+                      fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:16, lineHeight:1.5, color:"#111",
+                      resize:"none", minHeight:72}}/>
+                  {!form.memo && (
+                    <div style={{position:"absolute", top:0, left:0, pointerEvents:"none",
+                      fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:16, lineHeight:1.5,
+                      color:"#D1D7E1", whiteSpace:"nowrap"}}>
+                      회의상세
+                    </div>
+                  )}
+                  <span style={{flexShrink:0, fontFamily:"Pretendard, sans-serif", fontWeight:500,
+                    fontSize:10, lineHeight:1.5,
+                    color: form.memo.length >= 100 ? "#EF4444" : "#D1D9E7"}}>
+                    {form.memo.length}/100
+                  </span>
+                </div>
               </div>
               {/* 예약자(대리) — [2026-06-12] 어드민 전용, 생성 시에만.
                     ← [2026-07-27 모바일 v2] 기존 스타일 유지(고지 확정 ①) — 컨테이너 gap 폐기에 따른 간격만 wrapper로 보존 */}
