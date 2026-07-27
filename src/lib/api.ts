@@ -1,6 +1,12 @@
 /**
  * api.ts — Supabase 기반 데이터 레이어
  *
+ * [2026-07-27 목적 Phase 1] 예약 목적 카테고리 데이터 계층
+ *   · bookingToRow: purpose / purpose_detail 저장 (etc 외에는 detail 강제 null)
+ *   · rowToBooking: purpose / purposeDetail 읽기 (null = 도입 전 예약)
+ *   · updateBooking: purpose 변경 매핑 + etc 이탈 시 detail 동반 null
+ *   · SSOT: src/data/bookingPurpose.ts / DB: 20260731_booking_purpose.sql
+ *
  * [2026-04-29 Phase 1] Audit log 확장 — buildBookingDiff 헬퍼 추가
  *   배경: 기존 BOOKING_UPDATED audit는 title/start_at/end_at/room_id 4개 필드만 raw 저장
  *         memo/status/attendees 변경은 추적 안 됨, 변경 안 된 필드도 같이 기록되어 노이즈
@@ -195,6 +201,9 @@ function rowToBooking(row: Record<string, any>): Booking {
     //   start_at/end_at과 동일 패턴. null이면 null 유지.
     originalEndAt: row.original_end_at ? utcToKST(row.original_end_at) : null,
     recurGroupId:  row.recur_group_id ?? null,
+    // ← [2026-07-27 목적] 목적 코드 + 기타 상세 읽기 — null=기능 도입 전 예약(칩 생략)
+    purpose:       row.purpose ?? null,
+    purposeDetail: row.purpose_detail ?? null,
     createdAt:     new Date(row.created_at).getTime(),
   }
 }
@@ -224,6 +233,11 @@ function bookingToRow(b: Booking, userId: string, userEmail: string = '') {
     original_end_at: b.originalEndAt ?? null,
     recur_group_id: b.recurGroupId ?? null,
     status:         b.status ?? 'confirmed',
+    // ← [2026-07-27 목적] 목적 코드 + 기타 상세 저장
+    //   · detail 은 etc 일 때만 저장 — etc 외 값이 남으면 DB CHECK(chk_bookings_purpose_detail) 위반이므로
+    //     저장 계층에서 강제 null (모달 검증과 이중 방어가 아니라 "저장 규칙" 자체)
+    purpose:        b.purpose ?? null,
+    purpose_detail: b.purpose === 'etc' ? (b.purposeDetail?.trim() || null) : null,
   }
 }
 
@@ -555,6 +569,15 @@ export async function updateBooking(
   // attendees는 booking_attendees 테이블로 분리 — upsertBookingAttendees 별도 호출
   if (changes.start_at      !== undefined) dbChanges.start_at       = changes.start_at
   if (changes.room_id       !== undefined) dbChanges.room_id        = changes.room_id
+  // ← [2026-07-27 목적] 수정 모달에서 목적 변경 허용 (고지 확정)
+  //   · purpose 가 etc 외로 바뀌면 detail 을 함께 null — 안 하면 DB CHECK 위반으로 수정 전체 실패
+  if (changes.purpose       !== undefined) {
+    dbChanges.purpose = changes.purpose
+    if (changes.purpose !== 'etc') dbChanges.purpose_detail = null
+  }
+  if (changes.purposeDetail !== undefined && dbChanges.purpose_detail === undefined) {
+    dbChanges.purpose_detail = changes.purposeDetail?.trim() || null
+  }
   // ↑ DB 컬럼과 매핑되는 필드만 명시적으로 포함
   // user_employee_id, createdAt 등 프론트 전용 필드는 제외됨
 

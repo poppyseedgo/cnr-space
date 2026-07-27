@@ -1,5 +1,8 @@
 // ─── 도메인 데이터 타입 ────────────────────────────────────────────────────────
 
+// ← [2026-07-27 목적] 목적 코드 union — data/bookingPurpose.ts 가 SSOT (type-only import, 순환 없음)
+import type { BookingPurposeCode } from '../data/bookingPurpose'
+
 export interface Floor {
   floor_id: number
   floor_no: number
@@ -110,6 +113,11 @@ export interface Booking {
   processedByAvatar?: string | null  // 승인/거절 처리한 관리자 아바타
   earlyEnded?: boolean
   originalEndAt?: string | null  // 조기 반납 시 원래 예약 종료 시간
+  // ← [2026-07-27 목적] 회의 목적 코드 — SSOT: src/data/bookingPurpose.ts (10종)
+  //   · null/undefined = 기능 도입 전 예약 → 전 화면에서 칩 생략 (고지 확정)
+  purpose?: BookingPurposeCode | null
+  // ← [2026-07-27 목적] '기타(etc)' 전용 구체 사유 (1~40자). etc 외에는 null (DB CHECK 강제)
+  purposeDetail?: string | null
   createdAt: number
   recurGroupId?: string | null
   /** true = 시드 데이터, false = 사용자가 직접 생성 */
