@@ -83,9 +83,18 @@ async function getGraphToken(): Promise<string> {
 // ── Azure AD 전체 사용자 페이지네이션 조회 ───────────────────────────────────
 async function fetchAllAzureUsers(token: string): Promise<any[]> {
   const all: any[] = []
+  // ← [2026-07-27 재직자 카운트 BUGFIX] 재직자만 조회 — 근본 원인 수정.
+  //   기존엔 무필터 전량 조회라 ①비활성 계정(accountEnabled=false — 퇴사 후 계정만 잠그는 일반적 운영)과
+  //   ②게스트(userType='Guest')가 전부 포함됐다. 비활성 계정은 UPN이 계속 응답에 남아
+  //   퇴사 감지(azUPNSet 부재 조건)에 영원히 걸리지 않고 profiles에 잔류 —
+  //   '재직자' 카운트가 Azure 디렉토리 전체 수로 부풀려지던 원인.
+  //   이 필터로 비활성 계정이 응답에서 빠지면 기존 퇴사 감지 로직이 자동으로
+  //   이들을 퇴사 처리한다(departed_users 이력 + profiles DELETE + 미래 예약 취소) — 별도 백필 불필요.
+  //   ※ $filter의 userType 조건은 advanced query 요건($count=true + ConsistencyLevel: eventual) 필요 — 둘 다 이미 충족.
   let url: string | null =
     'https://graph.microsoft.com/v1.0/users' +
-    '?$select=id,displayName,mail,userPrincipalName,department' + // ← [v7 2026-05-14] department 추가 — User.Read.All 권한으로 부서 조회
+    '?$select=id,displayName,mail,userPrincipalName,department,accountEnabled,userType' + // ← [2026-07-27] 진단 로그용 필드 추가
+    "&$filter=accountEnabled eq true and userType eq 'Member'" + // ← [2026-07-27] 재직 + 내부 구성원만
     '&$top=999' +
     '&$count=true'
 
