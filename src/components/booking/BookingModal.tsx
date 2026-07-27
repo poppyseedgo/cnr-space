@@ -2,6 +2,12 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-07-27 목적 Phase 2] 회의 목적 카테고리 선택 UI (Figma 2688:1081/603, 2656:1837)
+ *      · 신규 PurposeChips 컴포넌트 (데스크톱/모바일 공용, 칩 10종 단일선택 + 기타 상세입력)
+ *      · form에 purpose/purposeDetail 추가 (신규=null, 수정=기존값 로드)
+ *      · pickPurpose: 재클릭 해제, etc 이탈 시 상세 초기화
+ *      · canSubmit에 purposeValid 게이트 추가 (목적 필수 + 기타면 상세 필수 — 확정 스펙)
+ *      · 데스크톱: Field "목적" (회의 필드 위) / 모바일: Step1 "회의 목적 *" (회의 제목 위)
  *  - [2026-05-28] 반복예약 종료일 정책 + 어드민 시작일 선택 범위 확대
  *      · 반복 종료일: today+1개월 → 올해 12/31 (recurPreview maxD2) — addBooking과 동기화 필수
  *      · 시작일 선택기(maxDate): 어드민=올해 12/31(절대 권한), 비어드민=today+1개월(기존 유지)
@@ -551,6 +557,9 @@ import { getFloor } from '../../data/floors'
 // [2026-04-17 Step 3] searchGraphUsers import 제거 — 참석자 검색을 DB 호출에서 메모리 필터링(usersProp 기반)으로 전환
 // import { searchGraphUsers } from '../../lib/api'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType, BookingForm } from '../../types'
+// ← [2026-07-27 목적] 목적 카테고리 SSOT — 코드/라벨 10종, 기타 상세 40자
+import { BOOKING_PURPOSES, PURPOSE_DETAIL_MAX, isEtcPurpose } from '../../data/bookingPurpose'
+import type { BookingPurposeCode } from '../../data/bookingPurpose'
 
 import { UserAvatar } from '../common/UserAvatar'
 import { AttendeeChip } from '../common/AttendeeChip'
@@ -670,6 +679,143 @@ function Field({
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
+// ─── [2026-07-27 목적] 목적 카테고리 선택 UI (데스크톱/모바일 공용) ──────────────
+//   · Figma 2688:1081(default) / 2688:603(선택시) / 2656:1837(기타선택시) 실측 반영
+//   · 칩 기본:   border 1px #EBEEF4 / 텍스트 13px Medium #96A0B3 / padding 4px 14px / r16
+//   · 칩 선택:   bg #CAEFFF / 체크 20px + gap 2 / padding 좌 8px / 텍스트 #000
+//     (border는 transparent 유지 — 없애면 선택 시 칩 높이 2px 변해 줄바꿈이 흔들림)
+//   · 헬퍼:      미선택시에만 "회의 목적을 선택하세요" 12px SemiBold #D1D7E1 (Figma 2688:1311)
+//   · 기타 입력: variant별 분기 — 데스크톱은 검정 언더라인 boxless(Figma 2688:595),
+//                모바일은 기존 모바일 입력 박스 스타일(회의 제목 필드와 통일)
+function PurposeChips({
+  value, detail, onPick, onDetailChange, variant,
+}: {
+  value: BookingPurposeCode | null;
+  detail: string;
+  onPick: (code: BookingPurposeCode) => void;
+  onDetailChange: (v: string) => void;
+  variant: 'desktop' | 'mobile';
+}) {
+  const isEtc = isEtcPurpose(value);
+  return (
+    <div style={{display:"flex", flexDirection:"column", width:"100%"}}>
+      {/* 칩 랩 — Figma chips wrapper: flex-wrap, gap 4 */}
+      <div style={{display:"flex", flexWrap:"wrap", gap:4, width:"100%"}}>
+        {BOOKING_PURPOSES.map(p => {
+          const selected = value === p.code;
+          return (
+            <button
+              key={p.code}
+              type="button"
+              className="btn"
+              onClick={() => onPick(p.code)}
+              aria-pressed={selected}
+              style={{
+                display:"inline-flex", alignItems:"center", justifyContent:"center", gap:2,
+                padding: selected ? "4px 14px 4px 8px" : "4px 14px",  // ← 선택 시 좌측 8 (체크 아이콘 자리, Figma 2688:624)
+                borderRadius:16,
+                border:`1px solid ${selected ? "transparent" : "#EBEEF4"}`,
+                background: selected ? "#CAEFFF" : "#fff",
+                fontFamily:"Pretendard, sans-serif",
+                fontWeight:500, fontSize:13, lineHeight:1.5,
+                color: selected ? "#000" : "#96A0B3",
+                cursor:"pointer",
+                transition:"background .15s, color .15s",
+              }}
+            >
+              {selected && (
+                <span style={{width:20, height:20, display:"inline-flex", alignItems:"center", justifyContent:"center", flexShrink:0}}>
+                  <Check size={14} strokeWidth={2.4} color="#000"/>
+                </span>
+              )}
+              {p.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 헬퍼 — 미선택시에만 (선택시 프레임 2688:603엔 헬퍼 없음) */}
+      {!value && (
+        <div style={{
+          marginTop:8,
+          fontFamily:"Pretendard, sans-serif",
+          fontWeight:600, fontSize:12, lineHeight:1.5,
+          color:"#D1D7E1",
+        }}>
+          회의 목적을 선택하세요
+        </div>
+      )}
+
+      {/* 기타 상세 입력 — etc 선택시에만 */}
+      {isEtc && (variant === 'desktop' ? (
+        // 데스크톱: 검정 언더라인 boxless (Figma 2688:595 — border-b black, pb 12)
+        <div style={{
+          marginTop:12,                       // ← Figma: 칩(y68)→입력(y80) 간격 12
+          display:"flex", alignItems:"center", justifyContent:"space-between", gap:8,
+          borderBottom:"1px solid #111",
+          paddingBottom:12,
+          position:"relative",                // ← placeholder 오버레이 기준 (회의 제목 필드와 동일 패턴)
+        }}>
+          <input
+            className="bm-boxless"
+            value={detail}
+            onChange={e => onDetailChange(e.target.value)}
+            placeholder=""
+            aria-label="기타 목적을 구체적으로 입력하세요"
+            maxLength={PURPOSE_DETAIL_MAX}
+            autoComplete="off"
+            autoFocus
+            style={{
+              flex:1, minWidth:0,
+              background:"transparent", border:"none", outline:"none", padding:0,
+              fontFamily:"Pretendard, sans-serif",
+              fontWeight:500, fontSize:16, lineHeight:1.5, color:"#111",
+            }}
+          />
+          {!detail && (
+            <div style={{
+              position:"absolute", top:0, left:0, pointerEvents:"none",
+              fontFamily:"Pretendard, sans-serif",
+              fontWeight:500, fontSize:16, lineHeight:1.5,
+              color:PLACEHOLDER_COLOR, whiteSpace:"nowrap",
+            }}>
+              기타 목적을 구체적으로 입력하세요
+            </div>
+          )}
+          <span style={{
+            flexShrink:0,
+            fontFamily:"Pretendard, sans-serif",
+            fontWeight:500, fontSize:10, lineHeight:1.5,
+            color: detail.length >= PURPOSE_DETAIL_MAX - 2 ? "#EF4444" : "#d1d9e7",  // ← 회의 제목 카운터와 동일 규칙(38자부터 경고색)
+          }}>
+            {detail.length}/{PURPOSE_DETAIL_MAX}
+          </span>
+        </div>
+      ) : (
+        // 모바일: 기존 모바일 입력 박스 스타일 (회의 제목 필드와 통일)
+        <div style={{marginTop:8}}>
+          <input
+            value={detail}
+            onChange={e => onDetailChange(e.target.value)}
+            placeholder="기타 목적을 구체적으로 입력하세요"
+            maxLength={PURPOSE_DETAIL_MAX}
+            autoComplete="off"
+            style={{width:"100%", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:10,
+              color:"#111111", padding:"12px 14px", fontSize:15, outline:"none"}}
+            onFocus={e=>e.target.style.borderColor="#111111"}
+            onBlur={e=>e.target.style.borderColor="#E2E8F0"}
+          />
+          <div style={{textAlign:"right", fontSize:11,
+            color: detail.length >= PURPOSE_DETAIL_MAX - 2 ? "#EF4444" : "#CBD5E1", marginTop:4}}>
+            {detail.length}/{PURPOSE_DETAIL_MAX}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+// ──────────────────────────────────────────────────────────────────────────────
+
 export function BookingModal({prefill, date:initDate, editBooking=null, onClose, onSubmit, onUpdate, bookings, isAdmin=false, currentUser="홍길동", currentUserEmail="", rooms:roomsProp=[], users:usersProp=[]}) {
   // ── 모든 hooks를 최상단에 선언 ──────────────────────────────────────────────
   const { isMobile, isTablet } = useBreakpoint();
@@ -695,6 +841,9 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       return {
         room_id:   editBooking.room_id,
         title:     editBooking.title,
+        // ← [2026-07-27 목적] 수정 모달에서 목적 변경 허용 (고지 확정) — 기존 값 초기 로드
+        purpose:       (editBooking.purpose ?? null) as BookingPurposeCode | null,
+        purposeDetail: editBooking.purposeDetail ?? "",
         start:     tsTime(editBooking.start_at),  // "HH:MM" 24시간 형식 유지
         end:       tsTime(editBooking.end_at),
         memo:      editBooking.memo || "",
@@ -722,6 +871,9 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
     return {
       room_id:    prefill?.room_id || null,
       title:      "",
+      // ← [2026-07-27 목적] 신규 예약 초기값 — 미선택(null), 기타 상세 빈 문자열
+      purpose:       null as BookingPurposeCode | null,
+      purposeDetail: "",
       start:      defStart,
       end:        defEnd,
       memo:       "",
@@ -933,7 +1085,18 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
     };
   }, [recur, bookingDate, form.room_id, form.start, form.end, validTime, bookings]);
   const recurPreviewCount = recurPreview.total; // 하위 호환용
-  const canSubmit = !!(form.room_id && form.title.trim() && validTime && isSelectedRoomAvailable && recurPreview.available > 0);
+  // ─── [2026-07-27 목적] 선택/해제 핸들러 + 필수 검증 ────────────────────────
+  //   · 같은 칩 재클릭 = 해제(null) — 필수값이라 제출만 차단되고 해제 자체는 허용
+  //   · 다른 칩 전환 시 기타 상세는 초기화 (etc 외 값에 detail이 남으면 DB CHECK 위반)
+  const pickPurpose = (code: BookingPurposeCode) => {
+    setForm(f => {
+      if (f.purpose === code) return { ...f, purpose: null, purposeDetail: "" };
+      return { ...f, purpose: code, purposeDetail: isEtcPurpose(code) ? f.purposeDetail : "" };
+    });
+  };
+  // 목적 필수 + 기타면 상세 필수 (요구사항 확정 스펙)
+  const purposeValid = !!form.purpose && (!isEtcPurpose(form.purpose) || form.purposeDetail.trim().length > 0);
+  const canSubmit = !!(form.room_id && form.title.trim() && purposeValid && validTime && isSelectedRoomAvailable && recurPreview.available > 0);  // ← [2026-07-27 목적] purposeValid 게이트 추가
 
   // ── 날짜 피커 helpers ───────────────────────────────────────────────────────
   const todayObj   = dateToObj(today);
@@ -1730,6 +1893,17 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
           {step===1 && (
             <div style={{padding:"16px 20px 8px",
               display:"flex",flexDirection:"column",gap:14}}>
+              {/* 회의 목적 — [2026-07-27 목적] 카테고리 선택 (데스크톱 Figma의 모바일 대응, 회의 제목 위) */}
+              <div>
+                <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:6}}>회의 목적 *</label>
+                <PurposeChips
+                  variant="mobile"
+                  value={form.purpose}
+                  detail={form.purposeDetail}
+                  onPick={pickPurpose}
+                  onDetailChange={v => set("purposeDetail", v)}
+                />
+              </div>
               {/* 회의 제목 */}
               <div>
                 <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:6}}>회의 제목 *</label>
@@ -1964,6 +2138,16 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
           {/* ← [Phase E] gap: 18 → 0 (Field 자체 padding 16 0 + border-bottom이 간격/구분선 담당) */}
           <div style={{flex:1,padding:"16px 16px 100px 16px",borderRight:"1px solid #f1f5f9",
             display:"flex",flexDirection:"column",gap:0,overflowY:"auto"}}>
+            {/* 목적 — [2026-07-27 목적] 회의 목적 카테고리 (Figma 2688:1081 field 2, 회의 필드 위) */}
+            <Field label="목적" required>
+              <PurposeChips
+                variant="desktop"
+                value={form.purpose}
+                detail={form.purposeDetail}
+                onPick={pickPurpose}
+                onDetailChange={v => set("purposeDetail", v)}
+              />
+            </Field>
             {/* 회의 제목 — [Phase C] Field 적용, boxless input + 우측 카운터 0/40 (Figma 302:5368-5376) */}
             {/*   ← [Phase G 보충 7] native placeholder 제거 → div 오버레이 (브라우저 확장/글로벌 CSS 무관) */}
             <Field label="회의" required>

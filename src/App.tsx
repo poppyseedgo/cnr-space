@@ -2,6 +2,10 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-07-27 목적 Phase 2] 예약 목적 카테고리 저장 연결
+ *      · addBooking: 기본 유효성에 purpose 필수(+기타 상세) 추가, nb에 purpose/purposeDetail 포함
+ *        → 반복 예약 전 회차 동일값 / 'created'·'pending' 알림 payload에 스프레드로 자동 포함
+ *      · updateBooking: changes에 purpose/purposeDetail 추가 (수정 모달 목적 변경 허용, 고지 확정)
  *  - [2026-05-28] 반복예약 종료일 정책 변경 — today+1개월 → 올해 12/31 (어드민 전용)
  *      · 대상: addBooking 반복 날짜 생성 maxDate (L744)
  *      · 변경: maxD.setMonth(getMonth()+1) → maxD.setMonth(11, 31) (올해 12월 31일)
@@ -765,7 +769,9 @@ function AppContent() {
       const recur  = onBehalf ? "NEVER" : (form.recur || "NEVER"); // "NEVER" | "EVERY_DAY" | "EVERY_WEEK"
 
       // ── 기본 유효성 ──
-      if (!form.room_id || !form.title.trim() || fStart >= fEnd) {
+      // ← [2026-07-27 목적] 목적 필수 + 기타면 상세 필수 (모달 canSubmit과 동일 계약)
+      if (!form.room_id || !form.title.trim() || fStart >= fEnd
+          || !form.purpose || (form.purpose === 'etc' && !form.purposeDetail?.trim())) {
         showToast("예약 정보를 확인해주세요.", "error");
         return false;
       }
@@ -830,6 +836,9 @@ function AppContent() {
           room_id:      form.room_id,
           title:        form.title,
           memo:         form.memo,
+          // ← [2026-07-27 목적] 목적 코드 + 기타 상세 — 반복 예약도 전 회차 동일값 (루프 내 동일 form 복제)
+          purpose:       form.purpose ?? null,
+          purposeDetail: form.purpose === 'etc' ? (form.purposeDetail?.trim() || null) : null,
           attendees:    form.attendees || [],
           start_at:     makeTZ(td, form.start),
           end_at:       makeTZ(td, form.end),
@@ -1335,6 +1344,9 @@ function AppContent() {
       room_id:   form.room_id,
       title:     form.title,
       memo:      form.memo,
+      // ← [2026-07-27 목적] 수정 모달 목적 변경 반영 — api.updateBooking이 etc 외 detail을 null로 정리
+      purpose:       form.purpose ?? null,
+      purposeDetail: form.purpose === 'etc' ? (form.purposeDetail?.trim() || null) : null,
       attendees: form.attendees || [],
       start_at:  makeTZ(date, form.start),
       end_at:    makeTZ(date, form.end),
