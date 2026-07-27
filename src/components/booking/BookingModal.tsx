@@ -781,8 +781,11 @@ function TimeChipRow({ label, valueText, suffix, options, selected, onPick }: {
         </div>
       </div>
       {/* 칩 줄 — 풀블리드 가로 스크롤 (부모 padding 20 보상) */}
+      {/* ← [2026-07-27 칩 HOTFIX] position:relative 필수 — 없으면 칩의 offsetParent가 모달(position:relative)이
+            돼 자동 스크롤의 offsetLeft가 모달 기준 좌표로 계산되어 과스크롤(칩 잘림)이 발생했다 */}
       <div ref={rowRef} className="bm-chip-scroll"
-        style={{display:"flex", gap:8, overflowX:"auto", WebkitOverflowScrolling:"touch",
+        style={{position:"relative",
+          display:"flex", gap:8, overflowX:"auto", WebkitOverflowScrolling:"touch",
           margin:"0 -20px", padding:"0 20px"}}>
         {options.map(t => {
           const sel = t === selected
@@ -790,7 +793,10 @@ function TimeChipRow({ label, valueText, suffix, options, selected, onPick }: {
           return (
             <button key={t} type="button" data-sel={sel ? "1" : "0"} onClick={() => onPick(t)}
               style={{
-                width:90, height:41, flexShrink:0, boxSizing:"border-box",
+                /* ← [2026-07-27 칩 HOTFIX] width:90 고정 → minWidth:90 + nowrap.
+                     웹 폰트 렌더 폭이 내부 58px를 1px만 넘어도 "오후"가 세로로 꺾이던 근본 원인 —
+                     넣은 칩만 자연 확장, 대부분은 Figma 90 그대로 */
+                minWidth:90, height:41, flexShrink:0, boxSizing:"border-box", whiteSpace:"nowrap",
                 display:"inline-flex", alignItems:"center", justifyContent:"center", gap:4,
                 padding:"10px 16px", borderRadius:12,
                 border:`1px solid ${sel ? "#000" : "#EBEEF4"}`,
@@ -799,8 +805,8 @@ function TimeChipRow({ label, valueText, suffix, options, selected, onPick }: {
                 fontFamily:"Pretendard, sans-serif", fontSize:14, lineHeight:1.5,
                 cursor:"pointer", transition:"background .12s, color .12s",
               }}>
-              <span style={{fontWeight:400}}>{ampm}</span>
-              <span style={{fontWeight:500}}>{clock}</span>
+              <span style={{fontWeight:400, whiteSpace:"nowrap"}}>{ampm}</span>
+              <span style={{fontWeight:500, whiteSpace:"nowrap"}}>{clock}</span>
             </button>
           )
         })}
@@ -1534,8 +1540,14 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
     return { label:"예약됨", color:"#DC2626", bg:"#FEF2F2" };
   };
 
+  // ← [2026-07-27 모바일 v2 카드 재매칭] Figma 2715:1989(선택)/2032(가능)/2065(예약됨) 실측 1:1.
+  //   구 스타일(r12·p16/18·배지 위쪽·15px 이름) 폐기 → h100 p10 r16, 이름 14 Medium(lh none) 위 / 배지 아래.
+  //   층·인원 10px Medium #6A7282 gap2 — 선택(검정 bg)에서도 #6A7282 유지(Figma 2715:1993 실측).
+  //   배지 px8 py4 r24 10px Medium: 선택됨 #B9F8CF+체크16 / 예약가능 #CBECFF / HR 승인 필요 #E6FFB0 /
+  //   예약됨·곳 사용 #FFDBDB 텍스트 #DC1A1A(곳 사용 SemiBold). 불가 카드 bg #FEF2F2 보더 없음, 텍스트 #FF8B8B.
+  //   판단 로직(availableRooms/unavailableRooms/getRoomUnavailStatus/set room_id) 불변. 데스크톱 무영향(모바일 전용)
   const RoomGrid2 = (cols) => (
-    <div style={{display:"grid", gridTemplateColumns:`repeat(${cols},1fr)`, gap:10}}>
+    <div style={{display:"grid", gridTemplateColumns:`repeat(${cols},minmax(0,1fr))`, gap:10}}>
       {/* 예약 가능 회의실 */}
       {availableRooms.map(r => {
         const fl=getFloor(r.floor_id);
@@ -1543,39 +1555,70 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
         const isAdminRoom = allRooms.find(rm=>rm.room_id===r.room_id)?.is_admin_only ?? false;
         return (
           <div key={r.room_id} onClick={()=>set("room_id", isSel?null:r.room_id)}
-            style={{background:isSel?"#111":"#fff",
-              border:`1.5px solid ${isSel?"#111":"#E2E8F0"}`, borderRadius:12,
-              padding:"16px 18px", cursor:"pointer", transition:"all 0.15s", boxSizing:"border-box"}}
-            onMouseEnter={e=>{if(!isSel){e.currentTarget.style.borderColor="#94A3B8";}}}
-            onMouseLeave={e=>{if(!isSel){e.currentTarget.style.borderColor="#E2E8F0";}}}>
-            <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
-              {isSel
-                ? <span style={{background:"#B9F8CF",color:"#111",fontSize:10,fontWeight:600,padding:"3px 10px",borderRadius:999,display:"inline-flex",alignItems:"center",gap:3}}><Check size={10} strokeWidth={1.8}/>선택됨</span>
-                : <span style={{background:"#D5F0FF",color:"#000",fontSize:10,fontWeight:600,padding:"3px 10px",borderRadius:999}}>예약가능</span>}
-              {isAdminRoom && !isSel && (
-                <span style={{background:"#FEF3C7",color:"#92400E",fontSize:10,fontWeight:600,padding:"3px 10px",borderRadius:999}}>승인 필요</span>
+            style={{
+              background: isSel ? "#000" : "#fff",
+              border: `1px solid ${isSel ? "#000" : "#dee5f1"}`,
+              borderRadius:16, padding:10, height:100, boxSizing:"border-box",
+              display:"flex", flexDirection:"column", justifyContent:"space-between",
+              cursor:"pointer", transition:"border-color 0.15s",
+            }}>
+            {/* 위: 회의실명 + 층·인원 (gap 4) */}
+            <div style={{display:"flex", flexDirection:"column", gap:4}}>
+              <span style={{fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:14, lineHeight:1,
+                color: isSel ? "#fff" : "#000", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}>{r.room_name}</span>
+              <div style={{display:"flex", gap:2, alignItems:"center",
+                fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:10, lineHeight:1.5, color:"#6A7282"}}>
+                <span>{fl.floor_name}</span><span>•</span><span>{r.capacity}인</span>
+              </div>
+            </div>
+            {/* 아래: 배지 */}
+            <div style={{display:"flex", gap:4, alignItems:"center", flexWrap:"wrap"}}>
+              {isSel ? (
+                <div style={{background:"#B9F8CF", padding:"4px 8px", borderRadius:24,
+                  display:"flex", gap:2, alignItems:"center", justifyContent:"center"}}>
+                  <Check size={16} strokeWidth={1.8} color="#000"/>
+                  <span style={{fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:10, lineHeight:1.5, color:"#000", whiteSpace:"nowrap"}}>선택됨</span>
+                </div>
+              ) : (
+                <div style={{background:"#CBECFF", padding:"4px 8px", borderRadius:24,
+                  display:"flex", alignItems:"center", justifyContent:"center"}}>
+                  <span style={{fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:10, lineHeight:1.5, color:"#000", whiteSpace:"nowrap"}}>예약가능</span>
+                </div>
               )}
-              {isAdminRoom && isSel && (
-                <span style={{background:"#FEF3C7",color:"#92400E",fontSize:10,fontWeight:600,padding:"3px 10px",borderRadius:999}}>승인 후 확정</span>
+              {isAdminRoom && (
+                <div style={{background:"#E6FFB0", padding:"4px 8px", borderRadius:24,
+                  display:"flex", alignItems:"center", justifyContent:"center"}}>
+                  <span style={{fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:10, lineHeight:1.5, color:"#000", whiteSpace:"nowrap"}}>HR 승인 필요</span>
+                </div>
               )}
             </div>
-            <div style={{fontSize:15,fontWeight:600,color:isSel?"#fff":"#111",marginBottom:4}}>{r.room_name}</div>
-            <div style={{fontSize:12,color:isSel?"rgba(255,255,255,0.5)":"#94A3B8"}}>{fl.floor_name} · {r.capacity}인</div>
           </div>
         );
       })}
-      {/* 사용 불가 회의실 — separator 없이 자연스럽게 이어짐 */}
+      {/* 사용 불가 회의실 (예약됨 / 곳 사용) */}
       {unavailableRooms.map(r => {
         const fl=getFloor(r.floor_id);
         const st=getRoomUnavailStatus(r.room_id);
+        const displayLabel = st.label === "곳 시작" ? "곳 사용" : st.label;
+        const isImminent   = st.label === "곳 시작";
         return (
-          <div key={r.room_id} style={{background:st.bg, border:"1.5px solid transparent",
-            borderRadius:12, padding:"16px 18px", boxSizing:"border-box"}}>
-            <div style={{marginBottom:10}}>
-              <span style={{background:st.bg==="FEF2F2"?"#FEE2E2":"#FEE2E2",color:st.color,fontSize:10,fontWeight:600,padding:"3px 10px",borderRadius:999}}>{st.label}</span>
+          <div key={r.room_id}
+            style={{background:"#FEF2F2", border:"1px solid transparent",
+              borderRadius:16, padding:10, height:100, boxSizing:"border-box",
+              display:"flex", flexDirection:"column", justifyContent:"space-between"}}>
+            <div style={{display:"flex", flexDirection:"column", gap:4}}>
+              <span style={{fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:14, lineHeight:1,
+                color:"#FF8B8B", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}>{r.room_name}</span>
+              <div style={{display:"flex", gap:2, alignItems:"center",
+                fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:10, lineHeight:1.5, color:"#FF8B8B"}}>
+                <span>{fl.floor_name}</span><span>•</span><span>{r.capacity}인</span>
+              </div>
             </div>
-            <div style={{fontSize:15,fontWeight:600,color:"#ff9494",marginBottom:4}}>{r.room_name}</div>
-            <div style={{fontSize:12,color:"#ff9494",opacity:0.6}}>{fl.floor_name} · {r.capacity}인</div>
+            <div style={{background:"#FFDBDB", padding:"4px 8px", borderRadius:24, alignSelf:"flex-start",
+              display:"flex", alignItems:"center", justifyContent:"center"}}>
+              <span style={{fontFamily:"Pretendard, sans-serif", fontWeight: isImminent ? 600 : 500,
+                fontSize:10, lineHeight:1.5, color:"#DC1A1A", whiteSpace:"nowrap"}}>{displayLabel}</span>
+            </div>
           </div>
         );
       })}
