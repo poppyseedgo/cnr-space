@@ -26,6 +26,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   loadAllAnnouncements, saveAnnouncement, deleteAnnouncement,
+  notifyAnnouncementSync,  // ← [2026-07-27 공지 리얼타임] 저장/삭제 성공 시 전 클라이언트 재조회 신호
   kstDayStart, kstDayEnd, toKstDayStr,
   type Announcement,
 } from '../../lib/api'
@@ -126,6 +127,7 @@ export function AnnouncementPanel({ showToast, isMobile }: Props) {
       if (!res.ok) { showToast(res.message ?? '저장 실패', 'error'); return }
       showToast(editing ? '공지를 수정했습니다' : '공지를 등록했습니다', 'success')
       setForm(emptyForm())
+      void notifyAnnouncementSync()   // ← [2026-07-27 공지 리얼타임] 전 클라이언트 배너 즉시 갱신 (fire & forget)
       await load()
     } finally { setSaving(false) }
   }
@@ -136,6 +138,7 @@ export function AnnouncementPanel({ showToast, isMobile }: Props) {
     if (!res.ok) { showToast(res.message ?? '삭제 실패', 'error'); return }
     showToast('공지를 삭제했습니다', 'info')
     if (form.id === a.id) setForm(emptyForm())
+    void notifyAnnouncementSync()   // ← [2026-07-27 공지 리얼타임] 삭제도 즉시 반영 (내리는 케이스가 핵심)
     await load()
   }
 

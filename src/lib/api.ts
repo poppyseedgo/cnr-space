@@ -2772,6 +2772,56 @@ export interface Announcement {
  * 배너는 한 줄뿐이라 여러 개를 동시에 띄울 수 없고, 나중에 등록한 공지가
  * 더 최신 상황을 담고 있을 가능성이 높다.
  */
+// ─── [2026-07-27 공지 리얼타임] Broadcast 동기화 채널 ──────────────────────────
+//   ⭐ announcements 테이블 postgres_changes 구독을 쓰지 않는 이유:
+//     RLS SELECT 정책이 "게시 중 OR 관리자"라, 공지를 **내리는** 변경
+//     (is_active=false, 기간 축소, 삭제)은 변경 후 행이 일반 사용자 RLS를
+//     통과하지 못해 이벤트가 전달되지 않는다 → "내렸는데 화면엔 계속 떠 있음"
+//     이라는, 이 기능이 잡아야 할 케이스에서 정확히 실패한다.
+//   대신 어드민 저장/삭제 성공 시 Broadcast 신호만 쏘고, 각 클라이언트는
+//   loadActiveAnnouncement 를 **재조회**한다 — "지금 보여줄 공지인가" 판정은
+//   계속 RLS 단일 진실(20260729 설계 원칙 유지), 클라이언트는 신호만 받는다.
+//   · 채널은 모듈 싱글턴 — 같은 topic 을 이중 subscribe 하면 supabase-js 가
+//     에러를 내므로(수신용 App + 발신용 어드민 패널이 한 브라우저에 공존),
+//     수신/발신이 하나의 조인된 채널을 공유한다.
+//   · 신호 전송 실패는 저장을 되돌리지 않는다 — 저장이 진실, 신호는 부가.
+
+let annSyncChannel: ReturnType<typeof supabase.channel> | null = null
+let annSyncJoined  = false
+const annSyncListeners = new Set<() => void>()
+
+function ensureAnnSyncChannel() {
+  if (annSyncChannel) return annSyncChannel
+  annSyncChannel = supabase
+    .channel('announcement-sync')
+    .on('broadcast', { event: 'changed' }, () => {
+      annSyncListeners.forEach(fn => { try { fn() } catch (e) { console.warn('[api] 공지 동기화 콜백 실패:', e) } })
+    })
+  annSyncChannel.subscribe((status) => { annSyncJoined = status === 'SUBSCRIBED' })
+  return annSyncChannel
+}
+
+/** 공지 변경 신호 수신 구독 — cleanup 함수 반환. 채널은 앱 생명주기 동안 유지 */
+export function subscribeAnnouncementSync(onChange: () => void): () => void {
+  annSyncListeners.add(onChange)
+  ensureAnnSyncChannel()
+  return () => { annSyncListeners.delete(onChange) }
+}
+
+/** 어드민 저장/삭제 성공 후 호출 — 전 클라이언트에 재조회 신호. fire & forget */
+export async function notifyAnnouncementSync(): Promise<void> {
+  try {
+    const ch = ensureAnnSyncChannel()
+    // 어드민 화면은 App 마운트 시 이미 조인돼 있어 사실상 항상 joined 상태지만,
+    // 조인 직후 극단 타이밍 방어 — 최대 3초 대기 후 미조인이면 전송 포기(저장은 이미 성립)
+    for (let i = 0; i < 30 && !annSyncJoined; i++) await new Promise(r => setTimeout(r, 100))
+    if (!annSyncJoined) { console.warn('[api] 공지 동기화: 채널 미조인 — 신호 생략'); return }
+    await ch.send({ type: 'broadcast', event: 'changed', payload: { at: Date.now() } })
+  } catch (e) {
+    console.warn('[api] 공지 동기화 신호 실패 (저장은 정상):', e)
+  }
+}
+
 export async function loadActiveAnnouncement(): Promise<Announcement | null> {
   if (!isSupabaseEnabled) return null
   const { data, error } = await supabase

@@ -245,7 +245,7 @@ import { ProfileDropdown } from './components/layout/ProfileDropdown'  // ← [2
 import { BookLoanDetailModal } from './components/library/BookLoanDetailModal'
 import { fetchBookLoanById } from './lib/api'
 // ← [2026-07-24] 헤더 공지 — 게시 중인 1건 조회 (판정은 RLS)
-import { loadActiveAnnouncement } from './lib/api'
+import { loadActiveAnnouncement, subscribeAnnouncementSync } from './lib/api'  // ← [2026-07-27 공지 리얼타임] Broadcast 재조회 구독
 import type { AdminBookLoan } from './types'
 import { NotificationBell } from './components/layout/NotificationBell'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 3)
 import { ResourceDropdown } from './components/layout/ResourceDropdown'  // ← [2026-05-13 v7] 헤더 우측 자원 예약 드롭다운 (Figma 572:462)
@@ -303,22 +303,29 @@ const AdminView  = lazy(() => import('./pages/AdminPage').then(m => ({ default: 
 // ─── App ──────────────────────────────────────────────────────────────────────
 function AppContent() {
   // ← [2026-07-24] 헤더 공지 — DB 에서 게시 중인 1건. 없으면 배너 미표시
+  // ← [2026-07-27 공지 리얼타임] 마운트 1회 조회 → 조회 함수(refetch)로 추출하고
+  //   subscribeAnnouncementSync 로 어드민 저장/삭제 Broadcast 신호에 재조회 연결.
+  //   판정은 계속 RLS — 신호는 "다시 물어봐라"일 뿐, 무엇을 보여줄지는 서버가 결정.
   const [announcement, setAnnouncement] = useState<AnnouncementConfig | null>(null)
   useEffect(() => {
     let cancelled = false
-    loadActiveAnnouncement()
-      .then(a => {
-        if (cancelled) return
-        setAnnouncement(a ? {
-          id:        a.id,
-          active:    true,          // RLS 가 이미 걸러 내려주므로 여기서는 항상 true
-          message:   a.message,
-          bgColor:   a.bg_color,
-          textColor: a.text_color,
-        } : null)
-      })
-      .catch(e => console.warn('[App] 공지 조회 실패:', e))
-    return () => { cancelled = true }
+    const refetch = () => {
+      loadActiveAnnouncement()
+        .then(a => {
+          if (cancelled) return
+          setAnnouncement(a ? {
+            id:        a.id,
+            active:    true,          // RLS 가 이미 걸러 내려주므로 여기서는 항상 true
+            message:   a.message,
+            bgColor:   a.bg_color,
+            textColor: a.text_color,
+          } : null)
+        })
+        .catch(e => console.warn('[App] 공지 조회 실패:', e))
+    }
+    refetch()
+    const unsubscribe = subscribeAnnouncementSync(refetch)   // ← [2026-07-27 공지 리얼타임]
+    return () => { cancelled = true; unsubscribe() }
   }, [])
 
   const [dark, setDark] = useState(() =>
