@@ -1,4 +1,5 @@
 // ─── 변경 이력 ───────────────────────────────────────────────────────────────
+// [2026-07-27 목적 Phase 3 보충] 시간↔제목 사이 목적 칩(card 8px) — 고지 지시로 컴팩트 카드에도 적용
 // [2026-04-24] 신규 — 주간/월간 공용 예약 컴팩트 카드
 // [2026-04-24 v2] 사이즈 조정 (요청 반영)
 //     · height:         20 → 24
@@ -26,6 +27,7 @@
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
 import type { Booking } from '../../types'
 import { tsMin, fmt2 } from '../../utils/time'
+import { PurposeChip } from '../common/PurposeChip'  // ← [2026-07-27 목적 Phase 3 보충] 타이틀 앞 목적 칩
 
 export interface CalendarCompactCardProps {
   booking:  Booking
@@ -72,6 +74,10 @@ export function CalendarCompactCard({
       }}>
         {fmtAmPmFromTS(b.start_at)}
       </span>
+      {/* ← [2026-07-27 목적 Phase 3 보충] 타이틀 앞 목적 칩 (고지 지시로 컴팩트 카드에도 적용)
+            · card 사이즈(8px, #CAEFFF) — 다크(오늘)/회색 카드 모두 동일 색 (Figma 2688:23 규칙 준용)
+            · flexShrink:0 이므로 좁은 셀에선 제목이 먼저 말줄임됨. purpose 없으면(과거 예약) 미렌더 */}
+      <PurposeChip purpose={b.purpose} size="card" />
       <span style={{
         fontSize: 11, fontWeight: 500,
         overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flex: 1,
