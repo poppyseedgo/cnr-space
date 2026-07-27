@@ -1534,7 +1534,10 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
 
   // ── Step 상태 (모바일 전용) ─────────────────────────────────────────────────
   const [step, setStep] = useState(1); // 항상 step1(일정입력)부터 시작 — prefill room_id가 있어도 동일
-  const canGoStep2 = !!(form.title.trim() && validTime);
+  // ← [2026-07-27 목적 HOTFIX] purposeValid 추가 — canSubmit과 검증 계약 일치.
+  //   누락 시: 목적 미완인 채 Step2 진입 → '예약 확정' 영구 비활성인데 Step2엔 목적 UI가
+  //   없어 사유 확인 불가(모바일 미작동 신고의 근본 원인). 미완 항목은 그 UI가 있는 Step1에서 차단한다.
+  const canGoStep2 = !!(form.title.trim() && validTime && purposeValid);
 
   // ── 공통: 회의실 카드 그리드 ────────────────────────────────────────────────
   // 회의실별 상태 판별 (unavailable room용)
