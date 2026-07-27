@@ -695,6 +695,22 @@ function blurOnEnter(e: React.KeyboardEvent<HTMLInputElement>) {
   e.currentTarget.blur()
 }
 
+// ← [2026-07-27 제목 자동줄바꿈] 제목 textarea 자동 높이 — 폭을 넘으면 시각적(soft-wrap)으로만 줄바꿈.
+//   height를 auto로 리셋 후 scrollHeight로 재설정 — 입력/삭제 양방향 모두 따라간다.
+function autoGrowTitle(el: HTMLTextAreaElement | null) {
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight}px`
+}
+
+// ← [2026-07-27 제목 자동줄바꿈] 제목은 단일 문자열(카드·목록·이메일 한 줄 전제) — Enter는 개행 삽입 대신
+//   입력 완료(blur). 한글 IME 조합 중 Enter 가드는 blurOnEnter와 동일 이유로 필수.
+function titleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+  if (e.key !== 'Enter' || (e.nativeEvent as KeyboardEvent).isComposing) return
+  e.preventDefault()          // 개행 삽입 차단
+  e.currentTarget.blur()      // = 입력 완료 (모바일 키보드 닫힘)
+}
+
 function PurposeChips({
   value, detail, onPick, onDetailChange, variant,
 }: {
@@ -1108,6 +1124,10 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
     });
   };
   // 목적 필수 + 기타면 상세 필수 (요구사항 확정 스펙)
+  // ← [2026-07-27 제목 자동줄바꿈] 수정 모드 초기값·데스크톱↔모바일 전환(재마운트) 시 높이 반영
+  const titleRef = useRef<HTMLTextAreaElement | null>(null)
+  useEffect(() => { autoGrowTitle(titleRef.current) }, [isMobile])
+
   const purposeValid = !!form.purpose && (!isEtcPurpose(form.purpose) || form.purposeDetail.trim().length > 0);
   const canSubmit = !!(form.room_id && form.title.trim() && purposeValid && validTime && isSelectedRoomAvailable && recurPreview.available > 0);  // ← [2026-07-27 목적] purposeValid 게이트 추가
 
@@ -1935,11 +1955,16 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 {/* ← [2026-07-27 iOS 입력 HOTFIX] fontSize 15→16 — iOS는 16px 미만 입력 포커스 시 페이지 자동 줌인.
                       줌이 blur 후 복원되지 않아 내부 스크롤이 어그나는 게 "완료 후 스크롤 불능"의 근본 원인.
                       enterKeyHint=done + Enter→blur(한글 조합 가드) 로 키보드 완료 버튼 지원 */}
-                <input value={form.title} onChange={e=>set("title",e.target.value)} placeholder="회의 제목을 입력하세요" maxLength={40}
+                {/* ← [2026-07-27 제목 자동줄바꿈] input → auto-grow textarea — 폭 초과 시 시각적 줄바꿈.
+                      Enter=완료(개행 삽입 금지), 붙여넣기 개행은 공백 치환 — 제목 데이터는 항상 한 줄 문자열 */}
+                <textarea ref={titleRef} rows={1} value={form.title}
+                  onChange={e=>{ set("title", e.target.value.replace(/\r?\n/g," ")); autoGrowTitle(e.currentTarget) }}
+                  placeholder="회의 제목을 입력하세요" maxLength={40}
                   autoComplete="off"
-                  enterKeyHint="done" onKeyDown={blurOnEnter}
+                  enterKeyHint="done" onKeyDown={titleKeyDown}
                   style={{width:"100%",background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:10,
-                    color:"#111111",padding:"12px 14px",fontSize:16,outline:"none"}}
+                    color:"#111111",padding:"12px 14px",fontSize:16,outline:"none",
+                    resize:"none",overflow:"hidden",lineHeight:1.5,fontFamily:"Pretendard, sans-serif",boxSizing:"border-box"}}
                   onFocus={e=>e.target.style.borderColor="#111111"}
                   onBlur={e=>e.target.style.borderColor="#E2E8F0"}/>
                 <div style={{textAlign:"right",fontSize:11,color:form.title.length>=38?"#EF4444":"#CBD5E1",marginTop:4}}>
@@ -2188,14 +2213,18 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 gap:8,
                 position:"relative", // ← [Phase G 보충 7] div 오버레이 기준
               }}>
-                <input
+                {/* ← [2026-07-27 제목 자동줄바꿈] input → auto-grow textarea (bm-boxless placeholder CSS는
+                      textarea.bm-boxless 셀렉터가 이미 있어 호환 — index.css L506 확인) */}
+                <textarea
+                  ref={titleRef} rows={1}
                   className="bm-boxless"
                   value={form.title}
-                  onChange={e=>set("title",e.target.value)}
+                  onChange={e=>{ set("title", e.target.value.replace(/\r?\n/g," ")); autoGrowTitle(e.currentTarget) }}
                   placeholder="" // ← [Phase G 보충 7] native placeholder 제거 — div 오버레이로 대체
                   aria-label="회의 제목을 입력하세요"
                   maxLength={40}
                   autoComplete="off"
+                  onKeyDown={titleKeyDown}
                   style={{
                     flex:1, minWidth:0,
                     background:"transparent",
@@ -2207,6 +2236,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                     fontSize:16,
                     lineHeight:1.5,
                     color:"#111",
+                    resize:"none",
+                    overflow:"hidden",
                   }}
                 />
                 {/* ← [Phase G 보충 7] placeholder 오버레이 (value 없을 때만 표시) */}
