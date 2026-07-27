@@ -45,6 +45,7 @@
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { PurposeChip } from '../common/PurposeChip'  // ← [2026-07-27 목적 Phase 3] 타이틀 앞 목적 라벨
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
 import type { Booking, Room, AppUser } from '../../types'  // ← [2026-04-24 P5] AppUser 추가 — users 배열에서 live 이름 조회
 import { fmtTSRange, tsDate, todayStr } from '../../utils/time'
@@ -267,6 +268,7 @@ export function CalendarSlotCard({
             textOverflow: 'ellipsis',
             fontFamily: "'Pretendard', -apple-system, sans-serif",
           }}>
+            <PurposeChip purpose={b.purpose} size="card" style={{marginRight:4}} />{/* ← [2026-07-27 목적 Phase 3] 타이틀 앞 라벨 (Figma 2688:27) */}
             {b.title}
           </div>
         </div>

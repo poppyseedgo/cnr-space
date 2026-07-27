@@ -47,3 +47,10 @@ export function purposeLabelOf(code?: string | null): string | null {
 export function isEtcPurpose(code?: string | null): boolean {
   return code === 'etc'
 }
+
+/** CSV·텍스트 내보내기용 목적 표기 — 기타면 "기타(상세)", 없으면 빈 문자열 [2026-07-27 Phase 3] */
+export function purposeExportText(purpose?: string | null, detail?: string | null): string {
+  const label = purposeLabelOf(purpose)
+  if (!label) return ''
+  return purpose === 'etc' && detail ? `${label}(${detail})` : label
+}

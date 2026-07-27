@@ -1,4 +1,5 @@
 import type { Booking, Room } from '../../types'
+import { PurposeChip } from '../common/PurposeChip'  // ← [2026-07-27 목적 Phase 3] 타이틀 앞 목적 라벨
 import { fmtTSRange } from '../../utils/time'
 import { BookingStatusBadge } from '../common/BookingStatusBadge'
 
@@ -70,6 +71,7 @@ export function SlotContent({
             wordBreak: 'break-word',
             fontFamily: "'Pretendard', -apple-system, sans-serif",
           }}>
+            <PurposeChip purpose={b.purpose} size="card" style={{marginRight:4}} />{/* ← [2026-07-27 목적 Phase 3] 타이틀 앞 라벨 (Figma 2688:27) */}
             {b.title}
           </div>
           {/* 시간 */}
@@ -112,6 +114,7 @@ export function SlotContent({
         WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const,
         lineHeight: 1.3,
       }}>
+        <PurposeChip purpose={b.purpose} size="card" style={{marginRight:4}} />{/* ← [2026-07-27 목적 Phase 3] 타이틀 앞 라벨 */}
         {b.title}
       </div>
 

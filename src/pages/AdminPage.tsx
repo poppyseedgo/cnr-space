@@ -37,6 +37,8 @@ import { ModalPortal } from '../components/common/ModalPortal'
 import { UserAvatar } from '../components/common/UserAvatar'
 import { UserChip } from '../components/common/UserChip'
 import { BookingListTable } from '../components/common/BookingListTable'
+import { PurposeChip } from '../components/common/PurposeChip'  // ← [2026-07-27 목적 Phase 3] 예약 목록 목적 컬럼
+import { purposeExportText } from '../data/bookingPurpose'      // ← [2026-07-27 목적 Phase 3] CSV 목적 표기 SSOT
 import { BookingStatusBadge } from '../components/common/BookingStatusBadge'  // ← [2026-05-28] DetailDrawer 테이블 인라인 status 판정 → 공통 컴포넌트 교체용
 // ← [2026-05-06 Admin Phase A] 좌측 사이드 네비게이션 컴포넌트 신설 (Figma node 451:3522)
 import { useBreakpoint } from '../hooks/useBreakpoint'   // ← [2026-07-24] 대시보드 반응형 컬럼 계산
@@ -510,6 +512,7 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
       const r = rooms.find(rm => rm.room_id === b.room_id)
       // CSV 컬럼 순서 = 화면 순서 (회의 → 회의실 → 회의 날짜 → 생성일 → 시간 → 예약자 → 상태)
       return {
+        목적: purposeExportText(b.purpose, b.purposeDetail),  // ← [2026-07-27 목적 Phase 3] 화면 컬럼 순서와 동일(목적→회의)
         회의: b.title, 회의실: r?.room_name ?? '',
         '회의 날짜': tsDate(b.start_at),
         생성일: b.createdAt ? tsDate(new Date(b.createdAt).toISOString()) : '',
@@ -3280,7 +3283,7 @@ export function AdminBookings({ bookings, setBookings, rooms, users = [], onForc
           ))}
           <button className="btn" onClick={()=>{
             const getStatus=(b:Booking)=>b.cancelledBy==='admin'?'관리자강제취소':b.autoCancelled?'취소':b.checkedIn?'완료':b.status==='pending'?'승인대기':'예정'
-            const csvRows=filtered.map(b=>{const r=rooms.find(rm=>rm.room_id===b.room_id);return{회의명:b.title,회의실:r?.room_name??'',날짜:tsDate(b.start_at),시작:b.start_at.slice(11,16),종료:b.end_at.slice(11,16),예약자:b.user,부서:b.dept,상태:getStatus(b)}})
+            const csvRows=filtered.map(b=>{const r=rooms.find(rm=>rm.room_id===b.room_id);return{목적:purposeExportText(b.purpose,b.purposeDetail),회의명:b.title,회의실:r?.room_name??'',날짜:tsDate(b.start_at),시작:b.start_at.slice(11,16),종료:b.end_at.slice(11,16),예약자:b.user,부서:b.dept,상태:getStatus(b)}})
             exportCSV(csvRows,`예약목록_${dateFrom}_${dateTo}`)
           }} style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:5,padding:'5px 12px',fontSize:11,borderRadius:999,background:'#F8FAFC',border:'1px solid #E2E8F0',color:'#374151',fontWeight:600}}>
             <Download size={10} strokeWidth={1.8}/> CSV
@@ -3292,7 +3295,7 @@ export function AdminBookings({ bookings, setBookings, rooms, users = [], onForc
           <div style={{overflowX:'auto'}}>
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
               <thead><tr style={{background:'#F8FAFC'}}>
-                {['회의명','회의실','날짜','시간','예약자','상태','관리'].map(h=><th key={h} style={{padding:'10px 14px',textAlign:'left',fontSize:11,fontWeight:600,color:'#94A3B8',whiteSpace:'nowrap',borderBottom:'1px solid #F1F5F9'}}>{h}</th>)}
+                {['목적','회의명','회의실','날짜','시간','예약자','상태','관리'].map(h=><th key={h} style={{padding:'10px 14px',textAlign:'left',fontSize:11,fontWeight:600,color:'#94A3B8',whiteSpace:'nowrap',borderBottom:'1px solid #F1F5F9'}}>{h}</th>)}
               </tr></thead>
               <tbody>{paged.map(b=>{const r=rooms.find(rm=>rm.room_id===b.room_id);const canCancel=!b.autoCancelled&&b.status!=='rejected';
                 // ← [2026-04-24 P6-B] 예약자 이름 live — profiles.name 우선, snapshot fallback
@@ -3300,6 +3303,8 @@ export function AdminBookings({ bookings, setBookings, rooms, users = [], onForc
                 const displayName = owner?.name ?? b.user ?? '—';
                 return(
                 <tr key={b.id} style={{borderBottom:'1px solid #F8FAFC',cursor:'pointer'}} onClick={()=>onDetail&&onDetail(b)} onMouseEnter={e=>e.currentTarget.style.background='#FAFBFD'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                  {/* ← [2026-07-27 목적 Phase 3] 목적 컬럼 — NULL(도입 전 예약)은 '—' */}
+                  <td style={{padding:'10px 14px',whiteSpace:'nowrap'}}>{b.purpose ? <PurposeChip purpose={b.purpose} size="row" /> : <span style={{color:'#C3CBD9'}}>—</span>}</td>
                   <td style={{padding:'10px 14px',fontWeight:600,color:'#111',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{b.title}</td>
                   <td style={{padding:'10px 14px',color:'#64748B',whiteSpace:'nowrap'}}>{r?.room_name??'?'}</td>
                   <td style={{padding:'10px 14px',color:'#64748B',whiteSpace:'nowrap'}}>{fmtTSDateFull(b.start_at)}</td>

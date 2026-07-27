@@ -36,6 +36,7 @@
  */
 
 import { POLICIES, type NotificationType } from './notification-types.ts'
+import { purposeLabelOf } from './booking-purpose.ts'  // ← [2026-07-27 목적 Phase 4]
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. 타입 정의
@@ -51,6 +52,9 @@ export interface InAppBookingData {
   room_name:  string
   start_at:   string
   user_name?: string             // 관리자 수신 시 "신청자" 표시용
+  // ← [2026-07-27 목적 Phase 4] 회의 목적 — 있으면 본문 앞 [라벨] 프리픽스 (카드 UI 타이틀 앞 라벨과 동일 규칙)
+  purpose?:        string | null
+  purpose_detail?: string | null
 
   // ── 도서관 전용 (← [2026-07-20]) ──────────────────────────────────────
   //   도서 알림은 회의실/시작시각 개념이 없어 위 필드로는 본문을 만들 수 없다.
@@ -190,7 +194,11 @@ export function buildInAppBody(booking: InAppBookingData, role: 'booker' | 'atte
     return dueShort ? `${name} · ${dueShort} 이내 반납` : name
   }
 
-  const title   = booking.title ?? ''
+  // ← [2026-07-27 목적 Phase 4] 목적 라벨을 제목 앞 [라벨]로 — 캐린더 카드(타이틀 앞 칩)와 같은 위치 규칙.
+  //   기타 상세는 인앱 한 줄 본문에 넣지 않는다(길이 폭주) — 상세 모달이 담당. 없으면(과거 예약) 프리픽스 생략.
+  const purposeLabel = purposeLabelOf(booking.purpose)
+  const rawTitle = booking.title ?? ''
+  const title   = purposeLabel ? `[${purposeLabel}] ${rawTitle}` : rawTitle
   const room    = booking.room_name ?? ''
   const date    = fmtDateKST(booking.start_at)
   const time    = fmtTimeKST(booking.start_at)

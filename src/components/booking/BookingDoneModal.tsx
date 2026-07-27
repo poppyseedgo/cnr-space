@@ -63,6 +63,7 @@ import { getFloor } from '../../data/floors'
 import { UserChip } from '../common/UserChip'
 import { AttendeeChip } from '../common/AttendeeChip'
 import { Button } from '../common/Button' 
+import { PurposeChip } from '../common/PurposeChip'  // ← [2026-07-27 목적 Phase 3] 목적 행 칩
 
 export function BookingDoneModal({booking:b, onClose, rooms:rp=[], users:up=[]}) {
   const { isMobile } = useBreakpoint();
@@ -153,6 +154,20 @@ export function BookingDoneModal({booking:b, onClose, rooms:rp=[], users:up=[]})
         padding: "0 20px",
         display: "flex", flexDirection: "column",
       }}>
+        {/* 목적   ← [2026-07-27 목적 Phase 3] Figma 2691:5 — 칩 + (기타면 상세 텍스트, gap 8)
+              b.purpose 없으면(도입 전 예약) 행 자체 미렌더 (고지 확정) */}
+        {b.purpose && (
+          <div style={rowStyle}>
+            <div style={labelStyle}>목적</div>
+            <div style={{...valueStyle, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap"}}>
+              <PurposeChip purpose={b.purpose} size="row" />
+              {b.purpose === 'etc' && b.purposeDetail && (
+                <span style={{fontSize:16, fontWeight:400, color:"#111", lineHeight:1.5}}>{b.purposeDetail}</span>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* 회의제목   ← 값만 SemiBold (피그마 272:881) */}
         <div style={rowStyle}>
           <div style={labelStyle}>회의제목</div>

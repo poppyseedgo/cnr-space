@@ -57,6 +57,7 @@ import {
   type NotificationType,
   type RecipientRule,
 } from '../_shared/notification-types.ts'
+import { purposeText } from '../_shared/booking-purpose.ts'  // ← [2026-07-27 목적 Phase 4] Teams facts 목적 표기
 import {
   renderEmail,
   type EmailRenderInput,
@@ -160,6 +161,9 @@ async function sendTeamsCard(type: string, booking: any): Promise<void> {
           {
             type: 'FactSet',
             facts: [
+              // ← [2026-07-27 목적 Phase 4] 목적 행 — 없으면 생략 (Teams 미사용 상태지만 필드 정합성 유지)
+              ...(purposeText(booking.purpose, booking.purpose_detail ?? booking.purposeDetail)
+                ? [{ title: '목적', value: purposeText(booking.purpose, booking.purpose_detail ?? booking.purposeDetail)! }] : []),
               { title: '회의명', value: booking.title ?? '-' },
               { title: '회의실', value: booking.room_name ?? '-' },
               { title: '날짜',   value: booking.start_at ? booking.start_at.slice(0, 10) : '-' },
@@ -507,6 +511,9 @@ Deno.serve(async (req: Request) => {
       cancel_reason: booking.cancel_reason,
       reject_reason: booking.reject_reason,
       recur_label:   booking.recur_label,
+      // ← [2026-07-27 목적 Phase 4] 회의 목적 — 이메일 PURPOSE 행/인앱 프리픽스/Teams facts 공용. 없으면 전부 생략(fail-safe)
+      purpose:        booking.purpose,
+      purpose_detail: booking.purpose_detail ?? booking.purposeDetail,  // 프론트는 camelCase로 보내므로 이중 수용
       // ← [2026-07-20] 도서관 알림 전용 필드
       //   이 3개가 있으면 email-templates 가 회의(DATE/TIME/ROOM) 대신
       //   도서(반납예정/연체) 포맷으로 인포카드를 렌더한다.
@@ -539,6 +546,9 @@ Deno.serve(async (req: Request) => {
       room_name: bookingData.room_name,
       start_at:  bookingData.start_at,
       user_name: bookingData.user_name,
+      // ← [2026-07-27 목적 Phase 4] 인앱 본문 [라벨] 프리픽스 입력
+      purpose:        bookingData.purpose,
+      purpose_detail: bookingData.purpose_detail,
       // ← [2026-07-20] 도서관 알림 전용 — buildInAppBody 의 도서 분기 입력.
       //   누락 시 body 가 "제목 · · " 형태로 빈 구분자만 남는다.
       book_title:   bookingData.book_title,

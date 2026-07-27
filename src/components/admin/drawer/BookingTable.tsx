@@ -32,13 +32,14 @@
  */
 
 import type { Booking, Room, AppUser } from '../../../types'
+import { PurposeChip } from '../../common/PurposeChip'  // ← [2026-07-27 목적 Phase 3]
 import { fmtTSDateFull, fmtTSRangeFull, tsDate } from '../../../utils/time'
 import { BookingStatusBadge } from '../../common/BookingStatusBadge'
 import { DT } from './DrawerShell'
 import { IcoSortAlt } from './DrawerIcons'
 
 /** 컬럼 식별자 — 정렬 키로도 쓴다 */
-export type BookingColKey = 'title' | 'room' | 'date' | 'time' | 'user' | 'status' | 'created'
+export type BookingColKey = 'purpose' | 'title' | 'room' | 'date' | 'time' | 'user' | 'status' | 'created'  // ← [2026-07-27 목적 Phase 3] purpose 추가
 
 interface ColDef {
   key:      BookingColKey
@@ -56,6 +57,8 @@ interface ColDef {
  *   'created'(생성일)만 맨 뒤에 있고 나머지 6개는 고지가 지정한 순서 그대로다.
  */
 export const BOOKING_COLUMNS: ColDef[] = [
+  // ← [2026-07-27 목적 Phase 3] 목적 컬럼 신설 (고지 확정 스코프) — 캘린더 카드와 동일하게 회의 앞 배치
+  { key: 'purpose', label: '목적',      width: 110, padX: 14, sortable: true,  sortField: 'purpose'   },
   { key: 'title',   label: '회의',      width: 320, padX: 14, sortable: true,  sortField: 'title'     },
   { key: 'room',    label: '회의실',    width: 200, padX: 14, sortable: true,  sortField: 'room_id'   },
   { key: 'date',    label: '회의 날짜', width: 164, padX: 16, sortable: true,  sortField: 'start_at'  },
@@ -155,6 +158,8 @@ export function BookingTable({
               {cols.map(c => {
                 const cs = cellBase(c)
                 switch (c.key) {
+                  case 'purpose':   // ← [2026-07-27 목적 Phase 3] 칩 표시, NULL(도입 전 예약)은 '—'
+                    return <div key={c.key} style={cs}>{b.purpose ? <PurposeChip purpose={b.purpose} size="row" /> : <span style={txt(400, '#C3CBD9')}>—</span>}</div>
                   case 'title':
                     return <div key={c.key} style={cs}><span style={txt(500, '#111')}>{b.title || '—'}</span></div>
                   case 'room':

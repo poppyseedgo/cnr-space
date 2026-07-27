@@ -79,6 +79,7 @@
  */
 
 import { POLICIES, renderUrl, type NotificationType } from './notification-types.ts'
+import { purposeLabelOf } from './booking-purpose.ts'  // ← [2026-07-27 목적 Phase 4] 목적 라벨 사전 (프론트 SSOT와 일치 필수)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. 타입 정의
@@ -99,6 +100,9 @@ export interface EmailBookingData {
   cancel_reason?: string
   reject_reason?: string
   recur_label?:   string         // 반복 설명 (예: "매주 수요일 · 5회 반복")
+  // ← [2026-07-27 목적 Phase 4] 회의 목적 코드 + 기타 상세 — 없으면(도입 전 예약·구버전 클라) 목적 행 생략
+  purpose?:        string | null
+  purpose_detail?: string | null
 
   // ── 도서관 알림 전용 (← [2026-07-20]) ─────────────────────────────────
   //   도서 알림에는 회의실/시작·종료 시각 개념이 없다.
@@ -448,6 +452,18 @@ function renderInfoCard(input: EmailRenderInput): string {
     return `<tr><td style="padding:${D.SECTION_GAP} 0;">` +
       `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rows.join('')}</table>` +
     `</td></tr>`
+  }
+
+  // PURPOSE — ← [2026-07-27 목적 Phase 4] 칩 형태(bg #CAEFFF) + 기타면 상세 병기
+  //   · purpose 없으면 행 생략 (도입 전 예약·구버전 클라 fail-safe — reject_reason 행과 동일 패턴)
+  //   · Outlook 구버전은 border-radius 무시 → 각진 배지로 폴백(배경색은 유지됨)
+  const purposeLabel = purposeLabelOf(input.booking.purpose)
+  if (purposeLabel) {
+    const chipHtml = `<span style="display:inline-block;background:#CAEFFF;border-radius:16px;padding:2px 10px;font-family:${FONT};font-size:12px;font-weight:500;color:#000000;line-height:1.5;">${escapeHtml(purposeLabel)}</span>`
+    const detailHtml = (input.booking.purpose === 'etc' && input.booking.purpose_detail)
+      ? `<span style="padding-left:8px;font-family:${FONT};font-size:14px;font-weight:500;color:${C.TEXT};line-height:1.5;">${escapeHtml(input.booking.purpose_detail)}</span>`
+      : ''
+    rows.push(renderInfoRow('PURPOSE', chipHtml + detailHtml))
   }
 
   // DATE

@@ -10,6 +10,7 @@ import { DetailModalStatusBadge } from '../common/DetailModalStatusBadge'  // �
 import { MetaBadge } from '../common/MetaBadge'
 import { Button } from '../common/Button'
 import { ModalCloseButton } from '../common/ModalCloseButton' // ← [2026-04-22] 모달 X 버튼 공통화
+import { PurposeChip } from '../common/PurposeChip'  // ← [2026-07-27 목적 Phase 3] 타이틀 앞 목적 칩
 import { isMyBooking } from '../../utils/bookingOwnership'  // ← [2026-04-24 P6-C] / [2026-05-04 핫픽스 v11] isAttendee 사용처 0건되어 import 제거
 
 /**
@@ -225,7 +226,12 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
             {/* ← [2026-04-24 P7-A] currentUser 전달 제거 — isBooker 판정은 currentUserId/Email로 충분 */}
             <DetailModalStatusBadge booking={b} room={r} isAdminRoom={!!r?.is_admin_only} currentUserId={currentUserId} currentUserEmail={currentUserEmail} />
             {/* ← [피그마] 제목 21px SemiBold #111 */}
-            <div style={{fontSize: isMobile ? 18 : 21, fontWeight:600, color:"#111", lineHeight:1.5, wordBreak:"break-word"}}>{b.title}</div>
+            {/* ← [2026-07-27 목적 Phase 3] 타이틀 앞 목적 칩 (Figma 2691:24 — 칩+제목 gap 8)
+                  인라인 span이라 제목이 줄바꿈돼도 텍스트 플로우에 자연 포함. purpose 없으면 칩 미렌더 */}
+            <div style={{fontSize: isMobile ? 18 : 21, fontWeight:600, color:"#111", lineHeight:1.5, wordBreak:"break-word"}}>
+              <PurposeChip purpose={b.purpose} size="title" style={{marginRight:8}} />
+              {b.title}
+            </div>
             {/* ← [P2 v7] 반복/참석자 메타 뱃지 — 피그마엔 없지만 기능(정보성) 유지. 스크린샷에 노출 안 되더라도 로직 보존 */}
             {b.recurGroupId && (
               <div><MetaBadge type="recurring" size="sm" /></div>

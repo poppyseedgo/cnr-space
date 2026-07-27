@@ -34,6 +34,7 @@ import { tsMin, fmtTSRangeFull, fmtTSDateFullWithDayFull } from '../../utils/tim
 import { UserChip } from '../common/UserChip'
 import { AttendeeChip } from '../common/AttendeeChip'
 import { Button } from '../common/Button'
+import { PurposeChip } from '../common/PurposeChip'  // ← [2026-07-27 목적 Phase 3] 목적 행 칩
 
 // ← [2026-05-28] users prop 추가 (표시 전용 — 예약자/참석자 live 조회). data 구조/onClose 불변.
 export function RecurDoneModal({data, onClose, users:up=[]}) {
@@ -129,6 +130,20 @@ export function RecurDoneModal({data, onClose, users:up=[]}) {
         padding: "0 20px",
         display: "flex", flexDirection: "column",
       }}>
+        {/* 목적   ← [2026-07-27 목적 Phase 3] Figma 2691:5 — 칩 + (기타면 상세 텍스트, gap 8)
+              반복 예약은 전 회차 동일 목적이므로 first 기준. 없으면(도입 전) 행 미렌더 */}
+        {first.purpose && (
+          <div style={rowStyle}>
+            <div style={labelStyle}>목적</div>
+            <div style={{...valueStyle, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap"}}>
+              <PurposeChip purpose={first.purpose} size="row" />
+              {first.purpose === 'etc' && first.purposeDetail && (
+                <span style={{fontSize:16, fontWeight:400, color:"#111", lineHeight:1.5}}>{first.purposeDetail}</span>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* 회의제목   ← 값만 SemiBold (피그마 922:1912) */}
         <div style={rowStyle}>
           <div style={labelStyle}>회의제목</div>
