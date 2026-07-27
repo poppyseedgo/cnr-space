@@ -711,6 +711,70 @@ function titleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
   e.currentTarget.blur()      // = 입력 완료 (모바일 키보드 닫힘)
 }
 
+// ─── [2026-07-27 필드 통일] 예약 모달 공용 boxless 텍스트 필드 ───
+//   배경: 모달 내 입력이 boxless(오버레이 placeholder)와 박스형(#F8FAFC+border)으로 혼재 —
+//   전수조사 결과 박스형 잔존 2곳(목적 기타 상세 모바일 / 대리 예약자 검색)을 이 컴포넌트로 통일.
+//   규격: 투명 bg·무테두리, 16px Medium(iOS 자동줌 무관), div 오버레이 placeholder
+//   (bm-boxless CSS가 native placeholder 색을 강제하므로 항상 오버레이), 밑줄 3모드
+//   (always=검정 상시 / toggle=입력·포커스 시 / none), 선택적 카운터(max-2부터 경고색).
+function BoxlessInput({
+  value, onChange, placeholder, ariaLabel, maxLength, counterMax,
+  placeholderColor = PLACEHOLDER_COLOR,
+  underline = "toggle", underlineOn,
+  paddingBottom = 12,
+  autoFocus, onFocus, onBlur, onKeyDown, enterKeyHint,
+}: {
+  value: string; onChange: (v: string) => void; placeholder: string; ariaLabel?: string;
+  maxLength?: number; counterMax?: number;
+  placeholderColor?: string;
+  underline?: "always" | "toggle" | "none"; underlineOn?: boolean;
+  paddingBottom?: number;
+  autoFocus?: boolean; onFocus?: () => void; onBlur?: () => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  enterKeyHint?: "done" | "search" | "next";
+}) {
+  const [focused, setFocused] = useState(false)
+  const lineOn = underline === "always" ? true
+    : underline === "none" ? false
+    : (underlineOn ?? (focused || value.length > 0))
+  return (
+    <div style={{display:"flex", alignItems:"flex-end", justifyContent:"space-between", gap:8,
+      position:"relative", width:"100%",
+      borderBottom: lineOn ? "1px solid #111" : "1px solid transparent",
+      paddingBottom, transition:"border-bottom-color 0.15s ease", boxSizing:"border-box"}}>
+      <input
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder="" aria-label={ariaLabel ?? placeholder}
+        maxLength={maxLength}
+        autoComplete="off"
+        autoFocus={autoFocus}
+        enterKeyHint={enterKeyHint}
+        onFocus={() => { setFocused(true); onFocus?.() }}
+        onBlur={() => { setFocused(false); onBlur?.() }}
+        onKeyDown={onKeyDown}
+        style={{flex:1, minWidth:0, background:"transparent", border:"none", borderRadius:0,
+          outline:"none", padding:0,
+          fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:16, lineHeight:1.5, color:"#111"}}
+      />
+      {!value && (
+        <div style={{position:"absolute", top:0, left:0, pointerEvents:"none",
+          fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:16, lineHeight:1.5,
+          color:placeholderColor, whiteSpace:"nowrap"}}>
+          {placeholder}
+        </div>
+      )}
+      {counterMax != null && (
+        <span style={{flexShrink:0, fontFamily:"Pretendard, sans-serif", fontWeight:500,
+          fontSize:10, lineHeight:1.5,
+          color: value.length >= counterMax - 2 ? "#EF4444" : "#d1d9e7"}}>
+          {value.length}/{counterMax}
+        </span>
+      )}
+    </div>
+  )
+}
+
 // ─── [2026-07-27 모바일 예약모달 v2] Figma 2697:251 / 2710:1250 / 2715:1952 실측 기반 신규 UI ───
 //   적용 범위: 모바일 한정 (데스크톱 불변 — 고지 확정 ④)
 
@@ -878,73 +942,26 @@ function PurposeChips({
         </div>
       )}
 
-      {/* 기타 상세 입력 — etc 선택시에만 */}
-      {isEtc && (variant === 'desktop' ? (
-        // 데스크톱: 검정 언더라인 boxless (Figma 2688:595 — border-b black, pb 12)
-        <div style={{
-          marginTop:12,                       // ← Figma: 칩(y68)→입력(y80) 간격 12
-          display:"flex", alignItems:"center", justifyContent:"space-between", gap:8,
-          borderBottom:"1px solid #111",
-          paddingBottom:12,
-          position:"relative",                // ← placeholder 오버레이 기준 (회의 제목 필드와 동일 패턴)
-        }}>
-          <input
-            className="bm-boxless"
+      {/* 기타 상세 입력 — etc 선택시에만.
+            ← [2026-07-27 필드 통일] 데스크톱/모바일 분기 폐기 → BoxlessInput 단일화.
+              모바일 박스형(#F8FAFC)이 "네모난 박스 잔존"의 주범이었다. 데스크톱 시각(검정 언더라인
+              상시 + pb12 + 카운터 + 오버레이 placeholder)은 BoxlessInput(underline always)이 동일 렌더.
+              모바일은 enterKeyHint=done + blurOnEnter(IME 가드)로 키보드 완료 유지 */}
+      {isEtc && (
+        <div style={{marginTop:12}}>
+          <BoxlessInput
             value={detail}
-            onChange={e => onDetailChange(e.target.value)}
-            placeholder=""
-            aria-label="기타 목적을 구체적으로 입력하세요"
-            maxLength={PURPOSE_DETAIL_MAX}
-            autoComplete="off"
-            autoFocus
-            style={{
-              flex:1, minWidth:0,
-              background:"transparent", border:"none", outline:"none", padding:0,
-              fontFamily:"Pretendard, sans-serif",
-              fontWeight:500, fontSize:16, lineHeight:1.5, color:"#111",
-            }}
-          />
-          {!detail && (
-            <div style={{
-              position:"absolute", top:0, left:0, pointerEvents:"none",
-              fontFamily:"Pretendard, sans-serif",
-              fontWeight:500, fontSize:16, lineHeight:1.5,
-              color:PLACEHOLDER_COLOR, whiteSpace:"nowrap",
-            }}>
-              기타 목적을 구체적으로 입력하세요
-            </div>
-          )}
-          <span style={{
-            flexShrink:0,
-            fontFamily:"Pretendard, sans-serif",
-            fontWeight:500, fontSize:10, lineHeight:1.5,
-            color: detail.length >= PURPOSE_DETAIL_MAX - 2 ? "#EF4444" : "#d1d9e7",  // ← 회의 제목 카운터와 동일 규칙(38자부터 경고색)
-          }}>
-            {detail.length}/{PURPOSE_DETAIL_MAX}
-          </span>
-        </div>
-      ) : (
-        // 모바일: 기존 모바일 입력 박스 스타일 (회의 제목 필드와 통일)
-        <div style={{marginTop:8}}>
-          {/* ← [2026-07-27 iOS 입력 HOTFIX] fontSize 15→16(iOS 자동줌 차단) + enterKeyHint/Enter→완료 */}
-          <input
-            value={detail}
-            onChange={e => onDetailChange(e.target.value)}
+            onChange={onDetailChange}
             placeholder="기타 목적을 구체적으로 입력하세요"
             maxLength={PURPOSE_DETAIL_MAX}
-            autoComplete="off"
-            enterKeyHint="done" onKeyDown={blurOnEnter}
-            style={{width:"100%", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:10,
-              color:"#111111", padding:"12px 14px", fontSize:16, outline:"none"}}
-            onFocus={e=>e.target.style.borderColor="#111111"}
-            onBlur={e=>e.target.style.borderColor="#E2E8F0"}
+            counterMax={PURPOSE_DETAIL_MAX}
+            underline="always"
+            autoFocus={variant === 'desktop'}
+            enterKeyHint="done"
+            onKeyDown={blurOnEnter}
           />
-          <div style={{textAlign:"right", fontSize:11,
-            color: detail.length >= PURPOSE_DETAIL_MAX - 2 ? "#EF4444" : "#CBD5E1", marginTop:4}}>
-            {detail.length}/{PURPOSE_DETAIL_MAX}
-          </div>
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -1346,24 +1363,18 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
             native placeholder는 bm-boxless CSS가 색을 강제하므로 div 오버레이 패턴(데스크톱 동일).
             입력/포커스 시 검정 밑줄 토글 = 데스크톱 참석자 필드 UX 일치. 16px = iOS 자동줌 무관 */}
       <div ref={attendeeRef} style={{position:"relative"}}>
-        <input
+        {/* ← [2026-07-27 필드 통일] 인라인 boxless → BoxlessInput 이관 — 동일 규격 단일 소스.
+              키보드 네비(onAttendeeKeyDown)·attendeeFocus 게이트·Figma 톤(#D1D7E1)·pb14 그대로 */}
+        <BoxlessInput
           value={attendeeQ}
-          onChange={e=>{setAttendeeQ(e.target.value);setAttendeeFocus(true);}}
+          onChange={v=>{setAttendeeQ(v);setAttendeeFocus(true);}}
           onFocus={()=>setAttendeeFocus(true)}
-          onKeyDown={onAttendeeKeyDown}/* ← [핫픽스 v14] ↓/↑/Enter/Esc 키보드 네비게이션 */
-          placeholder="" aria-label="팀즈에 등록된 이름으로 검색하세요"
-          style={{width:"100%", background:"transparent", border:"none",
-            borderBottom: (attendeeFocus || attendeeQ.length > 0) ? "1px solid #000" : "1px solid transparent",
-            borderRadius:0, outline:"none", padding:"0 0 14px 0", boxSizing:"border-box",
-            fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:16, lineHeight:1.5, color:"#111",
-            transition:"border-bottom-color 0.15s ease"}}/>
-        {!attendeeQ && (
-          <div style={{position:"absolute", top:0, left:0, pointerEvents:"none",
-            fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:16, lineHeight:1.5,
-            color:"#D1D7E1", whiteSpace:"nowrap"}}>
-            팀즈에 등록된 이름으로 검색하세요
-          </div>
-        )}
+          onKeyDown={onAttendeeKeyDown}
+          underline="toggle" underlineOn={attendeeFocus || attendeeQ.length > 0}
+          placeholder="팀즈에 등록된 이름으로 검색하세요"
+          placeholderColor="#D1D7E1"
+          paddingBottom={14}
+        />
         {/* 드롭다운 */}
         {attendeeFocus && attendeeSuggestions.length > 0 && (
           <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:400,
@@ -1470,13 +1481,15 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               </div>
             </div>
             <div ref={bookerRef} style={{position:"relative"}}>
-              <input
+              {/* ← [2026-07-27 필드 통일] 박스형 → BoxlessInput(밑줄 토글) — 모달 내 입력 규격 통일(데스크톱·모바일 공용).
+                    bookerFocus 외부 상태는 드롭다운 게이트라 유지, 16px = iOS 자동줌 무관 */}
+              <BoxlessInput
                 value={bookerQ}
-                onChange={e=>{setBookerQ(e.target.value);setBookerFocus(true);}}
+                onChange={v=>{setBookerQ(v);setBookerFocus(true);}}
                 onFocus={()=>setBookerFocus(true)}
+                underline="toggle" underlineOn={bookerFocus || bookerQ.length > 0}
                 placeholder="다른 사람을 예약자로 지정 (이름/부서 검색)"
-                style={{width:"100%",background:"#F8FAFC",border:`1px solid ${bookerFocus?"#6366F1":"#E2E8F0"}`,
-                  borderRadius:10,color:"#111111",padding:"10px 14px",fontSize:isMobile?16:13,outline:"none",boxSizing:"border-box"}}/>  {/* ← [2026-07-27 iOS 입력 HOTFIX] 모바일 16 */}
+              />
               {bookerFocus && bookerSuggestions.length > 0 && (
                 <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:400,
                   background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
