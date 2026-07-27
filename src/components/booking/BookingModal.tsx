@@ -1889,8 +1889,15 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
 
       {/* ════ 모바일: 2-Step Wizard ════ */}
       {isMobile ? (<>
-        {/* Step 바디 — 모바일: 자체 스크롤 제거, 모달 전체가 스크롤됨 */}
-        <div style={{display:"flex",flexDirection:"column"}}>
+        {/* Step 바디 — ← [2026-07-27 스크롤 HOTFIX] 표준 드로어 패턴으로 정정.
+              · 기존 주석("모달 전체가 스크롤됨")과 달리 실제로는 오버레이·모달 루트(overflow:hidden)·
+                바디 어디에도 overflowY가 없어, 콘텐츠가 (95%vv − 헤더 − 푸터)를 넘는 순간
+                잘린 영역에 접근 불가였음 (목적 필드 추가로 Step1이 길어지며 표면화된 잠재 결함)
+              · 바디만 스크롤(flex:1 + minHeight:0 + overflowY:auto) — 헤더·CTA는 항상 고정 노출
+              · overscrollBehavior:contain — iOS 러버밴드가 배경(body) 스크롤로 새는 것 차단 */}
+        <div style={{display:"flex",flexDirection:"column",
+          flex:1, minHeight:0, overflowY:"auto",
+          WebkitOverflowScrolling:"touch", overscrollBehavior:"contain"}}>
 
           {/* Step 1: 일정 입력 */}
           {step===1 && (
