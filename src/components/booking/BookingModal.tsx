@@ -734,13 +734,16 @@ function PurposeChips({
         })}
       </div>
 
-      {/* 헬퍼 — 미선택시에만 (선택시 프레임 2688:603엔 헬퍼 없음) */}
+      {/* 헬퍼 — 미선택시에만 (선택시 프레임 2688:603엔 헬퍼 없음)
+            ← [2026-07-27 스타일 변경] Figma 2697:758 갱신 반영 — 12px #D1D7E1 → 14px SemiBold #96D7FF(칩 파랑 계열), 래퍼 py4.
+              데스크톱/모바일 공용 컴포넌트라 이 한 곳 수정으로 양쪽 모두 반영됨 */}
       {!value && (
         <div style={{
           marginTop:8,
+          padding:"4px 0",
           fontFamily:"Pretendard, sans-serif",
-          fontWeight:600, fontSize:12, lineHeight:1.5,
-          color:"#D1D7E1",
+          fontWeight:600, fontSize:14, lineHeight:1.5,
+          color:"#96D7FF",
         }}>
           회의 목적을 선택하세요
         </div>
