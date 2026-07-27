@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:files": "test -z \"$(git ls-files -d)\" || { echo '⛔ 로컬에서 삭제된 파일이 있습니다 (git checkout -- <파일> 로 복구):'; git ls-files -d; exit 1; }",
+    "check": "npm run check:files && tsc --noEmit && vite build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
