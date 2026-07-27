@@ -2,7 +2,9 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- ← [2026-07-27 iOS 입력 HOTFIX] maximum-scale=1 — iOS 입력 포커스 자동줌 이중 방어.
+         iOS는 사용자 핀치줌을 계속 허용하므로 접근성 훼손 없음 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
     <title>C&R SPACE</title>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet" />

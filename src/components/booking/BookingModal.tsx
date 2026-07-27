@@ -687,6 +687,14 @@ function Field({
 //   · 헬퍼:      미선택시에만 "회의 목적을 선택하세요" 12px SemiBold #D1D7E1 (Figma 2688:1311)
 //   · 기타 입력: variant별 분기 — 데스크톱은 검정 언더라인 boxless(Figma 2688:595),
 //                모바일은 기존 모바일 입력 박스 스타일(회의 제목 필드와 통일)
+// ← [2026-07-27 iOS 입력 HOTFIX] Enter = 입력 완료(키보드 닫기) 공용 핸들러.
+//   ⚠ 한글 IME 조합 중 Enter(isComposing)는 조합 확정이므로 무시 — 가드 없이 blur하면 한글 입력이 끊긴다.
+//   참석자 검색(Enter=선택)·메모(Enter=줄바꿈)에는 적용하지 않는다.
+function blurOnEnter(e: React.KeyboardEvent<HTMLInputElement>) {
+  if (e.key !== 'Enter' || (e.nativeEvent as KeyboardEvent).isComposing) return
+  e.currentTarget.blur()
+}
+
 function PurposeChips({
   value, detail, onPick, onDetailChange, variant,
 }: {
@@ -797,14 +805,16 @@ function PurposeChips({
       ) : (
         // 모바일: 기존 모바일 입력 박스 스타일 (회의 제목 필드와 통일)
         <div style={{marginTop:8}}>
+          {/* ← [2026-07-27 iOS 입력 HOTFIX] fontSize 15→16(iOS 자동줌 차단) + enterKeyHint/Enter→완료 */}
           <input
             value={detail}
             onChange={e => onDetailChange(e.target.value)}
             placeholder="기타 목적을 구체적으로 입력하세요"
             maxLength={PURPOSE_DETAIL_MAX}
             autoComplete="off"
+            enterKeyHint="done" onKeyDown={blurOnEnter}
             style={{width:"100%", background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:10,
-              color:"#111111", padding:"12px 14px", fontSize:15, outline:"none"}}
+              color:"#111111", padding:"12px 14px", fontSize:16, outline:"none"}}
             onFocus={e=>e.target.style.borderColor="#111111"}
             onBlur={e=>e.target.style.borderColor="#E2E8F0"}
           />
@@ -1216,7 +1226,9 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
           onKeyDown={onAttendeeKeyDown}/* ← [핫픽스 v14] ↓/↑/Enter/Esc 키보드 네비게이션 */
           placeholder="이름 또는 부서로 검색..."
           style={{width:"100%",background:"#F8FAFC",border:`1px solid ${attendeeFocus?"#6366F1":"#E2E8F0"}`,
-            borderRadius:10,color:"#111111",padding:"10px 14px",fontSize:13,outline:"none"}}/>
+            borderRadius:10,color:"#111111",padding:"10px 14px",
+            fontSize:isMobile?16:13,  /* ← [2026-07-27 iOS 입력 HOTFIX] 모바일 16 — 자동줌 차단. Enter는 기존 선택 UX(onAttendeeKeyDown) 유지 */
+            outline:"none"}}/>
         {/* 드롭다운 */}
         {attendeeFocus && attendeeSuggestions.length > 0 && (
           <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:400,
@@ -1329,7 +1341,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 onFocus={()=>setBookerFocus(true)}
                 placeholder="다른 사람을 예약자로 지정 (이름/부서 검색)"
                 style={{width:"100%",background:"#F8FAFC",border:`1px solid ${bookerFocus?"#6366F1":"#E2E8F0"}`,
-                  borderRadius:10,color:"#111111",padding:"10px 14px",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+                  borderRadius:10,color:"#111111",padding:"10px 14px",fontSize:isMobile?16:13,outline:"none",boxSizing:"border-box"}}/>  {/* ← [2026-07-27 iOS 입력 HOTFIX] 모바일 16 */}
               {bookerFocus && bookerSuggestions.length > 0 && (
                 <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:400,
                   background:"#fff",border:"1px solid #E2E8F0",borderRadius:10,
@@ -1920,10 +1932,14 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               {/* 회의 제목 */}
               <div>
                 <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:6}}>회의 제목 *</label>
+                {/* ← [2026-07-27 iOS 입력 HOTFIX] fontSize 15→16 — iOS는 16px 미만 입력 포커스 시 페이지 자동 줌인.
+                      줌이 blur 후 복원되지 않아 내부 스크롤이 어그나는 게 "완료 후 스크롤 불능"의 근본 원인.
+                      enterKeyHint=done + Enter→blur(한글 조합 가드) 로 키보드 완료 버튼 지원 */}
                 <input value={form.title} onChange={e=>set("title",e.target.value)} placeholder="회의 제목을 입력하세요" maxLength={40}
                   autoComplete="off"
+                  enterKeyHint="done" onKeyDown={blurOnEnter}
                   style={{width:"100%",background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:10,
-                    color:"#111111",padding:"12px 14px",fontSize:15,outline:"none"}}
+                    color:"#111111",padding:"12px 14px",fontSize:16,outline:"none"}}
                   onFocus={e=>e.target.style.borderColor="#111111"}
                   onBlur={e=>e.target.style.borderColor="#E2E8F0"}/>
                 <div style={{textAlign:"right",fontSize:11,color:form.title.length>=38?"#EF4444":"#CBD5E1",marginTop:4}}>
@@ -1988,7 +2004,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 <label style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginBottom:6}}>메모 (선택)</label>
                 <textarea value={form.memo} onChange={e=>set("memo",e.target.value)} rows={2} placeholder="안건, 준비물 등"
                   style={{width:"100%",background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:10,
-                    color:"#111111",padding:"12px 14px",fontSize:13,outline:"none",resize:"none"}}
+                    color:"#111111",padding:"12px 14px",fontSize:16,outline:"none",resize:"none"}}  /* ← [2026-07-27 iOS 입력 HOTFIX] 13→16 자동줌 차단. Enter=줄바꿈 유지 */
                   onFocus={e=>e.target.style.borderColor="#111111"}
                   onBlur={e=>e.target.style.borderColor="#E2E8F0"}/>
               </div>
