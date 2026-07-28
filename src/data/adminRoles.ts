@@ -1,6 +1,7 @@
 /**
  * adminRoles.ts — 관리자 권한 카탈로그
  *
+ * [2026-07-27] 'kb' 역할 추가 — GA 챗봇 지식베이스 관리 탭 (20260733_kb_chunks.sql)
  * [2026-07-24] 신규 · Phase 1
  *
  * ═══════════════════════════════════════════════════════════════════════════
@@ -39,6 +40,7 @@ export const ADMIN_ROLES: AdminRoleDef[] = [
   { id: 'book',         label: '도서 관리',  tab: 'books',         desc: '도서·대여·연체 관리' },
   { id: 'notification', label: '알림 설정',  tab: 'notifications', desc: '알림 채널 on/off·관리자 수신자 지정' },
   { id: 'notice',       label: '공지 배너',  tab: 'notices',       desc: '헤더 공지 내용·색·게시기간' },
+  { id: 'kb',           label: 'KB 관리',    tab: 'kb',            desc: 'GA 챗봇 지식베이스 청크 편집' }, // ← [2026-07-27] 20260733 CHECK와 동기화
   { id: 'pointer',      label: '자원 관리',  tab: null,            desc: '포인터 대여 — 화면 미구현, 권한만 선점' },
   { id: 'super',        label: '최고 관리자', tab: null,           desc: '모든 메뉴 + 권한 부여·회수' },
   // 폐기: zoom — 사내 ZOOM 사용 종료(2026-07-21). 기존 데이터 보존을 위해 목록에만 남긴다

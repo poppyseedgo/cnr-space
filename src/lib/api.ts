@@ -1,6 +1,9 @@
 /**
  * api.ts — Supabase 기반 데이터 레이어
  *
+ * [2026-07-27 KB] GA 챗봇 지식베이스 — loadKbChunks / saveKbChunk / deleteKbChunk
+ *   · RLS(has_admin_role('kb')) 직접 접근, RPC 없음 / updated_* 는 DB 트리거 담당
+ *
  * [2026-07-27 목적 Phase 1] 예약 목적 카테고리 데이터 계층
  *   · bookingToRow: purpose / purpose_detail 저장 (etc 외에는 detail 강제 null)
  *   · rowToBooking: purpose / purposeDetail 읽기 (null = 도입 전 예약)
@@ -2961,4 +2964,78 @@ export async function loadRoleGrantLog(userId: string, limit = 20): Promise<Role
     .limit(limit)
   if (error) { console.warn('[api] 권한 이력 조회 실패:', error.message); return [] }
   return (data ?? []) as RoleGrantLog[]
+}
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// [2026-07-27] GA 챗봇 지식베이스 (kb_chunks)
+//
+//   Notion GA 가이드를 정제한 청크가 원본이다 (시드: 20260733_kb_chunks.sql).
+//   RLS 가 읽기·쓰기 모두 has_admin_role('kb') 를 요구하므로 별도 RPC 없이
+//   테이블 직접 접근 — 검증할 상태 전이가 없고(공지의 기간 검증과 다름),
+//   updated_at/updated_by 는 DB BEFORE UPDATE 트리거가 보장한다.
+//   챗봇 런타임은 이 함수를 쓰지 않는다(service_role 별도 경로) —
+//   anon 정책이 없어 credential 포함 청크가 비로그인에 노출되지 않는다.
+// ═════════════════════════════════════════════════════════════════════════════
+
+export interface KbChunk {
+  id:        string
+  bot_id:    string
+  category:  string
+  doc:       string
+  section:   string
+  content:   string
+  keywords:  string[]
+  contacts:  string[]
+  related:   string[]
+  status:    'ok' | 'image_only' | 'pdf_only'
+  sensitive: boolean
+  updated_at?: string
+  updated_by?: string | null
+}
+
+/** KB 관리 탭 — 봇 단위 전체 로드. RLS 가 kb 역할 없으면 0행을 준다(에러 아님) */
+export async function loadKbChunks(botId = 'ga'): Promise<KbChunk[]> {
+  const { data, error } = await supabase
+    .from('kb_chunks')
+    .select('id, bot_id, category, doc, section, content, keywords, contacts, related, status, sensitive, updated_at, updated_by')
+    .eq('bot_id', botId)
+    .order('id', { ascending: true })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as KbChunk[]
+}
+
+/** 저장 (생성/수정 공용) — PK upsert. 실패 사유를 한글 메시지로 변환 */
+export async function saveKbChunk(
+  chunk: KbChunk,
+): Promise<{ ok: boolean; row?: KbChunk; message?: string }> {
+  const { data, error } = await supabase
+    .from('kb_chunks')
+    .upsert({
+      id:        chunk.id,
+      bot_id:    chunk.bot_id,
+      category:  chunk.category,
+      doc:       chunk.doc,
+      section:   chunk.section,
+      content:   chunk.content,
+      keywords:  chunk.keywords,
+      contacts:  chunk.contacts,
+      related:   chunk.related,
+      status:    chunk.status,
+      sensitive: chunk.sensitive,
+    })
+    .select()
+    .single()
+  if (!error) return { ok: true, row: data as KbChunk }
+  const m = error.message ?? ''
+  if (m.includes('row-level security')) return { ok: false, message: 'KB 관리 권한이 없습니다' }
+  if (m.includes('kb_chunks_status_check')) return { ok: false, message: '상태 값이 올바르지 않습니다' }
+  return { ok: false, message: `저장 실패: ${m}` }
+}
+
+export async function deleteKbChunk(id: string): Promise<{ ok: boolean; message?: string }> {
+  const { error } = await supabase.from('kb_chunks').delete().eq('id', id)
+  if (!error) return { ok: true }
+  if ((error.message ?? '').includes('row-level security')) return { ok: false, message: 'KB 관리 권한이 없습니다' }
+  return { ok: false, message: `삭제 실패: ${error.message}` }
 }

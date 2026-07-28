@@ -2,6 +2,7 @@
  * AdminMenuIcons — Admin SideNav 메뉴 아이콘 7종 (Material Symbols, Figma 1:1)
  *
  * ✅ 변경 이력
+ *  - [2026-07-27] SmartToyIcon 추가 — 어드민 'KB 관리' 탭 (GA 챗봇 지식베이스)
  *  - [2026-05-11] 신규 생성 — Phase 1 (Figma node 489:393 / 541:3559 1:1)
  *    · 출처: 사용자 제공 Figma SVG 7개 (account_circle / asterisk / books /
  *            check_circle / dual_screen / insert_chart / schedule)
@@ -151,6 +152,20 @@ export function VisitorLogIcon({ size = 24 }: IconProps) {
       <path d="M8.5 11.6h4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
       <path d="M8 16.2c.8-1.3 1.6-1.3 2 0s1.2 1.3 1.7 0 1-.8 3-.4"
             stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+// ─── 11. smart_toy (KB 관리) ─────────────────────────────────────────────────
+//   [2026-07-27] GA 챗봇 지식베이스 관리 탭용. Material Icons smart_toy(로봇),
+//   fill → currentColor 규칙 동일. Figma 미지정 신규 메뉴 — 확정 시 교체 가능.
+export function SmartToyIcon({ size = 24 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path
+        d="M20 9V7C20 5.9 19.1 5 18 5H15C15 3.34 13.66 2 12 2C10.34 2 9 3.34 9 5H6C4.9 5 4 5.9 4 7V9C2.34 9 1 10.34 1 12C1 13.66 2.34 15 4 15V19C4 20.1 4.9 21 6 21H18C19.1 21 20 20.1 20 19V15C21.66 15 23 13.66 23 12C23 10.34 21.66 9 20 9ZM18 19H6V7H18V19ZM9 13C8.17 13 7.5 12.33 7.5 11.5C7.5 10.67 8.17 10 9 10C9.83 10 10.5 10.67 10.5 11.5C10.5 12.33 9.83 13 9 13ZM16.5 11.5C16.5 12.33 15.83 13 15 13C14.17 13 13.5 12.33 13.5 11.5C13.5 10.67 14.17 10 15 10C15.83 10 16.5 10.67 16.5 11.5ZM8 15H16V17H8V15Z"
+        fill="currentColor"
+      />
     </svg>
   )
 }
