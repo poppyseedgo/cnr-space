@@ -18,6 +18,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { todayKST } from './libraryListShared'
 import type { AppUser, Book, MyBookLoan } from '../../types'
+import { canPickUser } from '../../utils/employment' // ← [2026-07-30] 피커 제외 판정 SSOT (퇴사+휴직)
 import {
   OVERLAY, SHEET, BM, ModalHeader, Field, ModalFooter, MemoField,
   DateRows, UserChipRow, SearchInput, Suggestions, SuggestionRow, MEMO_MAX,
@@ -90,7 +91,7 @@ export function BookCheckoutModal({
     if (!q) return []
     return users
       .filter(u => {
-        if (u.is_active === false) return false               // 퇴사자 제외
+        if (!canPickUser(u)) return false                     // ← [2026-07-30] 퇴사자+휴직자 제외 (canPickUser SSOT)
         const name  = (u.name  ?? '').toLowerCase()
         const email = (u.email ?? '').toLowerCase()
         const dept  = (u.dept  ?? '').toLowerCase()

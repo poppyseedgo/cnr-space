@@ -50,6 +50,10 @@ export function getBookingStatusLabel(b: Booking): string {
   // ① 거절됨 (최우선 — status==='rejected'이면 다른 분기 평가 불필요)
   if (b.status === 'rejected') return '거절됨'
 
+  // ①-2 퇴사 취소 — ← [2026-07-30] cancelled_by='departed' 실사용 (process_departure RPC, 20260735)
+  //     status='cancelled'라 노쇼 SSOT(④)·기한초과(⑤)와 자연 배타. system/user/admin 어느 분기에도 안 걸림.
+  if (b.status === 'cancelled' && b.cancelledBy === 'departed') return '퇴사 취소'
+
   // ② 예약자 취소 (사용자 직접 취소)
   //    BookingStatusBadge L166과 동일 공식 (autoCancelled 가드 없음 — Option A 2026-05-06)
   if (b.status === 'cancelled' && b.cancelledBy === 'user') return '예약자 취소'

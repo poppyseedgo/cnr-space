@@ -34,9 +34,12 @@ interface AttendeeChipProps {
   dept?:      string
   userInfo?:  AppUser
   onRemove?:  () => void
+  /** ← [2026-07-30] 재직 라벨/퇴사 취소선 — UserChip 위임 */
+  employment?: AppUser | null
+  departed?:   boolean
 }
 
-export function AttendeeChip({ name, avatarUrl, userInfo, onRemove }: AttendeeChipProps) {
+export function AttendeeChip({ name, avatarUrl, userInfo, onRemove, employment, departed = false }: AttendeeChipProps) {
   const canClick = !!userInfo && !onRemove
 
   // ── 편집 모드: 이전 pill 디자인 유지 (X 버튼 공간 필요) ──────────────────
@@ -55,6 +58,8 @@ export function AttendeeChip({ name, avatarUrl, userInfo, onRemove }: AttendeeCh
         <UserChip
           name={name}
           avatarUrl={avatarUrl}
+          employment={employment}
+          departed={departed}
           variant="sm"
           userInfo={undefined}
         />
@@ -92,6 +97,8 @@ export function AttendeeChip({ name, avatarUrl, userInfo, onRemove }: AttendeeCh
       <UserChip
         name={name}
         avatarUrl={avatarUrl}
+        employment={employment}
+        departed={departed}
         variant="md"
         userInfo={canClick ? userInfo : undefined}
       />

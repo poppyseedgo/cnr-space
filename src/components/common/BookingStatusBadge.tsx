@@ -74,6 +74,7 @@ export type BadgeType =
   | 'rejected'
   | 'expired-pending'
   | 'admin-cancel'
+  | 'departed-cancel' // ← [2026-07-30] 퇴사 자동취소 (cancelled_by='departed', 20260735)
   | 'noshow'
   | 'user-cancel'
   | 'pending'
@@ -183,6 +184,12 @@ export function BookingStatusBadge({
   //     · isAttendeeCancel: 의도된 라벨 분기 동작 그대로
   //     · isPast: 영향받지만 size='list' maxChips=1로 user-cancel이 우선순위 차단
   const isUserCancel  = b.status === 'cancelled' && b.cancelledBy === 'user'
+
+  // ─── [2026-07-30] 퇴사 취소 (신규 — 기존 확정 공식 무수정) ─────────────────
+  //   process_departure RPC 가 status='cancelled' + cancelled_by='departed' 로 기록.
+  //   isSystemCancel/isNoshow 는 cancelledBy==='system' 기준이라 자연 배타 —
+  //   퇴사 취소가 노쇼로 새지 않음을 코드 레벨에서 보장 (설계 검증 완료).
+  const isDepartedCancel = b.status === 'cancelled' && b.cancelledBy === 'departed'
 
   // ─── [2026-05-04 옵션 B] 예약자/참석자 취소 분기 (신규) ───────────────────
   //   확정 공식 isUserCancel은 변경 없음 — 라벨 분기용 boolean만 추가
@@ -314,6 +321,7 @@ export function BookingStatusBadge({
     (show('rejected')        && isRejected) ||
     (show('expired-pending') && isExpiredPending) ||
     (show('admin-cancel')    && isAdminCancel) ||
+    (show('departed-cancel') && isDepartedCancel) || // ← [2026-07-30] 퇴사 취소
     (show('noshow')          && isNoshow) ||
     // ← [2026-05-04 옵션 B 메인 버그 수정] isOwner 가드 제거
     //   기존: (show('user-cancel') && isUserCancel && isOwner)
@@ -377,6 +385,9 @@ export function BookingStatusBadge({
   // ③ 관리자 강제취소 (rejected 제외)
   if (show('admin-cancel') && isAdminCancel)
     chipList.push(<C key="admin" cls="chip-admin">관리자 강제취소</C>)
+  // ③-b 퇴사 취소 — ← [2026-07-30] chip-neutral 재사용 (user-cancel 과 동일 톤, 신규 CSS 불필요)
+  if (show('departed-cancel') && isDepartedCancel)
+    chipList.push(<C key="departedcancel" cls="chip-neutral">퇴사 취소</C>)
   // ④ 노쇼 (system 자동취소)
   if (show('noshow') && isNoshow)
     chipList.push(<C key="noshow" cls="chip-noshow">노쇼</C>)

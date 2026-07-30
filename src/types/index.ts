@@ -47,6 +47,10 @@ export interface RoomRule {
 
 export type UserRole = 'USER' | 'ADMIN'
 
+// ← [2026-07-30] 재직 상태 SSOT (profiles.employment_status, 20260735)
+//   퇴사는 상태값이 아님 — "profiles 부재 + departed_users 존재"로 판정 (기존 구조 유지)
+export type EmploymentStatus = 'active' | 'departing' | 'leave' | 'returned'
+
 export interface AppUser {
   user_id:     string
   employee_id: string
@@ -55,7 +59,10 @@ export interface AppUser {
   role:        UserRole
   email:       string
   avatar_url?: string | null
-  is_active?:  boolean
+  is_active?:  boolean   // ← [2026-07-30] deprecated — employment_status 로 대체 (읽기 호환용 잔존)
+  employment_status?:      EmploymentStatus  // ← [2026-07-30] 재직/퇴사예정/휴직/복직
+  departure_scheduled_on?: string | null     // ← [2026-07-30] 퇴사 예정일 (KST date, departing 전용)
+  returned_on?:            string | null     // ← [2026-07-30] 복직일 (30일 후 라벨 자동 소멸)
 }
 
 export interface DepartedUser {
@@ -100,7 +107,10 @@ export interface Booking {
   dept:              string
   checkedIn:         boolean
   autoCancelled:  boolean
-  cancelledBy?:   'user' | 'system' | 'admin' | null  // 직접취소 | 노쇼/기한초과자동취소 | 관리자강제취소
+  cancelledBy?:   'user' | 'system' | 'admin' | 'departed' | null  // 직접취소 | 노쇼/기한초과자동취소 | 관리자강제취소 | 퇴사자동취소
+  // ← [2026-07-30] 'departed' 추가 — 퇴사 처리(process_departure RPC)가 미래 예약을
+  //   status='cancelled' + cancelled_by='departed' 로 기록 (20260735 짝 배포).
+  //   구 방식('system')이 노쇼 확정룰(confirmed+system+!checkedIn)과 충돌하던 문제 종결.
   // ← [2026-05-04] 누가 취소했는지 user_id 저장 (예약자/참석자/관리자 구분)
   //   · 'user' 취소: 취소한 본인의 UUID (예약자 또는 참석자)
   //   · 'admin' 취소: 강제취소한 관리자 UUID

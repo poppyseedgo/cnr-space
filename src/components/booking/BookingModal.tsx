@@ -548,6 +548,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { AlertCircle, AlertTriangle, Ban, Calendar, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, X } from 'lucide-react'
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
+import { canPickUser } from '../../utils/employment' // ← [2026-07-30] 피커 제외 판정 SSOT (퇴사+휴직)
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
@@ -1085,8 +1086,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       .filter(u => {
         // 본인 제외 (currentUserEmail 있을 때만)
         if (currentUserEmail && u.email === currentUserEmail) return false;
-        // 비활성 유저(퇴사자) 제외
-        if (u.is_active === false) return false;
+        // ← [2026-07-30] 퇴사자(is_active) + 휴직자 제외 — canPickUser SSOT (utils/employment.ts)
+        if (!canPickUser(u)) return false;
         // 이름/이메일/부서 중 하나라도 포함되면 매칭 (ILIKE %q% 동등)
         const name  = (u.name  ?? '').toLowerCase();
         const email = (u.email ?? '').toLowerCase();
@@ -1426,7 +1427,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
     return (usersProp as AppUser[])
       .filter(u => {
         if (currentUserEmail && u.email === currentUserEmail) return false;  // 본인 제외(기본값이 본인)
-        if (u.is_active === false) return false;                              // 퇴사자 제외
+        if (!canPickUser(u)) return false;                                    // ← [2026-07-30] 퇴사자+휴직자 제외 (canPickUser SSOT)
         if (!u.email) return false;                                           // user_email NOT NULL — 이메일 없는 사용자 제외
         const name  = (u.name  ?? '').toLowerCase();
         const email = (u.email ?? '').toLowerCase();

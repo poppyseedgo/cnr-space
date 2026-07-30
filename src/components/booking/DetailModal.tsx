@@ -322,6 +322,8 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
                     variant="md"
                     userInfo={owner}
                     dept={owner?.dept ?? b.dept}
+                    employment={owner}   // ← [2026-07-30] 재직 라벨 (휴직/퇴사예정/복직) — 아바타 앞
+                    departed={!owner}    // ← [2026-07-30] users 부재 = 퇴사자 → '퇴사' 라벨 + 취소선 (예약자는 항상 profiles 기반이라 외부인 오탐 없음)
                   />
                 }
               />
@@ -386,6 +388,8 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
                           avatarUrl={u?.avatar_url ?? null}
                           dept={u?.dept}
                           userInfo={u}
+                          employment={u}    // ← [2026-07-30] 재직 라벨 — 아바타 앞
+                          departed={!u}     // ← [2026-07-30] users 부재 = 퇴사자 (참석자 피커는 profiles 만 허용 — 외부인 오탐 없음)
                         />
                       </div>
                     )

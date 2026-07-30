@@ -913,10 +913,13 @@ export async function loadUsers(): Promise<AppUser[]> {
     //   · 다른 곳(api.ts:searchUsers, BookingModal 등)은 이미 `.neq('is_active', false)` 적용 중
     //   · 추가 효과: Live profile lookup의 fallback 메커니즘 의도대로 작동
     //     (퇴사자 예약 표시 시 owner를 못 찾고 snapshot으로 fallback)
+    // ← [2026-07-30] employment_status 3필드 추가 (20260735) — 라벨/피커 판정 SSOT 원천
+    //   휴직·퇴사예정자도 users 배열에 포함되어야 라벨 표시 가능. 피커 제외는
+    //   utils/employment.ts canPickUser 가 담당 (is_active 필터는 레거시 호환 유지)
     const data = await withRetry(async () => {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, employee_id, name, dept, role, email, is_active, avatar_url')
+        .select('id, employee_id, name, dept, role, email, is_active, avatar_url, employment_status, departure_scheduled_on, returned_on') // ← [2026-07-30] 3필드 추가
         .neq('is_active', false) // ← [2026-05-14] 퇴사자 제외 — 시스템 전반 일관성
         .order('name')
       if (error) throw error
@@ -932,6 +935,9 @@ export async function loadUsers(): Promise<AppUser[]> {
       email:       row.email       ?? '',
       is_active:   row.is_active   ?? true,
       avatar_url:  row.avatar_url  ?? null,
+      employment_status:      (row.employment_status ?? 'active') as import('../types').EmploymentStatus, // ← [2026-07-30]
+      departure_scheduled_on: row.departure_scheduled_on ?? null,                                          // ← [2026-07-30]
+      returned_on:            row.returned_on            ?? null,                                          // ← [2026-07-30]
     }))
   } catch (e) {
     // ← [2026-04-23] 재시도 3회 모두 실패 시 도달 — 기존대로 빈 배열 반환 (호환성 유지)
@@ -1365,9 +1371,10 @@ export async function searchGraphUsers(
     const q = query.trim()
     // profiles 테이블에서 직접 검색
     // is_active = false(퇴사자) 제외, 이름·이메일·부서 중 하나라도 일치하면 반환
+    // ← [2026-07-30] employment 필드 추가 — 검색 결과에도 라벨 표시·휴직 제외 판정 필요
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, employee_id, name, dept, role, email, is_active, avatar_url')
+      .select('id, employee_id, name, dept, role, email, is_active, avatar_url, employment_status, departure_scheduled_on') // ← [2026-07-30] 2필드 추가
       .or(`name.ilike.%${q}%,email.ilike.%${q}%,dept.ilike.%${q}%`)
       .neq('is_active', false)
       .limit(8)
@@ -1388,6 +1395,8 @@ export async function searchGraphUsers(
         email:       row.email       ?? '',
         is_active:   row.is_active   ?? true,
         avatar_url:  row.avatar_url  ?? null,
+        employment_status:      (row.employment_status ?? 'active') as import('../types').EmploymentStatus, // ← [2026-07-30]
+        departure_scheduled_on: row.departure_scheduled_on ?? null,                                          // ← [2026-07-30]
       }))
   } catch (e) {
     console.error('[api] searchGraphUsers(profiles) 예외:', e)
@@ -1460,57 +1469,71 @@ export async function countFutureBookings(userId: string): Promise<number> {
   }
 }
 
-/** 수동 퇴사 처리
- *  1. 미래 예약 auto_cancelled → true (cancelled_by: 'system')
- *  2. departed_users INSERT
- *  3. profiles DELETE
- */
-export async function manualDepartUser(
+// ← [2026-07-30] manualDepartUser 제거 — depart-user Edge Function(departUser)으로 대체.
+//   구 함수는 클라 4단계 순차 실행이라 비원자적(중간 실패 시 반쪽 퇴사)이었고
+//   cancelled_by='system' 기록이 노쇼 오염(확정룰 충돌)을 만들던 구방식.
+//   호출부 0건 확인 후 제거 (AdminPage import 동시 정리).
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 재직 상태 관리 API — [2026-07-30] 퇴사자 정책 개편 Phase 3 (20260735 짝 배포)
+// ───────────────────────────────────────────────────────────────────────────
+// 상태 변경/퇴사는 반드시 서버 경유 — 클라 직접 UPDATE 금지:
+//   · 상태 변경: admin_set_employment_status RPC (전이 검증·예정일 정합 서버 강제)
+//   · 즉시 퇴사: depart-user Edge Function (process_departure RPC + auth 삭제)
+// 에러 → 한글 매핑은 utils/employment.ts (employmentStatusErrorMessage 등)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 재직 상태 변경 — 재직/휴직/복직/퇴사예정(예정일 필수) */
+export async function setEmploymentStatus(
   userId: string,
-  userInfo: { name: string; email: string; dept: string; employee_id: string }
-): Promise<{ cancelledCount: number }> {
-  // 1. 미래 예약 목록 조회
-  const { data: futureBks, error: bkErr } = await supabase
-    .from('bookings')
-    .select('id')
-    .eq('user_id', userId)
-    .gt('start_at', new Date().toISOString())
-    .eq('auto_cancelled', false)
-  if (bkErr) throw new Error(bkErr.message)
+  status: import('../types').EmploymentStatus,
+  departureOn?: string,   // 'YYYY-MM-DD' — status='departing' 일 때만
+): Promise<{ employment_status: string; departure_scheduled_on: string | null; returned_on: string | null }> {
+  const { data, error } = await supabase.rpc('admin_set_employment_status', {
+    p_user_id:      userId,
+    p_status:       status,
+    p_departure_on: departureOn ?? null,
+  })
+  if (error) throw new Error(error.message)
+  return data
+}
 
-  const cancelledCount = futureBks?.length ?? 0
-
-  // 2. 미래 예약 일괄 취소
-  if (cancelledCount > 0) {
-    const ids = futureBks!.map((b: any) => b.id)
-    const { error: cancelErr } = await supabase
-      .from('bookings')
-      .update({ auto_cancelled: true, cancelled_by: 'system' })
-      .in('id', ids)
-    if (cancelErr) throw new Error(cancelErr.message)
+/** 즉시 퇴사 처리 — depart-user Edge Function (원자적 RPC + auth 삭제, 복구 불가) */
+export interface DepartUserResult {
+  success:           boolean
+  cancelledBookings: number
+  authDeleted:       boolean
+  rpc:               Record<string, unknown>   // process_departure 상세 카운트
+  error?:            string
+}
+export async function departUser(userId: string): Promise<DepartUserResult> {
+  const { data, error } = await supabase.functions.invoke('depart-user', {
+    body: { user_id: userId },
+  })
+  // invoke 는 4xx/5xx 에서 error 를 주지만 본문(error 코드)은 data 로 안 옴 —
+  // FunctionsHttpError 의 context 에서 본문을 복원해 한글 매핑이 코드를 읽을 수 있게 한다
+  if (error) {
+    const body = await (error as any)?.context?.json?.().catch?.(() => null)
+    throw new Error(body?.error ?? error.message ?? '퇴사 처리 실패')
   }
+  if (!data?.success) throw new Error(data?.error ?? '퇴사 처리 실패')
+  return data as DepartUserResult
+}
 
-  // 3. departed_users INSERT (중복 시 무시)
-  const { error: departErr } = await supabase
-    .from('departed_users')
-    .upsert({
-      id:          userId,
-      name:        userInfo.name,
-      email:       userInfo.email,
-      dept:        userInfo.dept,
-      employee_id: userInfo.employee_id,
-      departed_at: new Date().toISOString(),
-    }, { onConflict: 'id' })
-  if (departErr) throw new Error(departErr.message)
-
-  // 4. profiles DELETE
-  const { error: deleteErr } = await supabase
-    .from('profiles')
-    .delete()
-    .eq('id', userId)
-  if (deleteErr) throw new Error(deleteErr.message)
-
-  return { cancelledCount }
+/** 특정 유저의 진행 중 도서 대여 수 — 즉시 퇴사 확인 모달 프리뷰용 */
+export async function countActiveBookLoans(userId: string): Promise<number> {
+  try {
+    const { count, error } = await supabase
+      .from('book_checkouts')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .in('status', ['active', 'overdue'])   // 살아있는 대여 (20260724 체계)
+    if (error) throw error
+    return count ?? 0
+  } catch (e) {
+    console.error('[api] countActiveBookLoans 실패:', e)
+    return 0
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

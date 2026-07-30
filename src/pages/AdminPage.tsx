@@ -26,9 +26,13 @@ import {
   toggleRoomActive, saveRoomFeatures, loadFeatures, updateProfile,
   loadAllRooms, loadBookingsByRange, expirePendingBooking,
   syncAllUsers, loadUsers, loadDepartedUsers, type SyncResult,
-  countFutureBookings, manualDepartUser,
+  // ← [2026-07-30] countFutureBookings/manualDepartUser import 제거 —
+  //   수동 퇴사는 EmploymentStatusModal → depart-user Edge Function 경로로 이관.
+  //   (manualDepartUser 는 api.ts 에서 제거 — 비원자적·노쇼 오염 구방식)
 } from '../lib/api'
 import type { Booking, Room, AppUser, DepartedUser } from '../types'
+import { EmploymentStatusModal } from '../components/admin/EmploymentStatusModal' // ← [2026-07-30] 상태 변경·즉시 퇴사 모달
+import { EmploymentBadge, departedNameStyle } from '../components/common/EmploymentBadge' // ← [2026-07-30] 재직 라벨 + 퇴사 취소선
 import { ModalPortal } from '../components/common/ModalPortal'
 // ← [2026-04-18 P0 fix] 파일 중간에 있던 import 3개를 최상단으로 이동
 //   원인: ES 모듈 사양상 import는 파일 최상단만 허용. Vite dev는 관대하지만
@@ -3457,10 +3461,12 @@ export function AdminRooms({ showToast, isMobile }) {
 export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, currentUserId = '' }) {
   // ← [2026-05-26] rooms prop 추가 — 노쇼 현황 DetailDrawer 드릴다운 시 회의실 이름 표시용
   //   기본값 [] — 외부에서 미전달 시도 안전 동작 (회의실 컬럼만 빈 값)
-  type FilterType = 'all' | 'admin' | 'departed' // ← [2026-05-14] 'logged' | 'unlogged' 제거
+  type FilterType = 'all' | 'admin' | 'onleave' | 'departed' // ← [2026-07-30] 'onleave'(휴직·예정) 추가 / [2026-05-14] 'logged' | 'unlogged' 제거
 
   const [filter,     setFilter]     = useState<FilterType>('all')
   const [searchQ,    setSearchQ]    = useState('')
+  // ← [2026-07-30] 재직 상태 변경·즉시 퇴사 모달 대상 사용자
+  const [statusUser, setStatusUser] = useState<AppUser | null>(null)
   // 사용자 상세 모달
   // ── 관리자 역할 (← [2026-07-24] Phase 1) ───────────────────────────────
   //   목록 배지 + 상세 모달 체크박스 그리드에서 쓴다.
@@ -3493,8 +3499,7 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null)
   // 퇴사자 목록
   const [departed,   setDeparted]   = useState<DepartedUser[]>([])
-  // 수동 퇴사 처리 — API 구현 완료, UI 버튼은 미노출 (기술검증 완료)
-  // countFutureBookings / manualDepartUser 함수는 api.ts에 존재
+  // ← [2026-07-30] 수동 퇴사 UI 노출 — EmploymentStatusModal(depart-user Edge Function 경로)
 
   // ═══════════════════════════════════════════════════════════════════════════
   // ← [2026-05-26 신규] 사용자별 누적 노쇼 통계
@@ -3570,6 +3575,9 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
   //   📌 TODO (별도 채팅 점검): sync-all-users / manualDepartUser Edge Function이
   //      departed_users INSERT 시 profiles.is_active=false UPDATE도 동시에 하는지 검증.
   //      누락 시 두 테이블 동기화 트리거 추가 또는 백필 스크립트 실행 필요.
+  //   ✅ [2026-07-30 해소] 퇴사 파이프라인이 process_departure RPC 단일 트랜잭션으로
+  //      일원화되어(20260735) 두 테이블 불일치가 구조적으로 재발하지 않는다.
+  //      이 cross-reference 필터는 과거 잔여 데이터 대비 안전망으로 유지.
   // ═══════════════════════════════════════════════════════════════════════════
   const activeUsers = useMemo(() => {
     if (!departed.length) return users  // 퇴사자 없으면 그대로 (불필요한 연산 회피)
@@ -3588,6 +3596,8 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
   const counts = {
     all:      activeUsers.length,
     admin:    activeUsers.filter(u => u.role === 'ADMIN').length,
+    // ← [2026-07-30] 휴직·퇴사예정 카운트 (returned 는 재직 계열이라 미포함)
+    onleave:  activeUsers.filter(u => u.employment_status === 'leave' || u.employment_status === 'departing').length,
     // ← [2026-05-14] logged/unlogged 카운트 제거 (dept 유무로 판정하던 heuristic 폐기)
     departed: departed.length,
   }
@@ -3596,6 +3606,8 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
   // ← [2026-05-26 BUGFIX] users → activeUsers — 퇴사자가 검색/정렬 결과에도 안 보이도록 보장
   const filteredUsers = activeUsers.filter(u => {
     if (filter === 'admin'    && u.role !== 'ADMIN') return false
+    // ← [2026-07-30] '휴직·예정' 필터 — 휴직 + 퇴사예정만
+    if (filter === 'onleave'  && u.employment_status !== 'leave' && u.employment_status !== 'departing') return false
     // ← [2026-05-14] logged/unlogged 필터 분기 제거 (FilterType에서도 제거됨)
     if (!searchQ) return true
     const q = searchQ.toLowerCase()
@@ -3698,6 +3710,7 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
     { id: 'all',      label: '재직자' }, // ← [2026-05-14] '전체' → '재직자' (퇴사자와 대구되는 명확한 표현, 의미적으로 'all'은 재직중인 사용자 전체)
     { id: 'admin',    label: 'Admin' },
     // ← [2026-05-14] '로그인'·'미로그인' 탭 제거 (dept 유무 heuristic 폐기)
+    { id: 'onleave',  label: '휴직·예정' }, // ← [2026-07-30] 휴직 + 퇴사예정
     { id: 'departed', label: '퇴사자' },
   ]
 
@@ -3740,6 +3753,9 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
                     부서: u.dept || '',
                     이메일: u.email,
                     권한: u.role,
+                    재직상태: u.employment_status === 'leave' ? '휴직'
+                            : u.employment_status === 'departing' ? `퇴사예정(${u.departure_scheduled_on ?? ''})`
+                            : u.employment_status === 'returned' ? '복직' : '재직', // ← [2026-07-30]
                     누적노쇼: noshowMap.get(u.user_id) ?? 0,
                     조회기간: `${noshowFrom} ~ ${noshowTo}`,
                   })),
@@ -3970,6 +3986,8 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
                     style={{ padding:'14px 20px', borderBottom:'1px solid #F8FAFC', display:'flex', alignItems:'center', gap:12, cursor:'pointer' }}
                     onMouseEnter={e => (e.currentTarget.style.background = '#FAFBFD')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    {/* ← [2026-07-30] 재직 상태 라벨 — 확정 요구사항 "아바타 앞에 항상 표시" */}
+                    <EmploymentBadge user={u} variant="sm" />
                     <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={36} bgColor={u.role==='ADMIN'?'#111':'#E2E8F0'} textColor={u.role==='ADMIN'?'#fff':'#64748B'} />
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ fontSize:13, fontWeight:600, color:'#111' }}>
@@ -3978,6 +3996,12 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
                       </div>
                       <div style={{ fontSize:11, color:'#94A3B8', marginTop:1 }}>{u.email}</div>
                     </div>
+                    {/* ← [2026-07-30] 상태 변경 버튼 — 행 클릭(상세)과 분리 (stopPropagation) */}
+                    <button className="btn"
+                      onClick={e => { e.stopPropagation(); setStatusUser(u) }}
+                      style={{ padding:'4px 9px', borderRadius:8, fontSize:10, fontWeight:600, background:'#F8FAFC', border:'1px solid #E2E8F0', color:'#374151', whiteSpace:'nowrap' }}>
+                      상태
+                    </button>
                     {/* ← [2026-05-26 신규] 모바일 노쇼 뱃지 */}
                     <span title={`최근 ${noshowFrom} ~ ${noshowTo}`} style={{
                       padding:'3px 8px', borderRadius:999, fontSize:10, fontWeight:600,
@@ -3998,7 +4022,7 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
             //   해결: 외곽 div에 overflowX:'auto' + table minWidth 720
             //   안전: 외곽 borderRadius는 부모 wrapper(L3465)가 유지
             <div style={{ overflowX:'auto' }}>
-            <table style={{ width:'100%', minWidth:720, borderCollapse:'collapse', fontSize:13 }}>
+            <table style={{ width:'100%', minWidth:780, borderCollapse:'collapse', fontSize:13 }}>{/* ← [2026-07-30] 상태 컬럼 추가로 720→780 */}
               <thead>
                 <tr style={{ background:'#F8FAFC' }}>
                   {/* ← [2026-05-26] 헤더 정렬 가능 — 이름·누적노쇼 컬럼 (사용자 결정: 이름 기본, 노쇼 클릭 시 desc) */}
@@ -4030,13 +4054,15 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
                     <ArrowUpDown size={9} strokeWidth={1.8} style={{ marginLeft:4, opacity: userSortKey==='noshow' ? 1 : 0.4, verticalAlign:'middle' }}/>
                     {userSortKey==='noshow' && <span style={{ marginLeft:2, fontSize:9 }}>{userSortAsc ? '▲' : '▼'}</span>}
                   </th>
+                  {/* ← [2026-07-30] 재직 상태 변경 컬럼 */}
+                  <th style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:600, color:'#94A3B8', borderBottom:'1px solid #F1F5F9', whiteSpace:'nowrap' }}>상태</th>
                 </tr>
               </thead>
               <tbody>
                 {/* ← [2026-05-26] 로딩 인디케이터 (사용자 결정: 약 1초 지연 대비) */}
                 {noshowLoading && (
                   <tr style={{ borderBottom:'1px solid #F8FAFC' }}>
-                    <td colSpan={6} style={{ padding:'14px', textAlign:'center', color:'#CBD5E1', fontSize:11 }}>
+                    <td colSpan={7} style={{ padding:'14px', textAlign:'center', color:'#CBD5E1', fontSize:11 }}>{/* ← [2026-07-30] 상태 컬럼 추가로 6→7 */}
                       <RefreshCw size={11} strokeWidth={1.8} style={{ display:'inline-block', verticalAlign:'middle', marginRight:6 }}/>
                       노쇼 집계 중...
                     </td>
@@ -4053,8 +4079,12 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
                       style={{ borderBottom:'1px solid #F8FAFC', cursor:'pointer' }}
                       onMouseEnter={e => (e.currentTarget.style.background = '#FAFBFD')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      <td style={{ padding:'10px 14px', width:44 }}>
-                        <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={30} bgColor={u.role==='ADMIN'?'#111':'#E2E8F0'} textColor={u.role==='ADMIN'?'#fff':'#64748B'} />
+                      <td style={{ padding:'10px 14px', whiteSpace:'nowrap' }}>
+                        {/* ← [2026-07-30] 재직 상태 라벨 — 확정 요구사항 "아바타 앞에 항상 표시" */}
+                        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                          <EmploymentBadge user={u} variant="sm" />
+                          <UserAvatar name={u.name} avatarUrl={(u as any).avatar_url ?? null} size={30} bgColor={u.role==='ADMIN'?'#111':'#E2E8F0'} textColor={u.role==='ADMIN'?'#fff':'#64748B'} />
+                        </div>
                       </td>
                       <td style={{ padding:'10px 14px', fontWeight:600, color:'#111' }}>{u.name}</td>
                       <td style={{ padding:'10px 14px', color:'#64748B' }}>
@@ -4087,6 +4117,14 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
                           background: nsBg, color: nsColor,
                         }}>{nsCount}</span>
                       </td>
+                      {/* ← [2026-07-30] 재직 상태 변경 — 행 클릭(상세)과 분리 (stopPropagation) */}
+                      <td style={{ padding:'10px 14px' }}>
+                        <button className="btn"
+                          onClick={e => { e.stopPropagation(); setStatusUser(u) }}
+                          style={{ padding:'4px 10px', borderRadius:8, fontSize:10, fontWeight:600, background:'#F8FAFC', border:'1px solid #E2E8F0', color:'#374151', whiteSpace:'nowrap', cursor:'pointer' }}>
+                          상태 변경
+                        </button>
+                      </td>
                     </tr>
                   )
                 })}
@@ -4108,9 +4146,9 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
                     {u.name.charAt(0)}
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:13, fontWeight:600, color:'#374151' }}>
+                    <div style={{ fontSize:13, fontWeight:600, ...departedNameStyle }}>{/* ← [2026-07-30] 퇴사자 이름 취소선 (확정: 전부 적용) */}
                       {u.name}{' '}
-                      <span style={{ fontSize:10, fontWeight:600, background:'#FEE2E2', color:'#DC2626', padding:'1px 6px', borderRadius:999 }}>퇴사</span>
+                      <span style={{ fontSize:10, fontWeight:600, background:'#FEE2E2', color:'#DC2626', padding:'1px 6px', borderRadius:999, textDecoration:'none' }}>퇴사</span>
                     </div>
                     <div style={{ fontSize:11, color:'#94A3B8', marginTop:1 }}>{u.dept} · {u.email}</div>
                     <div style={{ fontSize:10, color:'#CBD5E1', marginTop:2 }}>퇴사일: {u.departed_at.slice(0,10)}</div>
@@ -4137,8 +4175,8 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
                         {u.name.charAt(0)}
                       </div>
                     </td>
-                    <td style={{ padding:'10px 14px', fontWeight:600, color:'#374151' }}>
-                      {u.name}
+                    <td style={{ padding:'10px 14px', fontWeight:600 }}>
+                      <span style={departedNameStyle}>{u.name}</span>{/* ← [2026-07-30] 퇴사자 이름 취소선 (확정: 전부 적용) */}
                       <span style={{ marginLeft:6, fontSize:10, fontWeight:600, background:'#FEE2E2', color:'#DC2626', padding:'1px 6px', borderRadius:999 }}>퇴사</span>
                     </td>
                     <td style={{ padding:'10px 14px', color:'#94A3B8' }}>{u.dept || '-'}</td>
@@ -4150,6 +4188,26 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
             </table>
           )}
         </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          재직 상태 변경 · 즉시 퇴사 모달 (← [2026-07-30])
+          · 상태 변경: RPC 응답값으로 users state 패치 (낙관적 갱신 금지)
+          · 즉시 퇴사: users + departed 재로드 (profiles 삭제·departed_users 추가 반영)
+      ══════════════════════════════════════════════════════════════════════ */}
+      {statusUser && (
+        <EmploymentStatusModal
+          user={statusUser}
+          showToast={showToast}
+          onClose={() => setStatusUser(null)}
+          onStatusChanged={(userId, patch) => {
+            setUsers(users.map(u => u.user_id === userId ? { ...u, ...patch } : u))
+          }}
+          onDeparted={async () => {
+            const [refreshed, refreshedDeparted] = await Promise.all([loadUsers(), loadDepartedUsers()])
+            setUsers(refreshed); setDeparted(refreshedDeparted)
+          }}
+        />
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════

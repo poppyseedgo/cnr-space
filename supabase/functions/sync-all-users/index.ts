@@ -1,9 +1,24 @@
 // @ts-nocheck
 /**
- * sync-all-users Edge Function v7
+ * sync-all-users Edge Function v8
  * Microsoft Graph API User.Read.All (Application 권한)
  *
  * ✅ 변경 이력
+ *  - v8 [2026-07-30] 퇴사 파이프라인 일원화 + 휴직 상태 연동 (20260735 짝 배포)
+ *      · 변경 1: processDeparted/cancelFutureBookings 제거 →
+ *               _shared/departure.ts executeDeparture (process_departure RPC 경유)
+ *               - 퇴사 취소가 status='cancelled' + cancelled_by='departed' 로 기록됨
+ *                 (구 방식 cancelled_by='system' 이 노쇼 확정룰과 충돌해
+ *                  퇴사 취소 전건이 노쇼로 집계되던 근본 원인 종결)
+ *               - departed_users upsert / 도서·자원 강제반납 / 권한 회수 / profiles
+ *                 DELETE 가 RPC 단일 트랜잭션 — 반쪽 퇴사(테이블 불일치) 원천 차단
+ *      · 변경 2: 휴직자(employment_status='leave') 퇴사 감지 제외 가드 ⚠️필수
+ *               - v7.1(2026-07-27)의 accountEnabled 필터 때문에 휴직자 AD 계정을
+ *                 잠그면(일반적 IT 운영) 다음 sync 에서 자동 퇴사되는 파괴 경로 차단
+ *      · 변경 3: 재부활 가드 — 최근 14일 내 퇴사자 이메일은 신규 INSERT 제외
+ *               - 예정일 퇴사 후 IT 의 AD 비활성화가 늦으면 sync 가 프로필을
+ *                 되살리던 경합 차단 (14일 내 동일 이메일 재입사는 비현실적)
+ *      · 변경 4: fetchAuthUserEmailMap → _shared/departure.ts fetchAuthEmailMap 공용화
  *  - v7 [2026-05-14] dept(부서) 자동 동기화 추가
  *      · 배경: User.Read.All 권한 IT팀 승인 완료 (기존 User.ReadBasic.All은
  *              department 필드 미포함이라 조직개편 시 부서 변경 미반영 컴플레인 발생)
@@ -13,10 +28,13 @@
  *      · 짝 배포: src/hooks/useAuth.tsx의 `!user.dept` 가드 제거
  *               (사용자가 부서 변경 후 즉시 로그인 시 sync 주기 안 기다리고 반영)
  *
- * 퇴사자 처리 정책:
- *   - departed_users 테이블에 이력 INSERT (화면에서 퇴사자 목록으로 표시)
- *   - profiles 테이블에서 DELETE (이메일 재사용 가능하도록)
- *   - 미래 예약 auto_cancelled = true
+ * 퇴사자 처리 정책 (v8 — process_departure RPC 가 단일 트랜잭션으로 수행):
+ *   - departed_users 이력 upsert (avatar_url 스냅샷 포함 — 취소선 UI 용)
+ *   - 미래 회의실/자원 예약 취소: status='cancelled' + cancelled_by='departed'
+ *   - 도서·자원 강제 반납 (이력 행 보존) / admin_roles 회수 + 감사 기록
+ *   - profiles DELETE (이메일 재사용 가능하도록) / auth.users DELETE 는 본 함수가 수행
+ *   - 휴직자(employment_status='leave')는 AD 비활성이어도 퇴사 감지 제외
+ *   - 알림 미발송 (확정 정책)
  *
  * 신규 직원 INSERT id 결정 기준:
  *   - auth.users에 존재(로그인 이력 있음) → auth.users.id 사용
@@ -37,6 +55,8 @@
  * 안전장치:
  *   - 퇴사자가 전체 profiles의 30% 초과 시 싱크 중단
  */
+
+import { executeDeparture, fetchAuthEmailMap } from '../_shared/departure.ts' // ← [v8] 퇴사 공용 모듈
 
 const TENANT_ID     = Deno.env.get('AZURE_TENANT_ID')           ?? ''
 const CLIENT_ID     = Deno.env.get('AZURE_CLIENT_ID')           ?? ''
@@ -114,9 +134,10 @@ async function fetchAllAzureUsers(token: string): Promise<any[]> {
 async function fetchAllProfiles(): Promise<{
   id: string; name: string; email: string; dept: string
   employee_id: string; role: string; avatar_url: string | null
+  employment_status: string // ← [v8] 휴직 가드 판정용 (20260735 신설 컬럼)
 }[]> {
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/profiles?select=id,name,email,dept,employee_id,role,avatar_url`,
+    `${SUPABASE_URL}/rest/v1/profiles?select=id,name,email,dept,employee_id,role,avatar_url,employment_status`, // ← [v8] employment_status 추가
     { headers: sbHeaders }
   )
   if (!res.ok) throw new Error(`profiles 조회 실패 (${res.status}): ${await res.text()}`)
@@ -124,114 +145,30 @@ async function fetchAllProfiles(): Promise<{
 }
 
 // ── auth.users 이메일 → id 맵 조회 ──────────────────────────────────────────
-async function fetchAuthUserEmailMap(): Promise<Map<string, string>> {
-  const emailToId = new Map<string, string>()
-  let page = 0
-  const perPage = 1000
+// ← [v8] 로컬 구현 제거 → _shared/departure.ts fetchAuthEmailMap 공용화 (동일 로직)
+//   퇴사 처리(processDeparted + cancelFutureBookings)도 제거 —
+//   process_departure RPC(20260735) 단일 트랜잭션 + executeDeparture 로 대체.
+//   구현은 _shared/departure.ts 참조.
 
-  while (true) {
-    const res = await fetch(
-      `${SUPABASE_URL}/auth/v1/admin/users?page=${page}&per_page=${perPage}`,
-      { headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` } }
-    )
-    if (!res.ok) throw new Error(`auth.users 조회 실패 (${res.status}): ${await res.text()}`)
-    const data  = await res.json()
-    const users = data.users ?? []
-    for (const u of users) {
-      if (u.email) emailToId.set(u.email.toLowerCase(), u.id)
-    }
-    if (users.length < perPage) break
-    page++
-  }
-  return emailToId
-}
+// ── 최근 퇴사자 이메일 조회 — 재부활 가드 ──────────────────────────────────
+// ← [v8] 예정일 퇴사 직후 IT 의 AD 비활성화가 늦으면, Azure 응답에 계정이 남아
+//   syncProfiles 가 profiles 를 재생성(부활)하는 경합이 있다. 최근 N일 내
+//   퇴사자 이메일은 신규 INSERT 에서 제외한다. N일 경과 후 동일 이메일은
+//   재입사자로 간주해 정상 INSERT (이메일 재사용 정책 유지).
+const RESURRECT_GUARD_DAYS = 14
 
-// ── 퇴사자 처리 ─────────────────────────────────────────────────────────────
-async function processDeparted(
-  departed: { id: string; name: string; email: string; dept: string; employee_id: string }[],
-  authEmailMap: Map<string, string>,
-): Promise<void> {
-  if (departed.length === 0) return
-
-  // ① departed_users 이력 INSERT
-  const rows = departed.map(p => ({
-    id:          p.id,
-    name:        p.name        ?? '',
-    email:       p.email       ?? '',
-    dept:        p.dept        ?? '',
-    employee_id: p.employee_id ?? '',
-    departed_at: new Date().toISOString(),
-  }))
-
-  const insertRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/departed_users?on_conflict=id`,
-    {
-      method:  'POST',
-      headers: { ...sbHeaders, 'Prefer': 'resolution=ignore-duplicates,return=minimal' },
-      body:    JSON.stringify(rows),
-    }
-  )
-  if (!insertRes.ok) console.error('[sync] departed_users INSERT 실패:', await insertRes.text())
-
-  // ② profiles DELETE
-  const ids = departed.map(p => `"${p.id}"`).join(',')
-  const delRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/profiles?id=in.(${ids})`,
-    { method: 'DELETE', headers: { ...sbHeaders, 'Prefer': 'return=minimal' } }
-  )
-  if (!delRes.ok) console.error('[sync] profiles DELETE 실패:', await delRes.text())
-
-  // ③ auth.users DELETE — 이메일 재사용 안전 보장
-  //    동일 이메일로 신규 입사자가 로그인 시 완전히 새 계정으로 처리되도록
-  for (const p of departed) {
-    const authId = authEmailMap.get(p.email.toLowerCase())
-    if (!authId) continue  // 한 번도 로그인 안 한 퇴사자 → auth.users 없음, skip
-    const res = await fetch(
-      `${SUPABASE_URL}/auth/v1/admin/users/${authId}`,
-      {
-        method:  'DELETE',
-        headers: {
-          'apikey':        SERVICE_KEY,
-          'Authorization': `Bearer ${SERVICE_KEY}`,
-        },
-      }
-    )
-    if (!res.ok) {
-      console.error(`[sync] auth.users DELETE 실패 (${p.email}):`, await res.text())
-    } else {
-      console.log(`[sync] auth.users 삭제 완료 (${p.email})`)
-    }
-  }
-}
-
-// ── 퇴사자 미래 예약 자동 취소 ───────────────────────────────────────────────
-async function cancelFutureBookings(userIds: string[]): Promise<number> {
-  if (userIds.length === 0) return 0
-
-  const filter =
-    `user_id=in.(${userIds.map(id => `"${id}"`).join(',')})` +
-    `&start_at=gt.${new Date().toISOString()}` +
-    `&auto_cancelled=eq.false`
-
-  const listRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/bookings?select=id&${filter}`,
+async function fetchRecentDepartedEmails(): Promise<Set<string>> {
+  const since = new Date(Date.now() - RESURRECT_GUARD_DAYS * 86400_000).toISOString()
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/departed_users?departed_at=gte.${since}&select=email`,
     { headers: sbHeaders }
   )
-  if (!listRes.ok) return 0
-  const targets: { id: string }[] = await listRes.json()
-  if (targets.length === 0) return 0
-
-  const idFilter = `id=in.(${targets.map(b => `"${b.id}"`).join(',')})`
-  const patchRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/bookings?${idFilter}`,
-    {
-      method:  'PATCH',
-      headers: { ...sbHeaders, 'Prefer': 'return=minimal' },
-      body:    JSON.stringify({ auto_cancelled: true, cancelled_by: 'system' }),
-    }
-  )
-  if (!patchRes.ok) console.error('[sync] 예약 취소 실패:', await patchRes.text())
-  return patchRes.ok ? targets.length : 0
+  if (!res.ok) {
+    console.error('[sync] departed_users 조회 실패 (가드 없이 진행):', await res.text())
+    return new Set()
+  }
+  const rows: { email: string }[] = await res.json()
+  return new Set(rows.map(r => (r.email ?? '').toLowerCase()).filter(Boolean))
 }
 
 // ── profiles 신규/기존 분리 처리 ─────────────────────────────────────────────
@@ -241,6 +178,7 @@ async function syncProfiles(
   azUsers: any[],
   existingEmails: Set<string>,
   authEmailMap: Map<string, string>,
+  recentDeparted: Set<string>, // ← [v8] 최근 14일 퇴사자 — 재부활 가드
 ): Promise<{ inserted: number; updated: number; skipped: number }> {
 
   const rows = azUsers
@@ -258,6 +196,7 @@ async function syncProfiles(
   // 신규 INSERT
   const toInsert = rows
     .filter(r => !existingEmails.has(r.email))
+    .filter(r => !recentDeparted.has(r.email)) // ← [v8] 최근 퇴사자 부활 차단 (AD 비활성화 지연 경합)
     .map(r => ({
       id:          authEmailMap.get(r.email) ?? r.azureId,
       name:        r.name,
@@ -429,12 +368,18 @@ Deno.serve(async (req) => {
     const profiles       = await fetchAllProfiles()
     const existingEmails = new Set(profiles.map(p => (p.email ?? '').toLowerCase()))
 
-    // 3. auth.users 이메일 → id 맵
-    const authEmailMap = await fetchAuthUserEmailMap()
+    // 3. auth.users 이메일 → id 맵 (← [v8] 공용 모듈 사용)
+    const authEmailMap = await fetchAuthEmailMap(SUPABASE_URL, SERVICE_KEY)
 
     // 4. 퇴사자 감지 (employee_id 있는 계정만 — 수동 생성 계정 보호)
+    // ← [v8 ⚠️필수 가드] 휴직자(employment_status='leave') 제외
+    //   배경: v7.1 의 accountEnabled eq true 필터 때문에 휴직자 AD 계정을 잠그면
+    //   UPN 이 Azure 응답에서 사라져 퇴사로 오탐 → 프로필 삭제·예약 취소·강제 반납이
+    //   전부 실행되는 파괴 경로. 휴직 상태(20260735)가 이 오탐을 명시적으로 막는다.
     const departed = profiles.filter(
-      p => p.employee_id && !azUPNSet.has(p.employee_id.toLowerCase())
+      p => p.employee_id
+        && !azUPNSet.has(p.employee_id.toLowerCase())
+        && p.employment_status !== 'leave' // ← [v8] 휴직자 퇴사 감지 제외
     )
 
     // 안전장치: 퇴사자 30% 초과 시 싱크 중단
@@ -451,13 +396,25 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 5. 퇴사자 처리
-    await processDeparted(departed, authEmailMap)
-    const cancelledCount = await cancelFutureBookings(departed.map(p => p.id))
+    // 5. 퇴사자 처리 — ← [v8] process_departure RPC 경유 (단일 트랜잭션)
+    //    · 예약 취소가 cancelled_by='departed' 로 기록 (노쇼 오염 종결)
+    //    · 도서·자원 강제 반납 + 권한 회수 + 감사 기록까지 RPC 가 원자적 수행
+    //    · 순차 실행 — RPC 가 books/bookings 락을 잡으므로 병렬 경합 회피
+    //    · 개별 실패는 로그 후 계속 (다음 sync 재시도 — RPC 멱등)
+    let cancelledCount = 0
+    for (const p of departed) {
+      const r = await executeDeparture(SUPABASE_URL, SERVICE_KEY, p.id, p.email ?? '', null, authEmailMap)
+      if (r.error) console.error(`[sync] 퇴사 처리 실패 (${p.email}):`, r.error)
+      else {
+        cancelledCount += r.cancelledBookings
+        console.log(`[sync] 퇴사 처리 완료 (${p.email})`, JSON.stringify(r.rpc))
+      }
+    }
     departed.forEach(p => existingEmails.delete((p.email ?? '').toLowerCase()))
 
-    // 6. 신규/기존 직원 처리
-    const { inserted, updated, skipped } = await syncProfiles(azUsers, existingEmails, authEmailMap)
+    // 6. 신규/기존 직원 처리 (← [v8] 재부활 가드 전달)
+    const recentDeparted = await fetchRecentDepartedEmails()
+    const { inserted, updated, skipped } = await syncProfiles(azUsers, existingEmails, authEmailMap, recentDeparted)
 
     // 7. 프로필 사진 동기화 (avatar_url 없는 계정만, 최대 50명)
     const avatarResult = await syncAvatars(azUsers, profiles, token)

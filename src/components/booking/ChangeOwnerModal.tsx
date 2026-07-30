@@ -3,6 +3,7 @@ import { UserCog } from 'lucide-react'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { fmtTSDateFull, fmtTSRangeFull } from '../../utils/time'
 import type { Booking, Room, AppUser } from '../../types'
+import { canPickUser } from '../../utils/employment' // ← [2026-07-30] 피커 제외 판정 SSOT (퇴사+휴직)
 import { Button } from '../common/Button'
 import { ModalCloseButton } from '../common/ModalCloseButton'
 import { UserAvatar } from '../common/UserAvatar'
@@ -64,7 +65,7 @@ export function ChangeOwnerModal({ booking: b, room: r, users, onConfirm, onClos
     return users
       .filter(u => {
         if (u.user_id === b.user_id) return false   // 현재 예약자 제외
-        if (u.is_active === false)   return false   // 퇴사자 제외
+        if (!canPickUser(u))         return false   // ← [2026-07-30] 퇴사자+휴직자 제외 (canPickUser SSOT)
         const name  = (u.name  ?? '').toLowerCase()
         const email = (u.email ?? '').toLowerCase()
         const dept  = (u.dept  ?? '').toLowerCase()

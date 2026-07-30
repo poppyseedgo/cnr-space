@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { UserAvatar } from './UserAvatar'
 import { ModalCloseButton } from './ModalCloseButton' // ← [2026-04-22] 모달 X 버튼 공통화
+import { EmploymentBadge, departedNameStyle } from './EmploymentBadge' // ← [2026-07-30] 재직 라벨 + 퇴사 취소선
 import type { AppUser } from '../../types'
 
 interface UserChipProps {
@@ -12,6 +13,10 @@ interface UserChipProps {
   userInfo?:  AppUser
   /** ← [피그마 180:534 신규] 이름 옆 부서 표시 (예약자 행 전용) */
   dept?:      string
+  /** ← [2026-07-30] 재직 상태 라벨 — 전달 시 아바타 앞에 표시 (active 는 자동 미표시). 미전달 = 기존 동작 */
+  employment?: AppUser | null
+  /** ← [2026-07-30] 퇴사자 표시 — 라벨 '퇴사' + 이름 취소선 (확정: 취소선 전부 적용). employment 보다 우선 */
+  departed?:   boolean
 }
 
 /**
@@ -36,7 +41,7 @@ const CONFIG = {
   md: { avatarSize: 24, fontSize: 14, gap: 7 }, // ← [피그마] 28→24, 5→7
 }
 
-export function UserChip({ name, avatarUrl, variant = 'md', isAdmin = false, userInfo, dept }: UserChipProps) {
+export function UserChip({ name, avatarUrl, variant = 'md', isAdmin = false, userInfo, dept, employment, departed = false }: UserChipProps) {
   const { avatarSize, fontSize, gap } = CONFIG[variant]
   const [open, setOpen] = useState(false)
   const canClick = !!userInfo
@@ -47,6 +52,9 @@ export function UserChip({ name, avatarUrl, variant = 'md', isAdmin = false, use
         onClick={canClick ? () => setOpen(true) : undefined}
         style={{ display:'inline-flex', alignItems:'center', gap, flexShrink:0, cursor: canClick ? 'pointer' : 'default' }}
       >
+        {/* ← [2026-07-30] 재직 상태 라벨 — 확정 요구사항 "아바타 앞에 항상 표시".
+            employment/departed 미전달 호출부는 렌더 0 (기존 22개 사용처 무영향) */}
+        {(departed || employment) && <EmploymentBadge user={employment} departed={departed} variant={variant} />}
         {/* ← [피그마] bgColor/textColor 하드코딩 제거, UserAvatar 기본값(#000/#E7E7E7) 사용.
             isAdmin 플래그는 하위호환 유지하되 의미 없는 값이 되므로 무시 */}
         <UserAvatar
@@ -56,7 +64,7 @@ export function UserChip({ name, avatarUrl, variant = 'md', isAdmin = false, use
         />
         {/* ← [피그마] 이름+부서 평행 배치 (dept 있을 때만) */}
         <span style={{ display:'inline-flex', alignItems:'center', gap:4, lineHeight:1.3, whiteSpace:'nowrap' }}>
-          <span style={{ fontSize, fontWeight:500, color:'var(--color-text-primary, #111)' }}>
+          <span style={{ fontSize, fontWeight:500, color:'var(--color-text-primary, #111)', ...(departed ? departedNameStyle : {}) }}>{/* ← [2026-07-30] 퇴사자 취소선 */}
             {name}
           </span>
           {dept && (

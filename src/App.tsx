@@ -254,6 +254,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtTSFull, fmtTSRangeFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from './utils/time'
+import { employmentErrorMessage } from './utils/employment' // ← [2026-07-30] 서버 재직 가드 에러 한글 매핑
 import { getFloor } from './data/floors'
 import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, markNoshow, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, buildBookingDiff, approveBooking, rejectBooking, upsertBookingAttendees, getBookingAttendees, insertNotification, adminForceCancel, changeBookingOwner } from './lib/api'  // ← [2026-06-12] changeBookingOwner 추가 (관리자 예약자 변경)  // ← [2026-05-04] loadNotifications/markNotificationRead/markAllNotificationsRead/subscribeNotifications/AppNotification 제거 (NotificationBell 분리 / Phase 1+2 Step 3) — insertNotification은 sendNotification에서 사용 중이라 유지
 import { supabase } from './lib/supabase'
@@ -879,7 +880,9 @@ function AppContent() {
           await insertBooking(nb, onBehalf ? { user_id: onBehalf.user_id, email: onBehalf.email } : undefined);  // ← [2026-06-12 대리예약] 예약자 override 전달
         }
       } catch (err: any) {
-        showToast(err.message ?? "예약 저장에 실패했습니다.", "error");
+        // ← [2026-07-30] 서버 재직 가드(20260735 트리거) 에러 한글 매핑 —
+        //   LEAVE_CANNOT_CREATE / AFTER_DEPARTURE_DATE 원문 노출 방지. 그 외는 기존 동작.
+        showToast(employmentErrorMessage(err) ?? err.message ?? "예약 저장에 실패했습니다.", "error");
         return false;
       }
 
