@@ -659,6 +659,8 @@ export async function changeBookingOwner(
       SAME_OWNER:          '현재 예약자와 동일한 사용자입니다.',
       NEW_OWNER_NOT_FOUND: '새 예약자 정보를 찾을 수 없습니다.',
       NEW_OWNER_INACTIVE:  '퇴사한 사용자는 예약자로 지정할 수 없습니다.',
+      NEW_OWNER_ON_LEAVE:  '휴직 중인 사용자는 예약자로 지정할 수 없습니다.',            // ← [2026-07-30] 20260736 트리거 가드
+      NEW_OWNER_AFTER_DEPARTURE: '새 예약자의 퇴사 예정일 이후에 시작하는 예약입니다.',  // ← [2026-07-30] 20260736 트리거 가드
       NEW_OWNER_NO_EMAIL:  '새 예약자의 이메일 정보가 없어 변경할 수 없습니다.',
     }
     const key = Object.keys(map).find(k => error.message.includes(k))
