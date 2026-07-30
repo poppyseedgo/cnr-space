@@ -463,6 +463,21 @@ export interface BookGridCardProps {
   /** ← [2026-07-21] 연체 제재로 대여가 막힌 상태인가 (본인 기준) */
   penaltyBlocked?: boolean
   penaltyReason?:  string | null
+  /**
+   * ← [2026-07-30] 이 도서를 "내가" 대여 중일 때만 채워진다.
+   *   · 뱃지가 '대여중' → '내 대여 · D-n / n일 연체' 로 바뀐다 (남은 기간 노출)
+   *   · 연장 버튼 노출 — 호버 가능 기기는 CTA 오버레이, 터치 기기는 썸네일 하단
+   *     상시 행. 판정(dday/canExtend/blockedReason)은 호출부가 bookLoan SSOT 로
+   *     계산해 넘긴다 — 카드가 재계산하면 마이페이지와 갈라질 수 있다.
+   */
+  myLoan?: {
+    dday:          string          // ddayLabel() 결과: 'D-3' / 'D-day' / '2일 연체'
+    overdue:       boolean
+    canExtend:     boolean
+    blockedReason: string | null   // canExtend=false 일 때 버튼 라벨 ('연장완료' 등)
+    extending:     boolean
+    onExtend:      () => void
+  } | null
   /** 콜백은 인자를 받지 않는다 — 대상 book/checkout 은 호출부가 클로저로 이미 갖고 있고,
    *  인자로 되돌려주면 카드가 전체 엔티티 타입을 알아야 해서 결합이 생긴다. */
   onCheckout: () => void
@@ -479,7 +494,7 @@ export interface BookGridCardProps {
 
 export function BookGridCard({
   book, checkout, borrower, isAdmin, isOverdueStatus,
-  penaltyBlocked = false, penaltyReason = null,
+  penaltyBlocked = false, penaltyReason = null, myLoan = null,
   onCheckout, onReturn, onEdit, onDelete, onOpenDetail,
 }: BookGridCardProps) {
   const [imgErr, setImgErr]   = useState(false)
@@ -490,7 +505,14 @@ export function BookGridCard({
   const canHover = useCanHover()
 
   const displayStatus = (isOverdueStatus ? 'overdue' : book.status) as CardBook['status'] | 'overdue'
-  const badge   = statusBadgeConfig(displayStatus)
+  // ← [2026-07-30] 내 대여 건은 상태 라벨에 남은 기간을 함께 표기.
+  //   dday 문자열은 bookLoan.ddayLabel SSOT 결과를 그대로 받는다(재계산 금지).
+  //   타인 대여는 기존 '대여중'/'연체중' 그대로 — 남의 반납기한을 뱃지에
+  //   노출할 이유가 없고, 대여자·기한 행이 이미 카드 본문에 있다.
+  const badge   = myLoan
+    ? { bg: myLoan.overdue ? LT.badgeOverdue : LT.badgeBusy,
+        label: `내 대여 · ${myLoan.dday}` }
+    : statusBadgeConfig(displayStatus)
   const newLbl  = newBadgeLabel(book)
   const held    = book.status === 'borrowed' && !!checkout   // 대여중/연체 = 메타 노출
   const dimmed  = book.status !== 'available'
@@ -592,6 +614,7 @@ export function BookGridCard({
           {/* CTA */}
           <div style={{
             display: 'flex', alignItems: 'center',
+            gap: 8,   // ← [2026-07-30] 관리자 본인 대여 시 '반납 처리'+'연장' 2버튼 공존
             // 아래 편집/삭제 행이 padding 8 로 하단 여백을 만든다.
             // 관리자가 아니면 그 행이 없으므로 여기서 하단 8 을 준다.
             padding: isAdmin ? '0 8px' : '0 8px 8px',
@@ -624,6 +647,27 @@ export function BookGridCard({
                 반납 처리
               </button>
             )}
+            {/* ← [2026-07-30] 내 대여 연장 — 호버 가능 기기만 오버레이에 둔다.
+                터치 기기는 오버레이가 표지를 상시 가리는 데다 카드 탭(상세 열기)과
+                오탭이 겹치므로, 썸네일 하단 상시 행으로 뺀다(아래 별도 블록).
+                불가 사유는 숨기지 않고 비활성 + 라벨 노출 (기존 차단 UI 원칙). */}
+            {canHover && myLoan && book.status === 'borrowed' && (
+              <button
+                onClick={myLoan.canExtend && !myLoan.extending ? stop(myLoan.onExtend) : stop(() => {})}
+                disabled={!myLoan.canExtend || myLoan.extending}
+                title={myLoan.blockedReason ?? undefined}
+                tabIndex={overlayOpen ? 0 : -1}
+                style={{
+                  ...HOVER_BTN,
+                  background: myLoan.canExtend ? LT.black : '#E5E7EB',
+                  color:      myLoan.canExtend ? LT.white : '#9CA3AF',
+                  cursor:     myLoan.canExtend && !myLoan.extending ? 'pointer' : 'not-allowed',
+                }}>
+                {myLoan.extending ? '연장 중…'
+                  : myLoan.canExtend ? '연장하기 (+7일)'
+                  : (myLoan.blockedReason ?? '연장 불가')}
+              </button>
+            )}
           </div>
 
           {/* 편집 / 삭제 */}
@@ -652,6 +696,32 @@ export function BookGridCard({
           )}
         </div>
       </div>
+
+      {/* ← [2026-07-30] 터치 기기 전용 — 내 대여 연장 상시 행.
+            터치 기기는 오버레이가 항상 펼쳐져(overlayOpen=!canHover) 표지를 가리고,
+            버튼과 카드 탭(상세 열기)이 같은 영역에 겹쳐 오탭이 잦다.
+            연장은 "내 책"에만 뜨는 개인 액션이라 표지 위가 아닌 카드 흐름에 둔다.
+            높이 차이 우려: 내 대여는 검색 전 목록 최상단 고정이라 같은 행에
+            모이는 경우가 대부분이고, 행이 어긋나는 손해 < 오탭·표지 가림 손해. */}
+      {!canHover && myLoan && book.status === 'borrowed' && (
+        <button
+          onClick={myLoan.canExtend && !myLoan.extending
+            ? (e => { e.stopPropagation(); myLoan.onExtend() })
+            : (e => e.stopPropagation())}
+          disabled={!myLoan.canExtend || myLoan.extending}
+          style={{
+            width: '100%', border: 'none', borderRadius: 0, cursor:
+              myLoan.canExtend && !myLoan.extending ? 'pointer' : 'not-allowed',
+            padding: '10px 12px', fontFamily: 'inherit',
+            fontSize: 13, fontWeight: FONT_R, lineHeight: 1.4,
+            background: myLoan.canExtend ? LT.black : '#E5E7EB',
+            color:      myLoan.canExtend ? LT.white : '#9CA3AF',
+          }}>
+          {myLoan.extending ? '연장 중…'
+            : myLoan.canExtend ? '연장하기 (+7일)'
+            : (myLoan.blockedReason ?? '연장 불가')}
+        </button>
+      )}
 
       {/* ══ 제목 + 작가 (Figma 1345:1825 — flex-col / gap 4 / lineHeight 1.25) ══
             제목  20px Regular  #111

@@ -80,6 +80,21 @@ export interface BookDetailModalProps {
   /** ← [2026-07-21] 연체 제재 차단 상태 (본인 기준). 카드 CTA 와 같은 규칙 */
   penaltyBlocked?: boolean
   penaltyReason?:  string | null
+  /**
+   * ← [2026-07-30] 이 도서를 "내가" 대여 중일 때만 채워진다.
+   *   뱃지 '내 대여 · D-n' + 연장 안내 행 + 하단 '연장하기' 버튼.
+   *   판정·문구는 전부 호출부(bookLoan SSOT) 계산값 — 모달 재계산 금지.
+   */
+  myLoan?: {
+    dday:           string
+    overdue:        boolean
+    canExtend:      boolean
+    blockedReason:  string | null
+    extending:      boolean
+    /** 연장 시 새 반납기한 안내 문구 (예: '8월 9일(일)') — canExtend 일 때만 */
+    extendedDueShort: string | null
+    onExtend:       () => void
+  } | null
   onClose:    () => void
   onCheckout: () => void   // 관리자 = 대여 등록 / 일반 = 대여하기 (← [2026-07-21] 승인 폐지)
   onReturn:   () => void
@@ -102,7 +117,7 @@ function fmtDateKo(d: string | null): string {
 
 export function BookDetailModal({
   book, categoryName, checkout, borrower, isAdmin, isOverdueStatus,
-  penaltyBlocked = false, penaltyReason = null,
+  penaltyBlocked = false, penaltyReason = null, myLoan = null,
   onClose, onCheckout, onReturn, onEdit, onDelete,
 }: BookDetailModalProps) {
   const [imgErr, setImgErr]     = useState(false)
@@ -117,7 +132,11 @@ export function BookDetailModal({
 
   const displayStatus = (isOverdueStatus ? 'overdue' : book.status) as
     DetailBook['status'] | 'overdue'
-  const badge  = statusBadgeConfig(displayStatus)
+  // ← [2026-07-30] 내 대여 건은 카드와 동일하게 뱃지에 남은 기간 표기
+  const badge  = myLoan
+    ? { bg: myLoan.overdue ? LT.badgeOverdue : LT.badgeBusy,
+        label: `내 대여 · ${myLoan.dday}` }
+    : statusBadgeConfig(displayStatus)
   const newLbl = newBadgeLabel(book)
 
   const canCheckout = book.status === 'available'
@@ -208,6 +227,18 @@ export function BookDetailModal({
                 value={`${fmtDueShortKo(checkout.due_at)} 이내`}
                 valueColor={isOverdueStatus ? LT.metaOverdue : undefined}
               />
+              {/* ← [2026-07-30] 내 대여일 때만 — 연장 결과 예고 / 불가 사유.
+                  버튼만 있으면 "누르면 언제까지 되는지"를 눌러봐야 안다.
+                  불가 사유도 배너 없이 같은 행 규격으로 노출한다. */}
+              {myLoan && (
+                <DetailRow
+                  label="연장"
+                  value={myLoan.canExtend
+                    ? `${myLoan.extendedDueShort ?? ''} 이내로 연장 가능 · 연장은 1회`
+                    : (myLoan.blockedReason ?? '연장 불가')}
+                  valueColor={myLoan.canExtend ? undefined : '#9CA3AF'}
+                />
+              )}
             </>
           )}
 
@@ -261,9 +292,30 @@ export function BookDetailModal({
           {canReturn && (
             <ActionBtn onClick={onReturn} bg={LT.badgeBusy} color={LT.black}>반납 처리</ActionBtn>
           )}
-          {/* 실행 가능한 액션이 하나도 없으면(예: 일반 사용자 + 대여중) 닫기만 남긴다 */}
+          {/* ← [2026-07-30] 내 대여 연장 — 불가 시 숨기지 않고 비활성 + 사유 라벨.
+              위 '연장' 안내 행이 사유를 문장으로 이미 보여준다. */}
+          {myLoan && book.status === 'borrowed' && (
+            <button
+              onClick={myLoan.canExtend && !myLoan.extending ? myLoan.onExtend : undefined}
+              disabled={!myLoan.canExtend || myLoan.extending}
+              style={{
+                flexGrow: 1, flexBasis: 0, minWidth: 0, height: 56, border: 'none',
+                borderRadius: 16, fontFamily: 'inherit', fontSize: 15, fontWeight: 500,
+                background: myLoan.canExtend ? BM.btnPrimaryBg : '#E5E7EB',
+                color:      myLoan.canExtend ? '#fff' : '#9CA3AF',
+                cursor:     myLoan.canExtend && !myLoan.extending ? 'pointer' : 'not-allowed',
+              }}>
+              {myLoan.extending ? '연장 중…'
+                : myLoan.canExtend ? '연장하기 (+7일)'
+                : (myLoan.blockedReason ?? '연장 불가')}
+            </button>
+          )}
+          {/* 실행 가능한 액션이 하나도 없으면(예: 일반 사용자 + 대여중) 닫기만 남긴다.
+              ← [2026-07-30] 내 대여로 연장 버튼이 있는 경우에도 닫기는 유지 —
+              같은 조건(비관리자·대여중)이라 기존 분기가 그대로 커버한다. */}
           {!canCheckout && !canReturn && !isAdmin && (
-            <ActionBtn onClick={onClose} bg={BM.btnCancelBg} color={BM.btnCancelTx}>닫기</ActionBtn>
+            <ActionBtn onClick={onClose} bg={BM.btnCancelBg} color={BM.btnCancelTx}
+              grow={myLoan ? 0 : 1}>닫기</ActionBtn>
           )}
         </div>
       </div>

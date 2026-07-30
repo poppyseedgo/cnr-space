@@ -42,6 +42,8 @@ import {
   // ← [2026-07-23] 반납/분실은 RPC 경유, 도서 마스터 저장 규칙은 api 로 일원화
   adminReturnBook, returnErrorMessage,
   persistBook, deleteBookRecord, importBookRows,
+  // ← [2026-07-30] 내 대여 연장 — 마이페이지와 같은 래퍼(RPC+알림)를 쓴다
+  extendBookCheckoutWithNotify, extendErrorMessage,
 } from '../lib/api'
 import { BookCheckoutModal } from '../components/library/BookCheckoutModal'
 // ← [2026-07-20] Figma 73:831 Home list — 리스트 UI 토큰/카드/칩 SSOT
@@ -52,7 +54,12 @@ import {
   BookSortRow, type BookSort,
 } from '../components/library/libraryListShared'
 // ← [2026-07-21] 연체 판정 SSOT — 마이페이지·알림·어드민과 동일 기준 사용
-import { daysUntilDue, hasCheckoutStarted } from '../utils/bookLoan'   // ← [2026-07-23] 시작 판정 SSOT
+import {
+  daysUntilDue, hasCheckoutStarted,
+  // ← [2026-07-30] 내 대여 연장 — 판정·표기 전부 bookLoan SSOT 재사용 (재계산 금지)
+  ddayLabel, canExtend, extendBlockedReason, previewExtendedDue,
+  dueNoticeShort, fmtDueShortKo,
+} from '../utils/bookLoan'   // ← [2026-07-23] 시작 판정 SSOT
 import type { BookPenaltyState } from '../types'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 // ← [2026-07-21] Figma 1347:1991 New Collection — 최근 3개월 입고 도서 자동 슬라이드
@@ -87,6 +94,8 @@ interface BookCheckout {
   checkout_at: string
   due_at:      string
   returned_at: string | null
+  /** ← [2026-07-30] 내 대여 연장 판정(canExtend)에 필요. 0 | 1 (DB CHECK <= 1) */
+  extension_count: number
   status:      'active' | 'returned' | 'overdue' | 'lost'
   notes:       string | null
 }
@@ -116,6 +125,8 @@ interface LibraryPageProps {
   users:      AppUser[]
   authUserId: string
   showToast:  (msg: string, type: ToastType) => void
+  /** ← [2026-07-30] '나의 도서 대여' CTA → 마이페이지 > 도서 대여 탭 이동 */
+  onGoMyLoans: () => void
 }
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
@@ -161,7 +172,7 @@ function isOverdue(dueAt: string): boolean {
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────────────────────────
 
-export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPageProps) {
+export function LibraryPage({ isAdmin, users, authUserId, showToast, onGoMyLoans }: LibraryPageProps) {
   // ── Data State ──
   const [books,          setBooks]          = useState<Book[]>([])
   const [categories,     setCategories]     = useState<BookCategory[]>([])
@@ -192,6 +203,8 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
     blocked: false, tier: null, blockedUntil: null, overdueDays: 0, reason: null,
   })
   const [heldCountByUser, setHeldCountByUser] = useState<Record<string, number>>({})
+  // ← [2026-07-30] 내 대여 연장 진행중인 checkout id (버튼 비활성/라벨용)
+  const [extendingId, setExtendingId] = useState<string | null>(null)
 
   // ← [2026-07-22] 로그인 사용자 정보 — 신청 모달 아바타 / 승인 처리자 이름 기록용
   //   프로필은 항상 users(live)에서 조회 (스냅샷 금지 원칙)
@@ -239,7 +252,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
       //     반환하므로, 일반 사용자는 자기 보유 권수만 정확히 알게 된다.
       const { data: coData } = await supabase
         .from('book_checkouts')
-        .select('id, book_id, user_id, checkout_at, due_at, returned_at, status, notes')
+        .select('id, book_id, user_id, checkout_at, due_at, returned_at, extension_count, status, notes')   // ← [2026-07-30] 연장 판정에 extension_count 필요
         .in('status', ['active', 'overdue'])
       const allCheckouts = (coData ?? []) as BookCheckout[]
 
@@ -511,6 +524,59 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
     }
   }
 
+  // ─── 내 대여 연장 (← [2026-07-30]) ──────────────────────────────────────────
+  //   마이페이지 doExtend 와 같은 api 래퍼(extendBookCheckoutWithNotify) 경유.
+  //   성공 시 전체 재조회 대신 해당 행만 서버 반환값(due_at/extension_count)으로
+  //   교체 — 목록 300권 재조회로 화면이 출렁일 이유가 없다. 실패 시엔 실제
+  //   상태와 어긋났을 수 있으므로 재조회한다(마이페이지와 동일 정책).
+
+  async function handleExtend(checkout: BookCheckout) {
+    if (extendingId) return
+    setExtendingId(checkout.id)
+    try {
+      const title = books.find(b => b.id === checkout.book_id)?.title ?? ''
+      const res = await extendBookCheckoutWithNotify(checkout.id, {
+        userId: authUserId, bookTitle: title,
+      })
+      if (!res.ok || !res.row) {
+        showToast(extendErrorMessage(res.code ?? 'UNKNOWN'), 'error')
+        await load()
+        return
+      }
+      const updated = res.row
+      setActiveCheckouts(prev => prev.map(c =>
+        c.id === updated.id
+          ? { ...c, due_at: updated.due_at, extension_count: updated.extension_count }
+          : c
+      ))
+      showToast(`연장되었습니다 · ${dueNoticeShort(updated.due_at)}`, 'success')
+    } catch (e: any) {
+      showToast(e?.message ?? '연장에 실패했습니다', 'error')
+    } finally {
+      setExtendingId(null)
+    }
+  }
+
+  /**
+   * 카드/상세모달에 넘길 "내 대여" 파생값 묶음.
+   *   타인 대여면 null — 뱃지·연장 UI 자체가 뜨지 않는다.
+   *   판정·문구는 전부 bookLoan SSOT. 화면별 재계산을 금지해 마이페이지의
+   *   연장 가능 여부와 어긋나지 않게 한다.
+   */
+  function buildMyLoan(checkout: BookCheckout | null) {
+    if (!checkout || checkout.user_id !== authUserId) return null
+    const ok = canExtend(checkout)
+    return {
+      dday:          ddayLabel(checkout.due_at),
+      overdue:       isOverdue(checkout.due_at),
+      canExtend:     ok,
+      blockedReason: extendBlockedReason(checkout),
+      extending:     extendingId === checkout.id,
+      extendedDueShort: ok ? fmtDueShortKo(previewExtendedDue(checkout.due_at)) : null,
+      onExtend:      () => handleExtend(checkout),
+    }
+  }
+
   // ─── 도서 저장 (추가/편집) ───────────────────────────────────────────────────
   //   ← [2026-07-23] payload 조립·표지 Storage 이관 로직을 api.persistBook 으로
   //     이동. 어드민 '도서 관리' 탭과 동일한 규칙을 쓰기 위함이며, 여기서는
@@ -648,6 +714,9 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
                   {penalty.blocked ? '대여 제한' : '대여하기'}
                 </HeroCta>
               )}
+              {/* ← [2026-07-30] 마이페이지 > 도서 대여 탭으로 이동.
+                  관리자·일반 공통 — 관리자도 개인 대여 현황은 마이페이지에서 본다. */}
+              <HeroCta onClick={onGoMyLoans}>나의 도서 대여</HeroCta>
             </div>
           </div>
 
@@ -823,6 +892,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
                     isOverdueStatus={overdue}
                     penaltyBlocked={!isAdmin && penalty.blocked}
                     penaltyReason={penalty.reason}
+                    myLoan={buildMyLoan(checkout)}
                     onCheckout={() => isAdmin ? setCheckoutModal(book) : setBorrowModal(book)}
                     onReturn={() => { if (checkout) handleReturn(book, checkout) }}
                     onEdit={() => setEditModal({ book })}
@@ -852,6 +922,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast }: LibraryPa
             borrower={bwr}
             isAdmin={isAdmin}
             isOverdueStatus={co ? isOverdue(co.due_at) : false}
+            myLoan={buildMyLoan(co)}
             onClose={() => setDetailModal(null)}
             onCheckout={() => {
               const b = detailModal

@@ -217,6 +217,18 @@ export function loanDisplayStatus(loan: MyBookLoan, now: Date = new Date()): Loa
 }
 
 /**
+ * 연장 판정에 실제로 필요한 필드만 뽑은 구조적 부분집합 (← [2026-07-30])
+ *
+ *   LibraryPage 의 activeCheckouts 행(BookCheckout)은 MyBookLoan 전체 형태가
+ *   아니다(book 조인·신청 플로우 필드 없음). 카드/상세모달에서도 같은 판정식을
+ *   쓰기 위해 시그니처를 필요한 4필드로 완화한다 — 판정식을 복제하면
+ *   마이페이지와 도서관 화면의 연장 가능 여부가 갈라질 수 있다.
+ *   MyBookLoan 은 이 타입에 그대로 대입 가능하므로 기존 호출부는 무변경.
+ */
+export type ExtendableLoan = Pick<MyBookLoan,
+  'status' | 'checkout_at' | 'extension_count' | 'due_at'>
+
+/**
  * 연장 가능 여부 — 서버 RPC 검증 조건과 동일하게 클라에서도 선판정
  *   (버튼 비활성화용. 최종 강제는 서버 RPC가 담당)
  *   조건: active · 미연장(count < 1) · 연체 7일 이내
@@ -224,7 +236,7 @@ export function loanDisplayStatus(loan: MyBookLoan, now: Date = new Date()): Loa
  * ← [2026-07-20] 정책 변경: "연체=무조건 불가" → "연체 7일까지 허용"
  *   서버 RPC(extend_book_checkout)의 OVERDUE_TOO_LONG 조건과 반드시 일치시킬 것.
  */
-export function canExtend(loan: MyBookLoan, now: Date = new Date()): boolean {
+export function canExtend(loan: ExtendableLoan, now: Date = new Date()): boolean {
   if (loan.status !== 'active')                return false
   // ← [2026-07-20] 아직 시작하지 않은 예약은 연장 대상이 아니다.
   //   DB status 는 'active' 라 위 검사만으로는 걸러지지 않는다.
@@ -236,7 +248,7 @@ export function canExtend(loan: MyBookLoan, now: Date = new Date()): boolean {
 }
 
 /** 연장 불가 사유 (버튼 라벨/툴팁용). 연장 가능하면 null */
-export function extendBlockedReason(loan: MyBookLoan, now: Date = new Date()): string | null {
+export function extendBlockedReason(loan: ExtendableLoan, now: Date = new Date()): string | null {
   if (loan.status === 'pending')               return '승인 대기중'   // ← [2026-07-22]
   if (loan.status === 'rejected')              return '거절됨'        // ← [2026-07-22]
   if (loan.status === 'cancelled')             return '예약 취소'

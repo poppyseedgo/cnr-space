@@ -374,8 +374,14 @@ function AppContent() {
     return ['home','calendar','mypage','admin','library'].includes(hash) ? hash : 'home'  // ← [2026-07-16] library 추가
   }
   const [view, setViewState] = useState<string>(getViewFromHash);
+  // ← [2026-07-30] 마이페이지 진입 시 열 세그먼트 탭. 도서관 '나의 도서 대여'
+  //   CTA 만 'book' 으로 세팅하고, 마이페이지를 벗어나면 'room' 으로 되돌린다 —
+  //   되돌리지 않으면 CTA 를 한 번 쓴 뒤 헤더로 들어간 마이페이지도 계속
+  //   도서 탭으로 열려, 기본 동작(회의실 조회)이 조용히 바뀐다.
+  const [myPageInitialTab, setMyPageInitialTab] = useState<'room' | 'book'>('room');
   const setView = (v: string) => {
     setViewState(v)
+    if (v !== 'mypage') setMyPageInitialTab('room')
     window.location.hash = v
     window.scrollTo({ top: 0, behavior: 'instant' })
     // 탭 전환 시 해당 화면 필터 초기화
@@ -1873,12 +1879,12 @@ function AppContent() {
       )}
 
       {/* ← [2026-04-18 P0 fix] LazyErrorBoundary로 감싸 청크 로드 실패 시 흰 화면 방지 */}
-      {view==="mypage" && <LazyErrorBoundary><Suspense fallback={<MyPageSkeleton />}><MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={confirmAndEarlyEnd} onCancel={confirmAndCancelBooking} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} avatarUrl={authUser?.avatar_url ?? null} /></Suspense></LazyErrorBoundary>}{/* ← [2026-04-24 P8-A] onCancel: cancelBooking → confirmAndCancelBooking — MyPage 취소 버튼도 ConfirmCancelModal 경유 */}
+      {view==="mypage" && <LazyErrorBoundary><Suspense fallback={<MyPageSkeleton />}><MyPageView bookings={bookings} setBookings={setBookings} currentUser={currentUser} currentDept={currentDept} showToast={showToast} isMobile={isMobile} onDetail={b=>setModal({type:"detail",data:b})} onCheckIn={checkIn} onEarlyEnd={confirmAndEarlyEnd} onCancel={confirmAndCancelBooking} rooms={rooms} users={users} authUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} avatarUrl={authUser?.avatar_url ?? null} initialQueryTab={myPageInitialTab} /></Suspense></LazyErrorBoundary>}{/* ← [2026-04-24 P8-A] onCancel: cancelBooking → confirmAndCancelBooking — MyPage 취소 버튼도 ConfirmCancelModal 경유 */}
       {/* ← [2026-04-24 P8-B] AdminView onForceCancel도 공통 다이얼로그 경유로 통일 */}
       {/* ← [2026-05-06 Admin Phase C] currentUserId/currentUserEmail 전달 — AdminApprovalTable 내 BookingStatusBadge 판정용 */}
       {/* ← [2026-05-06 사이드 sticky 핫픽스] headerHeight 전달 — 사이드 네비 fixed 위치 계산용 (헤더와 동일 패턴) */}
       {view==="admin" && <LazyErrorBoundary><Suspense fallback={<AdminSkeleton />}><AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={confirmAndAdminForceCancel} onDetail={b=>setModal({type:'detail',data:b})} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} headerHeight={headerHeight} /></Suspense></LazyErrorBoundary>}
-      {view==="library" && <LibraryPage isAdmin={isAdmin} users={users} authUserId={authUser?.user_id ?? ''} showToast={showToast} />}{/* ← [2026-07-16] 도서관 모듈 추가 */}
+      {view==="library" && <LibraryPage isAdmin={isAdmin} users={users} authUserId={authUser?.user_id ?? ''} showToast={showToast} onGoMyLoans={() => { setMyPageInitialTab('book'); setView('mypage') }} />}{/* ← [2026-07-16] 도서관 모듈 추가 */}
 
       {/* ── Modals ── */}
       {/* ← [2026-07-21] 도서 대여 상세 — 알림 클릭 진입점.

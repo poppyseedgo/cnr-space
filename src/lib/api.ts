@@ -1718,6 +1718,40 @@ export async function extendBookCheckout(checkoutId: string): Promise<ExtendResu
   }
 }
 
+/**
+ * 연장 RPC + 완료 알림(book_extended)을 묶은 래퍼 (← [2026-07-30])
+ *
+ *   기존에는 MyBookLoans 가 RPC 호출과 send-notification invoke 를 인라인으로
+ *   들고 있었다. 도서관 화면(카드/상세모달)에도 연장 버튼이 생기면서 같은
+ *   흐름이 두 곳이 되므로, 다른 도서 액션(adminCheckoutBooksWithNotify 등)과
+ *   동일하게 api 로 승격해 payload 구성이 갈라지지 않게 한다.
+ *
+ *   · 알림 실패는 연장 자체를 되돌리면 안 되므로 catch 로 흡수 (기존 정책 유지)
+ *   · 수신자: 본인 1명 (POLICIES.book_extended → recipients='book_borrower')
+ */
+export async function extendBookCheckoutWithNotify(
+  checkoutId: string,
+  info: { userId: string; bookTitle: string },
+): Promise<ExtendResult> {
+  const res = await extendBookCheckout(checkoutId)
+  if (!res.ok || !res.row) return res
+
+  supabase.functions.invoke('send-notification', {
+    body: {
+      type: 'book_extended',
+      booking: {
+        id:         res.row.id,
+        title:      info.bookTitle,
+        user_id:    info.userId,
+        book_title: info.bookTitle,
+        due_at:     res.row.due_at,
+      },
+    },
+  }).catch(err => console.warn('[api] 연장 알림 발송 실패:', err))
+
+  return res
+}
+
 /** 연장 실패 코드 → 사용자 안내 문구 */
 export function extendErrorMessage(code: ExtendErrorCode): string {
   switch (code) {

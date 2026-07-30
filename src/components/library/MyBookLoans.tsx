@@ -17,10 +17,9 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-// ← [2026-07-20 fix] 연장 완료 알림(send-notification invoke)에 supabase 클라이언트 필요.
-//   경로는 components/library/ 기준 두 단계 상위 (LibraryPage는 '../lib/supabase')
-import { supabase } from '../../lib/supabase'
-import { fetchMyBookLoans, extendBookCheckout, extendErrorMessage,
+// ← [2026-07-30] 알림 invoke 는 api.extendBookCheckoutWithNotify 로 이동 —
+//   이 파일에서 supabase 직접 사용처가 사라져 import 제거.
+import { fetchMyBookLoans, extendBookCheckoutWithNotify, extendErrorMessage,
   cancelBookCheckout, checkoutErrorMessage,
   fetchMyPenaltyState } from '../../lib/api'  // ← [2026-07-21] 예약 취소 / 연체 제재
 import {
@@ -127,7 +126,12 @@ export function MyBookLoans({ authUserId, showToast, isMobile = false }: Props) 
     setConfirmTarget(null)
     setExtendingId(loan.id)
     try {
-      const res = await extendBookCheckout(loan.id)
+      // ← [2026-07-30] RPC + book_extended 알림을 api 래퍼로 일원화.
+      //   도서관 화면(카드/상세모달)의 연장 버튼과 같은 경로를 쓴다 —
+      //   여기 인라인으로 두면 payload/문구가 두 갈래로 갈라진다.
+      const res = await extendBookCheckoutWithNotify(loan.id, {
+        userId: authUserId, bookTitle: loan.book?.title ?? '',
+      })
       // ← [2026-07-20 fix] strict=false 환경에서는 판별 유니온 좁히기가
       //   동작하지 않으므로, res.row / res.code 를 옵셔널로 직접 확인한다.
       if (!res.ok || !res.row) {
@@ -141,22 +145,6 @@ export function MyBookLoans({ authUserId, showToast, isMobile = false }: Props) 
       setLoans(prev => prev.map(p =>
         p.id === updated.id ? { ...updated, book: p.book } : p
       ))
-
-      // ── [2026-07-20] 연장 완료 알림 (이메일 + 인앱) ──────────────────────
-      //   · 수신자: 본인 1명 (POLICIES.book_extended → recipients='book_borrower')
-      //   · 알림 실패가 연장 자체를 되돌리면 안 되므로 catch로 흡수
-      supabase.functions.invoke('send-notification', {
-        body: {
-          type: 'book_extended',
-          booking: {
-            id:         updated.id,
-            title:      loan.book?.title ?? '',
-            user_id:    authUserId,
-            book_title: loan.book?.title ?? '',
-            due_at:     updated.due_at,
-          },
-        },
-      }).catch(err => console.warn('[myloans] 연장 알림 발송 실패:', err))
 
       showToast(`연장되었습니다 · ${dueNoticeShort(updated.due_at)}`)
     } catch (e: any) {

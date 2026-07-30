@@ -68,7 +68,7 @@ import { MyBookLoans } from '../components/library/MyBookLoans'
 import { Button } from '../components/common/Button' 
 import { isNoshow } from '../utils/noshow'  // ← [2026-05-11 Phase 2] isNoshow SSOT 통일 (기존 isNoshowBooking 별칭 사용)
 
-export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail, onCheckIn, onEarlyEnd, onCancel, rooms:rp=[], users:up=[], authUserId='', currentUserEmail='', avatarUrl=null}) {
+export function MyPageView({bookings, setBookings, currentUser, currentDept, showToast, isMobile, onDetail, onCheckIn, onEarlyEnd, onCancel, rooms:rp=[], users:up=[], authUserId='', currentUserEmail='', avatarUrl=null, initialQueryTab='room'}) {
   // ← [2026-05-04 STEP 4] dead state 제거:
   //   · const [tab, setTab]             — 탭 관리는 MyBookingTable 내부로 이전됨 (외부 탭 미존재)
   //   · const [statYear/statMonth]      — 월별 통계 섹션 자체 제거
@@ -86,7 +86,11 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   // ← [2026-07-18] 조회 섹션 세그먼트 탭: 회의실 예약 ↔ 도서 대여
   //   · 기본값 'room' — 기존 동작(회의실 조회) 그대로 보존
   //   · 'book' 선택 시 MyBookLoans (도서 대여 조회 + 연장) 렌더
-  const [queryTab, setQueryTab] = useState<'room' | 'book'>('room');
+  //   ← [2026-07-30] initialQueryTab: 도서관 '나의 도서 대여' CTA 진입 시 'book'.
+  //     MyPage 는 view 전환마다 언마운트되므로 초기값 주입만으로 충분하다
+  //     (마운트 후 prop 변경을 따라갈 필요 없음 — 사용자가 탭을 바꾼 상태를
+  //      외부 값이 되돌리면 안 된다).
+  const [queryTab, setQueryTab] = useState<'room' | 'book'>(initialQueryTab as 'room' | 'book');
 
   // 딥링크 처리: #booking-{id} 로 진입 시 해당 예약 모달 자동 오픈
   useEffect(() => {
