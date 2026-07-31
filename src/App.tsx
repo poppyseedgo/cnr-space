@@ -250,7 +250,7 @@ import type { AdminBookLoan } from './types'
 import { NotificationBell } from './components/layout/NotificationBell'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 3)
 // ← [2026-07-30] ResourceDropdown 제거 — AppDrawer(전역 사이드 드로어)로 흡수.
 //   같은 목적지 메뉴 2벌 금지 + ZOOM 항목 전면 삭제(고지 확정) + 모바일 도서관 진입 부재 해결.
-import { Menu } from 'lucide-react' // ← [2026-07-30] 햄버거 아이콘 (드로어 트리거)
+// ← [2026-07-31] lucide Menu import 제거 — 햄버거를 고지 제공 인라인 SVG 로 교체
 import { AppDrawer } from './components/layout/AppDrawer'
 import { AppFooter } from './components/layout/AppFooter'
 import { HeaderNav } from './components/layout/HeaderNav'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 4)
@@ -1763,7 +1763,13 @@ function AppContent() {
                 onClick={e => { e.stopPropagation(); setDrawerOpen(true) }}
                 style={{ background:'transparent', border:'none', cursor:'pointer', padding:2,
                          display:'flex', alignItems:'center', color: dark ? '#FFFFFF' : '#111111' }}>
-                <Menu size={20} strokeWidth={1.8} />
+                {/* ← [2026-07-31] 햄버거 아이콘 — 고지 제공 SVG 로 교체 (24×24, 라인 3개 풀폭).
+                      stroke=black → currentColor: 부모 color 상속으로 다크모드 대응 (로고 SVG 관례) */}
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+                  <path d="M2 5H22" stroke="currentColor" />
+                  <path d="M2 12H22" stroke="currentColor" />
+                  <path d="M2 19H22" stroke="currentColor" />
+                </svg>
               </button>
               <div className="min-w-0 flex items-center">
                 {isMobile ? (
