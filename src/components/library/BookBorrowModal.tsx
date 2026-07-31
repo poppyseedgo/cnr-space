@@ -29,7 +29,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { AppUser, Book } from '../../types'
 // ← [2026-07-21] 예약 가능 범위 SSOT — 서버 RPC 의 c_reserve_days 와 일치해야 한다
-import { RESERVE_MAX_DAYS, fmtDateShortKo } from '../../utils/bookLoan'
+import { RESERVE_MAX_DAYS, fmtDateShortKo, checkoutWouldConflict } from '../../utils/bookLoan'
 import type { BookReservedPeriod } from '../../lib/api' // ← [2026-07-30] 예약 구간 타입
 import { todayKST } from './libraryListShared'
 import {
@@ -85,27 +85,21 @@ export function BookBorrowModal({
   //   선택한 도서들의 live 구간(진행 중 대여 + 예약)에 걸치는 날짜는 시작일로 고를 수 없다.
   //   여러 권 선택 시 합집합 — 한 권이라도 막히면 그 날짜로는 일괄 대여가 실패하기 때문.
   //   판정 창은 오늘~+RESERVE_MAX_DAYS 뿐이므로 그 범위만 계산한다.
+  // ← [2026-07-30 정정] "시작일이 구간 안"이 아니라 "그 시작일로 대여하면 기간이 겹치는가"로
+  //   판정한다 (checkoutWouldConflict SSOT). 구간 나열 방식은 예약 8/3~ 앞의 7/30 시작
+  //   (기한 8/6 → 침범) 케이스를 달력에서 못 막아 서버 에러로만 잡혔다.
   const disabledDates = useMemo(() => {
     const set = new Set<string>()
     if (selectedBooks.length === 0 || reservedPeriods.length === 0) return set
     const ids = new Set(selectedBooks.map(b => b.id))
-    const winStart = todayKST()
-    const winEnd   = shiftDays(RESERVE_MAX_DAYS)
-    for (const p of reservedPeriods) {
-      if (!ids.has(p.book_id)) continue
-      if (p.due_on < winStart || p.start_on > winEnd) continue   // 창 밖 구간은 무관
-      // 구간 ∩ 창 의 각 날짜를 비활성 — 반납기한 당일 포함(EXCLUDE '[]' 양끝 포함과 동일 경계)
-      let d = p.start_on > winStart ? p.start_on : winStart
-      const end = p.due_on < winEnd ? p.due_on : winEnd
-      while (d <= end) {
-        set.add(d)
-        const t = new Date(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10))
-        t.setDate(t.getDate() + 1)
-        d = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
-      }
+    const mine = reservedPeriods.filter(p => ids.has(p.book_id))
+    if (mine.length === 0) return set
+    for (let i = 0; i <= RESERVE_MAX_DAYS; i++) {
+      const d = shiftDays(i)
+      if (mine.some(p => checkoutWouldConflict(d, borrowDays, p))) set.add(d)
     }
     return set
-  }, [selectedBooks, reservedPeriods])
+  }, [selectedBooks, reservedPeriods, borrowDays])
 
   // 선택 도서의 예약 구간 안내문 (창과 무관하게 가까운 것부터 최대 3건 — "언제 되는지"의 근거)
   const reservedNotes = useMemo(() => {

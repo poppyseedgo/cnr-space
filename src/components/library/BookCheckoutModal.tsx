@@ -17,6 +17,8 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { todayKST } from './libraryListShared'
+import { fmtDateShortKo, checkoutWouldConflict } from '../../utils/bookLoan' // ← [2026-07-30] 예약 겹침 판정 SSOT
+import type { BookReservedPeriod } from '../../lib/api' // ← [2026-07-30] 예약 구간 타입
 import type { AppUser, Book, MyBookLoan } from '../../types'
 import { canPickUser } from '../../utils/employment' // ← [2026-07-30] 피커 제외 판정 SSOT (퇴사+휴직)
 import {
@@ -36,6 +38,8 @@ interface Props {
   onClose:      () => void
   /** ← [2026-07-20] checkoutAt('YYYY-MM-DD') 추가 — 서버가 이 날짜 + 7일로 반납기한 계산 */
   onSubmit:     (userId: string, bookIds: number[], notes: string, checkoutAt: string) => void
+  /** ← [2026-07-30] 전 도서 예약/대여 구간 (20260737 RPC) — 달력 비활성·안내용 */
+  reservedPeriods?: BookReservedPeriod[]
 }
 
 // ── [2026-07-20] 대여일 선택 범위 — 오늘(KST) ± n일을 'YYYY-MM-DD' 로
@@ -50,7 +54,7 @@ function shiftDays(n: number): string {
 
 export function BookCheckoutModal({
   initialBook, books, users, heldCountByUser, maxBorrow, borrowDays,
-  loading, onClose, onSubmit,
+  loading, onClose, onSubmit, reservedPeriods = [],
 }: Props) {
   // ── 선택 상태 ──────────────────────────────────────────────────────────────
   const [selectedBooks, setSelectedBooks] = useState<Book[]>(initialBook ? [initialBook] : [])
@@ -65,6 +69,31 @@ export function BookCheckoutModal({
   const [memo, setMemo] = useState('')
   // ← [2026-07-20] 대여일 — 기본값은 오늘(KST). 서버가 이 날짜 + 7일로 반납기한 계산
   const [checkoutAt, setCheckoutAt] = useState<string>(() => todayKST())
+
+  // ── [2026-07-30] 예약 구간 겹침 — 달력 비활성 + 확인 가드
+  //   관리자 창은 ±365일이라 Set 사전계산 대신 날짜별 판정 콜백을 쓴다.
+  //   판정식은 checkoutWouldConflict SSOT (서버 EXCLUDE '[]' 경계 동일).
+  //   서버가 최종 강제하고 여기는 사전 안내다.
+  const myPeriods = useMemo(() => {
+    if (selectedBooks.length === 0) return [] as BookReservedPeriod[]
+    const ids = new Set(selectedBooks.map(b => b.id))
+    return reservedPeriods.filter(p => ids.has(p.book_id))
+  }, [selectedBooks, reservedPeriods])
+  const isDateDisabled = (d: string) => myPeriods.some(p => checkoutWouldConflict(d, borrowDays, p))
+  const dateBlocked = myPeriods.length > 0 && isDateDisabled(checkoutAt)
+  // 선택 도서의 다가오는 예약 구간 안내 (권당 최대 3건)
+  const reservedNotes = useMemo(() => {
+    const today = todayKST()
+    const out: string[] = []
+    for (const b of selectedBooks) {
+      reservedPeriods
+        .filter(p => p.book_id === b.id && p.due_on >= today)
+        .sort((a, z) => a.start_on.localeCompare(z.start_on))
+        .slice(0, 3)
+        .forEach(p => out.push(`『${b.title}』 ${fmtDateShortKo(p.start_on)} ~ ${fmtDateShortKo(p.due_on)} 대여 예정`))
+    }
+    return out
+  }, [selectedBooks, reservedPeriods])
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => () => { if (blurTimer.current) clearTimeout(blurTimer.current) }, [])
@@ -295,7 +324,20 @@ export function BookCheckoutModal({
             onChange={setCheckoutAt}
             min={shiftDays(-365)}
             max={shiftDays(365)}
+            isDateDisabled={isDateDisabled}  /* ← [2026-07-30] 예약 겹침 시작일 비활성 */
           />
+
+          {/* ← [2026-07-30] 선택 도서의 예약 구간 + 겹침 경고 — 달력이 왜 막혔는지의 근거 */}
+          {reservedNotes.length > 0 && (
+            <div style={{ marginTop: 6, fontSize: 11, color: '#B45309', lineHeight: 1.7 }}>
+              {reservedNotes.map((t, i) => <div key={i}>· {t}</div>)}
+              {dateBlocked && (
+                <div style={{ color: '#B91C1C', fontWeight: 600 }}>
+                  선택한 대여일의 기간이 위 예약과 겹칩니다 — 다른 날짜를 선택해 주세요
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ── 메모 ───────────────────────────────────────────────────── */}
           <MemoField value={memo} onChange={setMemo} />
@@ -308,9 +350,9 @@ export function BookCheckoutModal({
             if (!borrower) return
             onSubmit(borrower.user_id, selectedBooks.map(b => b.id), memo.slice(0, MEMO_MAX), checkoutAt)
           }}
-          disabled={!canSubmit}
+          disabled={!canSubmit || dateBlocked}  /* ← [2026-07-30] 예약 겹침 차단 */
           loading={loading}
-          hint={hint}
+          hint={dateBlocked ? '선택한 대여일의 기간이 예약과 겹칩니다' : hint}
         />
       </div>
     </div>

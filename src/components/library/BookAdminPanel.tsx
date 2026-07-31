@@ -40,6 +40,7 @@ import {
   adminCheckoutBooksWithNotify, checkoutErrorMessage,
   // ← [2026-07-21] 연체 제재 조회/해제
   adminListBookPenalties, revokeBookPenalty, adminExemptCheckout,
+  adminCancelBookCheckout,  // ← [2026-07-30] 예약 취소 (미시작 한정)
 } from '../../lib/api'
 // ← [2026-07-23] 대여 이력 조회 기준 컬럼 타입
 import type { BookLoanDateField } from '../../lib/api'
@@ -53,6 +54,7 @@ import {
   fmtDueShortKo,
   // ← [2026-07-21] 연체 제재 등급 라벨 — 사용자 화면과 같은 문구를 쓴다
   penaltyTierLabel, penaltyOverdueDays, PENALTY_TIER_DAYS,
+  hasCheckoutStarted,  // ← [2026-07-30] 예약(미시작) 판정 SSOT
 } from '../../utils/bookLoan'
 import { isNewBook, todayKST } from './libraryListShared'
 import { BookLoanDetailModal } from './BookLoanDetailModal'   // ← [2026-07-21] 대여 상세
@@ -79,7 +81,7 @@ interface BookAdminPanelProps {
 // ← [2026-07-21] 연체 패널티 정책 도입으로 '대여 제한' 탭 추가 (4탭 → 5탭)
 type SubTab   = 'overview' | 'books' | 'loans' | 'overdue' | 'penalties'
 type QuickId  = 'd7' | 'd30' | 'd90' | 'year'
-type LoanFilter = 'all' | 'active' | 'returned' | 'overdue' | 'lost' | 'closed'
+type LoanFilter = 'all' | 'active' | 'reserved' | 'returned' | 'overdue' | 'lost' | 'closed' // ← [2026-07-30] 'reserved'(예약·미시작) 추가
 type BookFilter = 'all' | 'available' | 'borrowed' | 'maintenance' | 'lost'
 
 const PER_PAGE = 15
@@ -603,6 +605,8 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
       total:      books.length,
       available:  books.filter(b => b.status === 'available').length,
       borrowed:   outstanding.length,
+      // ← [2026-07-30] 예약(미시작) — outstanding(live 전량) 중 시작 전 건
+      reserved:   outstanding.filter(l => !hasCheckoutStarted(l.checkout_at)).length,
       overdue:    overdueLoans.length,
       rangeOut:   borrowedInRange,
       rangeBack:  returnedInRange,
@@ -679,7 +683,9 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
         (userById[l.user_id]?.name ?? '').toLowerCase().includes(q) ||
         (userById[l.user_id]?.dept ?? '').toLowerCase().includes(q))
     }
-    if (loanFilter === 'active')   list = list.filter(l => l.status === 'active' && daysUntilDue(l.due_at) >= 0)
+    // ← [2026-07-30] '대여중'에서 미시작 예약 제외 — 예약 탭과 상호배타 (책은 아직 서가에 있다)
+    if (loanFilter === 'active')   list = list.filter(l => l.status === 'active' && hasCheckoutStarted(l.checkout_at) && daysUntilDue(l.due_at) >= 0)
+    if (loanFilter === 'reserved') list = list.filter(l => l.status === 'active' && !hasCheckoutStarted(l.checkout_at))
     if (loanFilter === 'overdue')  list = list.filter(l => l.status === 'active' && daysUntilDue(l.due_at) < 0)
     if (loanFilter === 'returned') list = list.filter(l => l.status === 'returned')
     if (loanFilter === 'lost')     list = list.filter(l => l.status === 'lost')
@@ -839,6 +845,21 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
     },
   ]
 
+  // ← [2026-07-30] 예약(미시작) 취소 — admin_cancel_book_checkout. 무통보(고지 확정).
+  //   시작 여부는 서버가 최종 판정(ALREADY_STARTED) — 자정 경계 경합 방어.
+  const [cancellingId, setCancellingId] = useState<string | null>(null)
+  async function handleCancelReserved(l: AdminBookLoan) {
+    const title = l.book?.title ?? `도서 #${l.book_id}`
+    if (!window.confirm(`『${title}』 예약을 취소할까요?\n예약자에게 알림은 발송되지 않습니다.`)) return
+    setCancellingId(l.id)
+    try {
+      const res = await adminCancelBookCheckout(l.id)
+      if (!res.ok) { showToast(res.message ?? '예약 취소 실패', 'error'); return }
+      showToast(`『${res.bookTitle ?? title}』 예약을 취소했습니다`, 'success')
+      await Promise.all([loadRange(), loadMaster()])   // loadMaster 가 outstanding(미반납 전량)도 재조회
+    } finally { setCancellingId(null) }
+  }
+
   const loanColumns: Column<AdminBookLoan>[] = [
     {
       key: 'book', label: '도서', flex: true, pad: '10 16',
@@ -894,6 +915,23 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
           </div>
         )
       },
+    },
+    // ← [2026-07-30] 예약(미시작·active) 행 전용 취소 액션 — 행 클릭(상세)과 분리
+    {
+      key: 'act', label: '', width: 76,
+      render: l => (l.status === 'active' && !hasCheckoutStarted(l.checkout_at)) ? (
+        <button
+          className="btn"
+          disabled={cancellingId === l.id}
+          onClick={e => { e.stopPropagation(); handleCancelReserved(l) }}
+          style={{
+            padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 600,
+            background: '#FFF5F5', border: '1px solid #FECACA', color: '#DC2626',
+            cursor: cancellingId === l.id ? 'wait' : 'pointer', whiteSpace: 'nowrap',
+          }}>
+          {cancellingId === l.id ? '취소 중' : '예약 취소'}
+        </button>
+      ) : null,
     },
   ]
 
@@ -1039,6 +1077,7 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
           }}>
             <StatCard label="전체 도서"   value={stats.total} />
             <StatCard label="대여 가능"   value={stats.available} color="#1988FF" />
+            <StatCard label="예약" value={stats.reserved} unit="건" color="#B45309" hint="시작 전 예약 — 대여 이력 탭 '예약' 필터에서 취소 가능" />{/* ← [2026-07-30] */}
             <StatCard label="대여 중"     value={stats.borrowed}  color="#C2410C" />
             <StatCard label="연체"        value={stats.overdue}   color="#DC2626"
               hint={stats.overdue > 0 ? '연체 관리 탭에서 처리' : undefined} />
@@ -1145,7 +1184,9 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
           <SegmentTabBar
             tabs={[
               { id: 'all'      as const, label: '전체',   count: rangeLoans.length },
-              { id: 'active'   as const, label: '대여중', count: rangeLoans.filter(l => l.status === 'active' && daysUntilDue(l.due_at) >= 0).length },
+              { id: 'active'   as const, label: '대여중', count: rangeLoans.filter(l => l.status === 'active' && hasCheckoutStarted(l.checkout_at) && daysUntilDue(l.due_at) >= 0).length },
+              // ← [2026-07-30] 예약(미시작) — 잘못 등록된 예약을 찾고 취소하는 자리
+              { id: 'reserved' as const, label: '예약',   count: rangeLoans.filter(l => l.status === 'active' && !hasCheckoutStarted(l.checkout_at)).length },
               { id: 'overdue'  as const, label: '연체',   count: rangeLoans.filter(l => l.status === 'active' && daysUntilDue(l.due_at) < 0).length },
               { id: 'returned' as const, label: '반납',   count: rangeLoans.filter(l => l.status === 'returned').length },
               { id: 'lost'     as const, label: '분실',   count: rangeLoans.filter(l => l.status === 'lost').length },

@@ -996,6 +996,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast, onGoMyLoans
           maxBorrow={MAX_BORROW_PER_USER}
           borrowDays={BORROW_DAYS}
           loading={actionLoading}
+          reservedPeriods={reservedPeriods}  /* ← [2026-07-30] 달력 예약 구간 비활성 */
           onClose={() => { setCheckoutModal(null); setCheckoutOpen(false) }}
           onSubmit={handleCheckout}
         />

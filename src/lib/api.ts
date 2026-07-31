@@ -1523,6 +1523,30 @@ export async function departUser(userId: string): Promise<DepartUserResult> {
 }
 
 
+/** 관리자 예약 취소 — admin_cancel_book_checkout (20260737, 미시작 건 한정, 무통보)
+ *  에러코드는 서버가 message 로 던진다 — 한글 매핑 자체 처리 */
+export async function adminCancelBookCheckout(
+  checkoutId: string,
+): Promise<{ ok: boolean; message?: string; bookTitle?: string }> {
+  const { data, error } = await supabase.rpc('admin_cancel_book_checkout', {
+    p_checkout_id: checkoutId,
+  })
+  if (error) {
+    const msg = error.message ?? ''
+    const map: Record<string, string> = {
+      NOT_AUTHENTICATED:  '로그인이 필요합니다',
+      NOT_ADMIN:          '도서 관리 권한이 필요합니다',
+      CHECKOUT_NOT_FOUND: '대여 정보를 찾을 수 없습니다. 목록을 새로고침해주세요',
+      NOT_ACTIVE:         '이미 처리된 예약입니다. 목록을 새로고침해주세요',
+      ALREADY_STARTED:    '이미 시작된 대여는 취소할 수 없습니다. 반납 처리해주세요',
+    }
+    const hit = Object.keys(map).find(k => msg.includes(k))
+    return { ok: false, message: hit ? map[hit] : '예약 취소에 실패했습니다. 잠시 후 다시 시도해주세요' }
+  }
+  const r: any = Array.isArray(data) ? data[0] : data
+  return { ok: true, bookTitle: r?.book_title ?? undefined }
+}
+
 /** 도서 예약/대여 구간 (기간만 — 예약자 신원 없음)
  *  ← [2026-07-30] 예약 기간 공개 (20260737). RLS 가 비관리자에 본인 행만 주므로
  *    타인 예약 기간은 이 RPC 가 유일한 경로. 실패 시 [] — 표시만 생략되고

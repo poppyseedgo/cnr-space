@@ -297,6 +297,24 @@ function toDate(v: Date | string): Date {
 }
 
 /** '2026년 7월 27일 월요일' */
+/** 'YYYY-MM-DD' + n일 (로컬 자정 산술 — KST 무밀림) */
+export function addDaysKst(dateStr: string, n: number): string {
+  const d = new Date(+dateStr.slice(0, 4), +dateStr.slice(5, 7) - 1, +dateStr.slice(8, 10))
+  d.setDate(d.getDate() + n)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** 시작일 d 로 대여하면 기간 [d, d+borrowDays] 가 구간 p 와 겹치는가.
+ *  ← [2026-07-30] 달력 비활성 판정 SSOT — 서버 EXCLUDE(tstzrange '[]', 양끝 포함) 와
+ *    동일 경계. "시작일이 구간 안"만 보면 시작일은 밖인데 반납기한이 뒤 예약을
+ *    침범하는 케이스(예: 예약 8/3~ 인데 7/30 시작 → 기한 8/6)를 놓친다. */
+export function checkoutWouldConflict(
+  startDate: string, borrowDays: number,
+  p: { start_on: string; due_on: string },
+): boolean {
+  return startDate <= p.due_on && addDaysKst(startDate, borrowDays) >= p.start_on
+}
+
 /** 'YYYY-MM-DD' → '8/2(일)' — 예약 구간 표시용 짧은 포맷.
  *  ← [2026-07-30] 예약 기간 공개 기능. 로컬 자정 분해 — new Date('YYYY-MM-DD')는
  *    UTC 자정 해석이라 KST에서 하루 밀린다 (DateRows 동일 규칙). */
