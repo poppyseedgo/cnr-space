@@ -41,7 +41,7 @@ import { BM, OVERLAY, SHEET, ModalHeader, Field } from './bookModalShared'
 import {
   LT, ListBadge, statusBadgeConfig, newBadgeLabel, pickCoverFit,
 } from './libraryListShared'
-import { fmtDueShortKo } from '../../utils/bookLoan'
+import { fmtDueShortKo, fmtDateShortKo } from '../../utils/bookLoan' // ← [2026-07-30] 예약 구간 짧은 포맷
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 0. 입력 계약 — 이 모달이 실제로 읽는 필드만
@@ -76,6 +76,9 @@ export interface BookDetailModalProps {
   checkout?:       DetailCheckout | null
   borrower?:       DetailBorrower | null
   isAdmin:         boolean
+  /** ← [2026-07-30] 이 도서의 예약(미시작) 구간 — 전 직원에게 기간 노출(고지 확정).
+   *    borrowerName 은 관리자 화면에서만 채워짐 (예약자 신원은 관리자 한정) */
+  reservedPeriods?: { start_on: string; due_on: string; borrowerName?: string | null }[]
   isOverdueStatus: boolean
   /** ← [2026-07-21] 연체 제재 차단 상태 (본인 기준). 카드 CTA 와 같은 규칙 */
   penaltyBlocked?: boolean
@@ -116,7 +119,7 @@ function fmtDateKo(d: string | null): string {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export function BookDetailModal({
-  book, categoryName, checkout, borrower, isAdmin, isOverdueStatus,
+  book, categoryName, checkout, borrower, isAdmin, isOverdueStatus, reservedPeriods = [],
   penaltyBlocked = false, penaltyReason = null, myLoan = null,
   onClose, onCheckout, onReturn, onEdit, onDelete,
 }: BookDetailModalProps) {
@@ -212,6 +215,22 @@ export function BookDetailModal({
           <DetailRow label="분류"   value={categoryName || '미분류'} />
           <DetailRow label="입고일" value={fmtDateKo(book.acquired_at)} />
           <DetailRow label="ISBN"   value={book.isbn || '-'} />
+
+          {/* ← [2026-07-30] 예약된 기간 — 시작 전 예약 구간을 전 직원에게 노출.
+              '대여가능'인데 특정 날짜 대여가 막히는 모순의 해답을 여기서 준다.
+              관리자에게만 예약자명 병기 (기간은 도서의 속성, 예약자는 개인정보). */}
+          {reservedPeriods.length > 0 && (
+            <div style={{ marginTop: 4 }}>
+              {reservedPeriods.map((p, i) => (
+                <DetailRow
+                  key={`rsv-${i}`}
+                  label={i === 0 ? '예약된 기간' : ''}
+                  value={`${fmtDateShortKo(p.start_on)} ~ ${fmtDateShortKo(p.due_on)}${p.borrowerName ? `  · ${p.borrowerName}` : ''}`}
+                  valueColor="#B45309"
+                />
+              ))}
+            </div>
+          )}
 
           {/* 대여 정보 — 대여 중일 때만.
               대여자 표시는 그리드 카드와 같은 기준(live users 조회 결과)을 그대로 받는다. */}

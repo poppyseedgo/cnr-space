@@ -3648,40 +3648,67 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
     setEditUser(u)
   }
 
-  const closeModal = () => setEditUser(null)
+  // ← [2026-07-30 UI 통합] 권한 변경 dirty 판정 — 초안(roleDraft) vs 저장본(roleMap)
+  //   배경: 모달에 '권한 저장'(소형) / '저장'(하단) 버튼이 2개라 하단 저장만 누르고
+  //   권한이 안 바뀌는 혼선 발생 (2026-07-30 실사용 보고). 저장 경로를 하나로 통합.
+  const savedRoles = roleMap[editUser?.user_id ?? ''] ?? []
+  const rolesDirty = !!editUser
+    && [...roleDraft].sort().join(',') !== [...savedRoles].sort().join(',')
 
-  /** 역할 저장 — 전체 교체. 실패 사유는 RPC 가 코드로 알려준다(마지막 super 등) */
-  const saveRoles = async () => {
-    if (!editUser) return
-    setRoleSaving(true)
-    try {
-      const res = await setUserAdminRoles(editUser.user_id, roleDraft)
-      if (!res.ok) { showToast(res.message ?? '권한 저장 실패', 'error'); return }
-      showToast('권한을 저장했습니다', 'success')
-      await loadRoles()
-      loadRoleGrantLog(editUser.user_id).then(setRoleLog).catch(() => {})
-      // profiles.role 이 RPC 안에서 함께 바뀌므로 목록도 갱신한다
-      setUsers(users.map(u => u.user_id === editUser.user_id
-        ? { ...u, role: roleDraft.length > 0 ? 'ADMIN' : 'USER' } : u))
-    } finally { setRoleSaving(false) }
+  const closeModal = () => {
+    // ← [2026-07-30 UI 통합] 미저장 권한 변경 이탈 방지 — 권한은 실수 비용이 큼
+    //   (매트릭스의 역할 0개 confirm 과 동일한 이유). 오버레이/X/취소 모두 이 경로.
+    if (rolesDirty && !window.confirm('저장하지 않은 권한 변경이 있습니다. 저장하지 않고 닫을까요?')) return
+    setEditUser(null)
   }
 
-  // ── 저장
+  /** 역할 저장 내부 헬퍼 — ← [2026-07-30 UI 통합] 단독 버튼 제거, saveEdit 에서만 호출.
+   *  전체 교체. 실패 사유는 RPC 가 코드로 알려준다(마지막 super 등). 성공 여부 반환. */
+  const saveRolesInternal = async (): Promise<boolean> => {
+    if (!editUser) return false
+    const res = await setUserAdminRoles(editUser.user_id, roleDraft)
+    if (!res.ok) { showToast(res.message ?? '권한 저장 실패', 'error'); return false }
+    await loadRoles()
+    loadRoleGrantLog(editUser.user_id).then(setRoleLog).catch(() => {})
+    // profiles.role 이 RPC 안에서 함께 바뀌므로 목록도 갱신한다
+    // ← [2026-07-30] 함수형 업데이트 — 직후 프로필 낙관 갱신과 연속 호출되므로 stale 클로저 금지
+    setUsers(prev => prev.map(u => u.user_id === editUser.user_id
+      ? { ...u, role: roleDraft.length > 0 ? 'ADMIN' : 'USER' } : u))
+    return true
+  }
+
+  // ── 저장 — ← [2026-07-30 UI 통합] 하단 '저장' 하나가 권한+프로필 순차 저장
+  //   순서: ① 권한(dirty && super 일 때만) → 실패 시 전체 중단(부분 저장 방지, 모달 유지)
+  //         ② 프로필(name/dept) — 기존 낙관 갱신+롤백 로직 유지
+  //   super 가 아니면 체크박스가 disabled 라 rolesDirty 자체가 발생하지 않음 (방어적 가드 병행)
   const saveEdit = async () => {
     if (!editUser?.user_id) return
     if (!form.name.trim()) { showToast('이름은 필수입니다.', 'error'); return }
     setSaving(true)
-    const prev = users.find(u => u.user_id === editUser.user_id)
-    setUsers(users.map(u => u.user_id === editUser.user_id ? { ...u, ...form } : u))
     try {
-      // ← [2026-07-24] role 제거 — profiles.role 은 admin_roles 개수에서 파생되는 값이라
-      //   여기서 직접 쓰면 권한 체계가 다시 두 벌로 갈라진다. 역할은 아래 saveRoles 가 담당.
-      await updateProfile(editUser.user_id, { name: form.name, dept: form.dept })
-      showToast('수정되었습니다.')
-      closeModal()
-    } catch (err: any) {
-      if (prev) setUsers(users.map(u => u.user_id === editUser.user_id ? prev : u))
-      showToast(err.message, 'error')
+      // ① 권한 먼저 — 실패하면 프로필도 저장하지 않는다 (반쪽 저장이 더 큰 혼란)
+      const withRoles = rolesDirty && iAmSuper
+      if (withRoles) {
+        setRoleSaving(true)
+        const ok = await saveRolesInternal()
+        setRoleSaving(false)
+        if (!ok) return   // 실패 사유 토스트는 내부에서 — 모달 유지, 재시도 가능
+      }
+      // ② 프로필 — 낙관 갱신 + 실패 롤백 (기존 로직, 함수형 업데이트로 전환)
+      const prevRow = users.find(u => u.user_id === editUser.user_id)
+      setUsers(prev => prev.map(u => u.user_id === editUser.user_id ? { ...u, ...form } : u))
+      try {
+        // ← [2026-07-24] role 제거 — profiles.role 은 admin_roles 개수에서 파생되는 값이라
+        //   여기서 직접 쓰면 권한 체계가 다시 두 벌로 갈라진다. 역할은 위 saveRolesInternal 이 담당.
+        await updateProfile(editUser.user_id, { name: form.name, dept: form.dept })
+      } catch (err: any) {
+        if (prevRow) setUsers(prev => prev.map(u => u.user_id === editUser.user_id ? prevRow : u))
+        // ← 권한은 이미 저장됨 — 무엇이 성공/실패했는지 명확히 알림 (조용한 반쪽 저장 방지)
+        showToast(withRoles ? `권한은 저장됐지만 정보 저장에 실패했습니다: ${err.message}` : err.message, 'error')
+        return
+      }
+      showToast(withRoles ? '권한과 정보를 저장했습니다.' : '수정되었습니다.')
+      setEditUser(null)   // ← closeModal 미사용 — 저장 직후엔 dirty confirm 불필요
     } finally { setSaving(false) }
   }
 
@@ -4307,8 +4334,13 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
                       {roleDraft.length === 0 ? '역할 없음 — 어드민에 진입할 수 없습니다' : `${roleDraft.length}개 선택`}
                     </span>
                     <div style={{ flex:1 }} />
-                    {iAmSuper && (
-                      <Button variant='secondary' size='sm' loading={roleSaving} onClick={saveRoles}>권한 저장</Button>
+                    {/* ← [2026-07-30 UI 통합] 소형 '권한 저장' 버튼 제거 — 저장 버튼 2개 혼선의 원인.
+                          권한도 하단 '저장' 한 곳에서 함께 적용되며, 변경 중임을 배지로만 표시 */}
+                    {rolesDirty && (
+                      <span style={{ fontSize:11, fontWeight:600, color:'#B45309', background:'#FEF3C7',
+                                     padding:'3px 9px', borderRadius:6, whiteSpace:'nowrap' }}>
+                        권한 변경됨 — 아래 '저장'을 누르면 적용됩니다
+                      </span>
                     )}
                   </div>
 
@@ -4350,10 +4382,10 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
                   )}
                 </div>
 
-                {/* 저장 / 취소 */}
+                {/* 저장 / 취소 — ← [2026-07-30 UI 통합] '저장' 하나가 권한+프로필 전부 적용 */}
                 <div style={{ display:'flex', gap:8, marginBottom:24 }}>
                   <Button variant='ghost' flex onClick={closeModal}>취소</Button>
-                  <Button variant='primary' flex loading={saving} onClick={saveEdit}>저장</Button>
+                  <Button variant='primary' flex loading={saving || roleSaving} onClick={saveEdit}>저장</Button>
                 </div>
               </div>
           </div>

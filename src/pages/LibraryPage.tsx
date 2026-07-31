@@ -44,6 +44,7 @@ import {
   persistBook, deleteBookRecord, importBookRows,
   // ← [2026-07-30] 내 대여 연장 — 마이페이지와 같은 래퍼(RPC+알림)를 쓴다
   extendBookCheckoutWithNotify, extendErrorMessage,
+  loadBookReservedPeriods, type BookReservedPeriod,  // ← [2026-07-30] 예약 기간 공개
 } from '../lib/api'
 import { BookCheckoutModal } from '../components/library/BookCheckoutModal'
 // ← [2026-07-20] Figma 73:831 Home list — 리스트 UI 토큰/카드/칩 SSOT
@@ -59,6 +60,7 @@ import {
   // ← [2026-07-30] 내 대여 연장 — 판정·표기 전부 bookLoan SSOT 재사용 (재계산 금지)
   ddayLabel, canExtend, extendBlockedReason, previewExtendedDue,
   dueNoticeShort, fmtDueShortKo,
+  kstDateStr, fmtDateShortKo,  // ← [2026-07-30] 예약 기간 표시
 } from '../utils/bookLoan'   // ← [2026-07-23] 시작 판정 SSOT
 import type { BookPenaltyState } from '../types'
 import { useBreakpoint } from '../hooks/useBreakpoint'
@@ -177,6 +179,10 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast, onGoMyLoans
   const [books,          setBooks]          = useState<Book[]>([])
   const [categories,     setCategories]     = useState<BookCategory[]>([])
   const [activeCheckouts, setActiveCheckouts] = useState<BookCheckout[]>([])
+  // ← [2026-07-30] 예약 기간 공개: 전 도서 live 구간(기간만, RPC) + 미시작 예약 원본 행.
+  //   futureCheckouts 는 RLS 상 관리자에겐 전체·비관리자에겐 본인 것만 — 예약자명 매칭용
+  const [reservedPeriods, setReservedPeriods] = useState<BookReservedPeriod[]>([])
+  const [futureCheckouts, setFutureCheckouts] = useState<BookCheckout[]>([])
   const [loading,        setLoading]        = useState(true)
 
   // ── UI State ──
@@ -266,6 +272,9 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast, onGoMyLoans
       //   판정식은 utils/bookLoan.hasCheckoutStarted / DB book_checkout_started() 가 SSOT.
       const now = new Date()
       const checkouts = allCheckouts.filter(c => hasCheckoutStarted(c.checkout_at, now))
+      // ← [2026-07-30] 미시작 예약은 별도 보관 — 상세 모달 예약자명 매칭(관리자)용.
+      //   카드 '대여중' 판정(checkouts)에는 계속 미포함 (books.status 를 안 잠그는 설계와 일치)
+      setFutureCheckouts(allCheckouts.filter(c => !hasCheckoutStarted(c.checkout_at, now)))
 
       // 보유 권수 맵 (예약 포함 — 서버 한도 산식과 동일)
       const heldMap: Record<string, number> = {}
@@ -289,6 +298,8 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast, onGoMyLoans
       setPopularity(popMap)
       setCategories((catData ?? []) as BookCategory[])
       setActiveCheckouts(checkouts)
+      // ← [2026-07-30] 전 도서 예약/대여 구간 (기간만) — 실패 시 [] 로 표시만 생략
+      setReservedPeriods(await loadBookReservedPeriods())
       setHeldCountByUser(heldMap)
       setMyHeldCount(heldMap[authUserId] ?? 0)
     } catch (e: any) {
@@ -450,7 +461,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast, onGoMyLoans
 
       const res = await adminCheckoutBooksWithNotify(userId, bookIds, notes, titles, checkoutAt)
       if (!res.ok) {
-        showToast(checkoutErrorMessage(res.code ?? 'UNKNOWN', res.detail), 'error')
+        showToast(checkoutErrorMessage(res.code ?? 'UNKNOWN', res.detail) + (res.code === 'PERIOD_CONFLICT' ? conflictPeriodText(res.detail) : ''), 'error')
         await load()
         return
       }
@@ -473,6 +484,20 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast, onGoMyLoans
   // ── [사용자] 자가 대여 — user_checkout_books RPC (← [2026-07-21])
   //   승인 절차가 없다. 서버가 본인·한도·예약범위(오늘~+3일)·기간 겹침을
   //   모두 검증하고 즉시 대여를 성립시킨다.
+  // ← [2026-07-30] PERIOD_CONFLICT 시 로컬 데이터로 충돌 구간 병기 (D3 대체 —
+  //   RPC detail 은 'id:제목' 그대로 두고, 기간은 이미 들고 있는 reservedPeriods 에서 찾는다)
+  function conflictPeriodText(detail?: string): string {
+    const bookId = Number((detail ?? '').split(':')[0])
+    if (!bookId) return ''
+    const today = kstDateStr(Date.now())
+    const ps = reservedPeriods
+      .filter(p => p.book_id === bookId && p.due_on >= today)
+      .sort((a, z) => a.start_on.localeCompare(z.start_on))
+      .slice(0, 2)
+    if (ps.length === 0) return ''
+    return ` (예약: ${ps.map(p => `${fmtDateShortKo(p.start_on)}~${fmtDateShortKo(p.due_on)}`).join(', ')})`
+  }
+
   async function handleUserBorrow(bookIds: number[], notes: string, checkoutAt?: string) {
     setActionLoading(true)
     try {
@@ -482,7 +507,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast, onGoMyLoans
 
       const res = await userCheckoutBooksWithNotify(bookIds, notes, titles, checkoutAt)
       if (!res.ok) {
-        showToast(checkoutErrorMessage(res.code ?? 'UNKNOWN', res.detail), 'error')
+        showToast(checkoutErrorMessage(res.code ?? 'UNKNOWN', res.detail) + (res.code === 'PERIOD_CONFLICT' ? conflictPeriodText(res.detail) : ''), 'error')
         await load()
         return
       }
@@ -914,6 +939,18 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast, onGoMyLoans
       {detailModal && (() => {
         const co  = checkoutMap[detailModal.id] ?? null
         const bwr = co ? users.find(u => u.user_id === co.user_id) : undefined
+        // ← [2026-07-30] 이 도서의 예약(미시작) 구간 — 기간은 RPC(전 직원), 예약자명은
+        //   futureCheckouts(RLS: 관리자 전체/비관리자 본인)에서 시작일 매칭. 관리자만 병기.
+        const today = kstDateStr(Date.now())
+        const rsv = reservedPeriods
+          .filter(p => p.book_id === detailModal.id && p.start_on > today)
+          .sort((a, z) => a.start_on.localeCompare(z.start_on))
+          .map(p => {
+            const fc = futureCheckouts.find(c =>
+              c.book_id === detailModal.id && kstDateStr(c.checkout_at) === p.start_on)
+            const name = isAdmin && fc ? (users.find(u => u.user_id === fc.user_id)?.name ?? null) : null
+            return { start_on: p.start_on, due_on: p.due_on, borrowerName: name }
+          })
         return (
           <BookDetailModal
             book={detailModal}
@@ -921,6 +958,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast, onGoMyLoans
             checkout={co}
             borrower={bwr}
             isAdmin={isAdmin}
+            reservedPeriods={rsv}
             isOverdueStatus={co ? isOverdue(co.due_at) : false}
             myLoan={buildMyLoan(co)}
             onClose={() => setDetailModal(null)}
@@ -975,6 +1013,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast, onGoMyLoans
           loading={actionLoading}
           penaltyBlocked={penalty.blocked}
           penaltyReason={penalty.reason}
+          reservedPeriods={reservedPeriods}  /* ← [2026-07-30] 달력 예약 구간 비활성 */
           onClose={() => { setBorrowModal(null); setBorrowOpen(false) }}
           onSubmit={handleUserBorrow}
         />

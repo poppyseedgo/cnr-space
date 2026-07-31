@@ -47,11 +47,14 @@ interface DatePickerPopupProps {
   anchorRef:  React.RefObject<HTMLElement | null>          // ← 트리거 요소 ref (위치 기준 + 외부클릭 제외)
   min?:       string                                       // ← 선택 가능 최소 날짜 (YYYY-MM-DD)
   max?:       string                                       // ← 선택 가능 최대 날짜 (YYYY-MM-DD)
+  /** ← [2026-07-30] 임의 날짜 비활성 판정 — min/max 범위 안이라도 true 면 선택 불가.
+   *    도서 예약 구간 비활성화용 (고지 확정: 달력에서 예약된 날짜를 막는다) */
+  isDateDisabled?: (dateStr: string) => boolean
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 export function DatePickerPopup({
-  value, onChange, onClose, anchorRef, min, max,
+  value, onChange, onClose, anchorRef, min, max, isDateDisabled,
 }: DatePickerPopupProps) {
 
   // ── popup DOM ref (외부 클릭 판정용)
@@ -241,6 +244,7 @@ export function DatePickerPopup({
           const isToday   = dateStr === today
           const dow       = cell.date.getDay()
           const disabled  = (!!min && dateStr < min) || (!!max && dateStr > max)
+                          || (isDateDisabled?.(dateStr) ?? false)   // ← [2026-07-30] 예약 구간 등 임의 비활성
 
           // ← 색상 우선순위: 선택됨(white) > 비활성(#CBD5E1) > 다른달(#CBD5E1) > 일(빨강)/토(파랑)/평일(#111)
           const textColor =

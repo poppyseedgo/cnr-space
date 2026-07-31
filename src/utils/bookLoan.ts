@@ -297,6 +297,16 @@ function toDate(v: Date | string): Date {
 }
 
 /** '2026년 7월 27일 월요일' */
+/** 'YYYY-MM-DD' → '8/2(일)' — 예약 구간 표시용 짧은 포맷.
+ *  ← [2026-07-30] 예약 기간 공개 기능. 로컬 자정 분해 — new Date('YYYY-MM-DD')는
+ *    UTC 자정 해석이라 KST에서 하루 밀린다 (DateRows 동일 규칙). */
+export function fmtDateShortKo(dateStr: string): string {
+  if (!dateStr || dateStr.length < 10) return dateStr
+  const d = new Date(+dateStr.slice(0, 4), +dateStr.slice(5, 7) - 1, +dateStr.slice(8, 10))
+  const yoil = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()]
+  return `${d.getMonth() + 1}/${d.getDate()}(${yoil})`
+}
+
 export function fmtDueFullKo(v: Date | string): string {
   const d = toDate(v)
   return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 ${WEEKDAYS_KO[d.getDay()]}요일`

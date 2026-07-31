@@ -197,7 +197,7 @@ export { fmtDueFullKo as fmtFullDate } from '../../utils/bookLoan'
  *   화면과 DB 가 같은 규칙을 쓴다.
  */
 export function DateRows({
-  borrowDays, noteText, value, onChange, min, max,
+  borrowDays, noteText, value, onChange, min, max, isDateDisabled,
 }: {
   borrowDays: number
   noteText?:  string
@@ -206,6 +206,8 @@ export function DateRows({
   onChange?:  (next: string) => void
   min?:       string
   max?:       string
+  /** ← [2026-07-30] 예약 구간 등 임의 날짜 비활성 — DatePickerPopup 통과 */
+  isDateDisabled?: (dateStr: string) => boolean
 }) {
   const editable = !!onChange
   const anchorRef = useRef<HTMLButtonElement>(null)
@@ -249,6 +251,7 @@ export function DateRows({
                 anchorRef={anchorRef}
                 min={min}
                 max={max}
+                isDateDisabled={isDateDisabled}
               />
             )}
           </>

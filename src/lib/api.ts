@@ -1522,6 +1522,29 @@ export async function departUser(userId: string): Promise<DepartUserResult> {
   return data as DepartUserResult
 }
 
+
+/** 도서 예약/대여 구간 (기간만 — 예약자 신원 없음)
+ *  ← [2026-07-30] 예약 기간 공개 (20260737). RLS 가 비관리자에 본인 행만 주므로
+ *    타인 예약 기간은 이 RPC 가 유일한 경로. 실패 시 [] — 표시만 생략되고
+ *    최종 차단은 서버 EXCLUDE 제약이 담당하므로 조회 장애가 대여를 막지 않는다. */
+export interface BookReservedPeriod {
+  book_id:  number
+  start_on: string   // 'YYYY-MM-DD' (KST)
+  due_on:   string   // 'YYYY-MM-DD' (KST)
+}
+export async function loadBookReservedPeriods(): Promise<BookReservedPeriod[]> {
+  try {
+    const { data, error } = await supabase.rpc('get_book_reserved_periods')
+    if (error) throw error
+    return (data ?? []).map((r: any) => ({
+      book_id: Number(r.book_id), start_on: r.start_on, due_on: r.due_on,
+    }))
+  } catch (e) {
+    console.error('[api] loadBookReservedPeriods 실패(표시 생략):', e)
+    return []
+  }
+}
+
 /** 특정 유저의 진행 중 도서 대여 수 — 즉시 퇴사 확인 모달 프리뷰용 */
 export async function countActiveBookLoans(userId: string): Promise<number> {
   try {

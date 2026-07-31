@@ -29,7 +29,8 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { AppUser, Book } from '../../types'
 // ← [2026-07-21] 예약 가능 범위 SSOT — 서버 RPC 의 c_reserve_days 와 일치해야 한다
-import { RESERVE_MAX_DAYS } from '../../utils/bookLoan'
+import { RESERVE_MAX_DAYS, fmtDateShortKo } from '../../utils/bookLoan'
+import type { BookReservedPeriod } from '../../lib/api' // ← [2026-07-30] 예약 구간 타입
 import { todayKST } from './libraryListShared'
 import {
   OVERLAY, SHEET, ModalHeader, Field, ModalFooter, MemoField,
@@ -53,6 +54,9 @@ interface Props {
   /** ← [2026-07-21] 연체 제재 차단 상태. 서버가 최종 강제하고 여기는 사전 안내다 */
   penaltyBlocked?: boolean
   penaltyReason?:  string | null
+  /** ← [2026-07-30] 전 도서 예약/대여 구간 (20260737 RPC, 기간만) — 달력 비활성·안내용.
+   *    빈 배열이어도 동작 (조회 실패 시 표시만 생략, 최종 차단은 서버 EXCLUDE 제약) */
+  reservedPeriods?: BookReservedPeriod[]
 }
 
 // ── 대여일 선택 범위 — 오늘(KST) + n일을 'YYYY-MM-DD' 로
@@ -67,14 +71,71 @@ function shiftDays(n: number): string {
 
 export function BookBorrowModal({
   book, books = [], me, heldCount, maxBorrow, borrowDays, loading, onClose, onSubmit,
-  penaltyBlocked = false, penaltyReason = null,
+  penaltyBlocked = false, penaltyReason = null, reservedPeriods = [],
 }: Props) {
   const [memo, setMemo] = useState('')
   // ← [2026-07-21] 대여 시작일. 기본값은 오늘 = 지금 바로 대여.
   const [checkoutAt, setCheckoutAt] = useState<string>(() => todayKST())
 
+
   // ── 도서 선택 (헤더 진입 시에만 검색) ──────────────────────────────────────
   const [selectedBooks, setSelectedBooks] = useState<Book[]>(book ? [book] : [])
+
+  // ── [2026-07-30] 예약 구간 → 달력 비활성 (고지 확정: date picker 유지 + 구간 날짜 비활성화)
+  //   선택한 도서들의 live 구간(진행 중 대여 + 예약)에 걸치는 날짜는 시작일로 고를 수 없다.
+  //   여러 권 선택 시 합집합 — 한 권이라도 막히면 그 날짜로는 일괄 대여가 실패하기 때문.
+  //   판정 창은 오늘~+RESERVE_MAX_DAYS 뿐이므로 그 범위만 계산한다.
+  const disabledDates = useMemo(() => {
+    const set = new Set<string>()
+    if (selectedBooks.length === 0 || reservedPeriods.length === 0) return set
+    const ids = new Set(selectedBooks.map(b => b.id))
+    const winStart = todayKST()
+    const winEnd   = shiftDays(RESERVE_MAX_DAYS)
+    for (const p of reservedPeriods) {
+      if (!ids.has(p.book_id)) continue
+      if (p.due_on < winStart || p.start_on > winEnd) continue   // 창 밖 구간은 무관
+      // 구간 ∩ 창 의 각 날짜를 비활성 — 반납기한 당일 포함(EXCLUDE '[]' 양끝 포함과 동일 경계)
+      let d = p.start_on > winStart ? p.start_on : winStart
+      const end = p.due_on < winEnd ? p.due_on : winEnd
+      while (d <= end) {
+        set.add(d)
+        const t = new Date(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10))
+        t.setDate(t.getDate() + 1)
+        d = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+      }
+    }
+    return set
+  }, [selectedBooks, reservedPeriods])
+
+  // 선택 도서의 예약 구간 안내문 (창과 무관하게 가까운 것부터 최대 3건 — "언제 되는지"의 근거)
+  const reservedNotes = useMemo(() => {
+    if (selectedBooks.length === 0) return [] as string[]
+    const today = todayKST()
+    const out: string[] = []
+    for (const b of selectedBooks) {
+      const ps = reservedPeriods
+        .filter(p => p.book_id === b.id && p.due_on >= today)
+        .sort((a, z) => a.start_on.localeCompare(z.start_on))
+        .slice(0, 3)
+      for (const p of ps)
+        out.push(`『${b.title}』 ${fmtDateShortKo(p.start_on)} ~ ${fmtDateShortKo(p.due_on)} 대여 예정`)
+    }
+    return out
+  }, [selectedBooks, reservedPeriods])
+
+  // 현재 선택일이 (도서 선택 변경으로) 비활성 구간에 들어가면 창 내 첫 가능일로 자동 이동.
+  // 가능일이 없으면 그대로 두고 확인 버튼을 막는다 — 말없이 엉뚱한 날짜로 바꾸는 것보다 명시가 낫다.
+  const firstAvailable = useMemo(() => {
+    for (let i = 0; i <= RESERVE_MAX_DAYS; i++) {
+      const d = shiftDays(i)
+      if (!disabledDates.has(d)) return d
+    }
+    return null
+  }, [disabledDates])
+  useEffect(() => {
+    if (disabledDates.has(checkoutAt) && firstAvailable) setCheckoutAt(firstAvailable)
+  }, [disabledDates, checkoutAt, firstAvailable])
+  const dateBlocked = disabledDates.has(checkoutAt)   // firstAvailable 없음 → 확인 차단
   const [bookQ, setBookQ]         = useState('')
   const [bookFocus, setBookFocus] = useState(false)
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -232,7 +293,21 @@ export function BookBorrowModal({
             onChange={setCheckoutAt}
             min={todayKST()}
             max={shiftDays(RESERVE_MAX_DAYS)}
+            isDateDisabled={d => disabledDates.has(d)}  /* ← [2026-07-30] 예약 구간 날짜 비활성 */
           />
+
+          {/* ← [2026-07-30] 선택 도서의 예약 구간 안내 — 달력에서 왜 막혔는지의 근거를
+                같은 화면에 노출한다. 구간이 없으면 렌더하지 않음 */}
+          {reservedNotes.length > 0 && (
+            <div style={{ marginTop: 6, fontSize: 11, color: '#B45309', lineHeight: 1.7 }}>
+              {reservedNotes.map((t, i) => <div key={i}>· {t}</div>)}
+              {dateBlocked && !firstAvailable && (
+                <div style={{ color: '#B91C1C', fontWeight: 600 }}>
+                  선택 가능한 대여 시작일이 없습니다 (오늘~{RESERVE_MAX_DAYS}일 내 전부 예약됨)
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ── 메모 ───────────────────────────────────────────────────── */}
           <MemoField value={memo} onChange={setMemo} />
@@ -277,9 +352,11 @@ export function BookBorrowModal({
           confirmLabel={checkoutAt === todayKST() ? '대여하기' : '대여 예약'}
           onCancel={onClose}
           onConfirm={() => onSubmit(selectedBooks.map(b => b.id), memo.slice(0, MEMO_MAX), checkoutAt)}
-          disabled={!canSubmit || !me || penaltyBlocked}
+          disabled={!canSubmit || !me || penaltyBlocked || dateBlocked}  /* ← [2026-07-30] 예약 겹침 시작일 차단 */
           loading={loading}
-          hint={penaltyBlocked ? (penaltyReason ?? '대여가 제한되었습니다') : hint}
+          hint={penaltyBlocked ? (penaltyReason ?? '대여가 제한되었습니다')
+              : dateBlocked    ? '선택한 날짜는 예약과 겹칩니다. 다른 시작일을 선택해 주세요'
+              : hint}
         />
       </div>
     </div>
