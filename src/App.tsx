@@ -248,7 +248,11 @@ import { fetchBookLoanById } from './lib/api'
 import { loadActiveAnnouncement, subscribeAnnouncementSync } from './lib/api'  // ← [2026-07-27 공지 리얼타임] Broadcast 재조회 구독
 import type { AdminBookLoan } from './types'
 import { NotificationBell } from './components/layout/NotificationBell'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 3)
-import { ResourceDropdown } from './components/layout/ResourceDropdown'  // ← [2026-05-13 v7] 헤더 우측 자원 예약 드롭다운 (Figma 572:462)
+// ← [2026-07-30] ResourceDropdown 제거 — AppDrawer(전역 사이드 드로어)로 흡수.
+//   같은 목적지 메뉴 2벌 금지 + ZOOM 항목 전면 삭제(고지 확정) + 모바일 도서관 진입 부재 해결.
+import { Menu } from 'lucide-react' // ← [2026-07-30] 햄버거 아이콘 (드로어 트리거)
+import { AppDrawer } from './components/layout/AppDrawer'
+import { AppFooter } from './components/layout/AppFooter'
 import { HeaderNav } from './components/layout/HeaderNav'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 4)
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, fmtTSFull, fmtTSRangeFull, fmtTSDateFull, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
@@ -375,6 +379,8 @@ function AppContent() {
     return ['home','calendar','mypage','admin','library'].includes(hash) ? hash : 'home'  // ← [2026-07-16] library 추가
   }
   const [view, setViewState] = useState<string>(getViewFromHash);
+  // ← [2026-07-30] 전역 사이드 드로어 (헤더 햄버거 트리거)
+  const [drawerOpen, setDrawerOpen] = useState(false)
   // ← [2026-07-30] 마이페이지 진입 시 열 세그먼트 탭. 도서관 '나의 도서 대여'
   //   CTA 만 'book' 으로 세팅하고, 마이페이지를 벗어나면 'room' 으로 되돌린다 —
   //   되돌리지 않으면 CTA 를 한 번 쓴 뒤 헤더로 들어간 마이페이지도 계속
@@ -1747,6 +1753,13 @@ function AppContent() {
             {/* ① 브랜드 (left) — 클릭 시 홈
                 [2026-05-07] 텍스트 → SVG 로고 교체 (desktop: 115×24, mobile: 67×24)
                 fill="currentColor" + dark 조건부 색상으로 다크모드 대응 */}
+            {/* ← [2026-07-30] 전역 메뉴 햄버거 — 데스크탑·모바일 공통 (드로어 트리거) */}
+            <button className="btn" onClick={() => setDrawerOpen(true)} aria-label="전체 메뉴 열기"
+              style={{ background:'transparent', border:'none', cursor:'pointer', padding:6, marginRight:6,
+                       display:'flex', alignItems:'center', color: dark ? '#FFFFFF' : '#111111' }}>
+              <Menu size={20} strokeWidth={1.8} />
+            </button>
+
             <div className="flex items-center min-w-0 cursor-pointer" onClick={()=>setView("home")}>
               <div className="min-w-0 flex items-center">
                 {isMobile ? (
@@ -1785,7 +1798,7 @@ function AppContent() {
                   · 트리거 클릭 시 메뉴 펼침/닫힘 작동 (외부 클릭 close 포함)
                   · 메뉴 항목(ZOOM 예약/포인터 대여/도서 대여) onClick 미연결 — 추후 구현
                   · 데스크탑에서만 노출 (모바일은 헤더 공간 확보 위해 숨김) */}
-              {!isMobile && <ResourceDropdown dark={dark} onSetView={setView} />}{/* ← [2026-07-16] onSetView 연결 — 도서 대여 → #library */}
+              {/* ← [2026-07-30] ResourceDropdown 제거 — AppDrawer 로 흡수 (ZOOM 삭제 포함) */}
 
               {/* 알림 벨 */}
               {/* ← [2026-05-04] 알림 벨 + 패널 → NotificationBell 컴포넌트로 분리 (Phase 1+2 Step 3)
@@ -2044,14 +2057,18 @@ function AppContent() {
         </div>
       )}
 
-      {/* ── Footer ── */}
-      <footer style={{
-        maxWidth:1400, margin:"200px auto 0",
-        padding: isMobile?"24px 12px 16px":"32px 28px 20px",
-        textAlign:"center", fontSize:11, color:"#94A3B8", letterSpacing:"0.2px",
-      }}>
-        © {new Date().getFullYear()} CNR Research. All rights reserved.
-      </footer>
+      {/* ── Footer — ← [2026-07-30] 서비스 나열 푸터로 교체 (AppFooter) ── */}
+      <AppFooter isMobile={isMobile} onSetView={setView} />
+
+      {/* ── 전역 사이드 드로어 — ← [2026-07-30] ── */}
+      <AppDrawer
+        open={drawerOpen}
+        view={view}
+        isAdmin={isAdmin}
+        isMobile={isMobile}
+        onSetView={setView}
+        onClose={() => setDrawerOpen(false)}
+      />
 
     </div>
     </div>
