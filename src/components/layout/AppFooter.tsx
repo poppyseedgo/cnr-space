@@ -11,6 +11,7 @@
  */
 
 import { UPCOMING_SERVICES } from './AppDrawer'
+import { BrandLogo } from './BrandLogo' // ← [2026-07-31] 헤더 워드마크 SSOT
 
 interface AppFooterProps {
   isMobile:  boolean
@@ -37,8 +38,8 @@ export function AppFooter({ isMobile, onSetView }: AppFooterProps) {
       }}>
         {/* 브랜드 */}
         <div>
-          <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: '2px', color: '#111', marginBottom: 8 }}>
-            SPACE
+          <div style={{ color: '#111', marginBottom: 10, display: 'flex' }}>
+            <BrandLogo variant="desktop" /> {/* ← [2026-07-31] 헤더 로고 그대로 적용 (고지 지시) */}
           </div>
           <div style={{ fontSize: 12, color: '#64748B', lineHeight: 1.8 }}>
             C&amp;R Research 사내 예약 플랫폼

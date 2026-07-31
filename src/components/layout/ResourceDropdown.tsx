@@ -70,8 +70,9 @@ interface ResourceDropdownProps {
 // ← [2026-07-31] IcoZoom 삭제 — ZOOM 사용 종료
 
 // pointer.svg: 포인터 대여 (그라데이션 포함) [2026-05-13 v9] 사용자 제공 새 SVG로 교체
-const IcoPointer = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+// ← [2026-07-31] export — AppDrawer(사이드바)가 동일 아이콘 공유 (고지 지시)
+export const IcoPointer = ({ size = 24 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M21.9873 6.71281C20.8089 4.67186 19.1141 2.97704 17.0732 1.79869C15.0322 0.620348 12.717 2.9302e-07 10.3604 0L10.3604 13.4256L21.9873 6.71281Z" fill="url(#paint0_lin_resource_pointer)"/>
     <path d="M11.0554 6.85101L15.7061 9.53614L13.3567 13.6056L7.65077 23.4885L3 20.8033L8.70589 10.9204L11.0554 6.85101Z" fill="white"/>
     <path d="M15.7061 9.53614L7.65077 23.4885L3 20.8033L11.0554 6.85101L15.7061 9.53614ZM9.82179 10.9876L12.7404 12.6727L14.34 9.9021L11.4214 8.21704L9.82179 10.9876ZM4.36623 20.437L7.28483 22.122L12.2404 13.5387L9.32179 11.8537L4.36623 20.437Z" fill="black"/>
@@ -85,8 +86,8 @@ const IcoPointer = () => (
 )
 
 // book_4.svg: 도서 대여
-const IcoBook = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+export const IcoBook = ({ size = 24 }: { size?: number }) => (  // ← [2026-07-31] export + size prop
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <mask id="mask0_book_resource" style={{ maskType: 'alpha' }} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
       <rect width="24" height="24" fill="#D9D9D9"/>
     </mask>

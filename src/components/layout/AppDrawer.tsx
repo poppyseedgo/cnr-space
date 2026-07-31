@@ -18,9 +18,12 @@
  */
 
 import { useEffect, useState } from 'react'
-import { X, DoorOpen, LayoutGrid, Calendar, BookOpen, UserCircle, Settings,
-  MessageCircleQuestion, FileText, Bot, MousePointer, Armchair } from 'lucide-react'
+import { X, LayoutGrid, Calendar, UserCircle, Settings,
+  MessageCircleQuestion, FileText, Bot, Armchair } from 'lucide-react'
 import { ModalPortal } from '../common/ModalPortal'
+// ← [2026-07-31] 자원 예약 드롭다운과 동일 아이콘 공유 (고지 지시 — 포인터/도서)
+import { IcoPointer, IcoBook } from './ResourceDropdown'
+import { BrandLogo } from './BrandLogo' // ← [2026-07-31] 헤더 워드마크 동일 적용
 
 interface AppDrawerProps {
   open:      boolean
@@ -36,7 +39,7 @@ export const UPCOMING_SERVICES = [
   { label: 'Q&A',                icon: MessageCircleQuestion },
   { label: '핫픽스 및 릴리즈 노트', icon: FileText },
   { label: 'C&R 챗봇',           icon: Bot },
-  { label: '포인터 예약',         icon: MousePointer },
+  { label: '포인터 예약',         icon: IcoPointer },   // ← [2026-07-31] 자원 드롭다운 동일 SVG
   { label: '자리 예약',           icon: Armchair },
 ] as const
 
@@ -102,7 +105,9 @@ export function AppDrawer({ open, view, isAdmin, isMobile, onSetView, onClose }:
           {/* 헤더: 워드마크 + 닫기 */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '16px 16px 12px 20px', borderBottom: '1px solid #F8FAFC' }}>
-            <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: '2px', color: '#111' }}>SPACE</span>
+            <span style={{ color: '#111', display: 'flex' }}>
+              <BrandLogo variant="desktop" /> {/* ← [2026-07-31] 헤더 로고 그대로 (currentColor=#111) */}
+            </span>
             <button className="btn" onClick={onClose} aria-label="메뉴 닫기"
               style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 6, color: '#94A3B8', display: 'flex' }}>
               <X size={18} strokeWidth={2} />
@@ -122,7 +127,7 @@ export function AppDrawer({ open, view, isAdmin, isMobile, onSetView, onClose }:
             {/* ── 서비스 ── */}
             <div style={{ ...sectionLabel, marginTop: 14 }}>서비스</div>
             <button className="btn" style={itemStyle(view === 'library')} onClick={() => go('library')}>
-              <BookOpen size={17} strokeWidth={1.8} /> 도서관
+              <IcoBook size={18} /> 도서관 {/* ← [2026-07-31] 자원 드롭다운 동일 SVG */}
             </button>
             <button className="btn" style={itemStyle(view === 'mypage')} onClick={() => go('mypage')}>
               <UserCircle size={17} strokeWidth={1.8} /> 마이페이지
@@ -141,7 +146,7 @@ export function AppDrawer({ open, view, isAdmin, isMobile, onSetView, onClose }:
             </div>
             {UPCOMING_SERVICES.map(({ label, icon: Icon }) => (
               <div key={label} style={itemStyle(false, true)} aria-disabled="true">
-                <Icon size={17} strokeWidth={1.8} /> {label}
+                <Icon size={17} /> {label}   {/* ← [2026-07-31] strokeWidth 제거 — 커스텀 SVG 혼용 (lucide 는 기본값 사용) */}
                 <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 600, color: '#94A3B8',
                   border: '1px solid #E2E8F0', borderRadius: 999, padding: '1px 7px' }}>
                   준비중
