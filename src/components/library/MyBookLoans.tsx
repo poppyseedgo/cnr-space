@@ -22,6 +22,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { fetchMyBookLoans, extendBookCheckoutWithNotify, extendErrorMessage,
   cancelBookCheckout, checkoutErrorMessage,
   fetchMyPenaltyState } from '../../lib/api'  // ← [2026-07-21] 예약 취소 / 연체 제재
+import { ConfirmDialog } from '../common/ConfirmDialog' // ← [2026-07-30] 예약 취소 확인 (CTA 전수검사 P2)
 import {
   loanDisplayStatus, loanStatusStyle, canExtend, extendBlockedReason,
   ddayLabel, fmtLoanDate, previewExtendedDue, EXTEND_DAYS, daysUntilDue,
@@ -44,6 +45,9 @@ export function MyBookLoans({ authUserId, showToast, isMobile = false }: Props) 
   const [errorMsg,  setErrorMsg]  = useState<string | null>(null)
   const [extendingId, setExtendingId] = useState<string | null>(null)   // 연장 진행중 카드
   const [confirmTarget, setConfirmTarget] = useState<MyBookLoan | null>(null)
+  // ← [2026-07-30 CTA 전수검사 P2] 예약 취소 확인 — 취소 즉시 그 기간을 타인이 선점할 수
+  //   있는 불가역 액션인데 원클릭이었다 (같은 카드의 '연장'은 확인 모달이 있어 불일치)
+  const [cancelTarget, setCancelTarget] = useState<MyBookLoan | null>(null)
   // ← [2026-07-21] 대여 상세. 지금까지 카드에 onClick 이 아예 없어
   //   "클릭이 안 된다" 는 인상을 줬다 (열 화면이 없었기 때문).
   const [detailLoan, setDetailLoan] = useState<MyBookLoan | null>(null)
@@ -241,7 +245,7 @@ export function MyBookLoans({ authUserId, showToast, isMobile = false }: Props) 
                 isMobile={isMobile}
                 busy={extendingId === loan.id}
                 canCancel={canCancelReservation(loan)}
-                onCancel={() => doCancelReservation(loan)}
+                onCancel={() => setCancelTarget(loan)}  /* ← [2026-07-30] 확인 선행 */
               />
             ))}
           </div>
@@ -295,6 +299,29 @@ export function MyBookLoans({ authUserId, showToast, isMobile = false }: Props) 
       </section>
 
       {/* ── 연장 확인 모달 (F3) ────────────────────────────────────────── */}
+      {/* ← [2026-07-30 CTA 전수검사 P2] 예약 취소 확인 */}
+      {cancelTarget && (
+        <ConfirmDialog
+          title="예약 취소"
+          variant="danger"
+          confirmLabel="예약 취소"
+          loading={extendingId === cancelTarget.id}
+          message={
+            <>
+              『{cancelTarget.book?.title ?? '이 도서'}』 예약을 취소할까요?
+              <div style={{ marginTop: 8, color: '#94A3B8' }}>
+                취소한 기간은 다른 직원이 예약할 수 있으며, 되돌리려면 다시 예약해야 합니다.
+              </div>
+            </>
+          }
+          onConfirm={async () => {
+            await doCancelReservation(cancelTarget)
+            setCancelTarget(null)
+          }}
+          onClose={() => setCancelTarget(null)}
+        />
+      )}
+
       {confirmTarget && (
         <ExtendConfirmModal
           loan={confirmTarget}

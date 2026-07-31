@@ -68,6 +68,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint'
 import { NewCollectionSlider } from '../components/library/NewCollectionSlider'
 // ← [2026-07-21] 도서 상세 모달 — 그리드 카드/슬라이더 카드 공용 진입점
 import { BookDetailModal } from '../components/library/BookDetailModal'
+import { ConfirmDialog } from '../components/common/ConfirmDialog' // ← [2026-07-30] 반납 확인 (CTA 전수검사 P1)
 // ← [2026-07-21] 승인 폐지로 '대여 신청' → '대여하기'. 파일명도 의미에 맞게 변경.
 import { BookBorrowModal }  from '../components/library/BookBorrowModal'
 // ← [2026-07-23] 도서 등록/편집 폼 계열 — 어드민 '도서 관리' 탭과 공용.
@@ -223,6 +224,10 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast, onGoMyLoans
   const [importModal,    setImportModal]    = useState(false)
   const [actionLoading,  setActionLoading]  = useState(false)
   const [deleteConfirm,  setDeleteConfirm]  = useState<Book | null>(null)
+  // ← [2026-07-30 CTA 전수검사 P1] 반납 확인 — 반납은 불가역이고 연체 건이면 제재
+  //   확정+알림까지 연쇄되는데 카드·상세에서 원클릭이었다 (어드민 패널의 returnTarget
+  //   확인 모달과 불일치). 실행은 기존 handleReturn 그대로, 앞에 확인만 세운다.
+  const [returnConfirm, setReturnConfirm] = useState<{ book: Book; checkout: BookCheckout } | null>(null)
   //  ← [2026-07-21] 도서 상세 모달. 그리드 카드 클릭과 New Collection 카드 클릭이
   //     같은 상태를 연다(모달이 두 벌로 갈리지 않도록).
   const [detailModal,    setDetailModal]    = useState<Book | null>(null)
@@ -919,7 +924,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast, onGoMyLoans
                     penaltyReason={penalty.reason}
                     myLoan={buildMyLoan(checkout)}
                     onCheckout={() => isAdmin ? setCheckoutModal(book) : setBorrowModal(book)}
-                    onReturn={() => { if (checkout) handleReturn(book, checkout) }}
+                    onReturn={() => { if (checkout) setReturnConfirm({ book, checkout }) }}  /* ← [2026-07-30] 확인 선행 */
                     onEdit={() => setEditModal({ book })}
                     onDelete={() => setDeleteConfirm(book)}
                     onOpenDetail={() => setDetailModal(book)}
@@ -936,6 +941,31 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast, onGoMyLoans
       {/* ← [2026-07-21] 도서 상세 (조회 전용) — 액션은 전부 기존 핸들러로 위임.
             액션을 고르면 상세를 닫고 해당 모달로 넘긴다. 상세가 뒤에 남아 있으면
             모달이 2겹으로 쌓여 ESC/오버레이 클릭 대상이 모호해진다. */}
+      {/* ← [2026-07-30 CTA 전수검사 P1] 반납 확인 다이얼로그 — 연체 건은 제재 확정 경고 병기 */}
+      {returnConfirm && (
+        <ConfirmDialog
+          title="반납 처리"
+          variant={isOverdue(returnConfirm.checkout.due_at) ? 'danger' : 'neutral'}
+          confirmLabel="반납 처리"
+          loading={actionLoading}
+          message={
+            <>
+              『{returnConfirm.book.title}』을(를) 반납 처리할까요?
+              {isOverdue(returnConfirm.checkout.due_at) && (
+                <div style={{ marginTop: 8, color: '#B91C1C', fontWeight: 600 }}>
+                  연체 상태입니다 — 반납 시 제재 등급이 확정되고 대여자에게 알림이 발송됩니다.
+                </div>
+              )}
+            </>
+          }
+          onConfirm={async () => {
+            await handleReturn(returnConfirm.book, returnConfirm.checkout)
+            setReturnConfirm(null)
+          }}
+          onClose={() => setReturnConfirm(null)}
+        />
+      )}
+
       {detailModal && (() => {
         const co  = checkoutMap[detailModal.id] ?? null
         const bwr = co ? users.find(u => u.user_id === co.user_id) : undefined
@@ -970,7 +1000,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast, onGoMyLoans
             onReturn={() => {
               const b = detailModal
               setDetailModal(null)
-              if (co) handleReturn(b, co)
+              if (co) setReturnConfirm({ book: b, checkout: co })  /* ← [2026-07-30] 확인 선행 */
             }}
             onEdit={() => {
               const b = detailModal

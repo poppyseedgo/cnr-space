@@ -3720,6 +3720,9 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
 
   // ── Azure AD 동기화
   const handleSync = async () => {
+    // ← [2026-07-30 CTA 전수검사 P3] 실행 확인 — 신규 계정 생성·프로필 갱신·퇴사 감지가
+    //   원클릭으로 돌던 것을 막는다. 관리자 화면 저빈도 액션이라 native confirm(L1)으로 충분.
+    if (!window.confirm('Azure AD 동기화를 실행할까요?\n신규 계정 생성 · 프로필 갱신 · 퇴사 감지가 즉시 반영됩니다.')) return
     setSyncing(true); setSyncResult(null)
     try {
       const result = await syncAllUsers()
