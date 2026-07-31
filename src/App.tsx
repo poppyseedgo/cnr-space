@@ -1753,14 +1753,18 @@ function AppContent() {
             {/* ① 브랜드 (left) — 클릭 시 홈
                 [2026-05-07] 텍스트 → SVG 로고 교체 (desktop: 115×24, mobile: 67×24)
                 fill="currentColor" + dark 조건부 색상으로 다크모드 대응 */}
-            {/* ← [2026-07-30] 전역 메뉴 햄버거 — 데스크탑·모바일 공통 (드로어 트리거) */}
-            <button className="btn" onClick={() => setDrawerOpen(true)} aria-label="전체 메뉴 열기"
-              style={{ background:'transparent', border:'none', cursor:'pointer', padding:6, marginRight:6,
-                       display:'flex', alignItems:'center', color: dark ? '#FFFFFF' : '#111111' }}>
-              <Menu size={20} strokeWidth={1.8} />
-            </button>
-
-            <div className="flex items-center min-w-0 cursor-pointer" onClick={()=>setView("home")}>
+            {/* ① 좌측 그룹 — Figma 2776:8528: [햄버거 24 + gap 16 + 워드마크].
+                ← [2026-07-31] 헤더 랩 수정 — 그리드가 1fr auto 1fr 3컬럼인데 햄버거를
+                  4번째 직계 자식으로 넣어 우측 셀이 둘째 줄로 밀렸다. Figma 대로
+                  햄버거를 브랜드 셀 내부 첫 요소로 이동. 클릭은 stopPropagation —
+                  브랜드 셀 전체가 홈 이동 onClick 이라 드로어 열기와 겹치면 안 된다 */}
+            <div className="flex items-center min-w-0 cursor-pointer" style={{ gap: 16 }} onClick={()=>setView("home")}>
+              <button className="btn" aria-label="전체 메뉴 열기"
+                onClick={e => { e.stopPropagation(); setDrawerOpen(true) }}
+                style={{ background:'transparent', border:'none', cursor:'pointer', padding:2,
+                         display:'flex', alignItems:'center', color: dark ? '#FFFFFF' : '#111111' }}>
+                <Menu size={20} strokeWidth={1.8} />
+              </button>
               <div className="min-w-0 flex items-center">
                 {isMobile ? (
                   /* mobile 로고 — SPACE 58×21 (Figma 572:467 모바일 변형) [2026-05-13 v7] 사용자 제공 SVG로 교체 */
