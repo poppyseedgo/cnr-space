@@ -248,9 +248,8 @@ import { fetchBookLoanById } from './lib/api'
 import { loadActiveAnnouncement, subscribeAnnouncementSync } from './lib/api'  // ← [2026-07-27 공지 리얼타임] Broadcast 재조회 구독
 import type { AdminBookLoan } from './types'
 import { NotificationBell } from './components/layout/NotificationBell'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 3)
-// ← [2026-07-30] ResourceDropdown 제거 — AppDrawer(전역 사이드 드로어)로 흡수.
-//   같은 목적지 메뉴 2벌 금지 + ZOOM 항목 전면 삭제(고지 확정) + 모바일 도서관 진입 부재 해결.
 // ← [2026-07-31] lucide Menu import 제거 — 햄버거를 고지 제공 인라인 SVG 로 교체
+import { ResourceDropdown } from './components/layout/ResourceDropdown'  // ← [2026-07-31] 복구 (고지 확정 — ZOOM 만 제거한 v16). 드롭다운=데스크탑 퀵 진입, 드로어=전 해상도 전체 메뉴
 import { AppDrawer } from './components/layout/AppDrawer'
 import { AppFooter } from './components/layout/AppFooter'
 import { HeaderNav } from './components/layout/HeaderNav'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 4)
@@ -1808,7 +1807,8 @@ function AppContent() {
                   · 트리거 클릭 시 메뉴 펼침/닫힘 작동 (외부 클릭 close 포함)
                   · 메뉴 항목(ZOOM 예약/포인터 대여/도서 대여) onClick 미연결 — 추후 구현
                   · 데스크탑에서만 노출 (모바일은 헤더 공간 확보 위해 숨김) */}
-              {/* ← [2026-07-30] ResourceDropdown 제거 — AppDrawer 로 흡수 (ZOOM 삭제 포함) */}
+              {/* ← [2026-07-31] 자원 예약 퀵 드롭다운 복구 (데스크탑 전용, ZOOM 제거 v16) — Figma 2772:8350 우측 배치와 일치 */}
+              {!isMobile && <ResourceDropdown dark={dark} onSetView={setView} />}
 
               {/* 알림 벨 */}
               {/* ← [2026-05-04] 알림 벨 + 패널 → NotificationBell 컴포넌트로 분리 (Phase 1+2 Step 3)

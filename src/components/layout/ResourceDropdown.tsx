@@ -16,7 +16,7 @@
  *        좌측 아이콘 24px / 우측 화살표 20px 시각 무게 차이 반영
  *      · hover/active 시 background #F5F9FF (Figma bg-[#f5f9ff] 1:1)
  *        + 마운스/터치 모두 대응 (mouseenter/leave + touchstart/end + click 후 일정시간 유지)
- *      · 좌측 아이콘 자동 교차 애니메이션: ZOOM → 포인터 → 도서 → ZOOM ...
+ *      · 좌측 아이콘 자동 교차 애니메이션: 포인터 → 도서 → ... (← [2026-07-31 v16] ZOOM 제거)
  *        - 4초 주기, 스케일+페이드 (0.5s cubic-bezier)
  *        - 드롭다운 열림 중에는 일시정지 (현재 표시 아이콘 고정)
  *        - position:absolute 3개 레이어, active 클래스 교차
@@ -36,7 +36,7 @@
  *      · 비활성 시각화만 — 클릭 동작은 그대로 (트리거 열림/닫힘은 작동)
  *  - [2026-05-13 v7] 신규 생성 (Figma 572:462)
  *      · 헤더 우측 영역에 "자원 예약" 드롭다운 메뉴 추가
- *      · 메뉴 3종: ZOOM 예약 / 포인터 대여 / 도서 대여
+ *      · 메뉴 2종: 포인터 대여 / 도서 대여 (← [2026-07-31 v16] ZOOM 예약 삭제 — 사내 사용 종료)
  *      · ⚠️ 메뉴 항목 클릭 기능은 추후 구현 — 현재는 시각적 placeholder만
  *        (외부 클릭으로 드롭다운 close는 작동, 항목 클릭은 onClick 미연결)
  *      · NotificationBell / ProfileDropdown 패턴 따라 자기완결적 컴포넌트 (자체 state/ref/외부클릭 effect)
@@ -53,7 +53,7 @@
  *  · 각 메뉴 항목 (Figma 572:509/515/539):
  *      padding 10px 12px / 하단 border #F9FCFF 1px / overflow-clip
  *      아이콘 24px + gap 6px + 텍스트 14px (#111, leading 1.5, tracking 0.14px)
- *      메뉴 3종 순서: ZOOM 예약 → 포인터 대여 → 도서 대여
+ *      메뉴 순서: 포인터 대여 → 도서 대여 (v16)
  *
  * Props:
  *  - dark    : 다크 모드 (현재 라이트 모드 기준 디자인)
@@ -67,15 +67,7 @@ interface ResourceDropdownProps {
 }
 
 // ── 아이콘 SVG (사용자 제공 1:1) ───────────────────────────────────────────────
-// zoom.svg: ZOOM 예약 + 자원 예약 트리거 (Figma Frame48096294 동일 노드)
-const IcoZoom = ({ size = 24 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <mask id="path-1-inside-1_zoom" fill="white">
-      <path d="M15.0898 6.05469C15.366 6.05469 15.5898 6.27855 15.5898 6.55469V9.5498L19.2168 7.05762C19.5486 6.82959 20 7.06723 20 7.46973V16.5264C19.9998 16.9287 19.5485 17.1663 19.2168 16.9385L15.5898 14.4453V17.9404H4.2041C3.92796 17.9404 3.7041 17.7166 3.7041 17.4404V6.55469C3.7041 6.27855 3.92796 6.05469 4.2041 6.05469H15.0898Z"/>
-    </mask>
-    <path d="M15.5898 9.5498H14.5898V11.4503L16.1562 10.374L15.5898 9.5498ZM19.2168 7.05762L19.7831 7.8818L19.7831 7.88178L19.2168 7.05762ZM20 7.46973H21V7.46973L20 7.46973ZM20 16.5264L21 16.5269V16.5264H20ZM19.2168 16.9385L18.6503 17.7626L18.6507 17.7628L19.2168 16.9385ZM15.5898 14.4453L16.1563 13.6212L14.5898 12.5444V14.4453H15.5898ZM15.5898 17.9404V18.9404H16.5898V17.9404H15.5898ZM4.2041 6.05469V5.05469H4.2041L4.2041 6.05469ZM15.0898 6.05469V7.05469C14.8137 7.05469 14.5898 6.83083 14.5898 6.55469H15.5898H16.5898C16.5898 5.72626 15.9183 5.05469 15.0898 5.05469V6.05469ZM15.5898 6.55469H14.5898V9.5498H15.5898H16.5898V6.55469H15.5898ZM15.5898 9.5498L16.1562 10.374L19.7831 7.8818L19.2168 7.05762L18.6505 6.23343L15.0235 8.72562L15.5898 9.5498ZM19.2168 7.05762L19.7831 7.88178C19.4512 8.10987 19 7.87205 19 7.46973L20 7.46973L21 7.46973C21 6.2624 19.646 5.54932 18.6504 6.23345L19.2168 7.05762ZM20 7.46973H19V16.5264H20H21V7.46973H20ZM20 16.5264L19 16.5258C19.0002 16.1242 19.4506 15.8859 19.7829 16.1142L19.2168 16.9385L18.6507 17.7628C19.6464 18.4467 20.9994 17.7331 21 16.5269L20 16.5264ZM19.2168 16.9385L19.7833 16.1144L16.1563 13.6212L15.5898 14.4453L15.0234 15.2694L18.6503 17.7626L19.2168 16.9385ZM15.5898 14.4453H14.5898V17.9404H15.5898H16.5898V14.4453H15.5898ZM15.5898 17.9404V16.9404H4.2041V17.9404V18.9404H15.5898V17.9404ZM4.2041 17.9404V16.9404C4.48024 16.9404 4.7041 17.1643 4.7041 17.4404H3.7041H2.7041C2.7041 18.2689 3.37567 18.9404 4.2041 18.9404V17.9404ZM3.7041 17.4404H4.7041V6.55469H3.7041H2.7041V17.4404H3.7041ZM3.7041 6.55469H4.7041C4.7041 6.83083 4.48024 7.05469 4.2041 7.05469L4.2041 6.05469L4.2041 5.05469C3.37567 5.05469 2.7041 5.72626 2.7041 6.55469H3.7041ZM4.2041 6.05469V7.05469H15.0898V6.05469V5.05469H4.2041V6.05469Z" fill="#1C1B1F" mask="url(#path-1-inside-1_zoom)"/>
-  </svg>
-)
+// ← [2026-07-31] IcoZoom 삭제 — ZOOM 사용 종료
 
 // pointer.svg: 포인터 대여 (그라데이션 포함) [2026-05-13 v9] 사용자 제공 새 SVG로 교체
 const IcoPointer = () => (
@@ -130,7 +122,7 @@ export function ResourceDropdown({ dark, onSetView }: ResourceDropdownProps) {  
   //   · setInterval 1개만 사용 (cleanup 자동)
   useEffect(() => {
     const id = window.setInterval(() => {
-      setIconIdx(i => (i + 1) % 3)
+      setIconIdx(i => (i + 1) % 2)   // ← [2026-07-31] 아이콘 2종으로 축소 (ZOOM 제거)
     }, 3000)
     return () => window.clearInterval(id)
   }, [])                                                                      /* ← [v14] [open] → [] (마운트 시 한 번만 설정, open 무관하게 항상 작동) */
@@ -138,7 +130,7 @@ export function ResourceDropdown({ dark, onSetView }: ResourceDropdownProps) {  
   // 메뉴 항목 정의 — view: 연결된 뷰 키 (null이면 미구현)
   // ← [2026-07-16] book → 'library' view 연결 완료; zoom/pointer는 추후 구현
   const MENU_ITEMS: { key: string; icon: JSX.Element; label: string; view: string | null }[] = [
-    { key: 'zoom',    icon: <IcoZoom />,    label: 'ZOOM 예약',  view: null      },
+    // ← [2026-07-31] ZOOM 예약 제거 — 사내 ZOOM 사용 종료 (고지 확정, 드롭다운은 유지)
     { key: 'pointer', icon: <IcoPointer />, label: '포인터 대여', view: null      },
     { key: 'book',    icon: <IcoBook />,    label: '도서 대여',  view: 'library' },
   ]
@@ -176,7 +168,7 @@ export function ResourceDropdown({ dark, onSetView }: ResourceDropdownProps) {  
               · active 1개만 opacity 1 + scale 1, 나머지는 opacity 0 + scale 0.4
               · transition 0.5s cubic-bezier로 스케일+페이드 효과 */}
           <div style={{ position: 'relative', width: 24, height: 24, flexShrink: 0 }}>
-            {[<IcoZoom key="z" />, <IcoPointer key="p" />, <IcoBook key="b" />].map((ico, i) => (
+            {[<IcoPointer key="p" />, <IcoBook key="b" />].map((ico, i) => (   /* ← [2026-07-31] ZOOM 아이콘 제거 */
               <div
                 key={i}
                 style={{
