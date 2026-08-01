@@ -53,8 +53,9 @@ export function AppFooter({ isMobile, onSetView }: AppFooterProps) {
         {/* SPACE 서비스 */}
         <div>
           <div style={colLabel}>SPACE</div>
-          <button className="btn" style={linkStyle} onClick={() => onSetView('home')}>회의실 예약 — 현황</button>
-          <button className="btn" style={linkStyle} onClick={() => onSetView('calendar')}>회의실 예약 — 캘린더</button>
+          {/* ← [2026-07-31] 헤더 필 네비와 동일 명칭 (실시간 현황 / 캘린더 뷰) */}
+          <button className="btn" style={linkStyle} onClick={() => onSetView('home')}>실시간 현황</button>
+          <button className="btn" style={linkStyle} onClick={() => onSetView('calendar')}>캘린더 뷰</button>
           <button className="btn" style={linkStyle} onClick={() => onSetView('library')}>도서관</button>
           <button className="btn" style={linkStyle} onClick={() => onSetView('mypage')}>마이페이지</button>
           {/* 준비중 — 드로어와 동일 목록(SSOT: AppDrawer.UPCOMING_SERVICES), 비링크 */}

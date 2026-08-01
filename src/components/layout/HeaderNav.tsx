@@ -46,8 +46,9 @@ interface HeaderNavProps {
 
 // ── 아이콘 (사용자 제공 SVG 1:1 + currentColor 처리로 활성/비활성 색상 통일) ──
 // schedule.svg: mask 구조 그대로 + fill을 currentColor로 변경하여 button color 상속
-const IcoSchedule = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+// ← [2026-07-31] export + size prop — AppDrawer/AppFooter 가 동일 아이콘·명칭 공유 (고지 지시)
+export const IcoSchedule = ({ size = 24 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <mask id="mask0_hdr_schedule" style={{ maskType: 'alpha' }} maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
       <rect width="24" height="24" fill="#D9D9D9"/>
     </mask>
@@ -58,8 +59,8 @@ const IcoSchedule = () => (
 )
 
 // calendar.svg: stroke 라인 스타일 → stroke="currentColor"로 button color 상속
-const IcoCalendar = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+export const IcoCalendar = ({ size = 24 }: { size?: number }) => (  // ← [2026-07-31] export + size prop
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <path d="M15.5762 19.5H2L3.60596 12.5L4.40894 9M4.40894 9L5.21191 5.5H18.7881L22 19.5H15.5762M15.5762 19.5L17.1821 12.5L17.9851 9M18.7881 5.5L17.9851 9M17.9851 9H4.40894" stroke="currentColor"/>
   </svg>
 )

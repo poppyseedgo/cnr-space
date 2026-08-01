@@ -18,8 +18,10 @@
  */
 
 import { useEffect, useState } from 'react'
-import { X, LayoutGrid, Calendar, UserCircle, Settings,
+import { X, UserCircle, Settings,
   MessageCircleQuestion, FileText, Bot, Armchair } from 'lucide-react'
+// ← [2026-07-31] 헤더 필 네비와 동일 아이콘·명칭 (IcoSchedule=실시간 현황 / IcoCalendar=캘린더 뷰)
+import { IcoSchedule, IcoCalendar } from './HeaderNav'
 import { ModalPortal } from '../common/ModalPortal'
 // ← [2026-07-31] 자원 예약 드롭다운과 동일 아이콘 공유 (고지 지시 — 포인터/도서)
 import { IcoPointer, IcoBook } from './ResourceDropdown'
@@ -118,10 +120,10 @@ export function AppDrawer({ open, view, isAdmin, isMobile, onSetView, onClose }:
             {/* ── 회의실 예약 (상위) — 현황·캘린더는 하위 뷰 (고지 확정 IA) ── */}
             <div style={sectionLabel}>회의실 예약</div>
             <button className="btn" style={itemStyle(view === 'home')} onClick={() => go('home')}>
-              <LayoutGrid size={17} strokeWidth={1.8} /> 현황
+              <IcoSchedule size={18} /> 실시간 현황 {/* ← [2026-07-31] 헤더 필과 동일 명칭·SVG */}
             </button>
             <button className="btn" style={itemStyle(view === 'calendar')} onClick={() => go('calendar')}>
-              <Calendar size={17} strokeWidth={1.8} /> 캘린더
+              <IcoCalendar size={18} /> 캘린더 뷰
             </button>
 
             {/* ── 서비스 ── */}
