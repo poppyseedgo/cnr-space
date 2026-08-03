@@ -27,6 +27,7 @@
  */
 
 import { useState, useRef } from 'react'
+import { DateField } from '../common/DateField' // ← [2026-08-03] 공통 날짜 필드
 import { supabase } from '../../lib/supabase'
 import { todayKST } from './libraryListShared'
 import type { Book, BookCategory, BookEditForm } from '../../types'
@@ -367,12 +368,12 @@ export function BookEditModal({
             {form.is_new && (
               <div style={{ marginTop: 10 }}>
                 <label style={LABEL_STYLE}>노출 종료일</label>
-                <input
-                  type="date"
+                {/* ← [2026-08-03] native date → 공통 DateField */}
+                <DateField
                   value={form.new_until}
                   min={todayKST()}
-                  onChange={e => up('new_until', e.target.value)}
-                  style={INPUT_STYLE}
+                  onChange={d => up('new_until', d)}
+                  style={{ ...INPUT_STYLE, display: 'inline-flex', width: '100%' }}
                 />
                 <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
                   {([['이번 달 말', endOfThisMonthKST()],

@@ -11,6 +11,7 @@
  *    · 다른 카드(②노쇼 ③최근예약 ④~⑧ 등)의 DetailDrawer 동작은 그대로 보존
  */
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react'
+import { DateField } from '../components/common/DateField' // ← [2026-08-03] 공통 날짜 필드
 import { createPortal } from 'react-dom'  // ← [2026-05-06 사이드 sticky 핫픽스] 사이드 네비를 body 직접 mount하기 위함
 import { AlertCircle, AlertTriangle, ArrowUpDown, Ban, BarChart2, Building2, Calendar, CheckCircle2, ChevronDown, Clock, Download, ImagePlus, Inbox, RefreshCw, RotateCw, Search, Trash2, Upload, Users, X } from 'lucide-react'
 import { Button } from '../components/common/Button'
@@ -193,11 +194,12 @@ function DateRangePicker({ from, to, onChangeFn, presetId, onPreset, compact = f
           <div style={{ borderTop:'1px solid #F1F5F9', padding:'10px' }}>
             <div style={{ fontSize:11, fontWeight:600, color:'#94A3B8', marginBottom:8 }}>직접 입력</div>
             <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
-              <input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)}
-                style={{ flex:1, padding:'7px 10px', borderRadius:8, border:'1px solid #E2E8F0', fontSize:12, outline:'none', background:'#F8FAFC' }}/>
+              {/* ← [2026-08-03] native date → 공통 DateField */}
+              <DateField value={customFrom} onChange={setCustomFrom}
+                style={{ flex:1, padding:'7px 10px', borderRadius:8, fontSize:12, background:'#F8FAFC' }}/>
               <span style={{ color:'#CBD5E1', fontSize:11 }}>~</span>
-              <input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)}
-                style={{ flex:1, padding:'7px 10px', borderRadius:8, border:'1px solid #E2E8F0', fontSize:12, outline:'none', background:'#F8FAFC' }}/>
+              <DateField value={customTo} onChange={setCustomTo}
+                style={{ flex:1, padding:'7px 10px', borderRadius:8, fontSize:12, background:'#F8FAFC' }}/>
             </div>
             <button className="btn" onClick={applyCustom}
               style={{ width:'100%', padding:'8px', borderRadius:8, background:'#111', color:'#fff', fontSize:12, fontWeight:600 }}>
@@ -3262,7 +3264,7 @@ export function AdminBookings({ bookings, setBookings, rooms, users = [], onForc
           {[{l:'시작일',v:dateFrom,s:setDateFrom},{l:'종료일',v:dateTo,s:setDateTo}].map(f=>(
             <div key={f.l} style={{flex:'1 1 130px',minWidth:120}}>
               <label style={{fontSize:11,fontWeight:600,color:'#94A3B8',display:'block',marginBottom:4}}>{f.l}</label>
-              <input type="date" value={f.v} onChange={e=>{f.s(e.target.value);setPage(1)}} style={{width:'100%',padding:'8px 10px',borderRadius:10,border:'1px solid #E2E8F0',fontSize:13,background:'#F8FAFC',outline:'none'}}/>
+              <DateField value={f.v} onChange={d=>{f.s(d);setPage(1)}} style={{width:'100%',padding:'8px 10px',borderRadius:10,fontSize:13,background:'#F8FAFC'}}/>{/* ← [2026-08-03] */}
             </div>
           ))}
           <div style={{flex:'1 1 130px',minWidth:120}}>
@@ -3836,21 +3838,14 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
               </span>
             </div>
             <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-              <input type="date" value={noshowFrom} max={noshowTo}
-                onChange={e => setNoshowFrom(e.target.value)}
-                style={{
-                  padding:'7px 10px', borderRadius:8, border:'1px solid #E2E8F0',
-                  fontSize:12, fontWeight:500, color:'#111', background:'#F8FAFC',
-                  outline:'none', height:32, minWidth:130,
-                }}/>
+              {/* ← [2026-08-03] native date → 공통 DateField */}
+              <DateField value={noshowFrom} max={noshowTo}
+                onChange={setNoshowFrom}
+                style={{ padding:'0 10px', borderRadius:8, fontSize:12, fontWeight:500, background:'#F8FAFC', height:32, minWidth:130 }}/>
               <span style={{ fontSize:12, color:'#94A3B8', fontWeight:500 }}>~</span>
-              <input type="date" value={noshowTo} min={noshowFrom} max={todayStr()}
-                onChange={e => setNoshowTo(e.target.value)}
-                style={{
-                  padding:'7px 10px', borderRadius:8, border:'1px solid #E2E8F0',
-                  fontSize:12, fontWeight:500, color:'#111', background:'#F8FAFC',
-                  outline:'none', height:32, minWidth:130,
-                }}/>
+              <DateField value={noshowTo} min={noshowFrom} max={todayStr()}
+                onChange={setNoshowTo}
+                style={{ padding:'0 10px', borderRadius:8, fontSize:12, fontWeight:500, background:'#F8FAFC', height:32, minWidth:130 }}/>
             </div>
 
             {/* ── 중앙: 퀵버튼 그룹 (시각 묶음) ───────────────────────── */}
@@ -4546,11 +4541,12 @@ export function AdminApprovals({ bookings, rooms, users, onApprove, onReject, sh
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12, flexWrap:'wrap', gap:8 }}>
           <div style={{ fontSize:14, fontWeight:600, color:'#111' }}>승인 관리</div>
           <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-            <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value) }}
-              style={{ height:32, border:'0.5px solid #E2E8F0', borderRadius:8, padding:'0 8px', fontSize:12, background:'#fff', color:'#111', width:108, outline:'none' }}/>
+            {/* ← [2026-08-03] native date → 공통 DateField */}
+            <DateField value={dateFrom} onChange={setDateFrom}
+              style={{ height:32, border:'0.5px solid #E2E8F0', borderRadius:8, padding:'0 8px', fontSize:12, background:'#fff', width:118 }}/>
             <span style={{ fontSize:12, color:'#CBD5E1' }}>~</span>
-            <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value) }}
-              style={{ height:32, border:'0.5px solid #E2E8F0', borderRadius:8, padding:'0 8px', fontSize:12, background:'#fff', color:'#111', width:108, outline:'none' }}/>
+            <DateField value={dateTo} onChange={setDateTo}
+              style={{ height:32, border:'0.5px solid #E2E8F0', borderRadius:8, padding:'0 8px', fontSize:12, background:'#fff', width:118 }}/>
             {[
               { label:'오늘',     fn:():[string,string]=>[todayStr(), todayStr()] },
               { label:'지난 7일', fn:():[string,string]=>[addDaysStr(todayStr(),-6), todayStr()] },

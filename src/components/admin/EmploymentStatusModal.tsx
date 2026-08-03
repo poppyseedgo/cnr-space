@@ -16,6 +16,7 @@
  */
 
 import { useEffect, useState } from 'react'
+import { DateField } from '../common/DateField' // ← [2026-08-03] 공통 날짜 필드
 import { ModalPortal } from '../common/ModalPortal'
 import { ModalCloseButton } from '../common/ModalCloseButton'
 import { UserAvatar } from '../common/UserAvatar'
@@ -150,9 +151,10 @@ export function EmploymentStatusModal({ user, showToast, onClose, onStatusChange
                     <label style={{ fontSize:11, fontWeight:600, color:'#94A3B8', display:'block', marginBottom:5 }}>
                       퇴사 예정일 (마지막 근무일) *
                     </label>
-                    <input type="date" value={departureOn}
+                    {/* ← [2026-08-03] native date → 공통 DateField (공휴일 표기·UI 통일) */}
+                    <DateField value={departureOn}
                       min={new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10)}  /* KST 오늘 — 서버 검증과 동일 기준 */
-                      onChange={e => setDepartureOn(e.target.value)} style={inputStyle}/>
+                      onChange={setDepartureOn} style={{ ...inputStyle, display: 'inline-flex' }}/>
                     <div style={{ fontSize:11, color:'#B45309', marginTop:6, lineHeight:1.5 }}>
                       예정일 당일까지 정상 사용 가능하며, <b>익일 00시</b>에 자동 퇴사 처리됩니다.
                       예정일 이후 시작 예약은 지금부터 생성이 차단되고, 기존 예약은 퇴사 시점에 일괄 취소됩니다.

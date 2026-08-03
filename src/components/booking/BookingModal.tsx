@@ -546,6 +546,7 @@
  *              · 달력 초기 월/연도도 보정된 날짜 기준으로 계산
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useHolidayMap } from '../../utils/holidays' // ← [2026-08-03] 달력 공휴일·이벤트 표기 (전역 규칙 통일)
 import { AlertCircle, AlertTriangle, Ban, Calendar, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, X } from 'lucide-react'
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
 import { canPickUser } from '../../utils/employment' // ← [2026-07-30] 피커 제외 판정 SSOT (퇴사+휴직)
@@ -969,6 +970,7 @@ function PurposeChips({
 // ──────────────────────────────────────────────────────────────────────────────
 
 export function BookingModal({prefill, date:initDate, editBooking=null, onClose, onSubmit, onUpdate, bookings, isAdmin=false, currentUser="홍길동", currentUserEmail="", rooms:roomsProp=[], users:usersProp=[]}) {
+  const holidayMap = useHolidayMap()   // ← [2026-08-03] 'YYYY-MM-DD' → { holiday?, company? }
   // ── 모든 hooks를 최상단에 선언 ──────────────────────────────────────────────
   const { isMobile, isTablet } = useBreakpoint();
   const { vh: vvHeight, off: vvOff } = useVisualViewport();
@@ -2004,14 +2006,22 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                         const ds=`${calYear}-${fmt2(calMonth+1)}-${fmt2(day)}`;
                         const disabled=ds<today||ds>maxDate, isSel=ds===bookingDate, isToday2=ds===today;
                         const dow=(calFirstDay+day-1)%7;
+                        const dayInfo=holidayMap.get(ds);  /* ← [2026-08-03] 공휴일·이벤트 */
                         return (
                           <div key={day} onClick={()=>!disabled&&selectDate(ds)}
+                            title={[dayInfo?.holiday,dayInfo?.company].filter(Boolean).join(' · ')||undefined}
                             style={{textAlign:"center",padding:"6px 2px",borderRadius:6,fontSize:13,
                               fontWeight:isSel||isToday2?700:400,
                               background:isSel?"#111111":isToday2?"#EFF6FF":"transparent",
-                              color:disabled?"#D1D5DB":isSel?"#fff":isToday2?"#3B82F6":dow===0?"#EF4444":dow===6?"#3B82F6":"#374151",
-                              cursor:disabled?"not-allowed":"pointer"}}>
+                              /* ← [2026-08-03] 공휴일 빨강 — 비활성/선택/오늘 다음 순위 (DatePickerPopup 규칙 동일) */
+                              color:disabled?"#D1D5DB":isSel?"#fff":isToday2?"#3B82F6":dayInfo?.holiday?"#EF4444":dow===0?"#EF4444":dow===6?"#3B82F6":"#374151",
+                              cursor:disabled?"not-allowed":"pointer",position:"relative"}}>
                             {day}
+                            {/* 회사 이벤트(패밀리데이) 도트 — DatePickerPopup 동일 규칙 */}
+                            {dayInfo?.company&&!disabled&&(
+                              <span style={{position:"absolute",bottom:1,left:"50%",transform:"translateX(-50%)",
+                                width:4,height:4,borderRadius:"50%",background:isSel?"#fff":"#8B5CF6"}}/>
+                            )}
                           </div>
                         );
                       })}
@@ -2389,14 +2399,22 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                         const ds=`${calYear}-${fmt2(calMonth+1)}-${fmt2(day)}`;
                         const disabled=ds<today||ds>maxDate, isSel=ds===bookingDate, isToday2=ds===today;
                         const dow=(calFirstDay+day-1)%7;
+                        const dayInfo=holidayMap.get(ds);  /* ← [2026-08-03] 공휴일·이벤트 */
                         return (
                           <div key={day} onClick={()=>!disabled&&selectDate(ds)}
+                            title={[dayInfo?.holiday,dayInfo?.company].filter(Boolean).join(' · ')||undefined}
                             style={{textAlign:"center",padding:"6px 2px",borderRadius:6,fontSize:13,
                               fontWeight:isSel||isToday2?700:400,
                               background:isSel?"#111111":isToday2?"#EFF6FF":"transparent",
-                              color:disabled?"#D1D5DB":isSel?"#fff":isToday2?"#3B82F6":dow===0?"#EF4444":dow===6?"#3B82F6":"#374151",
-                              cursor:disabled?"not-allowed":"pointer"}}>
+                              /* ← [2026-08-03] 공휴일 빨강 — 비활성/선택/오늘 다음 순위 (DatePickerPopup 규칙 동일) */
+                              color:disabled?"#D1D5DB":isSel?"#fff":isToday2?"#3B82F6":dayInfo?.holiday?"#EF4444":dow===0?"#EF4444":dow===6?"#3B82F6":"#374151",
+                              cursor:disabled?"not-allowed":"pointer",position:"relative"}}>
                             {day}
+                            {/* 회사 이벤트(패밀리데이) 도트 — DatePickerPopup 동일 규칙 */}
+                            {dayInfo?.company&&!disabled&&(
+                              <span style={{position:"absolute",bottom:1,left:"50%",transform:"translateX(-50%)",
+                                width:4,height:4,borderRadius:"50%",background:isSel?"#fff":"#8B5CF6"}}/>
+                            )}
                           </div>
                         );
                       })}

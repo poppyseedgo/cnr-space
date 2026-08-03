@@ -24,6 +24,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { DateField } from './DateField' // ← [2026-08-03] 공통 날짜 필드
 import {
   loadAllAnnouncements, saveAnnouncement, deleteAnnouncement,
   notifyAnnouncementSync,  // ← [2026-07-27 공지 리얼타임] 저장/삭제 성공 시 전 클라이언트 재조회 신호
@@ -234,12 +235,13 @@ export function AnnouncementPanel({ showToast, isMobile }: Props) {
         <div>
           <span style={LABEL}>게시 기간 <span style={{ color: '#DC2626' }}>*</span></span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <input type="date" value={form.from} max={form.to}
-              onChange={e => setForm(f => ({ ...f, from: e.target.value }))}
+            {/* ← [2026-08-03] native date → 공통 DateField (공휴일 표기·UI 통일) */}
+            <DateField value={form.from} max={form.to}
+              onChange={d => setForm(f => ({ ...f, from: d }))}
               style={{ ...INPUT, width: 160 }} />
             <span style={{ color: '#94A3B8' }}>~</span>
-            <input type="date" value={form.to} min={form.from}
-              onChange={e => setForm(f => ({ ...f, to: e.target.value }))}
+            <DateField value={form.to} min={form.from}
+              onChange={d => setForm(f => ({ ...f, to: d }))}
               style={{ ...INPUT, width: 160 }} />
             {[['오늘 하루', 0], ['1주일', 6], ['2주일', 13]].map(([label, d]) => (
               <button key={label as string} className="btn"

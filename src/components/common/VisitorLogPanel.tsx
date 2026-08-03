@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
+import { DateField } from './DateField' // ← [2026-08-03] 공통 날짜 필드
 import {
   visitorVerifyAccess, visitorListLogs, visitorReturnCard, visitorDeleteLog,
   visitorSignedUrls, visitorListCards, visitorAddCard, visitorDeleteCard, visitorSetMemo,
@@ -306,9 +307,10 @@ export function VisitorLogPanel({ showToast }: Props) {
           </select>
         </div>
         <div className="vlp-frow">
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+          {/* ← [2026-08-03] native date → 공통 DateField */}
+          <DateField value={dateFrom} onChange={setDateFrom} />
           <span className="vlp-tilde">~</span>
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          <DateField value={dateTo} onChange={setDateTo} />
         </div>
         <div className="vlp-presets">
           <button onClick={() => setPreset('', '')}>전체</button>

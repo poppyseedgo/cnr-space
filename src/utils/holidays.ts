@@ -32,7 +32,13 @@ export async function ensureHolidayMap(): Promise<Map<string, DayInfo>> {
           else info.holiday = r.name
           m.set(r.holiday_date, info)
         }
-        cache = m
+        // ← [2026-08-03 버그수정] 0행은 캐시하지 않는다.
+        //   RLS(authenticated)는 세션 복원 '전' 요청에 에러가 아니라 0행을 반환하므로,
+        //   앱 초기 마운트가 로그인 확립보다 빠르면 빈 Map 이 성공으로 영구 캐시되어
+        //   라벨이 세션 내내 사라진다 (배포 후 미표시 사고의 근본 원인).
+        //   시드 64행이 항상 존재하므로 실환경 0행 = 인증 전/비정상으로 간주해도 안전.
+        if (m.size > 0) cache = m
+        else inflight = null   // 다음 시도에서 재조회
         return m
       })
       .catch(() => {
@@ -55,8 +61,21 @@ export function useHolidayMap(): Map<string, DayInfo> {
   const [map, setMap] = useState<Map<string, DayInfo>>(() => cache ?? new Map())
   useEffect(() => {
     let alive = true
-    if (!cache) ensureHolidayMap().then(m => { if (alive) setMap(m) })
-    return () => { alive = false }
+    let timer: ReturnType<typeof setTimeout> | null = null
+    if (!cache) {
+      ensureHolidayMap().then(m => {
+        if (!alive) return
+        setMap(m)
+        // ← [2026-08-03 버그수정] 빈 결과(인증 전 타이밍)면 2초 후 1회 재시도 —
+        //   로그인 직후 첫 화면이 캘린더인 경우 마운트가 세션 확립보다 빠르다
+        if (m.size === 0) {
+          timer = setTimeout(() => {
+            ensureHolidayMap().then(m2 => { if (alive && m2.size > 0) setMap(m2) })
+          }, 2000)
+        }
+      })
+    }
+    return () => { alive = false; if (timer) clearTimeout(timer) }
   }, [])
   return map
 }

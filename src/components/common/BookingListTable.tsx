@@ -32,6 +32,7 @@
  */
 
 import { useState, useMemo } from 'react'
+import { DateField } from './DateField' // ← [2026-08-03] 공통 날짜 필드
 import { Inbox } from 'lucide-react'
 import {
   todayStr, tsDate, tsTime, fmtTime, fmtDateFullWithDay, objToStr,
@@ -209,12 +210,13 @@ export function BookingListTable({
       {/* ── Row 1: 날짜 범위 + 퀵버튼 (normal 모드만) ── */}
       {!controlled && !hideFilters && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-          <input type="date" value={listFrom}
-            onChange={e => { setListFrom(e.target.value); setActiveQuick(null); resetPage() }}
+          {/* ← [2026-08-03] native date → 공통 DateField */}
+          <DateField value={listFrom}
+            onChange={d => { setListFrom(d); setActiveQuick(null); resetPage() }}
             style={filterInputStyle}/>
           <span style={{ fontSize: 12, color: '#CBD5E1', flexShrink: 0 }}>~</span>
-          <input type="date" value={listTo}
-            onChange={e => { setListTo(e.target.value); setActiveQuick(null); resetPage() }}
+          <DateField value={listTo}
+            onChange={d => { setListTo(d); setActiveQuick(null); resetPage() }}
             style={filterInputStyle}/>
           {(['7', '15', 'month'] as const).map(t => (
             <button key={t} className="btn" onClick={() => applyQuick(t)}
