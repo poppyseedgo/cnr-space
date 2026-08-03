@@ -69,6 +69,7 @@
  *      · 동기화 완료 후: BookingModal 5곳 + CalendarShell 2곳 = 총 7곳 모두 +15 통일
  */
 import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react'  // ← [2026-05-07] sliding pill 훅
+import { useHolidayMap } from '../../utils/holidays' // ← [2026-08-03] 공휴일·회사 이벤트 표기 (모듈 캐시 — 뷰별 hook 호출 무비용)
 import { CalendarSlotCard } from '../calendar/CalendarSlotCard'  // ← [2026-04-23] Daily 뷰 슬롯 전용 카드 (구 SlotContent 대체)
 import { CalendarCompactCard } from '../calendar/CalendarCompactCard'  // ← [2026-04-24] Weekly/Monthly 공용 컴팩트 카드
 import { getSlotState, isShownInDailyView, isShownInCalendar } from '../calendar/slotHelpers'
@@ -214,6 +215,7 @@ export function CalendarShell({
   users = [],               // ← [2026-04-24 P5] 예약자 이름 live 조회용 (CalendarSlotCard로 전달)
   isAdmin = false,
 }) {
+  const holidayMap = useHolidayMap()   // ← [2026-08-03] 'YYYY-MM-DD' → { holiday?, company? }
   const { isMobile } = useBreakpoint()
   // ← [2026-04-23] 데이트피커 차단 셀용 커스텀 툴팁
   const { getHandlers: getDpTooltipHandlers, tooltipNode: dpTooltipNode } = useBlockedTooltip()
@@ -463,7 +465,10 @@ export function CalendarShell({
                 fontFamily: "'Pretendard', -apple-system, sans-serif",
                 userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'none' }}>
                 {calView === 'daily'
-                  ? (() => { const d = dateToObj(selectedDate); return `${d.getFullYear()}년 ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}일 ${DAY_NAMES[d.getDay()]}요일` })()
+                  ? (() => { const d = dateToObj(selectedDate)
+                      const di = holidayMap.get(selectedDate)
+                      const tag = [di?.holiday, di?.company].filter(Boolean).join(' · ')
+                      return `${d.getFullYear()}년 ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}일 ${DAY_NAMES[d.getDay()]}요일${tag ? ` · ${tag}` : ''}` })()  /* ← [2026-08-03] 공휴일·이벤트 병기 */
                   : navLabel()}
               </span>
             </button>
@@ -513,12 +518,16 @@ export function CalendarShell({
                         <div key={day}
                           onClick={() => { if (!blocked) { setSelectedDate(ds); setShowDatePicker(false) } }}
                           aria-label={blocked ? tooltipMsg : undefined}                 // ← [2026-04-23] 접근성: 스크린리더용
+                          title={[holidayMap.get(ds)?.holiday, holidayMap.get(ds)?.company].filter(Boolean).join(' · ') || undefined}  /* ← [2026-08-03] */
                           style={{
                             textAlign: 'center', padding: '5px 2px', borderRadius: 6,
                             fontSize: 12, fontWeight: isSel||isToday2 ? 700 : 400,
                             cursor: blocked ? 'default' : 'pointer',                    // ← [2026-04-23] not-allowed → default (OS 금지 아이콘 제거)
                             background: isSel ? '#111111' : isToday2 ? '#EFF6FF' : 'transparent',
-                            color: isSel ? '#fff' : isToday2 ? '#3B82F6' : dow===0 ? '#EF4444' : dow===6 ? '#3B82F6' : '#374151',
+                            // ← [2026-08-03] 공휴일 빨강 우선 (선택/오늘 다음 순위)
+                            color: isSel ? '#fff' : isToday2 ? '#3B82F6'
+                              : holidayMap.get(ds)?.holiday ? '#EF4444'
+                              : dow===0 ? '#EF4444' : dow===6 ? '#3B82F6' : '#374151',
                             opacity: !isSel && blocked ? 0.35 : 1,
                           }}
                           onMouseEnter={e => { dpH.onMouseEnter(e); if (!isSel && !blocked) (e.currentTarget as HTMLElement).style.background = '#F1F5F9' }}  // ← [2026-04-23] 훅 핸들러 합성
@@ -715,6 +724,7 @@ export function CalendarShell({
 
 // ─── Monthly View ─────────────────────────────────────────────────────────────
 export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick, rooms: mvRooms = [], currentUser = '', isAdmin = false }) {
+  const holidayMap = useHolidayMap()   // ← [2026-08-03] 셀 공휴일·이벤트 라벨
   const d = dateToObj(selectedDate), year = d.getFullYear(), month = d.getMonth()
   const firstDay = new Date(year, month, 1).getDay()
   const dim = new Date(year, month + 1, 0).getDate()
@@ -808,8 +818,21 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
                   width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   borderRadius: '50%', fontSize: 12, fontWeight: isToday ? 600 : 500,
                   background: isToday ? '#111111' : 'transparent',
-                  color: isToday ? '#fff' : dow===0 ? '#EF4444' : dow===6 ? '#3B82F6' : '#374151',
+                  // ← [2026-08-03] 공휴일 빨강 우선 (오늘 원형 배지는 유지)
+                  color: isToday ? '#fff' : holidayMap.get(ds)?.holiday ? '#EF4444'
+                    : dow===0 ? '#EF4444' : dow===6 ? '#3B82F6' : '#374151',
                 }}>{day}</span>
+                {/* ← [2026-08-03] 셀 라벨 — 공휴일명 빨강 / 이벤트명 보라, 좁은 셀이라 ellipsis */}
+                {(holidayMap.get(ds)?.holiday || holidayMap.get(ds)?.company) && (
+                  <span style={{
+                    flex: 1, minWidth: 0, marginLeft: 4, fontSize: 9, fontWeight: 600,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    color: holidayMap.get(ds)?.holiday ? '#EF4444' : '#8B5CF6',
+                  }}
+                    title={[holidayMap.get(ds)?.holiday, holidayMap.get(ds)?.company].filter(Boolean).join(' · ')}>
+                    {[holidayMap.get(ds)?.holiday, holidayMap.get(ds)?.company].filter(Boolean).join(' · ')}
+                  </span>
+                )}
                 {dbs.length > 0 && <span style={{ fontSize: 9, color: '#94A3B8', fontWeight: 600 }}>{dbs.length}건</span>}
               </div>
               {/* ← [2026-04-24] 예약 리스트: flex-1 + overflow-hidden
@@ -1249,6 +1272,7 @@ export function DailyView({ bookings, selectedDate, onBlockClick, onEmptyClick, 
 
 // ─── Weekly View ──────────────────────────────────────────────────────────────
 export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick, rooms = [], currentUser = '', isAdmin = false }) {
+  const holidayMap = useHolidayMap()   // ← [2026-08-03] 요일 헤더 공휴일·이벤트 라벨
   const today     = todayStr()
   const now       = nowMinutes()
   const HOUR_H    = 140   // 1시간 행 높이 (Figma 스펙)
@@ -1321,12 +1345,26 @@ export function WeeklyView({ bookings, selectedDate, onBlockClick, onEmptyClick,
                     fontFamily: "'Pretendard', -apple-system, sans-serif" }}>
                     {['일','월','화','수','목','금','토'][dow]}
                   </div>
-                  {/* N월 N일: 동일 색상 체계 */}
-                  <div style={{ fontSize: 12, fontWeight: fw, color, marginTop: 3,
+                  {/* N월 N일: 동일 색상 체계 — ← [2026-08-03] 공휴일이면 빨강 우선 */}
+                  <div style={{ fontSize: 12, fontWeight: fw,
+                    color: holidayMap.get(ds)?.holiday ? '#EF4444' : color, marginTop: 3,
                     fontFamily: "'Pretendard', -apple-system, sans-serif" }}
                     ref={isToday2 ? todayColRef : undefined}>
                     {d.getMonth()+1}월 {d.getDate()}일
                   </div>
+                  {/* ← [2026-08-03] 공휴일명(빨강) · 회사 이벤트명(보라) 라벨 — 없으면 미렌더 */}
+                  {(holidayMap.get(ds)?.holiday || holidayMap.get(ds)?.company) && (
+                    <div style={{ fontSize: 10, marginTop: 2, lineHeight: 1.4,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {holidayMap.get(ds)?.holiday && (
+                        <span style={{ color: '#EF4444', fontWeight: 600 }}>{holidayMap.get(ds)!.holiday}</span>
+                      )}
+                      {holidayMap.get(ds)?.holiday && holidayMap.get(ds)?.company && <span style={{ color: '#CBD5E1' }}> · </span>}
+                      {holidayMap.get(ds)?.company && (
+                        <span style={{ color: '#8B5CF6', fontWeight: 600 }}>{holidayMap.get(ds)!.company}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}
