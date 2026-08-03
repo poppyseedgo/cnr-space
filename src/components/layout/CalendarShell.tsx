@@ -379,6 +379,13 @@ export function CalendarShell({
       <div className="rounded-2xl mb-1"                                              /* ← [2026-05-13 v3] 'mb-4' → 'mb-1' (margin-bottom 1rem → 0.25rem, 사용자 피드백) */
         style={{
           padding: '12px 0', position: 'relative', zIndex: 50,                  // ← [2026-05-13] '12px 18px' → '12px 0' (좌우 padding 삭제, Figma 586:647)
+          // ← [2026-08-03 HOTFIX] Today 겹침 근본 수정: Date Nav(absolute)·Today(그 안 absolute)가
+          //    둘 다 플로우 밖이라 h64 고정 툴바 아래 보드가 Today 위로 붙었음. 버튼 높이 전체
+          //    (26px + 갭 2px = 28px)를 marginBottom으로 플로우에 예약 — margin은 패딩박스 밖이라
+          //    top:50% 중심 불변(타이틀·좌우 그룹 위치 그대로), 아래 보드만 자연스럽게 밀린다.
+          //    padding/height로 예약하면 각각 타이틀 하강·좌우 그룹 재정렬 부작용 (검토 후 기각).
+          //    Today 미표시(오늘) 시 key 자체를 생략해 기존 mb-1(4px)로 복귀.
+          ...(!isMobile && selectedDate !== today ? { marginBottom: 28 } : {}),
           display: 'flex', flexDirection: isMobile ? 'column' : 'row',
           gap: 10,
           alignItems: 'center',
