@@ -437,9 +437,12 @@ export function CalendarShell({
                → 좌/우 영역 폭과 무관하게 wrapper 정중앙(=화면 정중앙=헤더 중앙) 고정
                → Today 버튼은 Date Nav 내부 absolute이므로 그대로 작동
              mobile: 기존처럼 inline (column 레이아웃) */}
+        {/* ← [2026-08-03] 공휴일·이벤트 라벨 병기로 타이틀 폭이 가변 → absolute Today(left 358.5)와
+             겹침 발생. 고지 확정: Today 를 타이틀 '아래 가운데'로 — 버튼만 박스 밖 하단(top:100%)에
+             매달아 타이틀 수직 리듬은 기존 그대로 보존. 고정폭 420 → minWidth 420 (긴 라벨 수용) */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: isMobile ? 'auto' : 420,
+          minWidth: isMobile ? 0 : 420, width: isMobile ? 'auto' : 'max-content',
           position: isMobile ? 'relative' : 'absolute',
           ...(isMobile ? {} : { left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }),
           flexShrink: 0,
@@ -553,18 +556,15 @@ export function CalendarShell({
             <IcoForward />
           </button>
 
-          {/* ── [2026-05-07] Today 버튼 — Date Nav 내부 absolute (Figma 487:976) ──
-               left=358.5 / top=6 / padding 4 10 / border 1px black / rounded 24 / 12 Medium black
-               desktop에서만 절대 위치로 띄워서 Date Display 위치 불변
-               mobile에서는 inline으로 표시 (마진만 부여)
-               [2026-05-07 v3] top 3→6, padding 6×10→4×10 (사용자 요청) */}
+          {/* ── Today 버튼 — ← [2026-08-03] absolute(left 358.5 고정좌표) → 박스 하단 중앙(top:100%).
+               라벨 병기로 타이틀 폭이 가변이 되어 고정 좌표가 겹침을 유발했음 (고지 확정: 아래 가운데) */}
           {selectedDate !== today && (
             <button className="btn"
               onClick={() => setSelectedDate(today)}
               style={{
                 ...(isMobile
                   ? { marginLeft: 10 }
-                  : { position: 'absolute', left: 358.5, top: 6 }
+                  : { position: 'absolute', top: 'calc(100% + 2px)', left: '50%', transform: 'translateX(-50%)' }
                 ),
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 padding: '4px 10px',

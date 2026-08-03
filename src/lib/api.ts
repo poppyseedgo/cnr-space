@@ -1547,6 +1547,51 @@ export async function adminCancelBookCheckout(
   return { ok: true, bookTitle: r?.book_title ?? undefined }
 }
 
+/** [어드민] 공휴일·회사 이벤트 관리 (20260738·20260739) — has_admin_role('room') */
+export interface AdminHoliday {
+  holiday_date: string
+  name: string
+  kind: 'holiday' | 'company'
+  source: string   // 'seed' | 'api' | 'manual'
+}
+const HOLIDAY_ERR: Record<string, string> = {
+  NOT_AUTHENTICATED: '로그인이 필요합니다',
+  NOT_ADMIN:         '회의실 관리 권한이 필요합니다',
+  NAME_REQUIRED:     '이름을 입력해주세요',
+  INVALID_KIND:      '구분 값이 올바르지 않습니다',
+  INVALID_YEAR:      '연도가 올바르지 않습니다',
+  HOLIDAY_NOT_FOUND: '항목을 찾을 수 없습니다. 목록을 새로고침해주세요',
+}
+function holidayErr(msg: string): string {
+  const hit = Object.keys(HOLIDAY_ERR).find(k => msg.includes(k))
+  return hit ? HOLIDAY_ERR[hit] : '처리에 실패했습니다. 잠시 후 다시 시도해주세요'
+}
+export async function loadHolidaysAdmin(): Promise<AdminHoliday[]> {
+  const { data, error } = await supabase
+    .from('holidays').select('holiday_date, name, kind, source').order('holiday_date')
+  if (error) throw error
+  return data ?? []
+}
+export async function adminUpsertHoliday(
+  date: string, name: string, kind: 'holiday' | 'company',
+): Promise<{ ok: boolean; message?: string }> {
+  const { error } = await supabase.rpc('admin_upsert_holiday', { p_date: date, p_name: name, p_kind: kind })
+  return error ? { ok: false, message: holidayErr(error.message ?? '') } : { ok: true }
+}
+export async function adminDeleteHoliday(
+  date: string, kind: 'holiday' | 'company',
+): Promise<{ ok: boolean; message?: string }> {
+  const { error } = await supabase.rpc('admin_delete_holiday', { p_date: date, p_kind: kind })
+  return error ? { ok: false, message: holidayErr(error.message ?? '') } : { ok: true }
+}
+export async function adminGenerateFamilyDays(
+  year: number,
+): Promise<{ ok: boolean; count?: number; message?: string }> {
+  const { data, error } = await supabase.rpc('admin_generate_family_days', { p_year: year })
+  if (error) return { ok: false, message: holidayErr(error.message ?? '') }
+  return { ok: true, count: Number(data ?? 0) }
+}
+
 /** 공휴일 전량 로드 (holidays 테이블 — RLS 전 직원 읽기)
  *  ← [2026-08-03] 법정 공휴일 표기. 실패 시 throw — 캐시 계층(utils/holidays)이
  *    빈 Map 안전값으로 변환한다. 연 수십 행이라 전량 로드가 가장 단순·안전 */

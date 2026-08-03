@@ -12,6 +12,7 @@
  */
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react'
 import { DateField } from '../components/common/DateField' // ← [2026-08-03] 공통 날짜 필드
+import { HolidayAdminPanel } from '../components/admin/HolidayAdminPanel' // ← [2026-08-03] 공휴일·이벤트 관리 (Phase C)
 import { createPortal } from 'react-dom'  // ← [2026-05-06 사이드 sticky 핫픽스] 사이드 네비를 body 직접 mount하기 위함
 import { AlertCircle, AlertTriangle, ArrowUpDown, Ban, BarChart2, Building2, Calendar, CheckCircle2, ChevronDown, Clock, Download, ImagePlus, Inbox, RefreshCw, RotateCw, Search, Trash2, Upload, Users, X } from 'lucide-react'
 import { Button } from '../components/common/Button'
@@ -934,7 +935,11 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
             · 기존 AdminApprovals 데이터 로직(classify/loadBookingsByRange/canApprove) 그대로 보존
             · 기존 AdminApprovals 함수 자체는 보존 (혹시 다른 곳에서 import 시 안전) */}
       {activeTab==='approvals' && <AdminApprovalTable bookings={bookings} rooms={rooms} users={users} currentUserId={currentUserId} currentUserEmail={currentUserEmail} onApprove={onApprove} onReject={onReject} onDetail={onDetail} onCsvClick={() => showToast('CSV 다운로드 기능은 추후 구현 예정입니다.', 'info')}/>}
-      {activeTab==='rooms'     && <AdminRooms     showToast={showToast} isMobile={isMobile}/>}
+      {activeTab==='rooms'     && <>
+        <AdminRooms showToast={showToast} isMobile={isMobile}/>
+        {/* ← [2026-08-03] 공휴일·회사 이벤트 관리 (Phase C) — room 권한과 1:1 이라 이 탭 하위 섹션 */}
+        <HolidayAdminPanel showToast={showToast}/>
+      </>}
       {activeTab==='users'     && <AdminUsers     users={users} setUsers={setUsers} rooms={rooms} showToast={showToast} isMobile={isMobile} currentUserId={currentUserId}/>}{/* ← [2026-05-26] rooms prop 추가 — 노쇼 현황 DetailDrawer 드릴다운에서 회의실 이름 표시용 */}
       {activeTab==='visitors'  && <VisitorLogPanel showToast={showToast} isMobile={isMobile}/>}{/* ← [2026-07-10] 방문로그 관리 (2차 비번 잠금 → 조회/반납/삭제/Excel) */}
       {/* ← [2026-07-23] 도서 관리 — 개요/도서/대여이력/연체/승인 5개 서브탭.
