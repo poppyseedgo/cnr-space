@@ -971,6 +971,17 @@ function PurposeChips({
 
 export function BookingModal({prefill, date:initDate, editBooking=null, onClose, onSubmit, onUpdate, bookings, isAdmin=false, currentUser="홍길동", currentUserEmail="", rooms:roomsProp=[], users:usersProp=[]}) {
   const holidayMap = useHolidayMap()   // ← [2026-08-03] 'YYYY-MM-DD' → { holiday?, company? }
+  // ← [2026-08-03] 날짜 필드 옆 휴일·이벤트 라벨 (캘린더 뷰 타이틀과 동일 규칙 — 공휴일 빨강 · 이벤트 보라)
+  const dateTagEl = (ds: string) => {
+    const di = holidayMap.get(ds)
+    if (!di?.holiday && !di?.company) return null
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>
+        {di.holiday && <span style={{ color: '#EF4444' }}>· {di.holiday}</span>}
+        {di.company && <span style={{ color: '#8B5CF6' }}>· {di.company}</span>}
+      </span>
+    )
+  }
   // ── 모든 hooks를 최상단에 선언 ──────────────────────────────────────────────
   const { isMobile, isTablet } = useBreakpoint();
   const { vh: vvHeight, off: vvOff } = useVisualViewport();
@@ -1982,6 +1993,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                     fontFamily:"Pretendard, sans-serif", fontWeight:500, fontSize:20, lineHeight:1.5}}>
                   <span style={{color:"#111"}}>{fmtDateFull(bookingDate)}</span>
                   <span style={{color:"#99A1AF"}}>{DAY_NAMES[dateToObj(bookingDate).getDay()]}요일</span>
+                  {dateTagEl(bookingDate)}{/* ← [2026-08-03] 휴일·이벤트 병기 */}
                 </div>
                 {showPicker && (
                   <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:300,
@@ -2171,6 +2183,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   fontFamily:"Pretendard, sans-serif", fontWeight:400, fontSize:20, lineHeight:1.5, color:"#111"}}>
                   <span>{fmtDateFull(bookingDate)}</span>
                   <span>{DAY_NAMES[dateToObj(bookingDate).getDay()]}요일</span>
+                  {dateTagEl(bookingDate)}{/* ← [2026-08-03] */}
                 </div>
                 <div style={{display:"flex", alignItems:"center", gap:8, fontFamily:"Pretendard, sans-serif", fontWeight:500}}>
                   <span style={{fontSize:24, lineHeight:1.5, color:"#000"}}>{fmtTime(form.start)}</span>
@@ -2375,6 +2388,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 >
                   <span>{fmtDateFull(bookingDate)}</span>
                   <span>{DAY_NAMES[dateToObj(bookingDate).getDay()]}요일</span>
+                  {dateTagEl(bookingDate)}{/* ← [2026-08-03] */}
                 </div>
                 {showPicker && (
                   <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:300,
