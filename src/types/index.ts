@@ -208,7 +208,7 @@ export type CalViewType = 'timeline' | 'week' | 'day' | 'month' | 'list'
 
 // ─── App View 타입 ───────────────────────────────────────────────────────────────
 
-export type AppView = 'home' | 'calendar' | 'mypage' | 'admin' | 'library'  // ← [2026-07-16] library 추가
+export type AppView = 'home' | 'calendar' | 'mypage' | 'admin' | 'library' | 'release-notes'  // ← [2026-07-16] library 추가 / [2026-08-03] release-notes 추가
 
 // ─── 도서관 모듈 타입 ─────────────────────────────────────────────────────────
 

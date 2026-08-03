@@ -58,6 +58,8 @@ export function AppFooter({ isMobile, onSetView }: AppFooterProps) {
           <button className="btn" style={linkStyle} onClick={() => onSetView('calendar')}>캘린더 뷰</button>
           <button className="btn" style={linkStyle} onClick={() => onSetView('library')}>도서관</button>
           <button className="btn" style={linkStyle} onClick={() => onSetView('mypage')}>마이페이지</button>
+          {/* ← [2026-08-03] 정식 오픈 — 드로어와 동일 승격 (타이틀 고지 확정) */}
+          <button className="btn" style={linkStyle} onClick={() => onSetView('release-notes')}>Release Note + Hotfix</button>
           {/* 준비중 — 드로어와 동일 목록(SSOT: AppDrawer.UPCOMING_SERVICES), 비링크 */}
           {UPCOMING_SERVICES.map(({ label }) => (
             <div key={label} style={{ ...linkStyle, cursor: 'default', color: '#CBD5E1' }}>

@@ -7,6 +7,9 @@
  *      · 도서관 / 마이페이지 / 어드민(권한자만 — 권한 없는 메뉴는 숨김 원칙)
  *      · 준비중 5종 명시: Q&A · 핫픽스 및 릴리즈 노트 · C&R 챗봇 · 포인터 예약 · 자리 예약
  *        (ZOOM 관련은 전부 삭제 — ResourceDropdown 폐기와 함께 종결)
+ *  - [2026-08-03] 'Release Note + Hotfix' 정식 오픈 (고지 확정 타이틀) —
+ *      준비중 목록에서 제거하고 서비스 섹션 정식 메뉴로 승격 (view 'release-notes').
+ *      UPCOMING_SERVICES 는 4종으로 축소 — 푸터 준비중 목록도 SSOT 공유라 자동 반영.
  *      · 외부 서비스는 드로어에 없음 — ESG 는 푸터 전용 (고지 확정)
  *      · 모바일 도서관 진입 부재 문제(ResourceDropdown 데스크탑 전용)의 근본 해결 —
  *        전 해상도 공통 단일 내비. 같은 목적지 메뉴 2벌 금지 원칙.
@@ -36,10 +39,10 @@ interface AppDrawerProps {
   onClose:   () => void
 }
 
-/** 준비중 서비스 — 고지 확정 5종 (순서 고정). 링크 아님, 로드맵 커뮤니케이션용 노출 */
+/** 준비중 서비스 — 순서 고정. 링크 아님, 로드맵 커뮤니케이션용 노출
+ *  ← [2026-08-03] '핫픽스 및 릴리즈 노트' 정식 오픈으로 제거 (5종 → 4종) */
 export const UPCOMING_SERVICES = [
   { label: 'Q&A',                icon: MessageCircleQuestion },
-  { label: '핫픽스 및 릴리즈 노트', icon: FileText },
   { label: 'C&R 챗봇',           icon: Bot },
   { label: '포인터 예약',         icon: IcoPointer },   // ← [2026-07-31] 자원 드롭다운 동일 SVG
   { label: '자리 예약',           icon: Armchair },
@@ -133,6 +136,10 @@ export function AppDrawer({ open, view, isAdmin, isMobile, onSetView, onClose }:
             </button>
             <button className="btn" style={itemStyle(view === 'mypage')} onClick={() => go('mypage')}>
               <UserCircle size={17} strokeWidth={1.8} /> 마이페이지
+            </button>
+            {/* ← [2026-08-03] 준비중에서 정식 승격 — 타이틀 'Release Note + Hotfix' (고지 확정) */}
+            <button className="btn" style={itemStyle(view === 'release-notes')} onClick={() => go('release-notes')}>
+              <FileText size={17} strokeWidth={1.8} /> Release Note + Hotfix
             </button>
             {/* 어드민 — 권한자에게만 노출 (권한 없는 메뉴는 비활성이 아니라 숨김 원칙) */}
             {isAdmin && (

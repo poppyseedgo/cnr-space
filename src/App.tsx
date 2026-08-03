@@ -265,6 +265,7 @@ import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView } from './components/room/HomeView'
 import { LibraryPage } from './pages/LibraryPage'  // ← [2026-07-16] 도서관 모듈 추가
+import { ReleaseNotesPage } from './pages/ReleaseNotesPage'  // ← [2026-08-03] Release Note + Hotfix 페이지 추가
 import { RoomDetailModal } from './components/room/RoomDetailModal'
 import { CalendarSkeleton, MyPageSkeleton, AdminSkeleton } from './components/skeleton'
 import { initGlobalRipple } from './hooks/useGlobalRipple'
@@ -376,7 +377,7 @@ function AppContent() {
     const saved = sessionStorage.getItem('cnr_deeplink')
     if (saved?.startsWith('admin-booking-')) return 'admin'
     if (saved?.startsWith('booking-')) return 'home'  // ← [2026-05-12] mypage → home
-    return ['home','calendar','mypage','admin','library'].includes(hash) ? hash : 'home'  // ← [2026-07-16] library 추가
+    return ['home','calendar','mypage','admin','library','release-notes'].includes(hash) ? hash : 'home'  // ← [2026-07-16] library / [2026-08-03] release-notes 추가
   }
   const [view, setViewState] = useState<string>(getViewFromHash);
   // ← [2026-07-30] 전역 사이드 드로어 (헤더 햄버거 트리거)
@@ -543,7 +544,7 @@ function AppContent() {
     }
     // 최초 로그인(hash 없을 때)만 홈으로 이동, 새로고침 시 현재 hash 유지
     const currentHash = window.location.hash.replace('#', '');
-    const isValidHash = ['home','calendar','mypage','admin','library'].includes(currentHash)  // ← [2026-07-16] library 추가
+    const isValidHash = ['home','calendar','mypage','admin','library','release-notes'].includes(currentHash)  // ← [2026-07-16] library / [2026-08-03] release-notes 추가
       || currentHash.startsWith('admin-tab-')
       || currentHash.startsWith('admin-booking-')
       || currentHash.startsWith('booking-')
@@ -1906,6 +1907,7 @@ function AppContent() {
       {/* ← [2026-05-06 사이드 sticky 핫픽스] headerHeight 전달 — 사이드 네비 fixed 위치 계산용 (헤더와 동일 패턴) */}
       {view==="admin" && <LazyErrorBoundary><Suspense fallback={<AdminSkeleton />}><AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={confirmAndAdminForceCancel} onDetail={b=>setModal({type:'detail',data:b})} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} headerHeight={headerHeight} /></Suspense></LazyErrorBoundary>}
       {view==="library" && <LibraryPage isAdmin={isAdmin} users={users} authUserId={authUser?.user_id ?? ''} showToast={showToast} onGoMyLoans={() => { setMyPageInitialTab('book'); setView('mypage') }} />}{/* ← [2026-07-16] 도서관 모듈 추가 */}
+      {view==="release-notes" && <ReleaseNotesPage />}{/* ← [2026-08-03] Release Note + Hotfix — 데이터 SSOT: src/data/releaseNotes.ts */}
 
       {/* ── Modals ── */}
       {/* ← [2026-07-21] 도서 대여 상세 — 알림 클릭 진입점.
