@@ -26,6 +26,7 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react'
+import { useHolidayMap } from '../../utils/holidays' // ← [2026-08-03] 법정 공휴일 표기 (컴포넌트 내부 통합 — 사용처 전 화면 자동 적용)
 import { createPortal } from 'react-dom'
 import {
   dateToObj, objToStr, todayStr,
@@ -56,6 +57,7 @@ interface DatePickerPopupProps {
 export function DatePickerPopup({
   value, onChange, onClose, anchorRef, min, max, isDateDisabled,
 }: DatePickerPopupProps) {
+  const holidayMap = useHolidayMap()   // ← [2026-08-03] 'YYYY-MM-DD' → 공휴일명 (실패 시 빈 Map)
 
   // ── popup DOM ref (외부 클릭 판정용)
   const popupRef = useRef<HTMLDivElement>(null)
@@ -246,11 +248,16 @@ export function DatePickerPopup({
           const disabled  = (!!min && dateStr < min) || (!!max && dateStr > max)
                           || (isDateDisabled?.(dateStr) ?? false)   // ← [2026-07-30] 예약 구간 등 임의 비활성
 
-          // ← 색상 우선순위: 선택됨(white) > 비활성(#CBD5E1) > 다른달(#CBD5E1) > 일(빨강)/토(파랑)/평일(#111)
+          const dayInfo   = cell.isCurrent ? holidayMap.get(dateStr) : undefined  // ← [2026-08-03]
+          const holidayNm = dayInfo?.holiday
+          const companyNm = dayInfo?.company   // 패밀리데이 등 — 색은 유지, 하단 도트로 표기
+          // ← 색상 우선순위: 선택됨(white) > 비활성(#CBD5E1) > 다른달(#CBD5E1)
+          //   > 공휴일(빨강 — 일요일과 동급) > 일(빨강)/토(파랑)/평일(#111)  [2026-08-03 공휴일 추가]
           const textColor =
             isSel                  ? '#fff'
             : disabled             ? '#CBD5E1'
             : !cell.isCurrent      ? '#CBD5E1'
+            : holidayNm            ? '#FF6969'
             : dow === 0            ? '#FF6969'
             : dow === 6            ? '#3B82F6'
             : '#111'
@@ -260,6 +267,7 @@ export function DatePickerPopup({
               key={i}
               type="button"
               disabled={disabled}
+              title={[holidayNm, companyNm].filter(Boolean).join(' · ') || undefined}   /* ← [2026-08-03] hover: '광복절 · Family Day' */
               onClick={() => onCellClick(cell.date)}
               style={{
                 height: 36, borderRadius: 999,
@@ -283,13 +291,23 @@ export function DatePickerPopup({
                 if (!isSel) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'
               }}>
               {cell.date.getDate()}
-              {/* 오늘 표시 점 (선택되지 않았을 때만) */}
-              {isToday && !isSel && (
+              {/* 오늘 표시 점 (선택되지 않았을 때만 · 회사 이벤트 도트가 있으면 그쪽이 우선) */}
+              {isToday && !isSel && !(cell.isCurrent && holidayMap.get(dateStr)?.company) && (
                 <span style={{
                   position: 'absolute',
                   bottom: 4, left: '50%', transform: 'translateX(-50%)',
                   width: 4, height: 4, borderRadius: '50%',
                   background: cell.isCurrent ? '#111' : '#CBD5E1',
+                }}/>
+              )}
+              {/* ← [2026-08-03] 회사 이벤트(패밀리데이 등) 도트 — 날짜색은 유지하고 하단 도트로 표기.
+                    보라 #8B5CF6: 휴무 빨강·토요일 파랑과 구분되는 제3색. 선택 시 흰색 */}
+              {companyNm && (
+                <span style={{
+                  position: 'absolute',
+                  bottom: 4, left: '50%', transform: 'translateX(-50%)',
+                  width: 4, height: 4, borderRadius: '50%',
+                  background: isSel ? '#FFFFFF' : disabled ? '#CBD5E1' : '#8B5CF6',
                 }}/>
               )}
             </button>

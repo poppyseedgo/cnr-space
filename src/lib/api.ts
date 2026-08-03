@@ -1547,6 +1547,23 @@ export async function adminCancelBookCheckout(
   return { ok: true, bookTitle: r?.book_title ?? undefined }
 }
 
+/** 공휴일 전량 로드 (holidays 테이블 — RLS 전 직원 읽기)
+ *  ← [2026-08-03] 법정 공휴일 표기. 실패 시 throw — 캐시 계층(utils/holidays)이
+ *    빈 Map 안전값으로 변환한다. 연 수십 행이라 전량 로드가 가장 단순·안전 */
+export interface Holiday {
+  holiday_date: string
+  name: string
+  kind: 'holiday' | 'company'   // ← [2026-08-03] company = 패밀리데이·창립기념일 등 회사 이벤트
+}
+export async function loadHolidays(): Promise<Holiday[]> {
+  const { data, error } = await supabase
+    .from('holidays')
+    .select('holiday_date, name, kind')
+    .order('holiday_date')
+  if (error) throw error
+  return data ?? []
+}
+
 /** 도서 예약/대여 구간 (기간만 — 예약자 신원 없음)
  *  ← [2026-07-30] 예약 기간 공개 (20260737). RLS 가 비관리자에 본인 행만 주므로
  *    타인 예약 기간은 이 RPC 가 유일한 경로. 실패 시 [] — 표시만 생략되고
