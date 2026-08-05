@@ -61,6 +61,8 @@ import { AdminRoleMatrix } from '../components/common/AdminRoleMatrix'
 import { ADMIN_ROLES, GRANTABLE_ROLES, NORMAL_ROLES, SUPER_ROLE,
          visibleTabs, roleSummary } from '../data/adminRoles'
 import { loadMyAdminRoles, loadAllUserRoles, setUserAdminRoles, loadRoleGrantLog, type RoleGrantLog } from '../lib/api'
+// ← [2026-08-05] 노쇼 관리 패널 — bookings 탭 하위 뷰 (기간 프리셋 + 해제/영구삭제)
+import { NoshowAdminPanel } from '../components/admin/NoshowAdminPanel'
 // ← [2026-05-06 Admin Phase C] 승인 관리 테이블 컴포넌트 신설 (Figma node 451:3534, Phase B 공통 컴포넌트 사용)
 import { AdminApprovalTable } from '../components/common/AdminApprovalTable'
 import { VisitorLogPanel } from '../components/common/VisitorLogPanel'  // ← [2026-07-10] 방문로그 관리 패널
@@ -829,6 +831,9 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
     }
   }, [bookings])
   const PER_PAGE = 15
+  // ← [2026-08-05] 예약 관리 탭 하위 뷰 — '예약 목록' | '노쇼 관리'
+  //   새 탭(=새 역할)을 만들지 않고 booking 권한 안에서 뷰만 전환 (역할=탭 1:1 원칙 유지)
+  const [bookingsView, setBookingsView] = useState<'list' | 'noshow'>('list')
   // ← [2026-05-06 Admin Phase A] 가로 탭바 제거 — 좌측 사이드 네비 (AdminSideNav)로 이동
   //   기존: tabs 배열 + 가로 button 그룹 (lucide 아이콘 + 라벨)
   //   변경: AdminSideNav 컴포넌트가 5개 메뉴를 수직 표시 (Figma node 451:3522)
@@ -927,7 +932,21 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
         {/* ── 콘텐츠 영역 ──────────────────────────────────────────── */}
         <div style={{ minWidth: 0 /* ← overflow 안전장치 */ }}>
       {activeTab==='dashboard' && <AdminDashboard bookings={bookings} rooms={rooms} users={users} isMobile={isMobile} onDetail={onDetail} onGoApprovals={() => setTab('approvals')} currentUserId={currentUserId} currentUserEmail={currentUserEmail}/>/* ← [2026-05-28] currentUserId/Email 전달 — DetailDrawer 내 BookingStatusBadge 'mine' 칩 판정용  ← [2026-06-10] onGoApprovals 추가 — 승인 대기 카드 클릭 시 '승인 관리' 탭으로 이동 */}
-      {activeTab==='bookings'  && <AdminBookings  bookings={bookings} setBookings={setBookings} rooms={rooms} users={users} onForceCancel={onForceCancel} showToast={showToast} isMobile={isMobile} PER_PAGE={PER_PAGE} onDetail={onDetail}/>}{/* ← [2026-04-24 P6-B] users 추가 — 예약자 이름 live */}
+      {activeTab==='bookings'  && <>
+        {/* ← [2026-08-05] 하위 뷰 토글 — 예약 목록 / 노쇼 관리 */}
+        <div style={{display:'flex',gap:6,marginBottom:16}}>
+          {([{id:'list',l:'예약 목록'},{id:'noshow',l:'노쇼 관리'}] as const).map(v=>(
+            <button key={v.id} className="btn" onClick={()=>setBookingsView(v.id)}
+              style={{padding:'7px 16px',fontSize:12,fontWeight:700,borderRadius:999,
+                background:bookingsView===v.id?'#111':'#fff',
+                color:bookingsView===v.id?'#fff':'#64748B',
+                border:bookingsView===v.id?'none':'1px solid #E2E8F0'}}>{v.l}</button>
+          ))}
+        </div>
+        {bookingsView==='list'
+          ? <AdminBookings  bookings={bookings} setBookings={setBookings} rooms={rooms} users={users} onForceCancel={onForceCancel} showToast={showToast} isMobile={isMobile} PER_PAGE={PER_PAGE} onDetail={onDetail}/>
+          : <NoshowAdminPanel rooms={rooms} users={users} showToast={showToast} isMobile={isMobile} PER_PAGE={PER_PAGE} onDetail={onDetail}/>}
+      </>}{/* ← [2026-04-24 P6-B] users 추가 — 예약자 이름 live · [2026-08-05] 노쇼 관리 하위 뷰 */}
       {/* ← [2026-05-06 Admin Phase C] AdminApprovals → AdminApprovalTable 교체
             · Phase B 공통 컴포넌트(DateRangeFilter / SegmentTabBar / DataTable) 사용
             · Figma node 451:3534 1:1 — 7개 컬럼 / 5개 탭 / 3개 퀵버튼 / 검색 활성화

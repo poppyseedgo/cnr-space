@@ -3207,3 +3207,39 @@ export async function deleteKbChunk(id: string): Promise<{ ok: boolean; message?
   if ((error.message ?? '').includes('row-level security')) return { ok: false, message: 'KB 관리 권한이 없습니다' }
   return { ok: false, message: `삭제 실패: ${error.message}` }
 }
+
+// ── 노쇼 관리 (어드민 '예약 관리' 탭 하위) ──────────────────────────────────
+// ← [2026-08-05] 신규 — 노쇼 해제(사용 완료 전환) / 영구 삭제
+//   · 반드시 RPC 경유 — 노쇼 확정룰 검증을 서버가 강제 (클라 직접 UPDATE/DELETE 금지)
+//   · 짝 배포: supabase/migrations/20260740_noshow_admin.sql
+//   · 에러 매핑 패턴: changeBookingOwner 와 동일 (RPC RAISE EXCEPTION → 한글 토스트)
+
+const NOSHOW_RPC_ERR: Record<string, string> = {
+  NOT_AUTHENTICATED: '로그인이 필요합니다.',
+  NOT_ADMIN:         '예약 관리 권한이 없습니다.',
+  BOOKING_NOT_FOUND: '예약을 찾을 수 없습니다. (이미 삭제되었을 수 있습니다)',
+  NOT_NOSHOW:        '노쇼 상태가 아닌 예약입니다. 목록을 새로고침해 주세요.',
+}
+
+function mapNoshowRpcError(message: string, fallback: string): Error {
+  const key = Object.keys(NOSHOW_RPC_ERR).find(k => message.includes(k))
+  return new Error(key ? NOSHOW_RPC_ERR[key] : fallback)
+}
+
+/** 노쇼 해제 — checked_in=true 전환으로 '사용완료' 처리 (재노쇼 원천 차단) */
+export async function resolveNoshowBooking(bookingId: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_resolve_noshow', { p_booking_id: bookingId })
+  if (error) {
+    console.error('[api] admin_resolve_noshow 실패:', error.message, { bookingId })
+    throw mapNoshowRpcError(error.message, '노쇼 해제에 실패했습니다.')
+  }
+}
+
+/** 노쇼 예약 영구 삭제 — 참석자 포함 DB 에서 제거, 감사 로그에 스냅샷 보존 */
+export async function deleteNoshowBooking(bookingId: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_delete_noshow_booking', { p_booking_id: bookingId })
+  if (error) {
+    console.error('[api] admin_delete_noshow_booking 실패:', error.message, { bookingId })
+    throw mapNoshowRpcError(error.message, '노쇼 예약 삭제에 실패했습니다.')
+  }
+}
