@@ -29,10 +29,13 @@
  */
 
 // ── PNG 래스터 (Outlook 메일용) ─────────────────────────────────────────────
-//   wasm 은 패키지 서브패스 import — Cloudflare Pages 빌드가 .wasm 을 모듈로 번들.
-//   (빌드 실패 시 폴백: index_bg.wasm 을 functions/api/ 로 복사해 상대경로 import)
+//   ← [2026-08-07 핫픽스] 패키지 서브패스 wasm import 가 Pages 빌드를 실패시켜
+//   배포 자체가 안 올라감(라이브=구버전 유지) → 예고했던 폴백으로 전환:
+//   index_bg.wasm 을 functions/api/resvg_bg.wasm 으로 복사해 상대경로 import
+//   (Pages Functions 의 문서화된 wasm 패턴). ⚠런타임 fetch 후 컴파일은 불가 —
+//   Workers 는 바이트로부터의 wasm 컴파일을 차단하므로 반드시 모듈 import 여야 함.
 import { initWasm, Resvg } from '@resvg/resvg-wasm'
-import resvgWasm from '@resvg/resvg-wasm/index_bg.wasm'
+import resvgWasm from './resvg_bg.wasm'
 
 // ⭐서브셋 폰트 (public/fonts/noshow/ — 이 공지의 사용 글리프 226자만, 각 ~39KB)
 //   풀 OTF(1.5MB×3)를 렌더마다 파싱하면 4초+ 로 Workers CPU 한도 초과 —
