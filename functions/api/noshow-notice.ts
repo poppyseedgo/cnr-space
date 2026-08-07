@@ -16,11 +16,61 @@
  *    동일 폴백 체인을 쓴다 — 미세한 자간 차이는 허용 오차.
  * 📌 막대 폭: 해당 월 노쇼 건수 / 최대 월 노쇼 건수 비율 (전부 0 이면 최소폭).
  *    최소폭 52px — 월 라벨("4월")이 잘리지 않는 하한.
- * 📌 캐시: s-maxage=600 (10분). 공지 특성상 실시간성보다 안정성 우선.
+ * 📌 캐시 [2026-08-05 v2]: SVG 는 no-store — ESG /api/roster 와 동일하게 열 때마다
+ *    항상 최신 (고지 확정). PNG(?format=png, Outlook 메일용)는 s-maxage=300 —
+ *    래스터는 CPU 비용이 커서 엣지 캐시로 보호(메일 특성상 5분이면 충분).
+ * 📌 PNG 버전 [2026-08-05 v2]: Outlook/Gmail 은 SVG 를 차단(2026-06-16 확정) →
+ *    같은 데이터를 @resvg/resvg-wasm 으로 서버 래스터. Workers 엔 시스템 폰트가
+ *    없어 Pretendard OTF(Regular/Medium/Bold)를 jsdelivr 에서 런타임 로드 후
+ *    모듈 스코프에 캐시(콜드스타트당 1회, 총 ~4.7MB).
  *
  * ⚠ Cloudflare Pages 환경변수 필요 (대시보드 → Settings → Variables):
  *    SUPABASE_URL, SUPABASE_ANON_KEY  (VITE_* 는 빌드타임 전용이라 Functions 에선 안 보임)
  */
+
+// ── PNG 래스터 (Outlook 메일용) ─────────────────────────────────────────────
+//   wasm 은 패키지 서브패스 import — Cloudflare Pages 빌드가 .wasm 을 모듈로 번들.
+//   (빌드 실패 시 폴백: index_bg.wasm 을 functions/api/ 로 복사해 상대경로 import)
+import { initWasm, Resvg } from '@resvg/resvg-wasm'
+import resvgWasm from '@resvg/resvg-wasm/index_bg.wasm'
+
+// ⭐서브셋 폰트 (public/fonts/noshow/ — 이 공지의 사용 글리프 226자만, 각 ~39KB)
+//   풀 OTF(1.5MB×3)를 렌더마다 파싱하면 4초+ 로 Workers CPU 한도 초과 —
+//   서브셋으로 파싱 비용을 근본 제거. ⚠공지 "문구"를 바꾸면 새 글자가 폰트에
+//   없을 수 있음: scripts/subset-noshow-fonts.md 절차로 재서브셋 필요
+//   (숫자·ASCII·단위는 전부 포함돼 있어 수치 변동은 영향 없음)
+const FONT_PATHS = [
+  '/fonts/noshow/Pretendard-Regular.subset.otf',
+  '/fonts/noshow/Pretendard-Medium.subset.otf',
+  '/fonts/noshow/Pretendard-Bold.subset.otf',
+]
+const PNG_SCALE = 1.5                  // 893px — 메일 리타디스플레이 대비, CPU 상한 절충
+
+let _wasmReady = null                  // 모듈 스코프 1회 초기화
+let _fontBuffers = null                // 모듈 스코프 폰트 캐시
+async function ensureRaster(origin) {
+  if (!_wasmReady) _wasmReady = initWasm(resvgWasm)
+  await _wasmReady
+  if (!_fontBuffers) {
+    const bufs = await Promise.all(FONT_PATHS.map(async p => {
+      const r = await fetch(origin + p)
+      if (!r.ok) throw new Error(`font fetch 실패 [${r.status}] ${p}`)
+      return new Uint8Array(await r.arrayBuffer())
+    }))
+    _fontBuffers = bufs
+  }
+  return _fontBuffers
+}
+
+export async function renderPng(svg, origin) {
+  const fontBuffers = await ensureRaster(origin)
+  const resvg = new Resvg(svg, {
+    fitTo: { mode: 'width', value: Math.round(W * PNG_SCALE) },
+    font: { loadSystemFonts: false, fontBuffers, defaultFontFamily: 'Pretendard' },
+    background: '#ffffff',
+  })
+  return resvg.render().asPng()
+}
 
 // ── Figma 2802:55 실측 토큰 ─────────────────────────────────────────────────
 const W        = 595
@@ -289,9 +339,17 @@ ${el.join('\n')}
 // Pages Function 핸들러
 // ═══════════════════════════════════════════════════════════════════════════
 export async function onRequestGet(context) {
-  const { SUPABASE_URL, SUPABASE_ANON_KEY } = context.env
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    return new Response('SUPABASE_URL / SUPABASE_ANON_KEY 환경변수 미설정', { status: 500 })
+  const env = context.env ?? {}
+  // ← [2026-08-07 핫픽스] ESG /api/roster 와 동일 이슈·동일 해법 — CF Pages 대시보드엔
+  //   빌드용 VITE_* 가 이미 있고 Functions 도 그대로 읽을 수 있으므로 폴백 체인으로 수용.
+  //   URL 은 공개 고정값이라 최종 하드코딩 폴백까지 둔다 (anon key 는 env 전용 — 회전 대비).
+  const SUPABASE_URL = env.SUPABASE_URL ?? env.VITE_SUPABASE_URL
+    ?? 'https://jjzcqpbwkkujttwxksvy.supabase.co'
+  const SUPABASE_ANON_KEY = env.SUPABASE_ANON_KEY ?? env.VITE_SUPABASE_ANON_KEY
+  if (!SUPABASE_ANON_KEY) {
+    return new Response(
+      'SUPABASE_ANON_KEY (또는 VITE_SUPABASE_ANON_KEY) 환경변수 미설정 — Pages Production 환경에 설정 후 재배포 필요',
+      { status: 500 })
   }
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_noshow_notice_stats`, {
@@ -308,10 +366,25 @@ export async function onRequestGet(context) {
     }
     const stats = await res.json()
     const svg = buildNoshowNoticeSvg(stats)
+
+    // ── Outlook 메일용 PNG (?format=png) ──
+    const reqUrl = new URL(context.request.url)
+    if (reqUrl.searchParams.get('format') === 'png') {
+      const png = await renderPng(svg, reqUrl.origin)
+      return new Response(png, {
+        headers: {
+          'Content-Type':  'image/png',
+          'Cache-Control': 'public, s-maxage=300, max-age=120',
+          'Access-Control-Allow-Origin': '*',
+        },
+      })
+    }
+
+    // ── 그룹웨어용 SVG — 열 때마다 최신 (roster 와 동일, 고지 확정) ──
     return new Response(svg, {
       headers: {
         'Content-Type':  'image/svg+xml; charset=utf-8',
-        'Cache-Control': 'public, s-maxage=600, max-age=300',
+        'Cache-Control': 'no-store',
         'Access-Control-Allow-Origin': '*',
       },
     })
