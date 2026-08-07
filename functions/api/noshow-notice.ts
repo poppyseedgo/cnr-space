@@ -66,6 +66,37 @@ export async function renderPng(svg, origin) {
   return resvg.render().asPng()
 }
 
+// ── ⭐폰트 임베드 (그룹웨어 SVG 용, v4) ─────────────────────────────────────
+//   <img> SVG 는 외부 리소스 로드가 차단되지만 data: URI 는 네트워크가 없어 허용
+//   (ESG roster 배경사진 base64 인라인과 동일 원리). 서브셋 4종(~138KB)을
+//   @font-face data URI 로 넣으면 뷰어 PC 에 폰트가 없어도 항상 동일하게 렌더.
+//   PNG 경로에는 넣지 않는다 — resvg 는 fontBuffers 를 쓰므로 불필요·미지원.
+function u8ToBase64(u8) {
+  let bin = ''
+  const CHUNK = 0x8000                 // fromCharCode 인자 한도 회피
+  for (let i = 0; i < u8.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(null, u8.subarray(i, i + CHUNK))
+  }
+  return btoa(bin)
+}
+
+let _fontCss = null                    // 모듈 스코프 캐시 — 요청마다 재인코딩 방지
+export async function embedFontCss(origin) {
+  if (_fontCss) return _fontCss
+  const bufs = await ensureRaster(origin)          // FONT_PATHS 순서와 동일한 버퍼 재사용
+  const spec = [
+    { fam: 'Pretendard',      weight: 400, fmt: 'opentype', mime: 'font/otf' },
+    { fam: 'Pretendard',      weight: 500, fmt: 'opentype', mime: 'font/otf' },
+    { fam: 'Pretendard',      weight: 700, fmt: 'opentype', mime: 'font/otf' },
+    { fam: 'Instrument Sans', weight: 400, fmt: 'truetype', mime: 'font/ttf' },
+  ]
+  _fontCss = spec.map((f, i) =>
+    `@font-face{font-family:'${f.fam}';font-weight:${f.weight};font-style:normal;` +
+    `src:url(data:${f.mime};base64,${u8ToBase64(bufs[i])}) format('${f.fmt}');}`
+  ).join('\n')
+  return _fontCss
+}
+
 // ── Figma 2802:55 실측 토큰 ─────────────────────────────────────────────────
 const W        = 595
 const CX       = 17.5           // 본문 좌측 (595−560)/2
@@ -219,7 +250,7 @@ export function checkNowrapWidths() {
 // ═══════════════════════════════════════════════════════════════════════════
 // SVG 빌더
 // ═══════════════════════════════════════════════════════════════════════════
-export function buildNoshowNoticeSvg(stats) {
+export function buildNoshowNoticeSvg(stats, fontCss = '') {
   const asOf = stats.as_of_kst
   const [Y, M, D] = asOf.split('-').map(Number)
   const dateEN = `${Y}.${MONTH_EN[M - 1]}.${String(D).padStart(2, '0')}`
@@ -232,7 +263,7 @@ export function buildNoshowNoticeSvg(stats) {
   const maxNs  = Math.max(1, ...monthly.map(m => Number(m.noshow ?? 0)))
 
   const el = []
-  el.push(`<defs><linearGradient id="bar" x1="0" y1="0" x2="1" y2="0">
+  el.push(`<defs>${fontCss ? `<style><![CDATA[\n${fontCss}\n]]></style>` : ''}<linearGradient id="bar" x1="0" y1="0" x2="1" y2="0">
     <stop offset="35.577%" stop-color="${C.barA}"/><stop offset="100%" stop-color="${C.barB}"/>
   </linearGradient></defs>`)
 
@@ -402,11 +433,10 @@ export async function onRequestGet(context) {
       return new Response(`stats RPC 실패 [${res.status}]`, { status: 502 })
     }
     const stats = await res.json()
-    const svg = buildNoshowNoticeSvg(stats)
-
     const reqUrl = new URL(context.request.url)
+
     if (reqUrl.searchParams.get('format') === 'png') {
-      const png = await renderPng(svg, reqUrl.origin)
+      const png = await renderPng(buildNoshowNoticeSvg(stats), reqUrl.origin)
       return new Response(png, {
         headers: {
           'Content-Type':  'image/png',
@@ -417,6 +447,8 @@ export async function onRequestGet(context) {
     }
 
     // 그룹웨어용 SVG — 열 때마다 최신 (roster 동일, 고지 확정)
+    // ⭐폰트 임베드 [v4]: 뷰어 PC 폰트 설치 여부와 무관하게 항상 동일 렌더
+    const svg = buildNoshowNoticeSvg(stats, await embedFontCss(reqUrl.origin))
     return new Response(svg, {
       headers: {
         'Content-Type':  'image/svg+xml; charset=utf-8',
