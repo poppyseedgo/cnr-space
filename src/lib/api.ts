@@ -124,6 +124,9 @@ import type { Booking, Room, AppUser, Feature, AttendeeRef,
 } from '../types'  // ← [2026-07-18] 내 대여 / [2026-07-22] 대여신청
 // ← [2026-07-21] 연체 패널티
 import type { BookPenaltyState, AdminBookPenalty } from '../types'
+// ← [2026-08-10] 노쇼 이용 제재 (20260743)
+import type { NoshowPenaltyRow, MyNoshowPenaltyState } from '../utils/noshowPenalty'
+import { revokeNoshowPenaltyErrorMessage } from '../utils/noshowPenalty'
 
 // ── UTC → KST 변환 ───────────────────────────────────────────────────────────
 // Supabase가 UTC ISO 문자열로 반환하므로 앱 기준인 KST로 보정
@@ -3241,5 +3244,41 @@ export async function deleteNoshowBooking(bookingId: string): Promise<void> {
   if (error) {
     console.error('[api] admin_delete_noshow_booking 실패:', error.message, { bookingId })
     throw mapNoshowRpcError(error.message, '노쇼 예약 삭제에 실패했습니다.')
+  }
+}
+
+// ── 노쇼 이용 제재 (20260743) ────────────────────────────────────────────────
+// ← [2026-08-10] 1개월 내 3회 → 7일 예약 생성 차단. 판정·차단은 DB 트리거가 강제,
+//   여기는 조회/해제 통로만. 낙관적 갱신 금지 — 액션 후 반드시 재조회 (프로젝트 규칙)
+/** 내 제재 상태 — my_noshow_penalty_state RPC (없으면 blocked=false 1행) */
+export async function fetchMyNoshowPenalty(): Promise<MyNoshowPenaltyState> {
+  const { data, error } = await supabase.rpc('my_noshow_penalty_state')
+  if (error) throw error
+  const row = Array.isArray(data) ? data[0] : data
+  return row ?? { blocked: false, penalty_id: null, starts_at: null, ends_at: null }
+}
+
+/** 제재 이력 전체 — RLS 가 본인 행 또는 has_admin_role('booking') 만 반환 (어드민 패널용) */
+export async function fetchNoshowPenalties(): Promise<NoshowPenaltyRow[]> {
+  const { data, error } = await supabase
+    .from('noshow_penalties')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) {
+    console.error('[api] noshow_penalties 조회 실패:', error.message)
+    throw new Error('제재 목록을 불러오지 못했습니다.')
+  }
+  return (data ?? []) as NoshowPenaltyRow[]
+}
+
+/** 제재 수동 해제 — admin_revoke_noshow_penalty RPC (예약 관리 권한) */
+export async function revokeNoshowPenalty(penaltyId: string, reason?: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_revoke_noshow_penalty', {
+    p_penalty_id: penaltyId,
+    p_reason: reason ?? null,
+  })
+  if (error) {
+    console.error('[api] admin_revoke_noshow_penalty 실패:', error.message, { penaltyId })
+    throw new Error(revokeNoshowPenaltyErrorMessage(new Error(error.message)))
   }
 }

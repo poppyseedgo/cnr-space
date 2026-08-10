@@ -246,6 +246,8 @@ import { BookLoanDetailModal } from './components/library/BookLoanDetailModal'
 import { fetchBookLoanById } from './lib/api'
 // ← [2026-07-24] 헤더 공지 — 게시 중인 1건 조회 (판정은 RLS)
 import { loadActiveAnnouncement, subscribeAnnouncementSync } from './lib/api'  // ← [2026-07-27 공지 리얼타임] Broadcast 재조회 구독
+import { fetchMyNoshowPenalty } from './lib/api'  // ← [2026-08-10 이용제재] 예약 모달 사전 안내 배너용 내 제재 상태
+import type { MyNoshowPenaltyState } from './utils/noshowPenalty'  // ← [2026-08-10 이용제재]
 import type { AdminBookLoan } from './types'
 import { NotificationBell } from './components/layout/NotificationBell'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 3)
 // ← [2026-07-31] lucide Menu import 제거 — 햄버거를 고지 제공 인라인 SVG 로 교체
@@ -259,6 +261,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from './utils/time'
 import { employmentErrorMessage } from './utils/employment' // ← [2026-07-30] 서버 재직 가드 에러 한글 매핑
+import { noshowPenaltyErrorMessage } from './utils/noshowPenalty' // ← [2026-08-10] 노쇼 이용 제재(20260743) 차단 에러 한글 매핑
 import { getFloor } from './data/floors'
 import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, markNoshow, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, buildBookingDiff, approveBooking, rejectBooking, upsertBookingAttendees, getBookingAttendees, insertNotification, adminForceCancel, changeBookingOwner } from './lib/api'  // ← [2026-06-12] changeBookingOwner 추가 (관리자 예약자 변경)  // ← [2026-05-04] loadNotifications/markNotificationRead/markAllNotificationsRead/subscribeNotifications/AppNotification 제거 (NotificationBell 분리 / Phase 1+2 Step 3) — insertNotification은 sendNotification에서 사용 중이라 유지
 import { supabase } from './lib/supabase'
@@ -403,6 +406,9 @@ function AppContent() {
   //   loading 상태를 함께 들고 있어야 조회 중 빈 화면이 노출되지 않는다.
   const [loanDetail, setLoanDetail] =
     useState<{ loan: AdminBookLoan | null; loading: boolean } | null>(null);
+  // ← [2026-08-10 이용제재] 내 노쇼 제재 상태 — 배너·CTA 잠금은 안내용, 최종 차단은 DB 트리거(20260743).
+  //   조회 실패는 조용히 null 유지(서버가 어차피 차단 + addBooking catch가 한글 토스트) — 화면을 막지 않는다
+  const [myNoshowPenalty, setMyNoshowPenalty] = useState<MyNoshowPenaltyState | null>(null);
   const [subModal, setSubModal]   = useState(null);
   const [toast, setToast]         = useState(null);
   const [searchQ, setSearchQ]     = useState("");
@@ -532,6 +538,18 @@ function AppContent() {
   const { currentUser: authUser, logout, isAdmin, loading: authLoading } = useAuth()
   const currentUser = authUser?.name ?? ""
   const currentDept = authUser?.dept ?? ""
+
+  // ← [2026-08-10 이용제재] 로그인 확정 시 1회 + 새 예약 모달을 열 때마다 재확인
+  //   (모달 오픈 직전에 제재가 새로 발생/해제됐을 수 있음 — 낙관적 캐시 금지 원칙과 동일 취지)
+  useEffect(() => {
+    if (!authUser) { setMyNoshowPenalty(null); return }
+    fetchMyNoshowPenalty().then(setMyNoshowPenalty).catch(() => {})
+  }, [authUser?.user_id])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (modal?.type === 'new' && authUser) {
+      fetchMyNoshowPenalty().then(setMyNoshowPenalty).catch(() => {})
+    }
+  }, [modal?.type])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // 데이터 로딩: authUser가 확정된 후 실행
   // - authUser가 null→유저로 바뀔 때(로그인) 재실행
@@ -889,7 +907,9 @@ function AppContent() {
       } catch (err: any) {
         // ← [2026-07-30] 서버 재직 가드(20260735 트리거) 에러 한글 매핑 —
         //   LEAVE_CANNOT_CREATE / AFTER_DEPARTURE_DATE 원문 노출 방지. 그 외는 기존 동작.
-        showToast(employmentErrorMessage(err) ?? err.message ?? "예약 저장에 실패했습니다.", "error");
+        // ← [2026-08-10 이용제재] 노쇼 제재 차단(NOSHOW_PENALTY_BLOCKED) 매핑을 최우선 —
+        //   서버 트리거(20260743)가 유일한 강제 지점, 프론트는 문구 변환만 담당
+        showToast(noshowPenaltyErrorMessage(err) ?? employmentErrorMessage(err) ?? err.message ?? "예약 저장에 실패했습니다.", "error");
         return false;
       }
 
@@ -1937,7 +1957,7 @@ function AppContent() {
             zIndex:1000,
             padding: isMobile ? 0 : 16,
           }}>
-          {modal.type==="new"         && <BookingModal prefill={modal.prefill} date={modal.date||todayStr()/* ← [2026-04-22 HOTFIX] 캘린더→홈 날짜 꼬임 해결 — selectedDate 폴백 제거, 명시 전달만 사용 */} onClose={()=>setModal(null)} onSubmit={addBooking} onUpdate={()=>false} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} />}
+          {modal.type==="new"         && <BookingModal prefill={modal.prefill} date={modal.date||todayStr()/* ← [2026-04-22 HOTFIX] 캘린더→홈 날짜 꼬임 해결 — selectedDate 폴백 제거, 명시 전달만 사용 */} onClose={()=>setModal(null)} onSubmit={addBooking} onUpdate={()=>false} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} penalty={myNoshowPenalty} />}/* ← [2026-08-10 이용제재] penalty 전달 — edit 인스턴스는 미전달(D6: 기존 예약 유지) */
             {modal.type==="edit"         && <BookingModal prefill={{}} editBooking={modal.data} date={tsDate(modal.data.start_at)} onClose={()=>setModal(null)} onSubmit={async ()=>false} onUpdate={(form,date)=>updateBooking(form,date,modal.data.id)} bookings={bookings} isAdmin={isAdmin} currentUser={currentUser} currentUserEmail={authUser?.email ?? ''} rooms={rooms} users={users} />}
             {/* ← [P2 v8] onCancel={cancelBooking} → onCancel={confirmAndCancelBooking}
                   예약 상세에서만 confirm dialog 경유 (소형카드는 즉시 실행 유지) */}

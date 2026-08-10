@@ -4,6 +4,10 @@
  * ✅ 변경 이력
  *  - [2026-08-05] 신규 — 고지 지시: 오늘/일주일/14일/한 달/전체/직접설정으로 노쇼 소팅,
  *      노쇼 해제(사용 완료) / DB 영구 삭제 관리
+ *  - [2026-08-10] 이용 제재 섹션 추가 — 8월 시행: 1개월 내 노쇼 3회 → 7일 예약 생성 차단.
+ *      제재 이력 표시 + 수동 해제(admin_revoke_noshow_penalty). 판정·차단·자동해제는
+ *      전부 DB(20260743) 몫 — 패널은 조회/해제 통로만. 노쇼 해제/삭제가 근거를 무너뜨리면
+ *      서버가 제재를 자동 해제하므로 runAction 후 제재 목록도 재조회한다.
  *
  * 📌 배치 근거: 새 탭을 만들지 않고 bookings 탭 하위 뷰 — 역할=탭 1:1(11종 고정)
  *    원칙을 깨지 않으며, RPC 게이트(has_admin_role('booking'))와 정확히 일치.
@@ -24,10 +28,11 @@
  */
 
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { Inbox, Download, AlertTriangle } from 'lucide-react'
-import { loadBookingsByRange, resolveNoshowBooking, deleteNoshowBooking } from '../../lib/api'
+import { Inbox, Download, AlertTriangle, ShieldAlert } from 'lucide-react'
+import { loadBookingsByRange, resolveNoshowBooking, deleteNoshowBooking, fetchNoshowPenalties, revokeNoshowPenalty } from '../../lib/api'  // ← [2026-08-10] 이용 제재
 import { isNoshow } from '../../utils/noshow'
-import { todayStr, fmt2, tsDate, fmtTSDateFull, fmtTSRangeFull } from '../../utils/time'
+import { penaltyDisplayStatus, type NoshowPenaltyRow } from '../../utils/noshowPenalty'  // ← [2026-08-10] 이용 제재
+import { todayStr, fmt2, tsDate, tsTime, fmtTSDateFull, fmtTSRangeFull } from '../../utils/time'  // ← [2026-08-10] tsTime 추가 (제재 기간 표시)
 import { exportCSV } from '../../utils/csv'
 import { DateField } from '../common/DateField'
 import { ConfirmDialog } from '../common/ConfirmDialog'
@@ -76,6 +81,8 @@ interface Props {
 }
 
 type ConfirmState = { action: 'resolve' | 'delete'; ids: string[] } | null
+// ← [2026-08-10] 제재 수동 해제 확인 상태 (기존 ConfirmState 와 분리 — 서로 다른 액션 계열)
+type RevokeState = NoshowPenaltyRow | null
 
 export function NoshowAdminPanel({ rooms, users, showToast, isMobile, PER_PAGE, onDetail }: Props) {
   const today = todayStr()
@@ -89,6 +96,38 @@ export function NoshowAdminPanel({ rooms, users, showToast, isMobile, PER_PAGE, 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirm, setConfirm]   = useState<ConfirmState>(null)
   const [busy, setBusy]         = useState(false)
+  // ← [2026-08-10] 이용 제재 — 자체 fetch (기간 필터와 무관하게 전체 이력 표시)
+  const [penalties, setPenalties]         = useState<NoshowPenaltyRow[]>([])
+  const [penaltyLoading, setPenaltyLoading] = useState(true)
+  const [revokeTarget, setRevokeTarget]     = useState<RevokeState>(null)
+
+  // ← [2026-08-10] 제재 목록 재조회 — 낙관적 갱신 금지 (액션 후 서버 상태가 진실)
+  async function loadPenalties() {
+    setPenaltyLoading(true)
+    try {
+      setPenalties(await fetchNoshowPenalties())
+    } catch {
+      showToast('제재 목록을 불러오지 못했습니다', 'error')
+    } finally {
+      setPenaltyLoading(false)
+    }
+  }
+  useEffect(() => { loadPenalties() }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ← [2026-08-10] 제재 수동 해제 실행
+  async function runRevoke(p: NoshowPenaltyRow) {
+    setBusy(true)
+    try {
+      await revokeNoshowPenalty(p.id, '노쇼 관리 패널 수동 해제')
+      showToast('제재를 해제했습니다', 'success')
+    } catch (e: any) {
+      showToast(e?.message ?? '제재 해제에 실패했습니다', 'error')
+    } finally {
+      setBusy(false)
+      setRevokeTarget(null)
+      await loadPenalties()
+    }
+  }
 
   // ── 자체 fetch — 기간 변경 시 재조회 ───────────────────────────────────
   async function load() {
@@ -157,6 +196,7 @@ export function NoshowAdminPanel({ rooms, users, showToast, isMobile, PER_PAGE, 
     if (fail === 0) showToast(`노쇼 ${ok}건을 ${verb}했습니다`, 'success')
     else showToast(`${verb} ${ok}건 성공, ${fail}건 실패${lastErr ? ` — ${lastErr}` : ''}`, 'error')
     await load()   // RPC 후 서버 상태 재조회 — 낙관적 갱신 금지 (프로젝트 규칙)
+    await loadPenalties()  // ← [2026-08-10] 근거 노쇼 해제/삭제 시 서버가 제재를 자동 해제하므로 함께 재조회
   }
 
   // ── CSV ─────────────────────────────────────────────────────────────────
@@ -244,6 +284,83 @@ export function NoshowAdminPanel({ rooms, users, showToast, isMobile, PER_PAGE, 
             <Download size={10} strokeWidth={1.8} /> CSV
           </button>
         </div>
+      </div>
+
+      {/* ── 이용 제재 (2026-08-10, 8월 시행: 1개월 내 3회 → 7일 예약 생성 차단) ── */}
+      <div style={{ background: '#fff', borderRadius: 16, padding: isMobile ? '16px' : '20px 24px', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+          <ShieldAlert size={15} strokeWidth={2} color="#DC2626" />
+          <span style={{ fontSize: 14, fontWeight: 800, color: '#111' }}>이용 제재</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#94A3B8' }}>
+            노쇼 최초 발생일부터 1개월 내 3회 누적 시 1주일 예약 생성 제한 (2026-08-01 시행)
+          </span>
+        </div>
+        <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 12 }}>
+          판정·차단·자동 해제는 서버가 강제합니다. 위 목록에서 근거 노쇼를 해제/삭제하면 해당 제재는 자동 해제됩니다.
+        </div>
+        {penaltyLoading ? (
+          <div style={{ textAlign: 'center', padding: 24, color: '#CBD5E1', fontSize: 13 }}>제재 목록을 불러오는 중...</div>
+        ) : penalties.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 24, color: '#CBD5E1', fontSize: 13 }}>제재 이력이 없습니다</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: '#F8FAFC' }}>
+                  {['대상자', '제재 기간', '근거 노쇼', '상태', '사유', '관리'].map(h => (
+                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#94A3B8', whiteSpace: 'nowrap', borderBottom: '1px solid #F1F5F9' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {penalties.map(p => {
+                  // 예약자 이름 live — profiles.name 우선, snapshot fallback (프로젝트 표준 패턴)
+                  const owner = users.find((u: any) => u.user_id === p.user_id)
+                  const displayName = owner?.name ?? p.user_name ?? '—'
+                  const displayDept = owner?.dept ?? ''
+                  const st = penaltyDisplayStatus(p)
+                  const stMeta = st === 'active'
+                    ? { label: '진행 중', bg: '#FEF2F2', fg: '#DC2626' }
+                    : st === 'expired'
+                    ? { label: '기간 만료', bg: '#F8FAFC', fg: '#94A3B8' }
+                    : { label: '해제됨', bg: '#F0FDF4', fg: '#059669' }
+                  return (
+                    <tr key={p.id} style={{ borderBottom: '1px solid #F8FAFC' }}>
+                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                          <div style={{ width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 500, flexShrink: 0, background: '#F1EFE8', color: '#444441' }}>{(displayName ?? '?')[0]}</div>
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>{displayName}</span>
+                          {displayDept && <span style={{ fontSize: 11, color: '#94A3B8' }}>{displayDept}</span>}
+                        </div>
+                      </td>
+                      <td style={{ padding: '10px 14px', color: '#64748B', whiteSpace: 'nowrap' }}>
+                        {fmtTSDateFull(p.starts_at)} {tsTime(p.starts_at)} ~ {fmtTSDateFull(p.ends_at)} {tsTime(p.ends_at)}
+                      </td>
+                      <td style={{ padding: '10px 14px', color: '#64748B', whiteSpace: 'nowrap' }}>
+                        {p.counted_booking_ids.length}건 ({fmtTSDateFull(p.anchor_at)} ~)
+                      </td>
+                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                        <span style={{ padding: '3px 10px', fontSize: 11, fontWeight: 700, borderRadius: 999, background: stMeta.bg, color: stMeta.fg }}>{stMeta.label}</span>
+                      </td>
+                      <td style={{ padding: '10px 14px', color: '#94A3B8', fontSize: 11, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.revoked_reason ?? ''}>
+                        {p.revoked_reason ?? (st === 'active' ? '노쇼 3회 누적' : '')}
+                      </td>
+                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                        {st === 'active' && (
+                          <button className="btn" disabled={busy}
+                            onClick={() => setRevokeTarget(p)}
+                            style={{ padding: '5px 11px', fontSize: 11, fontWeight: 700, borderRadius: 999, background: '#fff', border: '1px solid #059669', color: '#059669' }}>
+                            제재 해제
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* ── 일괄 액션 바 (선택 시 노출) ───────────────────────────────── */}
@@ -377,6 +494,22 @@ export function NoshowAdminPanel({ rooms, users, showToast, isMobile, PER_PAGE, 
           loading={busy}
           onConfirm={() => runAction('delete', confirm.ids)}
           onClose={() => { if (!busy) setConfirm(null) }}
+        />
+      )}
+      {/* ← [2026-08-10] 이용 제재 수동 해제 확인 */}
+      {revokeTarget && (
+        <ConfirmDialog
+          title="이용 제재 해제"
+          message={<>
+            <b>{users.find((u: any) => u.user_id === revokeTarget.user_id)?.name ?? revokeTarget.user_name ?? '대상자'}</b>님의
+            예약 생성 제한(~{fmtTSDateFull(revokeTarget.ends_at)} {tsTime(revokeTarget.ends_at)})을 <b>즉시 해제</b>합니다.<br />
+            해제 즉시 새 예약을 생성할 수 있으며, 해제 이력(해제자·시각·사유)은 제재 테이블에 보존됩니다.
+          </>}
+          confirmLabel="제재 해제"
+          variant="warn"
+          loading={busy}
+          onConfirm={() => runRevoke(revokeTarget)}
+          onClose={() => { if (!busy) setRevokeTarget(null) }}
         />
       )}
     </div>

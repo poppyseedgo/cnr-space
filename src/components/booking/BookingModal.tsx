@@ -2,6 +2,12 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-08-10 이용제재 Phase 2] 노쇼 제재 사전 안내 배너 (고지 확정 프리뷰 1:1)
+ *      · penalty prop(MyNoshowPenaltyState) 신규 — App.tsx가 my_noshow_penalty_state 조회값 전달
+ *      · penaltyBlocked = 신규 예약 && penalty.blocked — 예약 변경(editBooking) 경로는 미적용(D6: 기존 예약 유지)
+ *      · 배너: 데스크톱=헤더 아래 / 모바일=헤더 아래 고정(스크롤 바디 밖) — 동일 PenaltyBanner 컴포넌트
+ *      · 폼 dim(opacity 0.38 + pointerEvents none), CTA 잠금 라벨 "예약 제한 중 · M/D 오전 H:MM 해제"
+ *      · canSubmit 게이트에 !penaltyBlocked 추가 — UI 잠금은 안내일 뿐, 최종 차단은 DB 트리거(20260743)가 강제
  *  - [2026-07-27 목적 Phase 2] 회의 목적 카테고리 선택 UI (Figma 2688:1081/603, 2656:1837)
  *      · 신규 PurposeChips 컴포넌트 (데스크톱/모바일 공용, 칩 10종 단일선택 + 기타 상세입력)
  *      · form에 purpose/purposeDetail 추가 (신규=null, 수정=기존값 로드)
@@ -547,9 +553,10 @@
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useHolidayMap } from '../../utils/holidays' // ← [2026-08-03] 달력 공휴일·이벤트 표기 (전역 규칙 통일)
-import { AlertCircle, AlertTriangle, Ban, Calendar, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, Ban, Calendar, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, ShieldX, X } from 'lucide-react'  // ← [2026-08-10 이용제재] ShieldX 추가
 import { useBreakpoint, useVisualViewport } from '../../hooks/useBreakpoint'
 import { canPickUser } from '../../utils/employment' // ← [2026-07-30] 피커 제외 판정 SSOT (퇴사+휴직)
+import { fmtPenaltyEnd, fmtPenaltyEndShort, type MyNoshowPenaltyState } from '../../utils/noshowPenalty' // ← [2026-08-10 이용제재] 배너 문구 포맷 SSOT
 import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmtTSRange, timeToMin, dateToObj, objToStr, addDays, getWeekStart, nowStr,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
@@ -969,7 +976,33 @@ function PurposeChips({
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
-export function BookingModal({prefill, date:initDate, editBooking=null, onClose, onSubmit, onUpdate, bookings, isAdmin=false, currentUser="홍길동", currentUserEmail="", rooms:roomsProp=[], users:usersProp=[]}) {
+// ─── 노쇼 제재 사전 안내 배너 ─────────────────────────────────────────────────
+// ← [2026-08-10 이용제재] 고지 확정 프리뷰 1:1 — 사용 불가 회의실 카드와 동일 레드 계열
+//   (#FEF2F2 바탕 / #FFDBDB 보더·아이콘 원 / #DC1A1A 타이틀, radius 16).
+//   데스크톱·모바일 동일 컴포넌트, 폭만 유동. 문구 포맷은 utils/noshowPenalty.ts SSOT.
+function PenaltyBanner({ endsAt, isMobile }: { endsAt: string; isMobile: boolean }) {
+  return (
+    <div style={{background:"#FEF2F2", border:"1px solid #FFDBDB", borderRadius:16,
+      padding:isMobile ? 12 : "12px 14px", display:"flex", gap:10, alignItems:"flex-start"}}>
+      <div style={{width:isMobile?28:30, height:isMobile?28:30, borderRadius:"50%", background:"#FFDBDB",
+        display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0}}>
+        <ShieldX size={isMobile?16:17} strokeWidth={1.8} color="#DC1A1A"/>
+      </div>
+      <div style={{display:"flex", flexDirection:"column", gap:3, minWidth:0}}>
+        <div style={{fontSize:13, fontWeight:600, color:"#DC1A1A", lineHeight:1.4}}>예약 생성이 제한된 상태입니다</div>
+        <div style={{fontSize:12, color:"#B42318", lineHeight:1.55}}>
+          노쇼 누적(1개월 내 3회)으로 <span style={{fontWeight:600}}>{fmtPenaltyEnd(endsAt)}</span>까지 새 예약을 만들 수 없습니다.
+        </div>
+        {/* 모바일은 확정 프리뷰대로 2줄 구성 — 마지막 안내줄은 데스크톱만 */}
+        {!isMobile && (
+          <div style={{fontSize:11, color:"#E88A8A", lineHeight:1.5}}>이미 만들어 둔 예약과 다른 회의 참석은 유지됩니다.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function BookingModal({prefill, date:initDate, editBooking=null, onClose, onSubmit, onUpdate, bookings, isAdmin=false, currentUser="홍길동", currentUserEmail="", rooms:roomsProp=[], users:usersProp=[], penalty=null}) {  // ← [2026-08-10 이용제재] penalty prop 추가 (MyNoshowPenaltyState | null — App.tsx가 전달)
   const holidayMap = useHolidayMap()   // ← [2026-08-03] 'YYYY-MM-DD' → { holiday?, company? }
   // ← [2026-08-03] 날짜 필드 옆 휴일·이벤트 라벨 (캘린더 뷰 타이틀과 동일 규칙 — 공휴일 빨강 · 이벤트 보라)
   const dateTagEl = (ds: string) => {
@@ -1265,7 +1298,10 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   useEffect(() => { autoGrowTitle(titleRef.current) }, [isMobile])
 
   const purposeValid = !!form.purpose && (!isEtcPurpose(form.purpose) || form.purposeDetail.trim().length > 0);
-  const canSubmit = !!(form.room_id && form.title.trim() && purposeValid && validTime && isSelectedRoomAvailable && recurPreview.available > 0);  // ← [2026-07-27 목적] purposeValid 게이트 추가
+  // ← [2026-08-10 이용제재] 신규 예약만 잠금 — 예약 변경(editBooking)은 D6(기존 예약 유지) 원칙대로 미적용.
+  //   UI 잠금은 사전 안내일 뿐, 최종 차단은 DB BEFORE INSERT 트리거(20260743)가 강제 — 이중 진실 아님(서버가 SSOT)
+  const penaltyBlocked = !editBooking && !!(penalty?.blocked && penalty?.ends_at);
+  const canSubmit = !!(form.room_id && form.title.trim() && purposeValid && validTime && isSelectedRoomAvailable && recurPreview.available > 0 && !penaltyBlocked);  // ← [2026-07-27 목적] purposeValid 게이트 추가  // ← [2026-08-10 이용제재] !penaltyBlocked 게이트 추가
 
   // ── 날짜 피커 helpers ───────────────────────────────────────────────────────
   const todayObj   = dateToObj(today);
@@ -1922,6 +1958,12 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
 
       {/* ════ 모바일: 2-Step Wizard ════ */}
       {isMobile ? (<>
+        {/* ← [2026-08-10 이용제재] 제재 배너 — 스크롤 바디 밖(헤더 아래 고정), Step 1/2 공통 노출 */}
+        {penaltyBlocked && (
+          <div style={{padding:"12px 16px 6px", flexShrink:0}}>
+            <PenaltyBanner endsAt={penalty.ends_at} isMobile={true}/>
+          </div>
+        )}
         {/* Step 바디 — ← [2026-07-27 스크롤 HOTFIX] 표준 드로어 패턴으로 정정.
               · 기존 주석("모달 전체가 스크롤됨")과 달리 실제로는 오버레이·모달 루트(overflow:hidden)·
                 바디 어디에도 overflowY가 없어, 콘텐츠가 (95%vv − 헤더 − 푸터)를 넘는 순간
@@ -1930,7 +1972,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
               · overscrollBehavior:contain — iOS 러버밴드가 배경(body) 스크롤로 새는 것 차단 */}
         <div style={{display:"flex",flexDirection:"column",
           flex:1, minHeight:0, overflowY:"auto",
-          WebkitOverflowScrolling:"touch", overscrollBehavior:"contain"}}>
+          WebkitOverflowScrolling:"touch", overscrollBehavior:"contain",
+          opacity: penaltyBlocked ? 0.38 : 1, pointerEvents: penaltyBlocked ? "none" : "auto"}}>{/* ← [2026-08-10 이용제재] 폼 dim (고지 확정: 폼 dim 처리) */}
 
           {/* Step 1: 일정 입력 — [2026-07-27 모바일 v2] Figma 2697:251 전면 재구성.
                 필드 문법: 라벨 16px Medium #96A0B3 + 필수점, 섹션 구분선 #F6FAFF (MLabel).
@@ -2254,7 +2297,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
           display:"flex",gap:8,background:"#fff",marginTop:"auto"}}>
           {step===1 ? (<>
             <Button variant="ghost"   flex onClick={onClose}>취소</Button>
-            <Button variant="primary" flex onClick={()=>setStep(2)} disabled={!canGoStep2}>다음 → 회의실 선택</Button>
+            {/* ← [2026-08-10 이용제재] 제재 중 다음 단계 진입 차단 + 잠금 라벨 (모바일=짧은 라벨, 확정 프리뷰) */}
+            <Button variant="primary" flex onClick={()=>setStep(2)} disabled={penaltyBlocked || !canGoStep2}>{penaltyBlocked ? "예약 제한 중" : "다음 → 회의실 선택"}</Button>
           </>) : (<>
             {isApprovalRoom && (
               <div style={{width:"100%",marginBottom:8,padding:"10px 14px",borderRadius:10,
@@ -2276,7 +2320,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                 }
               }}>
               {/* ← [2026-07-27 모바일 v2] "예약 확정" → "예약완료" (Figma 2710:1570). 변경/승인 분기 유지 */}
-              {editBooking ? "변경 저장" : isApprovalRoom ? "승인 요청" : "예약완료"}
+              {/* ← [2026-08-10 이용제재] 제재 잠금 라벨 최우선 (editBooking이면 penaltyBlocked=false라 기존 분기 그대로) */}
+              {penaltyBlocked ? "예약 제한 중" : editBooking ? "변경 저장" : isApprovalRoom ? "승인 요청" : "예약완료"}
             </Button>
           </>)}
         </div>
@@ -2285,7 +2330,14 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
       /* ════ 데스크톱: 이미지 기반 리디자인 ════ */
       // ← [Phase A] padding 60px 0: 헤더/푸터 absolute 영역 확보 (Figma py-[60px])
       <div style={{display:"flex",flexDirection:"column",flex:1,overflow:"hidden",padding:"60px 0"}}>
-        <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+        {/* ← [2026-08-10 이용제재] 제재 배너 — 헤더 바로 아래, 본문 dim 영역 밖 */}
+        {penaltyBlocked && (
+          <div style={{padding:"0 20px 14px", flexShrink:0}}>
+            <PenaltyBanner endsAt={penalty.ends_at} isMobile={false}/>
+          </div>
+        )}
+        <div style={{display:"flex",flex:1,overflow:"hidden",
+          opacity: penaltyBlocked ? 0.38 : 1, pointerEvents: penaltyBlocked ? "none" : "auto"}}>{/* ← [2026-08-10 이용제재] 폼 dim (고지 확정: 폼 dim 처리) */}
           {/* LEFT: 폼 (50%) */}
           {/* ← [Phase B] padding 24/28 → 16/16/100/16 (Figma) */}
           {/* ← [Phase E] gap: 18 → 0 (Field 자체 padding 16 0 + border-bottom이 간격/구분선 담당) */}
@@ -3081,6 +3133,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
         }}>
           {/* ← [Phase A] Button height 56, radius 16 (Figma) — minHeight로 강제 override */}
           <Button variant="ghost"   flex onClick={onClose} style={{minHeight:56, borderRadius:16}}>취소</Button>
+          {/* ← [2026-08-10 이용제재] canSubmit에 !penaltyBlocked 포함 — disabled 조건 자체는 불변 */}
           <Button variant="primary" flex disabled={!canSubmit} loading={isSubmitting}
             style={{minHeight:56, borderRadius:16}}
             onClick={async ()=>{
@@ -3093,7 +3146,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   setIsSubmitting(false);
                 }
               }}>
-            {editBooking ? "변경 저장" : isApprovalRoom ? "승인 요청" : "예약 확정"}
+            {/* ← [2026-08-10 이용제재] 잠금 라벨 최우선 — "예약 제한 중 · M/D 오전 H:MM 해제" (확정 프리뷰) */}
+            {penaltyBlocked ? `예약 제한 중 · ${fmtPenaltyEndShort(penalty.ends_at)} 해제` : editBooking ? "변경 저장" : isApprovalRoom ? "승인 요청" : "예약 확정"}
           </Button>
         </div>
       </div>
