@@ -389,7 +389,7 @@ export function buildNoshowNoticeSvg(stats, fontCss = '') {
   y += para(el, CX, y, [
     { t: '노쇼 현황은 관리자 대시보드를 통해 상시 모니터링되며, 반복 노쇼가 지속될 경우 개별 안내 등 추가 조치 중 입니다.' },
   ], 16, 24, C.body)
-  y += oneLine(el, CX, y, [{ t: '작은 습관 하나로 모두가 회의실을 더 편하게 쓸 수 있습니다.' }], 16, 24, C.body)
+  y += oneLine(el, CX, y, [{ t: '더 편하게 사용할 수 있습니다.' }], 16, 24, C.body)
   y += oneLine(el, CX, y, [{ t: '회의실 사용시 체크인과 사전 취소에 협조 부탁드립니다. 감사합니다.' }], 16, 24, C.body)
   y += 100
   el.push(textEl(CX, base(y, 24, 16), 16, C.black, 'C&amp;R SPACE', { en: true }))
