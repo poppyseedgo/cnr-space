@@ -372,7 +372,7 @@ export function buildNoshowNoticeSvg(stats, fontCss = '') {
       { t: '회의가 취소·변경되면 시작 전에 예약을 취소해 주세요. 사전 취소는 불이익이 없고, 비워진 시간은 즉시 다른 직원이 예약할 수 있습니다.' },
     ]},
     { h: '노쇼로 다른 팀의 회의 기회를 상실시키지 마세요', body: [
-      { t: '임직원들은 9개 회의실을 함께 씁니다. ' }, { t: '노쇼 1건이 곧 다른 팀의 회의 1건입니다.', bold: true },
+      { t: '임직원들은 9개 회의실을 함께 사용합니다. ' }, { t: '노쇼 1건이 곧 다른팀의 회의 1건 입니다.', bold: true },
     ]},
   ]
   for (const s of sections) {
@@ -389,7 +389,7 @@ export function buildNoshowNoticeSvg(stats, fontCss = '') {
   y += para(el, CX, y, [
     { t: '노쇼 현황은 관리자 대시보드를 통해 상시 모니터링되며, 반복 노쇼가 지속될 경우 개별 안내 등 추가 조치 중 입니다.' },
   ], 16, 24, C.body)
-  y += oneLine(el, CX, y, [{ t: '더 편하게 사용할 수 있습니다.' }], 16, 24, C.body)
+  y += oneLine(el, CX, y, [{ t: '작은 습관 하나로 모두가 회의실을 더 편하게 사용할 수 있습니다.' }], 16, 24, C.body)
   y += oneLine(el, CX, y, [{ t: '회의실 사용시 체크인과 사전 취소에 협조 부탁드립니다. 감사합니다.' }], 16, 24, C.body)
   y += 100
   el.push(textEl(CX, base(y, 24, 16), 16, C.black, 'C&amp;R SPACE', { en: true }))
