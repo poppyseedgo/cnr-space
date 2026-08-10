@@ -5,6 +5,7 @@
  *
  * 처리 항목:
  *   1. 노쇼 자동 취소   — confirmed 예약 중 start_at + 10분 초과 & 미체크인
+ *   4. 노쇼 이용 제재 통지 — 발생/해제 미통지분 폴링 발송 (← [2026-08-10] 20260745)
  *   2. 승인 기한 10분 전 알림 — pending 예약 start_at 9~11분 전 (Admin 알림)
  *   3. 승인 기한 초과 자동 취소 — pending 예약 start_at 1분 전까지 미승인 시 자동 취소
  *
@@ -196,7 +197,7 @@ Deno.serve(async () => {
 
   try {
     const now = new Date()
-    const stats = { noshow: 0, reminderSent: 0, pendingExpired: 0 }
+    const stats = { noshow: 0, reminderSent: 0, pendingExpired: 0, penaltyApplied: 0, penaltyCleared: 0 }  // ← [2026-08-10 이용제재 알림] 카운터 2종 추가
 
     // ─── 1. 노쇼 자동 취소 + 이메일 발송 ──────────────────────────────────
     //
@@ -436,6 +437,89 @@ Deno.serve(async () => {
       console.log(`[auto-cancel] pending_expired 처리: ${booking.id} (${booking.title})`)
     }
     */
+    // ═══════════════════════════════════════════════════════════════════════
+    // 4. 노쇼 이용 제재 통지 (← [2026-08-10] 20260745, Phase 2-2)
+    //
+    //   제재 발생 지점 = DB 트리거(markNoshow tick·cron 양경로) — 프론트 이벤트
+    //   기반 발사가 구조적으로 불가능해, 미통지분을 여기서 폴링한다 (설계 §3.2).
+    //   이 함수를 택한 이유: 노쇼 마킹과 같은 파이프라인 + 15분 주기 —
+    //   정상 경로에서는 위 1번 스텝의 마킹 직후 같은 실행 안에서 통지된다.
+    //
+    //   lock-step (P3 v2 원칙 그대로): 발송 성공(callSendNotification=true) 건만
+    //   마킹. 실패 건은 미마킹 → 다음 15분 주기 자동 재시도.
+    //   독립 try/catch — 이 배치의 실패가 다른 배치를 막지 않는다 (도서 [0-2] 원칙).
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // ── 4-a. 발생 통지 (noshow_penalty_applied) ─────────────────────────────
+    try {
+      const { data: pens, error: penErr } = await supabase.rpc('get_unnotified_noshow_penalties')
+      if (penErr) throw new Error(`제재 발생 통지 조회 실패: ${penErr.message}`)
+
+      const appliedOk: string[] = []
+      for (const p of (pens ?? [])) {
+        // payload booking = 3번째 노쇼 예약 → POLICIES booker_only 가 대상자 1명 해석.
+        // 예약이 어드민 삭제됐어도 통지는 나가야 하므로 스냅샷 필드로 조립한다.
+        // *_kst 는 서버 완성 문자열 — 재변환 금지 (타임존 이중적용 하루 밀림 교훈).
+        const sent = await callSendNotification('noshow_penalty_applied', {
+          id:               p.triggered_booking_id,
+          title:            p.booking_title ?? '회의실 예약',
+          user_id:          p.user_id,
+          user_name:        p.user_name ?? '',
+          noshow_count:     p.noshow_count ?? 3,
+          penalty_starts_kst: p.starts_kst,
+          penalty_ends_kst:   p.ends_kst,
+        })
+        if (!sent) continue                    // 미마킹 → 다음 cron 재시도
+        appliedOk.push(p.penalty_id)
+        stats.penaltyApplied++
+        console.log(`[auto-cancel] 제재 발생 통지: ${p.penalty_id} (${p.user_name ?? p.user_id}) ~${p.ends_kst}`)
+      }
+
+      if (appliedOk.length > 0) {
+        const { error: markErr } = await supabase.rpc('mark_noshow_penalty_applied_notified', { p_penalty_ids: appliedOk })
+        // 마킹 실패 = 다음 실행에서 재발송(중복) 가능 — 조용히 넘기지 않고 로그로 추적
+        if (markErr) console.error('[auto-cancel] 제재 발생 통지 마킹 실패:', markErr.message)
+      }
+    } catch (e) {
+      console.error('[auto-cancel] 제재 발생 통지 처리 오류:', e)
+    }
+
+    // ── 4-b. 해제 통지 (noshow_penalty_cleared) ─────────────────────────────
+    //   해제 3경로(기간 만료/관리자 수동/근거 노쇼 해제·삭제 자동 revoke) 단일 타입.
+    //   still_blocked(같은 사용자의 다른 유효 제재 존재) = 발송하면 거짓말 —
+    //   건너뛰고 마킹만 한다 (도서 skip_still_blocked 원칙 동일).
+    try {
+      const { data: clears, error: clrErr } = await supabase.rpc('get_uncleared_noshow_penalties')
+      if (clrErr) throw new Error(`제재 해제 통지 조회 실패: ${clrErr.message}`)
+
+      const clearedOk: string[] = []
+      for (const p of (clears ?? [])) {
+        if (p.still_blocked) {
+          clearedOk.push(p.penalty_id)         // 알리지 않고 마킹만
+          console.log(`[auto-cancel] 제재 해제 통지 skip(still_blocked): ${p.penalty_id}`)
+          continue
+        }
+        const sent = await callSendNotification('noshow_penalty_cleared', {
+          id:               p.triggered_booking_id,
+          title:            p.booking_title ?? '회의실 예약',
+          user_id:          p.user_id,
+          user_name:        p.user_name ?? '',
+          penalty_ends_kst: p.ends_kst,
+        })
+        if (!sent) continue
+        clearedOk.push(p.penalty_id)
+        stats.penaltyCleared++
+        console.log(`[auto-cancel] 제재 해제 통지: ${p.penalty_id} (${p.user_name ?? p.user_id})`)
+      }
+
+      if (clearedOk.length > 0) {
+        const { error: markErr } = await supabase.rpc('mark_noshow_penalty_cleared_notified', { p_penalty_ids: clearedOk })
+        if (markErr) console.error('[auto-cancel] 제재 해제 통지 마킹 실패:', markErr.message)
+      }
+    } catch (e) {
+      console.error('[auto-cancel] 제재 해제 통지 처리 오류:', e)
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // ← [2026-04-23 HOTFIX] ②+③ 정지 상태 로그 (모니터링 용이)
     // ═══════════════════════════════════════════════════════════════════════

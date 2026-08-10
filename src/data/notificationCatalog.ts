@@ -47,7 +47,7 @@ export interface NotifCatalogItem {
   type:      string
   label:     string
   /** 화면 그룹 */
-  group:     '회의실 예약' | '체크인·노쇼' | '도서관' | '연체 제재'
+  group:     '회의실 예약' | '체크인·노쇼' | '노쇼 제재' | '도서관' | '연체 제재'
   /** 언제 나가는가 (사람이 읽는 문장) */
   trigger:   string
   audience:  NotifAudience
@@ -172,7 +172,7 @@ export const NOTIFICATION_CATALOG: NotifCatalogItem[] = [
 
 /** 화면 그룹 표시 순서 */
 export const NOTIF_GROUP_ORDER: NotifCatalogItem['group'][] =
-  ['회의실 예약', '체크인·노쇼', '도서관', '연체 제재']
+  ['회의실 예약', '체크인·노쇼', '노쇼 제재', '도서관', '연체 제재']
 
 /** 수신자 규칙 → 화면 표기 */
 export const AUDIENCE_LABEL: Record<NotifAudience, string> = {
