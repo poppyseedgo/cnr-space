@@ -376,10 +376,12 @@ function AppContent() {
     if (hash.startsWith('admin-tab-')) return 'admin'
     if (hash.startsWith('admin-booking-')) return 'admin'
     if (hash.startsWith('booking-')) return 'home'  // ← [2026-05-12] mypage → home (앱 첫 진입 폴백)
+    if (hash === 'myloans') return 'mypage'         // ← [2026-08-11 CTA 전수검사] 도서 CTA #myloans — 마이페이지 진입 (탭 선택은 아래 딥링크 이펙트)
     // OAuth 리다이렉트 후 해시가 소실된 경우 sessionStorage에서 복원
     const saved = sessionStorage.getItem('cnr_deeplink')
     if (saved?.startsWith('admin-booking-')) return 'admin'
     if (saved?.startsWith('booking-')) return 'home'  // ← [2026-05-12] mypage → home
+    if (saved === 'myloans') return 'mypage'          // ← [2026-08-11] OAuth 복원 경로에도 myloans — home 스침 방지
     return ['home','calendar','mypage','admin','library','release-notes'].includes(hash) ? hash : 'home'  // ← [2026-07-16] library / [2026-08-03] release-notes 추가
   }
   const [view, setViewState] = useState<string>(getViewFromHash);
@@ -562,7 +564,7 @@ function AppContent() {
     }
     // 최초 로그인(hash 없을 때)만 홈으로 이동, 새로고침 시 현재 hash 유지
     const currentHash = window.location.hash.replace('#', '');
-    const isValidHash = ['home','calendar','mypage','admin','library','release-notes'].includes(currentHash)  // ← [2026-07-16] library / [2026-08-03] release-notes 추가
+    const isValidHash = ['home','calendar','mypage','admin','library','release-notes','myloans'].includes(currentHash)  // ← [2026-07-16] library / [2026-08-03] release-notes 추가 / [2026-08-11] myloans(도서 CTA)
       || currentHash.startsWith('admin-tab-')
       || currentHash.startsWith('admin-booking-')
       || currentHash.startsWith('booking-')
@@ -588,10 +590,32 @@ function AppContent() {
   // admin-booking- 딥링크 해시를 sessionStorage에 저장 (OAuth 리다이렉트 시 소실 방지)
   useEffect(() => {
     const hash = window.location.hash.replace('#', '')
-    if (hash.startsWith('admin-booking-') || hash.startsWith('booking-')) {
+    if (hash.startsWith('admin-booking-') || hash.startsWith('booking-') || hash === 'myloans') {  // ← [2026-08-11] myloans 도 로그인 후 복원 대상
       sessionStorage.setItem('cnr_deeplink', hash)
     }
   }, [])
+
+  // ── [2026-08-11 CTA 전수검사] #myloans 딥링크 → 마이페이지 '도서 대여' 탭 ──
+  //
+  //   도서 알림 CTA 10종(urlTemplate {APP_URL}#myloans)이 쓰는 스킴인데 처리
+  //   코드가 없어 홈 폴백되는 죽은 링크였다 (7/20 CTA_MY_LOANS 설계 의도 =
+  //   "MyPage 진입 + 조회 세그먼트 '도서 대여' 자동 선택" — 프론트 미구현분).
+  //   기존 인프라 재사용: myPageInitialTab state(7/30 도서관 CTA 진입용)에
+  //   'book' 을 세팅하고 viewFromHash 가 mypage 로 보낸다. OAuth 경유 시엔
+  //   cnr_deeplink 로 저장된 값을 로그인 완료 후 소비한다 (booking- 패턴 동일).
+  useEffect(() => {
+    if (!authUser || loading) return
+    const hash  = window.location.hash.replace('#', '')
+    const saved = sessionStorage.getItem('cnr_deeplink') ?? ''
+    if (hash !== 'myloans' && saved !== 'myloans') return
+    setMyPageInitialTab('book')
+    setView('mypage')
+    if (saved === 'myloans') sessionStorage.removeItem('cnr_deeplink')
+    if (hash === 'myloans') {
+      // booking- 딥링크와 동일 규칙: 소비 후 해시 정리 (재진입 오동작 방지)
+      window.history.replaceState(null, '', window.location.pathname + window.location.search)
+    }
+  }, [authUser?.user_id, loading])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── [P2 v7 / 2026-05-12 페이지 컨텍스트 보존] booking-{id} 딥링크 → DetailModal 자동 오픈 ──
   //
