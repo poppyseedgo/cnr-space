@@ -369,11 +369,17 @@ function infoRow(label: string, valueHtml: string): string {
   </tr>`
 }
 
-/** 사람 셀 — 검정 원형 아바타 24(이니셜 #E7E7E7) + 이름 14 + 부서(35% 잉크) */
-function personHtml(name: string, dept?: string): string {
+/** 사람 셀 — 검정 원형 아바타 24(이니셜 #E7E7E7) + 이름 14 + 부서(35% 잉크)
+ *  ← [2026-08-11 대여자 아바타] avatarUrl 이 있으면 실사진 원형(24, cover)으로 표시.
+ *    이미지 차단 클라이언트(Outlook 기본)는 alt=이니셜 + 셀 검정 배경으로
+ *    기존 이니셜 원에 근사 폴백된다. 없으면 기존 이니셜 원 그대로. */
+function personHtml(name: string, dept?: string, avatarUrl?: string | null): string {
   const initial = (name ?? '').trim().charAt(0) || '?'
+  const avatarCell = avatarUrl
+    ? `<td style="width:24px;height:24px;border-radius:1000px;background:#000000;text-align:center;vertical-align:middle;font-size:12px;font-weight:500;color:#E7E7E7;overflow:hidden;"><img src="${esc(avatarUrl)}" alt="${esc(initial)}" width="24" height="24" style="display:block;width:24px;height:24px;border-radius:1000px;object-fit:cover;border:0;"></td>`
+    : `<td style="width:24px;height:24px;border-radius:1000px;background:#000000;text-align:center;vertical-align:middle;font-size:12px;font-weight:500;color:#E7E7E7;">${esc(initial)}</td>`
   return `<table role="presentation" cellpadding="0" cellspacing="0"><tr>
-    <td style="width:24px;height:24px;border-radius:1000px;background:#000000;text-align:center;vertical-align:middle;font-size:12px;font-weight:500;color:#E7E7E7;">${esc(initial)}</td>
+    ${avatarCell}
     <td style="padding-left:7px;font-size:14px;font-weight:500;color:#111;white-space:nowrap;">${esc(name)}</td>
     ${dept ? `<td style="padding-left:4px;font-size:14px;font-weight:500;color:rgba(17,17,17,0.35);white-space:nowrap;">${esc(dept)}</td>` : ''}
   </tr></table>`
@@ -407,7 +413,9 @@ function renderEmail(input: EmailRenderInput): string {
     if (booking.due_date_kst)      rows.push(infoRow('DUE', esc(booking.due_date_kst)))
     if (typeof booking.days_overdue === 'number' && booking.days_overdue > 0)
       rows.push(infoRow('OVERDUE', `<span style="color:#EF4444;">${esc(`${booking.days_overdue}일`)}</span>`))
-    if (booking.user_name) rows.push(infoRow('대여자', personHtml(booking.user_name, booking.user_dept)))
+    // ← [2026-08-11 대여자 아바타] creatorInfo = recipients.owner(booking.user_id 해석)
+    //   = 대여 주체 본인 — profiles.avatar_url 이 여기 실려 온다 (resolver 7/20 owner 규칙)
+    if (booking.user_name) rows.push(infoRow('대여자', personHtml(booking.user_name, booking.user_dept, creatorInfo?.avatar_url)))
   } else if (isPenalty) {
     if (typeof booking.noshow_count === 'number')
       rows.push(infoRow('NOSHOW', esc(`${booking.noshow_count}회 (1개월 내)`)))
