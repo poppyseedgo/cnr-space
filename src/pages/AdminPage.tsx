@@ -10,7 +10,7 @@
  *    · 영향 파일 내: AdminView(onGoApprovals prop 전달) / AdminDashboard(시그니처 + 카드 onClick)
  *    · 다른 카드(②노쇼 ③최근예약 ④~⑧ 등)의 DetailDrawer 동작은 그대로 보존
  */
-import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, memo, useLayoutEffect } from 'react'
 import { DateField } from '../components/common/DateField' // ← [2026-08-03] 공통 날짜 필드
 import { HolidayAdminPanel } from '../components/admin/HolidayAdminPanel' // ← [2026-08-03] 공휴일·이벤트 관리 (Phase C)
 import { createPortal } from 'react-dom'  // ← [2026-05-06 사이드 sticky 핫픽스] 사이드 네비를 body 직접 mount하기 위함
@@ -867,6 +867,53 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
   //   → 같은 iPad 세로에서 카드 폭 268px → 382px (Figma 389 에 근접)
   const navInline = isMobile || isTablet
 
+  // ── 사이드 네비 ↔ 푸터 겹침 방지 (← [2026-08-11] 고지 스크린샷 신고) ──────
+  //
+  //   fixed 사이드는 문서 흐름 밖이라 두 경로로 푸터(<footer>, AppFooter)와 겹친다:
+  //     ① 콘텐츠가 짧은 탭(방문 기록 등): 페이지가 사이드보다 짧아 푸터가 바로 겹침
+  //     ② 콘텐츠가 긴 탭: 최하단까지 스크롤하면 푸터가 뷰포트로 올라와 하단 교차
+  //   sticky 회귀는 불가 — html/body overflow-x:hidden 이 sticky 를 깨서 fixed 로
+  //   전환한 이력(2026-05-06)이 있다. fixed 를 유지한 채:
+  //     (a) 본문 wrapper minHeight ≥ 사이드 실높이 → ①을 구조적으로 차단
+  //     (b) 스크롤 시 푸터 교차량만큼 translateY(-overlap) → ② 표준 UX(밀려 올라감)
+  //   사이드 높이는 allowedTabs(권한별 탭 수)에 따라 가변이라 측정 기반으로 간다.
+  const sideRef = useRef<HTMLElement | null>(null)
+  const [sideH, setSideH] = useState(0)
+  useLayoutEffect(() => {
+    if (navInline) { setSideH(0); return }
+    const el = sideRef.current
+    if (!el) return
+    const measure = () => setSideH(el.offsetHeight)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [navInline, activeTab])
+  useEffect(() => {
+    if (navInline) return
+    let raf = 0
+    const tick = () => {
+      raf = 0
+      const el = sideRef.current
+      const footer = document.querySelector('footer')
+      if (!el || !footer) return
+      const sideTop = headerHeight + 32
+      const footRect = footer.getBoundingClientRect()
+      // 사이드 하단(자연 위치)과 푸터 상단의 교차량 — 48px 완충 (← [2026-08-11] 고지: 하단 여백 넉넉하게)
+      const overlap = Math.max(0, sideTop + el.offsetHeight + 48 - footRect.top)
+      el.style.transform = overlap > 0 ? `translateY(${-overlap}px)` : ''
+    }
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(tick) }
+    tick()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll)
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [navInline, headerHeight, sideH])
+
   return (
     /* ═══════════════════════════════════════════════════════════════════
        ↓ Admin 외곽 wrapper — Figma node 451:3521 1:1
@@ -887,7 +934,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
     <>
       {/* ── 데스크톱: 사이드 네비를 body에 portal mount + fixed 위치 ──── */}
       {!navInline && createPortal(
-        <aside style={{
+        <aside ref={sideRef} style={{
           position: 'fixed',
           top:      headerHeight + 32,                    // ← 헤더 높이 + 여유 32
           // viewport 1400 이상: (vw - 1400)/2 + 24 padding / 1400 미만: 24
@@ -916,6 +963,9 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
         margin:   '0 auto',
         // ← [2026-07-24] 태블릿은 사이드가 인라인이므로 좌측 244 여백이 필요 없다
         padding:  isMobile ? '16px 12px' : navInline ? '24px 20px' : '32px 24px 32px 244px',
+        // ← [2026-08-11] (a) 짧은 탭에서도 푸터가 fixed 사이드 아래로 밀리도록 최소 높이 보장
+        //   sideH(실측) + 32(사이드 top 여유) + 48(하단 여유 — 고지: 넉넉하게). 인라인 배치에선 불필요.
+        minHeight: !navInline && sideH > 0 ? sideH + 80 : undefined,
       }}>
         {/* 모바일·태블릿: 사이드 인라인 표시 (자연 흐름) */}
         {navInline && (
