@@ -346,112 +346,148 @@ function esc(v: unknown): string {
   return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
-function infoRow(label: string, value: string): string {
+// ← [2026-08-11 원본 디자인 원복] SSOT = Figma ydfT0xP6nc83VxFd7GyEx4 노드 147:177
+//   ("Mail - 거절메일") 실측 + 고지 제공 스크린샷 2종. 8/10 v2 generic 룩과
+//   8/11 재설계 시안은 폐기 — 유실 전 원본 룩을 재현한다.
+//   원본 토큰: 흰 배경 600px · 로고 "C&R SPACE" Instrument Sans 30 Medium
+//   uppercase #111 · 헤더라벨 Pretendard 16 Medium · 역할 배지 #DFF3FF r4 ·
+//   섹션 구분선 0.5px #111 · 타이틀 21 Medium + 서브 14 · 인포 행 라벨
+//   Bold 12 ls1px 100px + 값 Medium 14 · 아바타 24 검정원(#E7E7E7 이니셜) ·
+//   부서 rgba(17,17,17,.35) · 안내 배너 #DFF3FF r12 p16 12px · 사유 배너
+//   #FFF1F1 + #EF4444 · CTA 검정 r16 py16 풀폭 shadow(70,70,70,.2) ·
+//   푸터 11 #99A1AF 중앙 "이 메일은 C&R SPACE에서 자동발송 된 이메일 입니다."
+//   전부 테이블+인라인 스타일 (Outlook: radius·shadow 미지원 시 각짐 허용).
+
+const FONT_STACK = "'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif"
+const LOGO_STACK = "'Instrument Sans','Pretendard','Apple SD Gothic Neo',sans-serif"
+
+/** 인포 행 — 원본: 라벨 Bold 12 letter-spacing 1px 폭 100, 값 Medium 14, py 14 */
+function infoRow(label: string, valueHtml: string): string {
   return `<tr>
-    <td style="padding:6px 0;font-size:12px;color:#94A3B8;width:88px;vertical-align:top;">${esc(label)}</td>
-    <td style="padding:6px 0;font-size:13px;color:#334155;font-weight:500;">${esc(value)}</td>
+    <td style="padding:14px 0;font-size:12px;font-weight:700;letter-spacing:1px;color:#111;width:100px;vertical-align:top;">${esc(label)}</td>
+    <td style="padding:14px 0;font-size:14px;font-weight:500;color:#111;line-height:1.3;">${valueHtml}</td>
   </tr>`
 }
 
+/** 사람 셀 — 검정 원형 아바타 24(이니셜 #E7E7E7) + 이름 14 + 부서(35% 잉크) */
+function personHtml(name: string, dept?: string): string {
+  const initial = (name ?? '').trim().charAt(0) || '?'
+  return `<table role="presentation" cellpadding="0" cellspacing="0"><tr>
+    <td style="width:24px;height:24px;border-radius:1000px;background:#000000;text-align:center;vertical-align:middle;font-size:12px;font-weight:500;color:#E7E7E7;">${esc(initial)}</td>
+    <td style="padding-left:7px;font-size:14px;font-weight:500;color:#111;white-space:nowrap;">${esc(name)}</td>
+    ${dept ? `<td style="padding-left:4px;font-size:14px;font-weight:500;color:rgba(17,17,17,0.35);white-space:nowrap;">${esc(dept)}</td>` : ''}
+  </tr></table>`
+}
+
+/** 안내 배너 — 원본 파랑 #DFF3FF. 경고·사유 계열은 핑크 #FFF1F1 + #EF4444 */
+function noticeBanner(tone: 'info' | 'danger', title: string | null, body: string): string {
+  const bg = tone === 'danger' ? '#FFF1F1' : '#DFF3FF'
+  const color = tone === 'danger' ? '#EF4444' : '#000000'
+  return `<div style="margin-top:16px;padding:16px;border-radius:12px;background:${bg};">
+    ${title ? `<div style="font-size:12px;font-weight:600;color:${color};">${esc(title)}</div>` : ''}
+    <div style="${title ? 'margin-top:4px;' : ''}font-size:12px;font-weight:500;line-height:1.6;color:${color};">${esc(body)}</div>
+  </div>`
+}
+
 function renderEmail(input: EmailRenderInput): string {
-  const { type, role, booking, creatorInfo, recipientName, attendeeList, recurBookings, appUrl } = input
+  const { type, role, booking, creatorInfo, recipientName: _rn, attendeeList, recurBookings, appUrl } = input
   const policy = POLICIES[type]
 
-  // ── 인포카드 행 구성 ────────────────────────────────────────────────
-  const rows: string[] = []
   const isBook    = !!(booking.book_title || booking.due_date_kst)
   const isPenalty = !!booking.penalty_ends_kst && (type === 'noshow_penalty_applied' || type === 'noshow_penalty_cleared')
   const pText = purposeText(booking.purpose, booking.purpose_detail)
 
+  // ── 역할 배지 (원본 "관리자 수신 알림" 패턴) ─────────────────────────
+  const roleBadge = role === 'admin' ? '관리자 수신 알림' : role === 'attendee' ? '참석자 수신 알림' : isBook ? '대여자 수신 알림' : isPenalty ? '대상자 수신 알림' : '예약자 수신 알림'
+
+  // ── 인포 행 (원본: 영문 대문자 라벨 / 사람 라벨은 한글) ──────────────
+  const rows: string[] = []
   if (isBook) {
-    rows.push(infoRow('도서', booking.book_title ?? '-'))
-    if (booking.checkout_date_kst) rows.push(infoRow('대여일', booking.checkout_date_kst))
-    if (booking.due_date_kst)      rows.push(infoRow('반납기한', booking.due_date_kst))
+    if (booking.checkout_date_kst) rows.push(infoRow('RENTED', esc(booking.checkout_date_kst)))
+    if (booking.due_date_kst)      rows.push(infoRow('DUE', esc(booking.due_date_kst)))
     if (typeof booking.days_overdue === 'number' && booking.days_overdue > 0)
-      rows.push(infoRow('연체', `${booking.days_overdue}일`))
-    if (booking.user_name) rows.push(infoRow('대여자', `${booking.user_name}${booking.user_dept ? ` (${booking.user_dept})` : ''}`))
+      rows.push(infoRow('OVERDUE', `<span style="color:#EF4444;">${esc(`${booking.days_overdue}일`)}</span>`))
+    if (booking.user_name) rows.push(infoRow('대여자', personHtml(booking.user_name, booking.user_dept)))
   } else if (isPenalty) {
-    // 제재: 근거가 된 3번째 노쇼 예약 + 대상자. 시간 필드는 payload 에 없을 수
-    // 있으므로(제재 스냅샷 발송) 있는 것만 렌더.
-    rows.push(infoRow('회의명', booking.title || '회의실 예약'))
-    if (booking.user_name) rows.push(infoRow('대상자', `${booking.user_name}${booking.user_dept ? ` (${booking.user_dept})` : ''}`))
     if (typeof booking.noshow_count === 'number')
-      rows.push(infoRow('누적 노쇼', `${booking.noshow_count}회 (1개월 내)`))
-    // ← 허용 예외: 제한 기간 라인 — 없으면 "언제까지인지" 문의가 관리자에게 간다
+      rows.push(infoRow('NOSHOW', esc(`${booking.noshow_count}회 (1개월 내)`)))
     if (type === 'noshow_penalty_applied')
-      rows.push(infoRow('제한 기간', `${booking.penalty_starts_kst ?? ''} ~ ${booking.penalty_ends_kst} (해제 시 자동 안내)`))
+      rows.push(infoRow('PERIOD', `<span style="color:#EF4444;">${esc(`${booking.penalty_starts_kst ?? ''} ~ ${booking.penalty_ends_kst}`)}</span>`))
+    if (booking.user_name) rows.push(infoRow('대상자', personHtml(booking.user_name, booking.user_dept)))
   } else {
-    if (pText) rows.push(infoRow('목적', pText))
-    rows.push(infoRow('회의명', booking.title || '-'))
-    if (booking.room_name) rows.push(infoRow('회의실', booking.room_name))
-    if (booking.start_at)  rows.push(infoRow('날짜', kstDateWithDay(booking.start_at)))
+    if (booking.start_at)  rows.push(infoRow('DATE', esc(kstDateWithDay(booking.start_at))))
     if (booking.start_at && booking.end_at)
-      rows.push(infoRow('시간', `${kstTime(booking.start_at)} ~ ${kstTime(booking.end_at)}`))
-    if (creatorInfo?.name || booking.user_name)
-      rows.push(infoRow('예약자', `${creatorInfo?.name ?? booking.user_name}${(creatorInfo?.dept ?? booking.user_dept) ? ` (${creatorInfo?.dept ?? booking.user_dept})` : ''}`))
-    if (booking.recur_label) rows.push(infoRow('반복', booking.recur_label))
+      rows.push(infoRow('TIME', esc(`${kstTime(booking.start_at)} - ${kstTime(booking.end_at)}`)))
+    if (booking.room_name) rows.push(infoRow('ROOM', esc(booking.room_name)))
+    if (pText)             rows.push(infoRow('PURPOSE', esc(pText)))
+    if (booking.recur_label) rows.push(infoRow('REPEAT', esc(booking.recur_label)))
+    if (booking.memo)
+      rows.push(infoRow('MEMO', esc(booking.memo).replace(/\n/g, '<br>')))
+    const ownerName = creatorInfo?.name ?? booking.user_name
+    if (ownerName) rows.push(infoRow('예약자', personHtml(ownerName, creatorInfo?.dept ?? booking.user_dept)))
     if (attendeeList.length > 0)
-      rows.push(infoRow(`참석자 ${attendeeList.length}명`, attendeeList.map(a => a.name).join(', ')))
-    if (booking.memo) rows.push(infoRow('메모', booking.memo))
+      rows.push(infoRow('참석자', attendeeList.map(a => personHtml(a.name, a.dept)).join('<div style="height:8px;line-height:8px;font-size:0;">&nbsp;</div>')))
   }
 
-  // ── 허용 예외: rejected 사유 + 처리자 / cancelled 강제 취소 사유 ──────
-  if (type === 'rejected' && booking.reject_reason)
-    rows.push(infoRow('거절 사유', booking.reject_reason))
-  if (type === 'rejected' && booking.admin_name)
-    rows.push(infoRow('처리 관리자', booking.admin_name))
-  if (type === 'cancelled' && booking.admin_force && booking.cancel_reason)
-    rows.push(infoRow('취소 사유', booking.cancel_reason))
-
-  // ── 배너 (정책 contextBanner[role]) ─────────────────────────────────
+  // ── 배너: 정책 contextBanner → 원본 2톤 매핑 (warning/danger→핑크, 그 외→파랑) ──
   const banner = policy?.contextBanner?.[role]
-  const bannerHtml = banner ? `
-    <div style="margin:16px 0;padding:12px 14px;border-radius:10px;background:${banner.bg};border:1px solid ${banner.border};">
-      <div style="font-size:13px;font-weight:700;color:${banner.text};">${esc(banner.title)}</div>
-      ${banner.body ? `<div style="margin-top:4px;font-size:12px;line-height:1.6;color:${banner.text};">${esc(banner.body)}</div>` : ''}
-    </div>` : ''
+  let bannersHtml = ''
+  if (banner) {
+    // 원본(Figma 147:177·고지 스크린샷 2종): 안내 배너는 톤 무관 항상 파랑 —
+    // 핑크는 사유(거절/취소/제한) 배너 전용. 정책 프리셋 색은 인앱 쪽 개념으로만 남긴다.
+    bannersHtml += noticeBanner('info', null, banner.body ? `${banner.title} ${banner.body}` : banner.title)
+  }
+  // 사유 배너 (원본 "거절 사유" 패턴 — 타이틀 + 본문, 핑크/레드)
+  if (type === 'rejected' && booking.reject_reason)
+    bannersHtml += noticeBanner('danger', '거절 사유', booking.admin_name ? `${booking.reject_reason} (처리: ${booking.admin_name})` : booking.reject_reason)
+  if (type === 'cancelled' && booking.admin_force && booking.cancel_reason)
+    bannersHtml += noticeBanner('danger', '취소 사유', booking.cancel_reason)
 
-  // ── CTA (정책 cta[role]) ────────────────────────────────────────────
+  // ── 반복 일정 (원본 근거 없음 — 인포 행 스타일로 최소 표기) ───────────
+  const recurHtml = recurBookings.length > 0
+    ? infoRow('SCHEDULE', recurBookings.map(r => esc(`${kstDateWithDay(r.start_at)} ${kstTime(r.start_at)} - ${kstTime(r.end_at)}`)).join('<br>'))
+    : ''
+
+  // ── CTA (원본: 검정 풀폭 r16 — 색은 검정 고정, 라벨은 정책) ──────────
   const cta = policy?.cta?.[role]
   const ctaHtml = cta ? `
-    <div style="margin:20px 0 4px;text-align:center;">
-      <a href="${renderUrl(cta.urlTemplate, { APP_URL: appUrl, BOOKING_ID: booking.id })}"
-         style="display:inline-block;padding:12px 28px;border-radius:10px;background:${cta.color};color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;">
-        ${esc(cta.label)}
-      </a>
-    </div>` : ''
-
-  // ── 반복 예약 목록 (recur) ──────────────────────────────────────────
-  const recurHtml = recurBookings.length > 0 ? `
-    <div style="margin-top:12px;padding:10px 14px;border-radius:10px;background:#F8FAFC;">
-      <div style="font-size:12px;font-weight:700;color:#64748B;margin-bottom:6px;">반복 일정 ${recurBookings.length}건</div>
-      ${recurBookings.map(r => `<div style="font-size:12px;color:#475569;padding:2px 0;">${kstDateWithDay(r.start_at)} ${kstTime(r.start_at)} ~ ${kstTime(r.end_at)}</div>`).join('')}
-    </div>` : ''
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:32px;"><tr>
+      <td style="background:#000000;border-radius:16px;text-align:center;">
+        <a href="${renderUrl(cta.urlTemplate, { APP_URL: appUrl, BOOKING_ID: booking.id })}"
+           style="display:block;padding:16px 0;font-size:16px;font-weight:600;color:#ffffff;text-decoration:none;">${esc(cta.label)}</a>
+      </td>
+    </tr></table>` : ''
 
   const headerLabel = policy?.headerLabel ?? '예약 알림'
-  const headerColor = policy?.headerColor ?? '#4F46E5'
-  const titleStyle  = policy?.isCancelledStyle ? 'text-decoration:line-through;color:#94A3B8;' : 'color:#0F172A;'
+  // 원본 거절메일(147:177)의 회의명엔 취소선이 없다 — 취소선은 "예약 자체가 취소된"
+  // 타입(cancelled/noshow/pending_expired)에만. rejected 는 정책 isCancelledStyle 과
+  // 무관하게 원본대로 일반 표기.
+  const cancelled   = !!policy?.isCancelledStyle && type !== 'rejected'
+  const titleStyle  = cancelled ? 'text-decoration:line-through;color:#99A1AF;' : 'color:#111;'
   const cardTitle   = isBook ? (booking.book_title ?? booking.title) : (booking.title || (isPenalty ? '회의실 예약' : '-'))
+  const subLine     = isBook ? '도서 대여' : isPenalty ? (booking.user_name ?? '') : (booking.room_name ?? '')
 
   return `<!DOCTYPE html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#F1F5F9;font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F1F5F9;padding:24px 12px;"><tr><td align="center">
-    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;">
-      <tr><td style="background:${headerColor};padding:18px 24px;">
-        <div style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.85);letter-spacing:0.4px;">C&amp;R SPACE</div>
-        <div style="margin-top:2px;font-size:17px;font-weight:800;color:#ffffff;">${esc(headerLabel)}</div>
+<body style="margin:0;padding:0;background:#ffffff;font-family:${FONT_STACK};">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;">
+      <tr><td style="padding-bottom:32px;">
+        <div style="padding-bottom:16px;font-family:${LOGO_STACK};font-size:30px;font-weight:500;color:#111;text-transform:uppercase;">C&amp;R SPACE</div>
+        <div style="font-size:16px;font-weight:500;line-height:1.7;color:#111;">${esc(headerLabel)}</div>
+        <div style="margin-top:4px;"><span style="display:inline-block;padding:4px 8px;border-radius:4px;background:#DFF3FF;font-size:12px;font-weight:500;color:#111;">${esc(roleBadge)}</span></div>
       </td></tr>
-      <tr><td style="padding:22px 24px 26px;">
-        <div style="font-size:13px;color:#475569;">${esc(recipientName)}님, 안녕하세요.</div>
-        <div style="margin-top:10px;font-size:18px;font-weight:800;${titleStyle}">${esc(cardTitle)}</div>
-        ${bannerHtml}
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:6px;border-top:1px solid #F1F5F9;">${rows.join('')}</table>
-        ${recurHtml}
+      <tr><td style="border-top:0.5px solid #111;border-bottom:0.5px solid #111;padding:24px 0;">
+        <div style="font-size:21px;font-weight:500;line-height:1.5;${titleStyle}">${esc(cardTitle)}</div>
+        ${subLine ? `<div style="padding-top:2px;font-size:14px;color:#111;letter-spacing:0.07px;">${esc(subLine)}</div>` : ''}
+      </td></tr>
+      <tr><td style="padding:24px 0 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows.join('')}${recurHtml}</table>
+        ${bannersHtml}
         ${ctaHtml}
       </td></tr>
-      <tr><td style="padding:14px 24px;background:#F8FAFC;border-top:1px solid #F1F5F9;">
-        <div style="font-size:11px;color:#94A3B8;line-height:1.6;">본 메일은 C&amp;R SPACE 회의실 예약 시스템에서 자동 발송되었습니다.<br>문의: 경영지원팀</div>
+      <tr><td style="padding:24px 30px;text-align:center;">
+        <div style="font-size:11px;line-height:16px;color:#99A1AF;">이 메일은 C&amp;R SPACE에서 자동발송 된 이메일 입니다.</div>
       </td></tr>
     </table>
   </td></tr></table>
