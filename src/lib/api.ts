@@ -1922,6 +1922,9 @@ function parseCheckoutError(message: string): { code: CheckoutErrorCode; detail?
     //   추가할 때는 긴 쪽을 앞에 둘 것 (OVERDUE_TOO_LONG 사례와 동일한 함정).
     'CHECKOUT_AT_PAST', 'RESERVE_TOO_FAR', 'PERIOD_CONFLICT', 'ALREADY_STARTED',
     'CHECKOUT_NOT_FOUND', 'NOT_ACTIVE',
+    // ← [2026-08-13] 어드민 기한 자유 설정. 'DUE_OUT_OF_RANGE' 는
+    //   'CHECKOUT_AT_OUT_OF_RANGE' 와 부분 문자열 관계가 아니므로 순서 무관.
+    'NO_DUE_DATE', 'DUE_BEFORE_CHECKOUT', 'DUE_OUT_OF_RANGE',
     'PENALTY_BLOCKED',            // ← [2026-07-21] 연체 제재
   ]
   const hit = codes.find(c => message.includes(c))
@@ -1959,6 +1962,11 @@ export function checkoutErrorMessage(code: CheckoutErrorCode, detail?: string): 
         : '해당 기간에 이미 대여가 잡혀 있습니다. 다른 날짜를 선택해주세요'
     }
     case 'ALREADY_STARTED':    return '이미 시작된 대여는 취소할 수 없습니다. 반납 처리해주세요'
+    // ── [2026-08-13] 어드민 기한 자유 설정 ──────────────────────────────
+    case 'NO_DUE_DATE':        return '반납기한을 선택해주세요'
+    case 'DUE_BEFORE_CHECKOUT':return '반납기한은 대여일 다음날 이후로만 지정할 수 있습니다'
+    case 'DUE_OUT_OF_RANGE':
+      return `반납기한은 오늘 기준 ${detail ?? '365'}일 이내로만 지정할 수 있습니다`
     case 'CHECKOUT_NOT_FOUND': return '대여 정보를 찾을 수 없습니다'
     case 'NOT_ACTIVE':         return '이미 처리된 대여입니다. 목록을 새로고침해주세요'
     // ── [2026-07-21] 연체 제재. detail = "tier:해제일(YYYY-MM-DD, 없으면 빈값)"
@@ -2021,21 +2029,44 @@ function toLoanRow(r: any): MyBookLoan {
   }
 }
 
-/** [Admin] 도서 대여 등록 — 여러 권 동시, 단일 트랜잭션 */
+/** [Admin] 도서 대여 등록 — 여러 권 동시, 단일 트랜잭션
+ *  ← [2026-08-13] admin_checkout_books_v2 로 전환 (20260746).
+ *    v2 는 기존 admin_checkout_books 를 내부 호출한 뒤 같은 트랜잭션에서
+ *    기한만 교체한다 — dueOn 미지정이면 기존과 완전 동일(기본 7일). */
 export async function adminCheckoutBooks(
   userId: string, bookIds: number[], notes?: string | null,
-  /** ← [2026-07-20] 대여일(ISO). 미지정 시 서버가 등록 시각을 쓴다.
-   *   반납기한은 서버에서 "이 값 + 7일"로 계산된다. */
+  /** ← [2026-07-20] 대여일(ISO). 미지정 시 서버가 등록 시각을 쓴다. */
   checkoutAt?: string | null,
+  /** ← [2026-08-13] 반납기한('YYYY-MM-DD'). 미지정 시 대여일 +7일(서버 기본). */
+  dueOn?: string | null,
 ): Promise<CheckoutResult> {
-  const { data, error } = await supabase.rpc('admin_checkout_books', {
+  const { data, error } = await supabase.rpc('admin_checkout_books_v2', {
     p_user_id:     userId,
     p_book_ids:    bookIds,
     p_notes:       notes ?? null,
     p_checkout_at: checkoutAt ?? null,
+    p_due_on:      dueOn ?? null,
   })
   if (error) return { ok: false, ...parseCheckoutError(error.message ?? '') }
   return { ok: true, rows: (data ?? []).map(toLoanRow) }
+}
+
+/** [Admin] 반납기한 자유 변경 — admin_set_book_due (20260746)
+ *  연장/단축 모두 가능, 횟수 제한 없음. extension_count 는 건드리지 않으므로
+ *  사용자의 셀프 연장 1회권이 보존된다. 겹침은 서버가 최종 강제(PERIOD_CONFLICT). */
+export async function adminSetBookDue(
+  checkoutId: string,
+  /** 'YYYY-MM-DD' — 최소 대여일 +1일, 최대 오늘 +365일 */
+  dueOn: string,
+  /* strict:false 환경에선 판별 유니언의 truthiness 축소가 동작하지 않아
+   * (CheckoutResult 와 동일하게) 단일 형태 + 옵셔널 필드로 반환한다. */
+): Promise<{ ok: boolean; row?: MyBookLoan; code?: CheckoutErrorCode; detail?: string }> {
+  const { data, error } = await supabase.rpc('admin_set_book_due', {
+    p_checkout_id: checkoutId,
+    p_due_on:      dueOn,
+  })
+  if (error) return { ok: false, ...parseCheckoutError(error.message ?? '') }
+  return { ok: true, row: toLoanRow(data) }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2492,12 +2523,14 @@ export async function adminCheckoutBooksWithNotify(
   notes: string,
   titles: string[],
   checkoutAt?: string,
+  /** ← [2026-08-13] 반납기한('YYYY-MM-DD'). 미지정 시 대여일 +7일(서버 기본). */
+  dueOn?: string,
 ): Promise<AdminCheckoutOutcome> {
   const checkoutIso = checkoutAt
     ? new Date(`${checkoutAt}T12:00:00+09:00`).toISOString()
     : null
 
-  const res = await adminCheckoutBooks(userId, bookIds, notes, checkoutIso)
+  const res = await adminCheckoutBooks(userId, bookIds, notes, checkoutIso, dueOn ?? null)
   if (!res.ok) return res
 
   const label = joinBookTitles(titles)

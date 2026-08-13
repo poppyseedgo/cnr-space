@@ -31,12 +31,14 @@
  *     (이 모달이 고치려는 버그가 정확히 '빈 화면' 이므로 필수 상태다)
  */
 
+import { useState, useRef } from 'react'
 import type { AdminBookLoan, MyBookLoan } from '../../types'
 import {
   loanDisplayStatus, loanStatusStyle, daysUntilDue, ddayLabel,
-  fmtLoanDate, fmtDueFullKo,
+  fmtLoanDate, fmtDueFullKo, fmtDueShortKo, kstDateStr, addDaysKst,
   penaltyOverdueDays, daysUntilPenalty, PENALTY_TIER_DAYS,
 } from '../../utils/bookLoan'
+import { DatePickerPopup } from '../common/DatePickerPopup'
 
 // 마이페이지는 MyBookLoan, 어드민은 AdminBookLoan(= MyBookLoan + user_id)을 넘긴다.
 export type DetailLoan = MyBookLoan | Partial<AdminBookLoan>
@@ -52,6 +54,13 @@ interface Props {
   /** 관리자 반납 처리. 없으면 버튼을 렌더하지 않는다 */
   onReturn?:   (loan: DetailLoan) => void
   onLost?:     (loan: DetailLoan) => void
+  /** ← [2026-08-13] 관리자 기한 변경 (admin_set_book_due). 없으면 버튼 미렌더.
+   *   성공 여부를 반환해야 한다 — 실패 시 에디터를 닫지 않고 재시도하게 둔다. */
+  onChangeDue?: (loan: DetailLoan, dueOn: string) => Promise<boolean>
+  /** 행의 '기한 변경' 버튼으로 진입 시 에디터를 처음부터 펼친다 */
+  dueEditorInitialOpen?: boolean
+  /** 기한 달력 비활성 판정 (같은 도서의 다른 대여/예약 구간 — 자기 자신 제외는 호출부 책임) */
+  isDueDateDisabled?: (dateStr: string) => boolean
 }
 
 const SHEET_W = 480
@@ -85,7 +94,17 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 export function BookLoanDetailModal({
   loan, loading = false, borrowerName = null, isAdmin = false,
   onClose, onReturn, onLost,
+  onChangeDue, dueEditorInitialOpen = false, isDueDateDisabled,
 }: Props) {
+
+  // ── [2026-08-13] 기한 변경 에디터 ──────────────────────────────────────
+  //   훅은 조기 return(로딩/찾을 수 없음)보다 앞에 있어야 한다 — 렌더 간
+  //   훅 개수가 달라지면 React 가 터진다.
+  const [dueOpen,   setDueOpen]   = useState(dueEditorInitialOpen)
+  const [newDue,    setNewDue]    = useState('')
+  const [duePickerOpen, setDuePickerOpen] = useState(false)
+  const [dueSaving, setDueSaving] = useState(false)
+  const dueAnchorRef = useRef<HTMLButtonElement>(null)
 
   // ── 찾을 수 없음 / 로딩 ────────────────────────────────────────────────
   //   알림에서 열었는데 대여 기록이 삭제됐거나 권한이 없는 경우다.
@@ -181,6 +200,69 @@ export function BookLoanDetailModal({
           {borrowerName && <Row label="대여자">{borrowerName}</Row>}
           <Row label="대여일">{fmtLoanDate(loan.checkout_at as string)}</Row>
           <Row label="반납기한">{fmtDueFullKo(dueAt)}</Row>
+
+          {/* ── [2026-08-13] 관리자 기한 변경 — 인라인 에디터 (미리보기 확정안) ──
+              연장/단축 모두, 횟수 제한 없음. 사용자 셀프 연장 1회권은 소모되지
+              않는다(서버가 extension_count 무변경). 겹침·범위의 최종 판정은 서버. */}
+          {isAdmin && live && onChangeDue && dueOpen && (
+            <div style={{
+              marginTop: 12, padding: '10px 12px', borderRadius: 10,
+              border: '1px solid #E2E8F0', background: '#F8FAFC',
+            }}>
+              <div style={{ fontSize: 11, color: '#64748B', marginBottom: 6 }}>새 반납기한</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button
+                  ref={dueAnchorRef}
+                  type="button"
+                  onClick={() => setDuePickerOpen(v => !v)}
+                  style={{
+                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    background: '#fff', border: '1px solid #CBD5E1', borderRadius: 10,
+                    padding: '8px 12px', cursor: 'pointer', fontFamily: 'inherit',
+                    fontSize: 13, fontWeight: 500, color: newDue ? '#111' : '#94A3B8',
+                  }}>
+                  {newDue ? fmtDueShortKo(newDue) : '날짜 선택'}
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="#94A3B8" strokeWidth="2" aria-hidden>
+                    <rect x="3" y="4" width="18" height="18" rx="2" />
+                    <path d="M16 2v4M8 2v4M3 10h18" />
+                  </svg>
+                </button>
+                {duePickerOpen && (
+                  <DatePickerPopup
+                    value={newDue || kstDateStr(dueAt)}
+                    onChange={next => { setNewDue(next); setDuePickerOpen(false) }}
+                    onClose={() => setDuePickerOpen(false)}
+                    anchorRef={dueAnchorRef}
+                    min={addDaysKst(kstDateStr(loan.checkout_at as string), 1)}
+                    max={addDaysKst(kstDateStr(Date.now()), 365)}
+                    isDateDisabled={isDueDateDisabled}
+                  />
+                )}
+                <button
+                  disabled={!newDue || dueSaving}
+                  onClick={async () => {
+                    if (!newDue) return
+                    setDueSaving(true)
+                    try {
+                      const ok = await onChangeDue(loan, newDue)
+                      if (ok) { setDueOpen(false); setNewDue('') }
+                    } finally { setDueSaving(false) }
+                  }}
+                  style={{
+                    flexShrink: 0, padding: '8px 16px', borderRadius: 10,
+                    background: (!newDue || dueSaving) ? '#CBD5E1' : '#111',
+                    color: '#fff', fontSize: 13, fontWeight: 600,
+                    cursor: (!newDue || dueSaving) ? 'default' : 'pointer',
+                  }}>
+                  {dueSaving ? '적용 중' : '적용'}
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 6, lineHeight: 1.6 }}>
+                연장 횟수 제한 없음 · 사용자 셀프 연장 1회권은 소모되지 않습니다
+              </div>
+            </div>
+          )}
           <Row label="연장">
             {(loan.extension_count ?? 0) > 0 ? '1회 사용' : '미사용'}
           </Row>
@@ -233,6 +315,17 @@ export function BookLoanDetailModal({
           flexShrink: 0, borderTop: '1px solid #F1F5F9',
           display: 'flex', gap: 8, padding: 8,
         }}>
+          {isAdmin && live && onChangeDue && (
+            <button
+              onClick={() => setDueOpen(v => !v)}
+              style={{
+                flexShrink: 0, height: 48, padding: '0 16px', borderRadius: 14,
+                background: dueOpen ? '#E0E7FF' : '#EEF2FF', color: '#4338CA',
+                fontSize: 14, fontWeight: 600,
+              }}>
+              기한 변경
+            </button>
+          )}
           {isAdmin && live && onReturn && (
             <button
               onClick={() => onReturn(loan)}

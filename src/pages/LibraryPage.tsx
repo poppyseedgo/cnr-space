@@ -452,8 +452,10 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast, onGoMyLoans
   //   "책은 borrowed 인데 대여기록 없음" 유령 데이터가 생겨 RPC 로 이관했다.
   async function handleCheckout(
     userId: string, bookIds: number[], notes: string,
-    /** ← [2026-07-20] 대여일('YYYY-MM-DD'). 서버가 이 날짜 + 7일로 반납기한 계산 */
+    /** ← [2026-07-20] 대여일('YYYY-MM-DD') */
     checkoutAt?: string,
+    /** ← [2026-08-13] 반납기한('YYYY-MM-DD') — 미지정 시 대여일 +7일(서버 기본) */
+    dueOn?: string,
   ) {
     setActionLoading(true)
     try {
@@ -464,7 +466,7 @@ export function LibraryPage({ isAdmin, users, authUserId, showToast, onGoMyLoans
         .map(id => books.find(b => b.id === id)?.title)
         .filter(Boolean) as string[]
 
-      const res = await adminCheckoutBooksWithNotify(userId, bookIds, notes, titles, checkoutAt)
+      const res = await adminCheckoutBooksWithNotify(userId, bookIds, notes, titles, checkoutAt, dueOn)
       if (!res.ok) {
         showToast(checkoutErrorMessage(res.code ?? 'UNKNOWN', res.detail) + (res.code === 'PERIOD_CONFLICT' ? conflictPeriodText(res.detail) : ''), 'error')
         await load()

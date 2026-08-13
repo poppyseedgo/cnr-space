@@ -198,6 +198,7 @@ export { fmtDueFullKo as fmtFullDate } from '../../utils/bookLoan'
  */
 export function DateRows({
   borrowDays, noteText, value, onChange, min, max, isDateDisabled,
+  dueValue, onDueChange, dueMin, dueMax, isDueDateDisabled, dueNote,
 }: {
   borrowDays: number
   noteText?:  string
@@ -208,17 +209,34 @@ export function DateRows({
   max?:       string
   /** ← [2026-07-30] 예약 구간 등 임의 날짜 비활성 — DatePickerPopup 통과 */
   isDateDisabled?: (dateStr: string) => boolean
+  /** ← [2026-08-13] 반납기한 편집 모드 (어드민 자유 기한).
+   *   dueValue+onDueChange 를 주면 반납기한 행도 대여일과 같은 패턴으로
+   *   편집 가능해진다. 미전달 = 기존 그대로(대여일 + borrowDays 계산 표시)라
+   *   사용자 대여 모달(BookBorrowModal)은 영향 없음. */
+  dueValue?:     string
+  onDueChange?:  (next: string) => void
+  dueMin?:       string
+  dueMax?:       string
+  isDueDateDisabled?: (dateStr: string) => boolean
+  /** 반납기한 아래 보조 문구 (기간 일수 등) */
+  dueNote?:      string
 }) {
-  const editable = !!onChange
-  const anchorRef = useRef<HTMLButtonElement>(null)
-  const [pickerOpen, setPickerOpen] = useState(false)
+  const editable    = !!onChange
+  const dueEditable = !!onDueChange && !!dueValue
+  const anchorRef    = useRef<HTMLButtonElement>(null)
+  const dueAnchorRef = useRef<HTMLButtonElement>(null)
+  const [pickerOpen,    setPickerOpen]    = useState(false)
+  const [duePickerOpen, setDuePickerOpen] = useState(false)
 
   // 편집 모드면 선택값, 아니면 오늘. 'YYYY-MM-DD' 는 로컬 자정으로 만든다
   // (new Date('YYYY-MM-DD') 는 UTC 자정이라 KST 에서 하루 밀린다).
   const start = editable && value
     ? new Date(+value.slice(0, 4), +value.slice(5, 7) - 1, +value.slice(8, 10))
     : new Date()
-  const due   = dueDateFrom(start, borrowDays)
+  // 기한 편집 모드면 선택된 기한을, 아니면 기존처럼 대여일 + borrowDays 를 표시
+  const due = dueEditable && dueValue
+    ? new Date(+dueValue.slice(0, 4), +dueValue.slice(5, 7) - 1, +dueValue.slice(8, 10))
+    : dueDateFrom(start, borrowDays)
 
   return (
     <>
@@ -263,9 +281,46 @@ export function DateRows({
       </Field>
       <Field label="반납기한" required>
         <div>
-          <span style={{ fontSize: 16, fontWeight: 500, color: BM.valueColor }}>
-            {dueNoticeFull(due)}
-          </span>
+          {dueEditable ? (
+            <>
+              <button
+                ref={dueAnchorRef}
+                type="button"
+                onClick={() => setDuePickerOpen(v => !v)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: 'transparent', border: 'none', padding: 0,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  fontSize: 16, fontWeight: 500, color: BM.valueColor,
+                  borderBottom: '1px dashed #CBD5E1',
+                }}>
+                {fmtDueFullKo(due)}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="#94A3B8" strokeWidth="2" aria-hidden>
+                  <rect x="3" y="4" width="18" height="18" rx="2" />
+                  <path d="M16 2v4M8 2v4M3 10h18" />
+                </svg>
+              </button>
+              {duePickerOpen && (
+                <DatePickerPopup
+                  value={dueValue ?? ''}
+                  onChange={next => { onDueChange?.(next); setDuePickerOpen(false) }}
+                  onClose={() => setDuePickerOpen(false)}
+                  anchorRef={dueAnchorRef}
+                  min={dueMin}
+                  max={dueMax}
+                  isDateDisabled={isDueDateDisabled}
+                />
+              )}
+            </>
+          ) : (
+            <span style={{ fontSize: 16, fontWeight: 500, color: BM.valueColor }}>
+              {dueNoticeFull(due)}
+            </span>
+          )}
+          {dueNote && (
+            <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{dueNote}</div>
+          )}
           {noteText && (
             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{noteText}</div>
           )}

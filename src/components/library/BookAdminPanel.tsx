@@ -41,6 +41,9 @@ import {
   // ← [2026-07-21] 연체 제재 조회/해제
   adminListBookPenalties, revokeBookPenalty, adminExemptCheckout,
   adminCancelBookCheckout,  // ← [2026-07-30] 예약 취소 (미시작 한정)
+  adminSetBookDue,          // ← [2026-08-13] 기한 자유 변경 (admin_set_book_due)
+  loadBookReservedPeriods,  // ← [2026-08-13] 등록 모달·기한 달력 예약 구간 비활성용
+  type BookReservedPeriod,
 } from '../../lib/api'
 // ← [2026-07-23] 대여 이력 조회 기준 컬럼 타입
 import type { BookLoanDateField } from '../../lib/api'
@@ -55,6 +58,7 @@ import {
   // ← [2026-07-21] 연체 제재 등급 라벨 — 사용자 화면과 같은 문구를 쓴다
   penaltyTierLabel, penaltyOverdueDays, PENALTY_TIER_DAYS,
   hasCheckoutStarted,  // ← [2026-07-30] 예약(미시작) 판정 SSOT
+  spanWouldConflict, kstDateStr,  // ← [2026-08-13] 기한 달력 겹침 판정(자기 자신 제외)
 } from '../../utils/bookLoan'
 import { isNewBook, todayKST } from './libraryListShared'
 import { BookLoanDetailModal } from './BookLoanDetailModal'   // ← [2026-07-21] 대여 상세
@@ -354,10 +358,11 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
   async function loadMaster() {
     setLoadingMaster(true)
     try {
-      const [bs, cs, out] = await Promise.all([
+      const [bs, cs, out, rp] = await Promise.all([
         loadAllBooks(), loadBookCategories(), loadOutstandingBookLoans(),
+        loadBookReservedPeriods(),   // ← [2026-08-13] 실패 시 [] 안전값 — 최종 차단은 서버 EXCLUDE
       ])
-      setBooks(bs); setCategories(cs); setOutstanding(out)
+      setBooks(bs); setCategories(cs); setOutstanding(out); setReservedPeriods(rp)
     } catch (e: any) {
       showToast(`도서 데이터를 불러오지 못했습니다: ${e.message}`, 'error')
     } finally {
@@ -392,6 +397,9 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
   // ← [2026-07-21] 대여 상세. DataTable 은 onRowClick 을 지원하는데
   //   도서 탭들이 넘기지 않아 행이 클릭되지 않았다(열 화면이 없었기 때문).
   const [detailLoan, setDetailLoan] = useState<AdminBookLoan | null>(null)
+  // ← [2026-08-13] 행 '기한 변경' 버튼 진입 시 상세 모달의 에디터를 펼친 채 연다
+  const [detailDueOpen, setDetailDueOpen] = useState(false)
+  const [reservedPeriods, setReservedPeriods] = useState<BookReservedPeriod[]>([])
 
   const loadPenalties = useCallback(async (activeOnly: boolean) => {
     setPenaltyLoading(true)
@@ -526,11 +534,11 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
     } finally { setBusy(false) }
   }
 
-  async function handleCheckout(userId: string, bookIds: number[], notes: string, checkoutAt?: string) {
+  async function handleCheckout(userId: string, bookIds: number[], notes: string, checkoutAt?: string, dueOn?: string) {
     setBusy(true)
     try {
       const titles = bookIds.map(id => books.find(b => b.id === id)?.title).filter(Boolean) as string[]
-      const res = await adminCheckoutBooksWithNotify(userId, bookIds, notes, titles, checkoutAt)
+      const res = await adminCheckoutBooksWithNotify(userId, bookIds, notes, titles, checkoutAt, dueOn)
       if (!res.ok) {
         showToast(checkoutErrorMessage(res.code ?? 'UNKNOWN', res.detail), 'error')
         await loadMaster()
@@ -860,6 +868,32 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
     } finally { setCancellingId(null) }
   }
 
+  // ← [2026-08-13] 기한 변경 — admin_set_book_due. 성공 시 목록 재조회.
+  //   반환 boolean 은 상세 모달 에디터의 닫힘 여부 — 실패 시 열어두고 재시도.
+  async function handleChangeDue(loan: AdminBookLoan, dueOn: string): Promise<boolean> {
+    const res = await adminSetBookDue(loan.id, dueOn)
+    if (!res.ok || !res.row) {
+      showToast(checkoutErrorMessage(res.code ?? 'UNKNOWN', res.detail), 'error')
+      return false
+    }
+    const row = res.row
+    showToast(`반납기한을 ${fmtDueShortKo(dueOn)} 로 변경했습니다`, 'success')
+    // 열려 있는 상세 모달의 값도 즉시 갱신 — 재조회를 기다리면 옛 기한이 남는다
+    setDetailLoan(prev => prev && prev.id === loan.id ? { ...prev, due_at: row.due_at, notes: row.notes } : prev)
+    await Promise.all([loadRange(), loadMaster()])
+    return true
+  }
+
+  /** 기한 달력 비활성 — 같은 도서의 다른 대여/예약 구간과 겹치는 날짜.
+   *  자기 자신 제외: get_book_reserved_periods 는 id 를 반환하지 않으므로
+   *  시작일 일치로 판별한다 (EXCLUDE 제약상 같은 도서에 같은 시작일 구간은 유일). */
+  function dueDisabledFor(loan: AdminBookLoan) {
+    const selfStart = kstDateStr(loan.checkout_at)
+    const others = reservedPeriods.filter(p => p.book_id === loan.book_id && p.start_on !== selfStart)
+    if (others.length === 0) return undefined
+    return (d: string) => others.some(p => spanWouldConflict(kstDateStr(loan.checkout_at), d, p))
+  }
+
   const loanColumns: Column<AdminBookLoan>[] = [
     {
       key: 'book', label: '도서', flex: true, pad: '10 16',
@@ -900,7 +934,7 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
       render: l => <span style={{ fontSize: 12, color: '#64748B' }}>{dateOf(l.returned_at).slice(5) || '-'}</span>,
     },
     {
-      key: 'act', label: '처리', width: 120,
+      key: 'act', label: '처리', width: 190,   // ← [2026-08-13] '기한 변경' 추가로 확장
       render: l => {
         // 반납/분실은 대여가 성립한 건에만 노출한다 (pending/종결 건은 대상 아님)
         if (l.status !== 'active' && l.status !== 'overdue') {
@@ -908,6 +942,9 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
         }
         return (
           <div style={{ display: 'flex', gap: 6 }}>
+            {/* ← [2026-08-13] 기한 변경 — 상세 모달을 에디터 펼침 상태로 연다 (미리보기 확정안) */}
+            <button className="btn" style={{ ...BTN_MINI, background: '#EEF2FF', color: '#4338CA' }}
+              onClick={e => { e.stopPropagation(); setDetailDueOpen(true); setDetailLoan(l) }}>기한 변경</button>
             <button className="btn" style={{ ...BTN_MINI, background: '#111', color: '#fff' }}
               onClick={e => { e.stopPropagation(); setReturnTarget({ loan: l, action: 'return' }) }}>반납</button>
             <button className="btn" style={{ ...BTN_MINI, background: '#FEF2F2', color: '#DC2626' }}
@@ -1388,9 +1425,12 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
           loan={detailLoan}
           isAdmin
           borrowerName={userNameById[detailLoan.user_id] ?? null}
-          onClose={() => setDetailLoan(null)}
-          onReturn={l => { setDetailLoan(null); setReturnTarget({ loan: l as AdminBookLoan, action: 'return' }) }}
-          onLost={l   => { setDetailLoan(null); setReturnTarget({ loan: l as AdminBookLoan, action: 'lost'   }) }}
+          onClose={() => { setDetailLoan(null); setDetailDueOpen(false) }}
+          onReturn={l => { setDetailLoan(null); setDetailDueOpen(false); setReturnTarget({ loan: l as AdminBookLoan, action: 'return' }) }}
+          onLost={l   => { setDetailLoan(null); setDetailDueOpen(false); setReturnTarget({ loan: l as AdminBookLoan, action: 'lost'   }) }}
+          onChangeDue={(l, d) => handleChangeDue(l as AdminBookLoan, d)}  /* ← [2026-08-13] */
+          dueEditorInitialOpen={detailDueOpen}
+          isDueDateDisabled={dueDisabledFor(detailLoan)}
         />
       )}
 
@@ -1427,6 +1467,7 @@ export function BookAdminPanel({ users, currentUserId, showToast, isMobile = fal
           maxBorrow={MAX_BORROW_PER_USER}
           borrowDays={BORROW_DAYS}
           loading={busy}
+          reservedPeriods={reservedPeriods}  /* ← [2026-08-13] 달력 예약 구간 비활성 */
           onClose={() => setCheckoutOpen(false)}
           onSubmit={handleCheckout}
         />

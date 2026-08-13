@@ -304,15 +304,27 @@ export function addDaysKst(dateStr: string, n: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+/** 임의 구간 [startOn, dueOn] 이 구간 p 와 겹치는가.
+ *  ← [2026-08-13] 어드민 기한 자유 설정 도입으로 "시작일 + 고정 7일" 전제가 깨져
+ *    시작/기한을 각각 받는 형태로 일반화. 서버 EXCLUDE(tstzrange '[]', 양끝 포함)·
+ *    admin_set_book_due 사전검사와 동일 경계. */
+export function spanWouldConflict(
+  startOn: string, dueOn: string,
+  p: { start_on: string; due_on: string },
+): boolean {
+  return startOn <= p.due_on && dueOn >= p.start_on
+}
+
 /** 시작일 d 로 대여하면 기간 [d, d+borrowDays] 가 구간 p 와 겹치는가.
  *  ← [2026-07-30] 달력 비활성 판정 SSOT — 서버 EXCLUDE(tstzrange '[]', 양끝 포함) 와
  *    동일 경계. "시작일이 구간 안"만 보면 시작일은 밖인데 반납기한이 뒤 예약을
- *    침범하는 케이스(예: 예약 8/3~ 인데 7/30 시작 → 기한 8/6)를 놓친다. */
+ *    침범하는 케이스(예: 예약 8/3~ 인데 7/30 시작 → 기한 8/6)를 놓친다.
+ *  ← [2026-08-13] 판정식 복제 금지 — spanWouldConflict 로 위임 (동작 무변경). */
 export function checkoutWouldConflict(
   startDate: string, borrowDays: number,
   p: { start_on: string; due_on: string },
 ): boolean {
-  return startDate <= p.due_on && addDaysKst(startDate, borrowDays) >= p.start_on
+  return spanWouldConflict(startDate, addDaysKst(startDate, borrowDays), p)
 }
 
 /** 'YYYY-MM-DD' → '8/2(일)' — 예약 구간 표시용 짧은 포맷.

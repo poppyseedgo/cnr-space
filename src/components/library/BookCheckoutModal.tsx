@@ -17,7 +17,7 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { todayKST } from './libraryListShared'
-import { fmtDateShortKo, checkoutWouldConflict } from '../../utils/bookLoan' // ← [2026-07-30] 예약 겹침 판정 SSOT
+import { fmtDateShortKo, spanWouldConflict, addDaysKst } from '../../utils/bookLoan' // ← [2026-08-13] 임의 구간 겹침 판정 SSOT
 import type { BookReservedPeriod } from '../../lib/api' // ← [2026-07-30] 예약 구간 타입
 import type { AppUser, Book, MyBookLoan } from '../../types'
 import { canPickUser } from '../../utils/employment' // ← [2026-07-30] 피커 제외 판정 SSOT (퇴사+휴직)
@@ -36,8 +36,10 @@ interface Props {
   borrowDays:   number
   loading:      boolean
   onClose:      () => void
-  /** ← [2026-07-20] checkoutAt('YYYY-MM-DD') 추가 — 서버가 이 날짜 + 7일로 반납기한 계산 */
-  onSubmit:     (userId: string, bookIds: number[], notes: string, checkoutAt: string) => void
+  /** ← [2026-07-20] checkoutAt('YYYY-MM-DD') 추가
+   *  ← [2026-08-13] dueOn('YYYY-MM-DD') 추가 — 어드민 자유 기한. 서버 v2 가
+   *    기본 7일로 만든 뒤 같은 트랜잭션에서 이 값으로 교체한다. */
+  onSubmit:     (userId: string, bookIds: number[], notes: string, checkoutAt: string, dueOn: string) => void
   /** ← [2026-07-30] 전 도서 예약/대여 구간 (20260737 RPC) — 달력 비활성·안내용 */
   reservedPeriods?: BookReservedPeriod[]
 }
@@ -67,8 +69,25 @@ export function BookCheckoutModal({
   const [userHighlight, setUserHighlight] = useState(-1)
 
   const [memo, setMemo] = useState('')
-  // ← [2026-07-20] 대여일 — 기본값은 오늘(KST). 서버가 이 날짜 + 7일로 반납기한 계산
+  // ← [2026-07-20] 대여일 — 기본값은 오늘(KST)
   const [checkoutAt, setCheckoutAt] = useState<string>(() => todayKST())
+  // ← [2026-08-13] 반납기한 — 기본 대여일 + borrowDays. 직접 만지기 전까지는
+  //   대여일을 바꾸면 따라 움직이고(dueTouched=false), 한 번 만지면 고정된다.
+  //   단, 대여일 변경으로 기한이 대여일 이하가 되면 최소값(+1일)으로 보정 —
+  //   서버 DUE_BEFORE_CHECKOUT 을 화면에서 만들 이유가 없다.
+  const [dueOn,      setDueOn]      = useState<string>(() => addDaysKst(todayKST(), borrowDays))
+  const [dueTouched, setDueTouched] = useState(false)
+  const handleCheckoutAtChange = (next: string) => {
+    setCheckoutAt(next)
+    if (!dueTouched)               setDueOn(addDaysKst(next, borrowDays))
+    else if (dueOn <= next)        setDueOn(addDaysKst(next, 1))
+  }
+  const handleDueChange = (next: string) => { setDueOn(next); setDueTouched(true) }
+  // 대여 기간 일수 — 안내 문구용 (로컬 자정 파싱, KST 하루 밀림 방지)
+  const spanDays = Math.round(
+    (new Date(+dueOn.slice(0, 4), +dueOn.slice(5, 7) - 1, +dueOn.slice(8, 10)).getTime()
+     - new Date(+checkoutAt.slice(0, 4), +checkoutAt.slice(5, 7) - 1, +checkoutAt.slice(8, 10)).getTime())
+    / 86400000)
 
   // ── [2026-07-30] 예약 구간 겹침 — 달력 비활성 + 확인 가드
   //   관리자 창은 ±365일이라 Set 사전계산 대신 날짜별 판정 콜백을 쓴다.
@@ -79,8 +98,11 @@ export function BookCheckoutModal({
     const ids = new Set(selectedBooks.map(b => b.id))
     return reservedPeriods.filter(p => ids.has(p.book_id))
   }, [selectedBooks, reservedPeriods])
-  const isDateDisabled = (d: string) => myPeriods.some(p => checkoutWouldConflict(d, borrowDays, p))
-  const dateBlocked = myPeriods.length > 0 && isDateDisabled(checkoutAt)
+  //   시작일 달력: 그 날짜에서 현재 선택된 기간 길이로 빌리면 겹치는가.
+  //   기한 달력: 현재 대여일에서 그 날짜까지 빌리면 겹치는가.
+  const isDateDisabled    = (d: string) => myPeriods.some(p => spanWouldConflict(d, addDaysKst(d, Math.max(1, spanDays)), p))
+  const isDueDateDisabled = (d: string) => myPeriods.some(p => spanWouldConflict(checkoutAt, d, p))
+  const dateBlocked = myPeriods.length > 0 && myPeriods.some(p => spanWouldConflict(checkoutAt, dueOn, p))
   // 선택 도서의 다가오는 예약 구간 안내 (권당 최대 3건)
   const reservedNotes = useMemo(() => {
     const today = todayKST()
@@ -321,10 +343,17 @@ export function BookCheckoutModal({
           <DateRows
             borrowDays={borrowDays}
             value={checkoutAt}
-            onChange={setCheckoutAt}
+            onChange={handleCheckoutAtChange}
             min={shiftDays(-365)}
             max={shiftDays(365)}
             isDateDisabled={isDateDisabled}  /* ← [2026-07-30] 예약 겹침 시작일 비활성 */
+            /* ← [2026-08-13] 어드민 자유 기한 — 최소 대여일+1일, 최대 오늘+365일(서버 동일) */
+            dueValue={dueOn}
+            onDueChange={handleDueChange}
+            dueMin={addDaysKst(checkoutAt, 1)}
+            dueMax={shiftDays(365)}
+            isDueDateDisabled={isDueDateDisabled}
+            dueNote={`기본 대여일 +${borrowDays}일 · 자유 변경 가능 (${spanDays}일)`}
           />
 
           {/* ← [2026-07-30] 선택 도서의 예약 구간 + 겹침 경고 — 달력이 왜 막혔는지의 근거 */}
@@ -333,7 +362,7 @@ export function BookCheckoutModal({
               {reservedNotes.map((t, i) => <div key={i}>· {t}</div>)}
               {dateBlocked && (
                 <div style={{ color: '#B91C1C', fontWeight: 600 }}>
-                  선택한 대여일의 기간이 위 예약과 겹칩니다 — 다른 날짜를 선택해 주세요
+                  선택한 대여 기간이 위 예약과 겹칩니다 — 다른 날짜를 선택해 주세요
                 </div>
               )}
             </div>
@@ -348,11 +377,11 @@ export function BookCheckoutModal({
           onCancel={onClose}
           onConfirm={() => {
             if (!borrower) return
-            onSubmit(borrower.user_id, selectedBooks.map(b => b.id), memo.slice(0, MEMO_MAX), checkoutAt)
+            onSubmit(borrower.user_id, selectedBooks.map(b => b.id), memo.slice(0, MEMO_MAX), checkoutAt, dueOn)
           }}
           disabled={!canSubmit || dateBlocked}  /* ← [2026-07-30] 예약 겹침 차단 */
           loading={loading}
-          hint={dateBlocked ? '선택한 대여일의 기간이 예약과 겹칩니다' : hint}
+          hint={dateBlocked ? '선택한 대여 기간이 예약과 겹칩니다' : hint}
         />
       </div>
     </div>

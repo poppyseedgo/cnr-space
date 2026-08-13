@@ -409,6 +409,10 @@ export type CheckoutErrorCode =
   | 'RESERVE_TOO_FAR'            // 예약 가능 범위(오늘+3일) 초과
   | 'PERIOD_CONFLICT'            // 해당 기간에 이미 다른 대여가 잡혀 있음
   | 'ALREADY_STARTED'            // 이미 시작된 대여는 취소 불가 (반납 경로)
+  // ── [2026-08-13] 어드민 기한 자유 설정 (admin_set_book_due / v2) ─────────
+  | 'NO_DUE_DATE'                // 기한 미지정
+  | 'DUE_BEFORE_CHECKOUT'        // 기한이 대여일 당일 이하 (최소 = 대여일 +1일)
+  | 'DUE_OUT_OF_RANGE'           // 기한이 오늘 +365일 초과
   | 'CHECKOUT_NOT_FOUND'
   | 'NOT_ACTIVE'
   // ── [2026-07-21] 연체 패널티 ─────────────────────────────────────────────
