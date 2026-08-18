@@ -1,0 +1,39 @@
+# ============================================================
+# notion-release-log.yml — releaseNotes.ts → Notion 자동 기록
+# ------------------------------------------------------------
+# 트리거: main 브랜치에 src/data/releaseNotes.ts 변경 푸시 시
+#         (수동 실행도 가능: Actions 탭 → Run workflow)
+# 동작:   scripts/sync-release-notes-to-notion.ts 실행
+#         → Notion DB에 없는 엔트리(id 기준)만 삽입 (멱등)
+# ============================================================
+name: Notion Release Log
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/data/releaseNotes.ts'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Sync release notes to Notion
+        run: npx -y tsx scripts/sync-release-notes-to-notion.ts
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          # ↓ 배포 URL 기록용 (없으면 커밋 링크만 기록되고 정상 진행)
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_PAGES_PROJECT: ${{ secrets.CF_PAGES_PROJECT }}
+          COMMIT_SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          # SINCE_DATE: '2026-08-18'   # 백필 컷 필요 시 주석 해제 (이 날짜 이후만 동기화)
