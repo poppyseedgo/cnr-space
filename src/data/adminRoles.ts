@@ -1,6 +1,8 @@
 /**
  * adminRoles.ts — 관리자 권한 카탈로그
  *
+ * [2026-07-28] 'pointer' → 'resource' 개명 — 자원예약 일반화 확정(20260734_resource_phase1.sql).
+ *              구 'pointer' 는 권한 이력(admin_role_grants) 라벨 표시용으로만 deprecated 보존
  * [2026-07-27] 'kb' 역할 추가 — GA 챗봇 지식베이스 관리 탭 (20260733_kb_chunks.sql)
  * [2026-07-24] 신규 · Phase 1
  *
@@ -41,10 +43,13 @@ export const ADMIN_ROLES: AdminRoleDef[] = [
   { id: 'notification', label: '알림 설정',  tab: 'notifications', desc: '알림 채널 on/off·관리자 수신자 지정' },
   { id: 'notice',       label: '공지 배너',  tab: 'notices',       desc: '헤더 공지 내용·색·게시기간' },
   { id: 'kb',           label: 'KB 관리',    tab: 'kb',            desc: 'GA 챗봇 지식베이스 청크 편집' }, // ← [2026-07-27] 20260733 CHECK와 동기화
-  { id: 'pointer',      label: '자원 관리',  tab: null,            desc: '포인터 대여 — 화면 미구현, 권한만 선점' },
+  { id: 'resource',     label: '자원예약',   tab: null,            desc: '자원 카테고리·개체 등록, 예약·반납 확인 — 화면 미구현, 권한만 선점' }, // ← [2026-07-28] 'pointer'에서 개명, 20260734 CHECK와 동기화
   { id: 'super',        label: '최고 관리자', tab: null,           desc: '모든 메뉴 + 권한 부여·회수' },
   // 폐기: zoom — 사내 ZOOM 사용 종료(2026-07-21). 기존 데이터 보존을 위해 목록에만 남긴다
   { id: 'zoom',         label: '[폐기] ZOOM', tab: null,           desc: '사내 사용 종료', deprecated: true },
+  // 폐기: pointer — 'resource'로 개명(2026-07-28). DB에 데이터·CHECK 허용값 모두 없음.
+  //       admin_role_grants 이력의 라벨 렌더링(roleSummary·권한 변경 이력)용으로만 남긴다
+  { id: 'pointer',      label: '[구] 자원 관리', tab: null,        desc: "'resource'로 개명됨", deprecated: true }, // ← [2026-07-28] 이력 표시용
 ]
 
 /** super 는 모든 역할을 포함한다 (DB has_admin_role 과 동일 규칙) */
