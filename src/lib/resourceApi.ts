@@ -81,6 +81,7 @@ function resourceErrorMessage(code: string | undefined, message: string): string
 export async function insertResourceBooking(
   draft: ResourceBookingDraft,
   snapshot: { user_name: string; user_dept: string },
+  booker?: { user_id: string; email: string },   // ← [2026-08-19 Phase 3] 대리예약 — 회의실 insertBooking booker override 패턴
 ): Promise<ResourceBooking> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('로그인이 필요합니다.')
@@ -88,8 +89,8 @@ export async function insertResourceBooking(
   const row = {
     id:             `r${Date.now()}_${Math.floor(Math.random() * 1000)}`,
     item_id:        draft.item_id,
-    user_id:        user.id,
-    user_email:     user.email ?? '',
+    user_id:        booker?.user_id ?? user.id,          // ← [Phase 3] override 우선 (RLS: 본인 OR resource 관리자)
+    user_email:     booker?.email ?? user.email ?? '',
     user_name:      snapshot.user_name,
     user_dept:      snapshot.user_dept,
     start_at:       draft.start_at,
@@ -113,5 +114,99 @@ export async function cancelResourceBooking(id: string): Promise<void> {
     .update({ status: 'cancelled', cancelled_at: new Date().toISOString(), cancelled_by: 'user' })
     .eq('id', id)
     .eq('status', 'confirmed')
+  if (error) throw new Error(error.message)
+}
+
+/* ── 어드민 (Phase 3) — RLS has_admin_role('resource') 전제 ──────────────── */
+
+/** 어드민: 비활성 포함 전체 카테고리 */
+export async function loadResourceCategoriesAll(): Promise<ResourceCategory[]> {
+  const { data, error } = await supabase
+    .from('resource_categories').select('*')
+    .order('sort_order', { ascending: true }).order('id', { ascending: true })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as ResourceCategory[]
+}
+
+/** 어드민 현황: 기간 내 시작 + (기간 무관) 미반납 confirmed — 연체가 기간 필터에 묻히지 않게 */
+export async function loadResourceBookingsAdmin(fromISO: string): Promise<ResourceBooking[]> {
+  const { data, error } = await supabase
+    .from('resource_bookings').select('*')
+    .or(`start_at.gte.${fromISO},and(status.eq.confirmed,returned_at.is.null)`)
+    .order('start_at', { ascending: false })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as ResourceBooking[]
+}
+
+export interface ResourceCategoryDraft {
+  id?:               number
+  name:              string
+  slot_step_minutes: number
+  allow_multi_day:   boolean
+  open_time:         string   // 'HH:MM'
+  close_time:        string
+  is_active:         boolean
+  sort_order?:       number
+}
+
+/** 카테고리 생성/수정 (id 유무로 분기) */
+export async function upsertResourceCategory(d: ResourceCategoryDraft): Promise<void> {
+  const payload = {
+    name: d.name.trim(), slot_step_minutes: d.slot_step_minutes,
+    allow_multi_day: d.allow_multi_day, open_time: d.open_time, close_time: d.close_time,
+    is_active: d.is_active, ...(d.sort_order != null ? { sort_order: d.sort_order } : {}),
+  }
+  const q = d.id != null
+    ? supabase.from('resource_categories').update(payload).eq('id', d.id)
+    : supabase.from('resource_categories').insert(payload)
+  const { error } = await q
+  if (error) throw new Error(
+    error.message.includes('duplicate') ? '같은 이름의 카테고리가 이미 있습니다.' : error.message)
+}
+
+export interface ResourceItemDraft {
+  id?:         number
+  category_id: number
+  label:       string
+  asset_code:  string | null
+  status:      'available' | 'maintenance' | 'retired'
+}
+
+/** 개체 생성/수정 — 삭제 없음, 폐기는 status='retired' (이력 보존, 고지 확정) */
+export async function upsertResourceItem(d: ResourceItemDraft): Promise<void> {
+  const payload = {
+    category_id: d.category_id, label: d.label.trim(),
+    asset_code: d.asset_code?.trim() || null, status: d.status,
+  }
+  const q = d.id != null
+    ? supabase.from('resource_items').update(payload).eq('id', d.id)
+    : supabase.from('resource_items').insert(payload)
+  const { error } = await q
+  if (error) throw new Error(
+    error.message.includes('duplicate') ? '같은 라벨 또는 자산번호가 이미 있습니다.' : error.message)
+}
+
+/** 반납 확인 — 관리자 전용 (트리거 RETURN_CONFIRM_ADMIN_ONLY 가 최종 방어) */
+export async function adminConfirmResourceReturn(bookingId: string, adminUserId: string): Promise<void> {
+  const { error } = await supabase
+    .from('resource_bookings')
+    .update({ returned_at: new Date().toISOString(), returned_by: adminUserId })
+    .eq('id', bookingId).eq('status', 'confirmed')
+  if (error) throw new Error(
+    error.message.includes('RETURN_CONFIRM_ADMIN_ONLY')
+      ? '반납 확인 권한이 없습니다.' : error.message)
+}
+
+/**
+ * 관리자 취소 — 사유는 memo 에 '[관리자취소]' 접두로 기록 (100자 CHECK 내 절삭).
+ * 전용 사유 컬럼은 두지 않는다 — 취소가 잦아지면 그때 컬럼 추가가 근본 해결.
+ */
+export async function adminCancelResourceBooking(bookingId: string, reason: string): Promise<void> {
+  const memo = `[관리자취소] ${reason.trim()}`.slice(0, 100)
+  const { error } = await supabase
+    .from('resource_bookings')
+    .update({ status: 'cancelled', cancelled_at: new Date().toISOString(),
+              cancelled_by: 'admin', memo })
+    .eq('id', bookingId).eq('status', 'confirmed')
   if (error) throw new Error(error.message)
 }

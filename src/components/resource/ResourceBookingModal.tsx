@@ -28,6 +28,8 @@ interface Props {
   item:      ResourceItem
   category:  ResourceCategory
   snapshot:  { user_name: string; user_dept: string }
+  /** 대리예약 — 지정 시 이 사용자가 예약자가 된다 (Phase 3, insert booker override) */
+  booker?:   { user_id: string; email: string }
   showToast: (msg: string) => void
   onDone:    () => void            // 성공 — 목록 리로드
   onClose:   () => void
@@ -106,7 +108,7 @@ function DateField({ value, min, onChange, disabled }: {
   )
 }
 
-export function ResourceBookingModal({ item, category, snapshot, showToast, onDone, onClose }: Props) {
+export function ResourceBookingModal({ item, category, snapshot, booker, showToast, onDone, onClose }: Props) {  // ← [Phase 3] booker 추가
   const step  = category.slot_step_minutes
   const open  = category.open_time.slice(0, 5)
   const close = category.close_time.slice(0, 5)
@@ -133,8 +135,8 @@ export function ResourceBookingModal({ item, category, snapshot, showToast, onDo
         end_at:     new Date(`${useDate}T${endHM}:00`).toISOString(),
         return_due: effDue,
         memo:       memo.trim() || null,
-      }, snapshot)
-      showToast(`${item.label} 예약이 완료되었습니다.`)
+      }, snapshot, booker)  // ← [Phase 3] 대리예약 override
+      showToast(booker ? `${snapshot.user_name}님 명의로 ${item.label} 대리예약이 완료되었습니다.` : `${item.label} 예약이 완료되었습니다.`)
       onDone()
     } catch (e) {
       showToast(e instanceof Error ? e.message : '예약에 실패했습니다.')

@@ -43,7 +43,7 @@ export const ADMIN_ROLES: AdminRoleDef[] = [
   { id: 'notification', label: '알림 설정',  tab: 'notifications', desc: '알림 채널 on/off·관리자 수신자 지정' },
   { id: 'notice',       label: '공지 배너',  tab: 'notices',       desc: '헤더 공지 내용·색·게시기간' },
   { id: 'kb',           label: 'KB 관리',    tab: 'kb',            desc: 'GA 챗봇 지식베이스 청크 편집' }, // ← [2026-07-27] 20260733 CHECK와 동기화
-  { id: 'resource',     label: '자원예약',   tab: null,            desc: '자원 카테고리·개체 등록, 예약·반납 확인 — 화면 미구현, 권한만 선점' }, // ← [2026-07-28] 'pointer'에서 개명, 20260734 CHECK와 동기화
+  { id: 'resource',     label: '자원예약',   tab: 'resources',     desc: '자원 카테고리·개체 등록, 예약·반납 확인·대리예약' }, // ← [2026-08-19] Phase 3 화면 오픈, 탭 1:1 연결
   { id: 'super',        label: '최고 관리자', tab: null,           desc: '모든 메뉴 + 권한 부여·회수' },
   // 폐기: zoom — 사내 ZOOM 사용 종료(2026-07-21). 기존 데이터 보존을 위해 목록에만 남긴다
   { id: 'zoom',         label: '[폐기] ZOOM', tab: null,           desc: '사내 사용 종료', deprecated: true },

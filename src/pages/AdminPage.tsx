@@ -63,6 +63,7 @@ import { ADMIN_ROLES, GRANTABLE_ROLES, NORMAL_ROLES, SUPER_ROLE,
 import { loadMyAdminRoles, loadAllUserRoles, setUserAdminRoles, loadRoleGrantLog, type RoleGrantLog } from '../lib/api'
 // ← [2026-08-05] 노쇼 관리 패널 — bookings 탭 하위 뷰 (기간 프리셋 + 해제/영구삭제)
 import { NoshowAdminPanel } from '../components/admin/NoshowAdminPanel'
+import { ResourceAdminPanel } from '../components/admin/ResourceAdminPanel'  // ← [2026-08-19] 자원 관리 (Phase 3)
 // ← [2026-05-06 Admin Phase C] 승인 관리 테이블 컴포넌트 신설 (Figma node 451:3534, Phase B 공통 컴포넌트 사용)
 import { AdminApprovalTable } from '../components/common/AdminApprovalTable'
 import { VisitorLogPanel } from '../components/common/VisitorLogPanel'  // ← [2026-07-10] 방문로그 관리 패널
@@ -789,7 +790,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
 
   // 로딩 중에는 기존 전체 탭을 유지한다. 빈 배열로 시작하면 진입 직후 한 프레임 동안
   // 메뉴가 통째로 사라졌다가 다시 나타나 깜빡인다.
-  const ALL_TABS = ['dashboard','bookings','approvals','rooms','users','visitors','books','notifications','notices','kb']  // ← [2026-07-27] kb(KB 관리) 추가
+  const ALL_TABS = ['dashboard','bookings','approvals','rooms','users','visitors','books','notifications','notices','kb','resources']  // ← [2026-08-19] resources(자원 관리) 추가
   const TABS = myRoles === null ? ALL_TABS : (visibleTabs(myRoles) as string[])  // ← [2026-07-10] visitors / [2026-07-23] books(도서 관리) + notifications(알림 설정) 추가
   const getTabFromHash = () => {
     const hash = window.location.hash.replace('#', '')
@@ -1028,6 +1029,10 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
             Notion 가이드를 정제·시드(20260733)한 뒤로는 이 화면이 지식의 원본이다.
             챗봇 런타임은 service_role 로 같은 테이블을 읽는다(어드민은 쓰기, 봇은 읽기). */}
       {activeTab==='kb' && <KBAdminPanel showToast={showToast} isMobile={isMobile}/>}
+      {/* ← [2026-08-19] 자원 관리 (Phase 3) — 예약 현황(반납확인·대리예약·취소) / 개체 / 카테고리.
+            시드는 DB 가 아닌 이 화면에서 등록한다 (설계서 §10). 반납확인 admin 전용은
+            트리거가 최종 방어, 화면은 접근성만 담당. */}
+      {activeTab==='resources' && <ResourceAdminPanel users={users} currentUserId={currentUserId} showToast={showToast} isMobile={isMobile}/>}
         </div>
       </div>
     </>

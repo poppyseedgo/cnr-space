@@ -65,11 +65,12 @@ export type AdminTabId = 'dashboard' | 'approvals' | 'bookings' | 'users' | 'roo
   | 'notifications'  // ← [2026-07-23] 알림 설정 (채널 on/off + 관리자 수신자 지정)
   | 'notices'        // ← [2026-07-24] 공지 배너 (헤더 상단 한 줄 배너 관리)
   | 'kb'             // ← [2026-07-27] KB 관리 (GA 챗봇 지식베이스 kb_chunks 편집)
+  | 'resources'      // ← [2026-08-19] 자원 관리 활성화 (Phase 3 — 2026-05-11 비활성 예고 자리)
 
 // ─── 메뉴 ID (내부 전용) ─────────────────────────────────────────────────────
 //   · [2026-07-23] 도서 관리가 활성으로 전환되어 비활성은 'resources' 1개만 남았다.
 //   · 비활성 id는 onTabChange로 절대 전달 안 됨 (disabled guard)
-type MenuId = AdminTabId | 'resources'
+type MenuId = AdminTabId  // ← [2026-08-19] resources 활성화로 비활성 전용 id 소멸 — AdminTabId 와 동일
 
 // ─── 메뉴 정의 (Figma 순서) ──────────────────────────────────────────────────
 //   disabled: true → 클릭 무효, cursor not-allowed, text #cdd3da
@@ -95,8 +96,8 @@ const MENU_ITEMS: MenuItem[] = [
   { id: 'notices',       label: '공지 배너', icon: <CampaignIcon   /> },
   // ← [2026-07-27] KB 관리 — GA 챗봇 지식베이스(kb_chunks) 청크 편집·JSON 내보내기
   { id: 'kb',            label: 'KB 관리',   icon: <SmartToyIcon   /> },
-  // ── [2026-05-11 Phase 1 신규] 비활성 메뉴 (Figma 542:2227) — 포인터 화면 구현 대기 ──
-  { id: 'resources', label: '자원 관리',   icon: <AsteriskIcon     />, disabled: true },
+  // ← [2026-08-19] 자원 관리 활성화 (Phase 3) — 2026-05-11 비활성 예고 자리 그대로 오픈
+  { id: 'resources', label: '자원 관리',   icon: <AsteriskIcon     /> },
 ]
 
 // ─── Props ───────────────────────────────────────────────────────────────────
