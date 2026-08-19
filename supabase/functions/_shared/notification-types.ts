@@ -111,6 +111,14 @@ export type NotificationType =
   // ── [2026-07-21] 연체 패널티 ────────────────────────────────────────────
   | 'book_penalty_applied'    // 반납 시 제재 확정 → 대여자
   | 'book_penalty_cleared'    // 제재 해제(만료·관리자) → 대여자
+  // ── [2026-08-19 Phase 4] 자원예약 ──────────────────────────────────────
+  //   개인 대상 4종(resource_owner) + 연체 1종(resource_admins_and_owner).
+  //   Teams 비대상(도서와 동일 — teamsTargetTypes 미포함).
+  | 'resource_booking_created'             // 예약 생성(본인·대리 공통, 문구 분기) → 예약자
+  | 'resource_booking_cancelled_by_admin'  // 관리자 취소(사유 포함) → 예약자
+  | 'resource_return_confirmed'            // 반납 확인 → 예약자
+  | 'resource_due_reminder'                // 반납일 당일 09:00 KST → 예약자
+  | 'resource_overdue'                     // 연체 09:00 KST 매일 반복 → 예약자+자원 관리자
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 2. 수신자 규칙
@@ -125,6 +133,8 @@ export type RecipientRule =
   | 'former_booker'            // ← [2026-06-12] 원래 예약자 1명 (former_booker 전용)
   | 'book_borrower'            // ← [2026-07-20] 도서 대여자 본인 1명 (도서관 알림 전용)
   | 'book_admins'              // ← [2026-07-23] 도서 담당 관리자 (admin_roles 'book'/'super')
+  | 'resource_owner'           // ← [2026-08-19 Phase 4] 자원 예약자 본인 1명 (book_borrower 동일 해석 — 이름=의미 원칙으로 분리)
+  | 'resource_admins_and_owner'// ← [2026-08-19 Phase 4] 자원 예약자 + 자원 담당 관리자('resource'/'super') — 연체 전용
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 3. 헤더 색상 체계 (5색)
@@ -750,6 +760,107 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
   //
   //   즉시 대여와 미래 예약을 한 타입으로 처리한다. 관리자에게는 둘 다
   //   "접수됐다" 는 같은 사실이고, 시작일 차이는 본문의 대여일로 구분된다.
+  // ═══ [2026-08-19 Phase 4] 자원예약 5종 ═══════════════════════════════════
+  resource_booking_created: {
+    subjectTag:         '[자원예약]',
+    headerLabel:        '자원 예약이 완료되었습니다',
+    headerColor:        COLORS.INDIGO,
+    recipients:         'resource_owner',
+    inappType:          'resource_booking_created',
+    inappTitleBooker:   '자원 예약이 완료되었습니다',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '',
+    contextBanner: {
+      booker: {
+        ...BANNER_PRESETS.info,
+        title: '자원 예약이 완료되었습니다.',
+        body:  '반납일이 사용일과 다르면 반납일 19:00까지 자원이 점유됩니다. '
+             + '반납은 관리자에게 실물을 전달해야 완료됩니다.',
+      },
+    },
+    cta: null,
+    isCancelledStyle: false,
+  },
+
+  resource_booking_cancelled_by_admin: {
+    subjectTag:         '[예약취소]',
+    headerLabel:        '자원 예약이 취소되었습니다',
+    headerColor:        COLORS.RED,
+    recipients:         'resource_owner',
+    inappType:          'resource_booking_cancelled_by_admin',
+    inappTitleBooker:   '관리자가 자원 예약을 취소했습니다',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '',
+    contextBanner: {
+      booker: {
+        ...BANNER_PRESETS.danger,
+        title: '관리자가 예약을 취소했습니다.',
+        body:  '취소 사유는 본문을 확인해 주세요. 문의는 경영지원팀으로 부탁드립니다.',
+      },
+    },
+    cta: null,
+    isCancelledStyle: true,
+  },
+
+  resource_return_confirmed: {
+    subjectTag:         '[반납완료]',
+    headerLabel:        '자원 반납이 확인되었습니다',
+    headerColor:        COLORS.INDIGO,
+    recipients:         'resource_owner',
+    inappType:          'resource_return_confirmed',
+    inappTitleBooker:   '자원 반납이 확인되었습니다',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '',
+    contextBanner: null,
+    cta: null,
+    isCancelledStyle: false,
+  },
+
+  resource_due_reminder: {
+    subjectTag:         '[반납안내]',
+    headerLabel:        '오늘은 자원 반납일입니다',
+    headerColor:        COLORS.CYAN,
+    recipients:         'resource_owner',
+    inappType:          'resource_due_reminder',
+    inappTitleBooker:   '오늘은 자원 반납일입니다',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '',
+    contextBanner: {
+      booker: {
+        ...BANNER_PRESETS.warning,
+        title: '오늘 19:00까지 관리자에게 반납해 주세요.',
+        body:  '반납 확인 전까지 다른 임직원이 이 자원을 예약할 수 없습니다.',
+      },
+    },
+    cta: null,
+    isCancelledStyle: false,
+  },
+
+  resource_overdue: {
+    subjectTag:         '[연체]',
+    headerLabel:        '자원 반납이 연체되었습니다',
+    headerColor:        COLORS.RED,
+    recipients:         'resource_admins_and_owner',
+    inappType:          'resource_overdue',
+    inappTitleBooker:   '자원 반납이 연체되었습니다',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '자원 연체가 발생했습니다',
+    contextBanner: {
+      booker: {
+        ...BANNER_PRESETS.danger,
+        title: '반납일이 지났습니다.',
+        body:  '관리자에게 자원을 반납해 주세요. 반납 확인 전까지 매일 아침 안내가 발송됩니다.',
+      },
+      admin: {
+        ...BANNER_PRESETS.danger,
+        title: '연체 자원이 있습니다.',
+        body:  '회수 후 어드민 자원 관리 화면에서 반납 확인을 진행해 주세요.',
+      },
+    },
+    cta: null,
+    isCancelledStyle: false,
+  },
+
   book_checkout_created: {
     subjectTag:         '[대여접수]',
     headerLabel:        '도서 대여가 접수되었습니다',

@@ -21,12 +21,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { AppUser } from '../types'
 import type { ResourceBooking, ResourceCategory, ResourceItem } from '../types/resource'
-import { cancelResourceBooking, loadResourceBookings, loadResourceCategories, loadResourceItems } from '../lib/resourceApi'
+import { loadResourceBookings, loadResourceCategories, loadResourceItems } from '../lib/resourceApi'  // ← [Phase 4] cancel 은 마이페이지로 이관
 import { currentHolderBooking, deriveItemStatus, fmtDueShort, fmtTimeShort, isResourceOverdue, nextBooking, type ResourceDisplayStatus } from '../utils/resourceStatus'
 import { ResourceBookingModal } from '../components/resource/ResourceBookingModal'
 import { ResourceTimelineView } from '../components/resource/ResourceTimelineView'  // ← [2026-08-19 Phase 2B]
 import { ResourceCalendarView } from '../components/resource/ResourceCalendarView'  // ← [2026-08-19 Phase 2B]
-import { ConfirmDialog } from '../components/common/ConfirmDialog'
 
 const FONT = "'Pretendard', -apple-system, sans-serif"
 
@@ -43,17 +42,16 @@ interface Props {
   authUserId: string
   showToast:  (msg: string) => void
   isMobile:   boolean   // ← [Phase 2B] 타임라인 열 폭·캘린더 점 표시 분기
+  onGoMyResources: () => void   // ← [Phase 4] 마이페이지 자원 탭으로 이동 (도서관 onGoMyLoans 패턴)
 }
 
-export function ResourcePage({ users, authUserId, showToast, isMobile }: Props) {
+export function ResourcePage({ users, authUserId, showToast, isMobile, onGoMyResources }: Props) {
   const [categories, setCategories] = useState<ResourceCategory[]>([])
   const [items, setItems]           = useState<ResourceItem[]>([])
   const [bookings, setBookings]     = useState<ResourceBooking[]>([])
   const [loading, setLoading]       = useState(true)
   const [catId, setCatId]           = useState<number | null>(null)
   const [target, setTarget]         = useState<ResourceItem | null>(null)   // 예약 모달 대상
-  const [cancelTarget, setCancelTarget] = useState<ResourceBooking | null>(null)
-  const [cancelling, setCancelling] = useState(false)
   // ── [Phase 2B] 뷰 전환 — 기본 카드 (시안 확정: 예약까지 클릭 수 최소)
   const [viewMode, setViewMode] = useState<'cards' | 'timeline' | 'calendar'>('cards')
   const todayYmd = (() => { const d = new Date()
@@ -95,15 +93,8 @@ export function ResourcePage({ users, authUserId, showToast, isMobile }: Props) 
     [items, catId],
   )
 
-  const myUpcoming = useMemo(
-    () => bookings
-      .filter(b => b.user_id === authUserId && b.status === 'confirmed'
-                && !b.returned_at && new Date(b.start_at) > now)
-      .sort((a, b) => a.start_at.localeCompare(b.start_at)),
-    [bookings, authUserId, now],
-  )
+  // ← [Phase 4] '내 예약' 섹션은 마이페이지 자원 탭으로 이관 — 중복 UI 제거
 
-  const itemLabel = (id: number) => items.find(i => i.id === id)?.label ?? `#${id}`
   const activeCat = categories.find(c => c.id === catId) ?? null
 
   /** 카드 요약 1줄 */
@@ -139,6 +130,12 @@ export function ResourcePage({ users, authUserId, showToast, isMobile }: Props) 
                        color: viewMode === v ? '#fff' : '#111' }}>{label}</button>
           ))}
         </span>
+        <span style={{ flex: 1 }} />
+        <button onClick={onGoMyResources}
+          style={{ background: '#fff', color: '#111', border: '1px solid #D1D7E1', borderRadius: 8,
+                   fontSize: 12, padding: '6px 12px', fontFamily: FONT, cursor: 'pointer' }}>
+          나의 자원 예약
+        </button>{/* ← [Phase 4] 마이페이지 자원 탭 이동 */}
       </div>
 
       {/* 카테고리 칩 — 2개 이상일 때만 */}
@@ -197,32 +194,6 @@ export function ResourcePage({ users, authUserId, showToast, isMobile }: Props) 
             )}
           </div>
 
-          {/* 내 예약 — 시작 전 취소 */}
-          {myUpcoming.length > 0 && (
-            <div style={{ marginTop: 28 }}>
-              <h2 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 10px' }}>내 예약</h2>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {myUpcoming.map(b => (
-                  <div key={b.id}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                             background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10,
-                             padding: '10px 14px' }}>
-                    <span style={{ fontSize: 13 }}>
-                      <b style={{ fontWeight: 500 }}>{itemLabel(b.item_id)}</b>
-                      {'  '}{fmtDueShort(b.start_at.slice(0, 10))} {fmtTimeShort(b.start_at)}~{fmtTimeShort(b.end_at)}
-                      {b.return_due !== b.start_at.slice(0, 10) && (
-                        <span style={{ color: '#64748B' }}> · {fmtDueShort(b.return_due)} 반납</span>
-                      )}
-                    </span>
-                    <button onClick={() => setCancelTarget(b)}
-                      style={{ background: '#fff', color: '#DC2626', border: '1px solid #FECACA',
-                               borderRadius: 8, padding: '5px 12px', fontSize: 12,
-                               fontFamily: FONT, cursor: 'pointer' }}>예약 취소</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
           </>}
 
           {/* ── [Phase 2B] 타임라인뷰 ── */}
@@ -264,29 +235,6 @@ export function ResourcePage({ users, authUserId, showToast, isMobile }: Props) 
         />
       )}
 
-      {/* 취소 확인 — 되돌리기 어려움 단계 (ConfirmDialog 기준) */}
-      {cancelTarget && (
-        <ConfirmDialog
-          title="예약을 취소할까요?"
-          message={`${itemLabel(cancelTarget.item_id)} · ${fmtDueShort(cancelTarget.start_at.slice(0, 10))} ${fmtTimeShort(cancelTarget.start_at)}~${fmtTimeShort(cancelTarget.end_at)} 예약이 취소됩니다.`}
-          confirmLabel="예약 취소" variant="danger" loading={cancelling}
-          onConfirm={async () => {
-            setCancelling(true)
-            try {
-              await cancelResourceBooking(cancelTarget.id)
-              showToast('예약이 취소되었습니다.')
-              setCancelTarget(null)
-              setReloadKey(k => k + 1)   // ← [Phase 2B] 타임라인·캘린더 갱신
-              void reload()
-            } catch (e) {
-              showToast(e instanceof Error ? e.message : '취소에 실패했습니다.')
-            } finally {
-              setCancelling(false)
-            }
-          }}
-          onClose={() => { if (!cancelling) setCancelTarget(null) }}
-        />
-      )}
     </div>
   )
 }

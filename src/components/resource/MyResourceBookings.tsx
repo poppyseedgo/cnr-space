@@ -1,0 +1,125 @@
+/**
+ * MyResourceBookings.tsx — 마이페이지 '자원 예약' 탭 (Phase 4)
+ *
+ * MyBookLoans 패턴: 자체 fetch, 본인 이력(최근 90일 + 미반납 전체).
+ * 시작 전 예약은 취소 가능(ConfirmDialog danger). 연체 행은 빨간 보더 + 안내.
+ * 표시 상태는 utils/resourceStatus.ts 파생 (DB 저장 없음).
+ *
+ * ✅ 변경 이력
+ *  - [2026-08-19] 최초 작성 (Phase 4 — 미리보기 승인분)
+ */
+
+import { useCallback, useEffect, useState } from 'react'
+import type { ResourceBooking } from '../../types/resource'
+
+type MyRow = ResourceBooking & { resource_items?: { label: string } | null }
+import { cancelResourceBooking, loadMyResourceBookings } from '../../lib/resourceApi'
+import { fmtDueShort, fmtTimeShort, isOccupying, isResourceOverdue } from '../../utils/resourceStatus'
+import { ConfirmDialog } from '../common/ConfirmDialog'
+
+const FONT = "'Pretendard', -apple-system, sans-serif"
+
+type St = 'upcoming' | 'inuse' | 'overdue' | 'returned' | 'cancelled' | 'done'
+const BADGE: Record<St, { label: string; bg: string; fg: string }> = {
+  upcoming:  { label: '예약중',   bg: '#CBECFF', fg: '#111' },
+  inuse:     { label: '사용중',   bg: '#FCE7F3', fg: '#BE185D' },
+  overdue:   { label: '연체',     bg: '#FEE2E2', fg: '#B91C1C' },
+  returned:  { label: '반납완료', bg: '#DCFCE7', fg: '#16A34A' },
+  cancelled: { label: '취소',     bg: '#E2E8F0', fg: '#64748B' },
+  done:      { label: '사용완료', bg: '#E2E8F0', fg: '#64748B' },   // 당일반납 건 — 반납확인 전이나 점유 종료
+}
+
+function stOf(b: ResourceBooking, now: Date): St {
+  if (b.status === 'cancelled') return 'cancelled'
+  if (b.returned_at)            return 'returned'
+  if (isResourceOverdue(b, now)) return 'overdue'
+  if (isOccupying(b, now))      return 'inuse'
+  return new Date(b.start_at) > now ? 'upcoming' : 'done'
+}
+
+interface Props {
+  authUserId: string
+  showToast:  (m: string) => void
+  isMobile:   boolean
+}
+
+export function MyResourceBookings({ authUserId, showToast, isMobile }: Props) {
+  const [rows, setRows] = useState<MyRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [cancelTarget, setCancelTarget] = useState<ResourceBooking | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const reload = useCallback(() => {
+    loadMyResourceBookings(authUserId)
+      .then(setRows)
+      .catch(e => showToast(e instanceof Error ? e.message : '자원 예약을 불러오지 못했습니다.'))
+      .finally(() => setLoading(false))
+  }, [authUserId, showToast])
+  useEffect(() => { reload() }, [reload])
+
+  const now = new Date()
+  // 진행형(연체·사용중·예약중) 먼저, 그 안에서는 최근순 유지
+  const order: Record<St, number> = { overdue: 0, inuse: 1, upcoming: 2, done: 3, returned: 4, cancelled: 5 }
+  const sorted: MyRow[] = [...rows].sort((a, b) => order[stOf(a, now)] - order[stOf(b, now)])
+
+  if (loading) return <p style={{ fontFamily: FONT, fontSize: 13, color: '#64748B' }}>불러오는 중…</p>
+  if (rows.length === 0)
+    return <p style={{ fontFamily: FONT, fontSize: 13, color: '#64748B' }}>자원 예약 이력이 없습니다.</p>
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontFamily: FONT }}>
+      {sorted.map(b => {
+        const st = stOf(b, now)
+        const badge = BADGE[st]
+        const dim = st === 'returned' || st === 'cancelled' || st === 'done'
+        const useDay = b.start_at.slice(0, 10)
+        return (
+          <div key={b.id}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                     background: '#fff', borderRadius: 10, padding: '10px 14px',
+                     border: st === 'overdue' ? '1px solid #FECACA' : '1px solid #E2E8F0',
+                     opacity: dim ? 0.7 : 1, fontSize: isMobile ? 12 : 13, color: '#111' }}>
+            <span style={{ background: badge.bg, color: badge.fg, borderRadius: 6,
+                           fontSize: 11, padding: '2px 7px' }}>{badge.label}</span>
+            <span style={{ fontWeight: 500 }}>{(b as MyRow).resource_items?.label ?? `자원 #${b.item_id}`}</span>
+            <span style={{ color: st === 'overdue' ? '#B91C1C' : '#64748B' }}>
+              {st === 'overdue'
+                ? `${fmtDueShort(b.return_due)} 반납 예정이었습니다 — 관리자에게 반납해 주세요`
+                : <>
+                    {fmtDueShort(useDay)} {fmtTimeShort(b.start_at)}~{fmtTimeShort(b.end_at)}
+                    {b.return_due !== useDay && ` · ${fmtDueShort(b.return_due)} 반납`}
+                    {st === 'returned' && b.returned_at && ` · ${fmtDueShort(b.returned_at.slice(0, 10))} 반납 확인`}
+                    {st === 'cancelled' && b.memo?.startsWith('[관리자취소]') && ` · ${b.memo}`}
+                  </>}
+            </span>
+            <span style={{ flex: 1 }} />
+            {st === 'upcoming' && (
+              <button onClick={() => setCancelTarget(b)}
+                style={{ background: '#fff', color: '#DC2626', border: '1px solid #FECACA',
+                         borderRadius: 8, padding: '5px 12px', fontSize: 12, fontFamily: FONT,
+                         cursor: 'pointer' }}>예약 취소</button>
+            )}
+          </div>
+        )
+      })}
+
+      {cancelTarget && (
+        <ConfirmDialog
+          title="예약을 취소할까요?"
+          message={`${fmtDueShort(cancelTarget.start_at.slice(0, 10))} ${fmtTimeShort(cancelTarget.start_at)}~${fmtTimeShort(cancelTarget.end_at)} 예약이 취소됩니다.`}
+          confirmLabel="예약 취소" variant="danger" loading={busy}
+          onConfirm={async () => {
+            setBusy(true)
+            try {
+              await cancelResourceBooking(cancelTarget.id)
+              showToast('예약이 취소되었습니다.')
+              setCancelTarget(null); reload()
+            } catch (e) { showToast(e instanceof Error ? e.message : '취소에 실패했습니다.') }
+            finally { setBusy(false) }
+          }}
+          onClose={() => { if (!busy) setCancelTarget(null) }}
+        />
+      )}
+    </div>
+  )
+}

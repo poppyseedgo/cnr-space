@@ -17,6 +17,7 @@
  */
 
 import { supabase } from './supabase'
+// ← [2026-08-19 Phase 4] 알림 발사 — send-notification invoke (fire-and-forget, 도서 *WithNotify 패턴)
 import type {
   ResourceBooking, ResourceBookingDraft, ResourceCategory, ResourceItem,
 } from '../types/resource'
@@ -116,8 +117,11 @@ export async function insertResourceBooking(
     memo:           draft.memo,
   }
   const { data, error } = await supabase
-    .from('resource_bookings').insert(row).select().single()
+    .from('resource_bookings').insert(row).select(BOOKING_WITH_ITEM).single()  // ← [Phase 4] 라벨 조인 — 알림 payload 용
   if (error) throw new Error(resourceErrorMessage(error.code, error.message))
+  // ← [Phase 4] 예약 완료 알림 — 대리예약은 라벨에 명시 (타입 분리 대신, 회의실 created_on_behalf 는 후속 검토)
+  fireResourceNotification('resource_booking_created', data,
+    booker ? { labelSuffix: ' (관리자 대리예약)' } : {})
   return data as ResourceBooking
 }
 
@@ -204,13 +208,15 @@ export async function upsertResourceItem(d: ResourceItemDraft): Promise<void> {
 
 /** 반납 확인 — 관리자 전용 (트리거 RETURN_CONFIRM_ADMIN_ONLY 가 최종 방어) */
 export async function adminConfirmResourceReturn(bookingId: string, adminUserId: string): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('resource_bookings')
     .update({ returned_at: new Date().toISOString(), returned_by: adminUserId })
     .eq('id', bookingId).eq('status', 'confirmed')
+    .select(BOOKING_WITH_ITEM).single()   // ← [Phase 4] 알림 payload 용
   if (error) throw new Error(
     error.message.includes('RETURN_CONFIRM_ADMIN_ONLY')
       ? '반납 확인 권한이 없습니다.' : error.message)
+  fireResourceNotification('resource_return_confirmed', data)   // ← [Phase 4]
 }
 
 /**
@@ -219,10 +225,73 @@ export async function adminConfirmResourceReturn(bookingId: string, adminUserId:
  */
 export async function adminCancelResourceBooking(bookingId: string, reason: string): Promise<void> {
   const memo = `[관리자취소] ${reason.trim()}`.slice(0, 100)
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('resource_bookings')
     .update({ status: 'cancelled', cancelled_at: new Date().toISOString(),
               cancelled_by: 'admin', memo })
     .eq('id', bookingId).eq('status', 'confirmed')
+    .select(BOOKING_WITH_ITEM).single()   // ← [Phase 4] 알림 payload 용
   if (error) throw new Error(error.message)
+  fireResourceNotification('resource_booking_cancelled_by_admin', data,
+    { cancelReason: reason.trim() })      // ← [Phase 4] 사유 포함 통지
+}
+/* ── 알림 (Phase 4) ───────────────────────────────────────────────────── */
+
+/** 예약 row + 개체·카테고리 라벨 조인 select (알림 payload 구성용) */
+const BOOKING_WITH_ITEM = '*, resource_items ( label, resource_categories ( name ) )'
+
+function resourceLabelOf(row: any): string {
+  const item = Array.isArray(row.resource_items) ? row.resource_items[0] : row.resource_items
+  const cat  = item ? (Array.isArray(item.resource_categories) ? item.resource_categories[0] : item.resource_categories) : null
+  return `${cat?.name ?? '자원'} · ${item?.label ?? '-'}`
+}
+
+const NDOW = ['일', '월', '화', '수', '목', '금', '토']
+function fmtDueKst(ymd: string): string {
+  const [y, m, d] = ymd.split('-').map(Number)
+  return `${m}/${d}(${NDOW[new Date(y, m - 1, d).getDay()]})`
+}
+function fmtHm(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+/** 발송 실패가 본 동작을 막지 않는다 — 알림은 부가 기능 (fire-and-forget) */
+function fireResourceNotification(
+  type: 'resource_booking_created' | 'resource_booking_cancelled_by_admin' | 'resource_return_confirmed',
+  row: any,
+  extra: { labelSuffix?: string; cancelReason?: string } = {},
+): void {
+  const label = resourceLabelOf(row) + (extra.labelSuffix ?? '')
+  supabase.functions.invoke('send-notification', {
+    body: {
+      type,
+      booking: {
+        id:             row.id,
+        title:          label,
+        user_id:        row.user_id,
+        user_name:      row.user_name,
+        user_dept:      row.user_dept,
+        resource_label: label,
+        use_time_kst:   `${fmtDueKst(String(row.start_at).slice(0, 10))} ${fmtHm(row.start_at)}~${fmtHm(row.end_at)}`,
+        return_due_kst: fmtDueKst(row.return_due),
+        ...(extra.cancelReason ? { cancel_reason: extra.cancelReason } : {}),
+      },
+    },
+  }).catch(err => console.warn('[resourceApi] 알림 발송 실패:', err))
+}
+
+/** 마이페이지 자원 탭 — 본인 예약 이력 (최근 90일 시작분 + 미반납 전체) */
+export async function loadMyResourceBookings(
+  userId: string,
+): Promise<(ResourceBooking & { resource_items?: { label: string } | null })[]> {
+  const since = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('resource_bookings')
+    .select('*, resource_items ( label )')   // ← 개체 라벨 조인 — 마이페이지 표기용
+    .eq('user_id', userId)
+    .or(`start_at.gte.${since},and(status.eq.confirmed,returned_at.is.null)`)
+    .order('start_at', { ascending: false })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as ResourceBooking[]
 }

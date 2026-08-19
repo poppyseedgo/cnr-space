@@ -126,6 +126,8 @@ interface EmailBookingData {
   cancel_reason?: string; reject_reason?: string; recur_label?: string
   purpose?: string; purpose_detail?: string
   book_title?: string; due_date_kst?: string; days_overdue?: number; checkout_date_kst?: string
+  // ← [2026-08-19 Phase 4] 자원예약 — 서버 완성 KST 문자열, 재변환 금지 (도서와 동일 규칙)
+  resource_label?: string; use_time_kst?: string; return_due_kst?: string
   // ← [2026-08-10 v2] 노쇼 이용 제재 (20260745) — 서버 완성 KST 문자열, 재변환 금지
   noshow_count?: number; penalty_starts_kst?: string; penalty_ends_kst?: string
 }
@@ -400,6 +402,7 @@ function renderEmail(input: EmailRenderInput): string {
   const policy = POLICIES[type]
 
   const isBook    = !!(booking.book_title || booking.due_date_kst)
+  const isResource = !!booking.resource_label   // ← [2026-08-19 Phase 4]
   const isPenalty = !!booking.penalty_ends_kst && (type === 'noshow_penalty_applied' || type === 'noshow_penalty_cleared')
   const pText = purposeText(booking.purpose, booking.purpose_detail)
 
@@ -408,7 +411,14 @@ function renderEmail(input: EmailRenderInput): string {
 
   // ── 인포 행 (원본: 영문 대문자 라벨 / 사람 라벨은 한글) ──────────────
   const rows: string[] = []
-  if (isBook) {
+  if (isResource) {   // ← [2026-08-19 Phase 4] 자원 분기 — 사용시간/반납일/연체/사유/예약자
+    if (booking.use_time_kst)    rows.push(infoRow('USE', esc(booking.use_time_kst)))
+    if (booking.return_due_kst)  rows.push(infoRow('DUE', esc(booking.return_due_kst)))
+    if (typeof booking.days_overdue === 'number' && booking.days_overdue > 0)
+      rows.push(infoRow('OVERDUE', `<span style="color:#EF4444;">${esc(`${booking.days_overdue}일`)}</span>`))
+    if (booking.cancel_reason)   rows.push(infoRow('REASON', esc(booking.cancel_reason)))
+    if (booking.user_name) rows.push(infoRow('예약자', personHtml(booking.user_name, booking.user_dept, creatorInfo?.avatar_url)))
+  } else if (isBook) {
     if (booking.checkout_date_kst) rows.push(infoRow('RENTED', esc(booking.checkout_date_kst)))
     if (booking.due_date_kst)      rows.push(infoRow('DUE', esc(booking.due_date_kst)))
     if (typeof booking.days_overdue === 'number' && booking.days_overdue > 0)
@@ -472,8 +482,8 @@ function renderEmail(input: EmailRenderInput): string {
   // 무관하게 원본대로 일반 표기.
   const cancelled   = !!policy?.isCancelledStyle && type !== 'rejected'
   const titleStyle  = cancelled ? 'text-decoration:line-through;color:#99A1AF;' : 'color:#111;'
-  const cardTitle   = isBook ? (booking.book_title ?? booking.title) : (booking.title || (isPenalty ? '회의실 예약' : '-'))
-  const subLine     = isBook ? '도서 대여' : isPenalty ? (booking.user_name ?? '') : (booking.room_name ?? '')
+  const cardTitle   = isResource ? (booking.resource_label ?? booking.title) : isBook ? (booking.book_title ?? booking.title) : (booking.title || (isPenalty ? '회의실 예약' : '-'))  // ← [Phase 4] 자원 우선
+  const subLine     = isResource ? '자원 예약' : isBook ? '도서 대여' : isPenalty ? (booking.user_name ?? '') : (booking.room_name ?? '')
 
   return `<!DOCTYPE html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -692,6 +702,16 @@ function buildInAppBody(type: NotificationType, d: InAppBookingData): string {
     return `예약 제한 ~${d.penalty_ends_kst ?? ''} · 노쇼 ${d.noshow_count ?? 3}회`
   if (type === 'noshow_penalty_cleared')
     return '예약 제한이 해제되었습니다 · 다시 예약할 수 있습니다'
+
+  // ← [2026-08-19 Phase 4] 자원 분기 — resource_label 이 있으면 자원 포맷
+  if (d.resource_label) {
+    const parts = [d.resource_label]
+    if (d.use_time_kst)      parts.push(d.use_time_kst)
+    if (d.return_due_kst)    parts.push(`반납일 ${d.return_due_kst}`)
+    if (typeof d.days_overdue === 'number' && d.days_overdue > 0) parts.push(`연체 ${d.days_overdue}일`)
+    if (d.cancel_reason)     parts.push(d.cancel_reason)
+    return parts.join(' · ')
+  }
 
   // 도서 분기 — book_title 이 있으면 도서 포맷
   if (d.book_title) {

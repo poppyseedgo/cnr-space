@@ -392,7 +392,7 @@ function AppContent() {
   //   CTA 만 'book' 으로 세팅하고, 마이페이지를 벗어나면 'room' 으로 되돌린다 —
   //   되돌리지 않으면 CTA 를 한 번 쓴 뒤 헤더로 들어간 마이페이지도 계속
   //   도서 탭으로 열려, 기본 동작(회의실 조회)이 조용히 바뀐다.
-  const [myPageInitialTab, setMyPageInitialTab] = useState<'room' | 'book'>('room');
+  const [myPageInitialTab, setMyPageInitialTab] = useState<'room' | 'book' | 'resource'>('room');  // ← [2026-08-19 Phase 4] 자원 탭
   const setView = (v: string) => {
     setViewState(v)
     if (v !== 'mypage') setMyPageInitialTab('room')
@@ -1952,7 +1952,7 @@ function AppContent() {
       {/* ← [2026-05-06 사이드 sticky 핫픽스] headerHeight 전달 — 사이드 네비 fixed 위치 계산용 (헤더와 동일 패턴) */}
       {view==="admin" && <LazyErrorBoundary><Suspense fallback={<AdminSkeleton />}><AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={confirmAndAdminForceCancel} onDetail={b=>setModal({type:'detail',data:b})} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} headerHeight={headerHeight} /></Suspense></LazyErrorBoundary>}
       {view==="library" && <LibraryPage isAdmin={isAdmin} users={users} authUserId={authUser?.user_id ?? ''} showToast={showToast} onGoMyLoans={() => { setMyPageInitialTab('book'); setView('mypage') }} />}{/* ← [2026-07-16] 도서관 모듈 추가 */}
-      {view==="resources" && <ResourcePage users={users} authUserId={authUser?.user_id ?? ''} showToast={showToast} isMobile={isMobile} />}{/* ← [2026-08-19] 자원예약 Phase 2A — 카드+Figma 모달, 2B(타임라인·캘린더) 예정 */}
+      {view==="resources" && <ResourcePage users={users} authUserId={authUser?.user_id ?? ''} showToast={showToast} isMobile={isMobile} onGoMyResources={() => { setMyPageInitialTab('resource'); setView('mypage') }} />}{/* ← [2026-08-19] 자원예약 Phase 2A — 카드+Figma 모달, 2B(타임라인·캘린더) 예정 */}
       {view==="release-notes" && <ReleaseNotesPage />}{/* ← [2026-08-03] Release Note + Hotfix — 데이터 SSOT: src/data/releaseNotes.ts */}
 
       {/* ── Modals ── */}

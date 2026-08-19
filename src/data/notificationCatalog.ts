@@ -41,13 +41,15 @@ export type NotifAudience =
   | 'former_booker'
   | 'book_borrower'
   | 'book_admins'
+  | 'resource_owner'            // ← [2026-08-19 Phase 4]
+  | 'resource_admins_and_owner' // ← [2026-08-19 Phase 4]
 
 export interface NotifCatalogItem {
   /** notification_settings.type / POLICIES 키 */
   type:      string
   label:     string
   /** 화면 그룹 */
-  group:     '회의실 예약' | '체크인·노쇼' | '노쇼 제재' | '도서관' | '연체 제재'
+  group:     '회의실 예약' | '체크인·노쇼' | '노쇼 제재' | '도서관' | '연체 제재' | '자원예약'  // ← [2026-08-19 Phase 4]
   /** 언제 나가는가 (사람이 읽는 문장) */
   trigger:   string
   audience:  NotifAudience
@@ -127,6 +129,23 @@ export const NOTIFICATION_CATALOG: NotifCatalogItem[] = [
     channels: ['email','inapp'], toAdmins: false },
 
   // ── 도서관 ──────────────────────────────────────────────────────────────
+  // ── [2026-08-19 Phase 4] 자원예약 5종 — Teams 비대상(도서와 동일) ──────
+  { type: 'resource_booking_created', label: '자원 예약 완료', group: '자원예약',
+    trigger: '예약 생성 즉시 (본인·대리 공통, 대리는 라벨에 명시)', audience: 'resource_owner',
+    channels: ['email','inapp'], toAdmins: false },
+  { type: 'resource_booking_cancelled_by_admin', label: '관리자 취소 통지', group: '자원예약',
+    trigger: '관리자가 예약을 취소한 즉시 (사유 포함)', audience: 'resource_owner',
+    channels: ['email','inapp'], toAdmins: false },
+  { type: 'resource_return_confirmed', label: '반납 확인 완료', group: '자원예약',
+    trigger: '관리자 반납 확인 즉시', audience: 'resource_owner',
+    channels: ['email','inapp'], toAdmins: false },
+  { type: 'resource_due_reminder', label: '반납일 안내', group: '자원예약',
+    trigger: '반납일 당일 09:00 KST (resource-due-reminder)', audience: 'resource_owner',
+    channels: ['email','inapp'], toAdmins: false },
+  { type: 'resource_overdue', label: '연체 발생', group: '자원예약',
+    trigger: '반납일 경과 09:00 KST 매일 반복 (resource-due-reminder)', audience: 'resource_admins_and_owner',
+    channels: ['email','inapp'], toAdmins: true,
+    note: '★ 예약자 + 자원 담당(admin_roles resource/super). 수신자 지정 시 관리자 집합만 대체 — 예약자는 항상 수신.' },
   { type: 'book_checkout_created', label: '대여 접수(관리자)', group: '도서관',
     trigger: '대여·예약이 생성된 즉시',              audience: 'book_admins',
     channels: ['email','inapp'], toAdmins: true,
@@ -184,6 +203,8 @@ export const AUDIENCE_LABEL: Record<NotifAudience, string> = {
   former_booker:           '이전 예약자',
   book_borrower:           '대여자 본인',
   book_admins:             '도서 담당 관리자',
+  resource_owner:            '자원 예약자 본인',                              // ← [2026-08-19 Phase 4]
+  resource_admins_and_owner: '예약자 + 자원 담당 관리자 (resource/super)',    // ← [2026-08-19 Phase 4]
 }
 
 export const CHANNEL_LABEL: Record<NotifChannel, string> = {

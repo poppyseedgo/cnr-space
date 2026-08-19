@@ -65,6 +65,7 @@ import { UserAvatar } from '../components/common/UserAvatar'
 import { MyBookingTable } from '../components/common/MyBookingTable'
 // ← [2026-07-18] 마이페이지 '내 대여' — 도서 대여 조회 + 연장(1회 +7일)
 import { MyBookLoans } from '../components/library/MyBookLoans'
+import { MyResourceBookings } from '../components/resource/MyResourceBookings'  // ← [2026-08-19 Phase 4] 자원 예약 탭
 import { Button } from '../components/common/Button' 
 import { isNoshow } from '../utils/noshow'  // ← [2026-05-11 Phase 2] isNoshow SSOT 통일 (기존 isNoshowBooking 별칭 사용)
 
@@ -90,7 +91,7 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
   //     MyPage 는 view 전환마다 언마운트되므로 초기값 주입만으로 충분하다
   //     (마운트 후 prop 변경을 따라갈 필요 없음 — 사용자가 탭을 바꾼 상태를
   //      외부 값이 되돌리면 안 된다).
-  const [queryTab, setQueryTab] = useState<'room' | 'book'>(initialQueryTab as 'room' | 'book');
+  const [queryTab, setQueryTab] = useState<'room' | 'book' | 'resource'>(initialQueryTab as 'room' | 'book' | 'resource');  // ← [Phase 4] 'resource' 추가
 
   // 딥링크 처리: #booking-{id} 로 진입 시 해당 예약 모달 자동 오픈
   useEffect(() => {
@@ -452,14 +453,14 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
           color:'#111',                                    // ← Figma: #111
           lineHeight:1.5,                                  // ← Figma: leading 1.5
           whiteSpace:'nowrap',
-        }}>{queryTab === 'room' ? '나의 예약 조회' : '나의 대여 조회'}</div>{/* ← [2026-07-18] 탭에 따라 제목 전환 */}
+        }}>{queryTab === 'room' ? '나의 예약 조회' : queryTab === 'book' ? '나의 대여 조회' : '나의 자원 예약 조회'}</div>{/* ← [2026-07-18] 탭에 따라 제목 전환 */}
 
         {/* ── [2026-07-18] 세그먼트 탭: 회의실 예약 ↔ 도서 대여 ──────────────
             · 기존 회의실 조회 동작은 그대로 유지 (기본 탭 'room')
             · 도서 탭은 MyBookLoans가 자체 fetch/연장 처리 */}
         <div style={{ display:'flex', gap:6, padding:4, background:'#F1F5F9',
           borderRadius:12, width:'fit-content' }}>
-          {([['room','회의실 예약'],['book','도서 대여']] as const).map(([key,label]) => (
+          {([['room','회의실 예약'],['book','도서 대여'],['resource','자원 예약']] as const).map(([key,label]) => (  // ← [Phase 4] 자원 세그먼트
             <button
               key={key}
               onClick={() => setQueryTab(key)}
@@ -474,6 +475,15 @@ export function MyPageView({bookings, setBookings, currentUser, currentDept, sho
             >{label}</button>
           ))}
         </div>
+
+        {/* ── [2026-08-19 Phase 4] 자원 예약 탭 — MyResourceBookings 자체 fetch ── */}
+        {queryTab === 'resource' && (
+          <MyResourceBookings
+            authUserId={authUserId}
+            showToast={showToast}
+            isMobile={isMobile}
+          />
+        )}
 
         {/* ── 도서 대여 탭 ─────────────────────────────────────────────── */}
         {queryTab === 'book' && (
