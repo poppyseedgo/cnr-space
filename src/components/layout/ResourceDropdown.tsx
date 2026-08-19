@@ -132,7 +132,7 @@ export function ResourceDropdown({ dark, onSetView }: ResourceDropdownProps) {  
   // ← [2026-07-16] book → 'library' view 연결 완료; zoom/pointer는 추후 구현
   const MENU_ITEMS: { key: string; icon: JSX.Element; label: string; view: string | null }[] = [
     // ← [2026-07-31] ZOOM 예약 제거 — 사내 ZOOM 사용 종료 (고지 확정, 드롭다운은 유지)
-    { key: 'pointer', icon: <IcoPointer />, label: '포인터 대여', view: null      },
+    { key: 'pointer', icon: <IcoPointer />, label: '자원예약',   view: 'resources' },  // ← [2026-08-19] Phase 2A 오픈 — 포인터 한정에서 자원 통합으로 일반화 (고지 확정)
     { key: 'book',    icon: <IcoBook />,    label: '도서 대여',  view: 'library' },
   ]
 
