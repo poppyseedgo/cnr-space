@@ -24,6 +24,8 @@ import type { ResourceBooking, ResourceCategory, ResourceItem } from '../types/r
 import { cancelResourceBooking, loadResourceBookings, loadResourceCategories, loadResourceItems } from '../lib/resourceApi'
 import { currentHolderBooking, deriveItemStatus, fmtDueShort, fmtTimeShort, isResourceOverdue, nextBooking, type ResourceDisplayStatus } from '../utils/resourceStatus'
 import { ResourceBookingModal } from '../components/resource/ResourceBookingModal'
+import { ResourceTimelineView } from '../components/resource/ResourceTimelineView'  // ← [2026-08-19 Phase 2B]
+import { ResourceCalendarView } from '../components/resource/ResourceCalendarView'  // ← [2026-08-19 Phase 2B]
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 
 const FONT = "'Pretendard', -apple-system, sans-serif"
@@ -40,9 +42,10 @@ interface Props {
   users:      AppUser[]
   authUserId: string
   showToast:  (msg: string) => void
+  isMobile:   boolean   // ← [Phase 2B] 타임라인 열 폭·캘린더 점 표시 분기
 }
 
-export function ResourcePage({ users, authUserId, showToast }: Props) {
+export function ResourcePage({ users, authUserId, showToast, isMobile }: Props) {
   const [categories, setCategories] = useState<ResourceCategory[]>([])
   const [items, setItems]           = useState<ResourceItem[]>([])
   const [bookings, setBookings]     = useState<ResourceBooking[]>([])
@@ -51,6 +54,13 @@ export function ResourcePage({ users, authUserId, showToast }: Props) {
   const [target, setTarget]         = useState<ResourceItem | null>(null)   // 예약 모달 대상
   const [cancelTarget, setCancelTarget] = useState<ResourceBooking | null>(null)
   const [cancelling, setCancelling] = useState(false)
+  // ── [Phase 2B] 뷰 전환 — 기본 카드 (시안 확정: 예약까지 클릭 수 최소)
+  const [viewMode, setViewMode] = useState<'cards' | 'timeline' | 'calendar'>('cards')
+  const todayYmd = (() => { const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` })()
+  const [tlDate, setTlDate] = useState(todayYmd)
+  const [prefill, setPrefill] = useState<{ date: string; startHM: string } | null>(null)  // 타임라인 슬롯 → 모달
+  const [reloadKey, setReloadKey] = useState(0)   // 생성 후 타임라인·캘린더 자체 재조회 트리거
 
   const reload = useCallback(async () => {
     try {
@@ -117,8 +127,18 @@ export function ResourcePage({ users, authUserId, showToast }: Props) {
 
   return (
     <div style={{ maxWidth: 1080, margin: '0 auto', padding: '24px 16px 60px', fontFamily: FONT, color: '#111' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>자원예약</h1>
+        {/* ← [Phase 2B] 뷰 세그먼트 — 3뷰 공통 카테고리 칩은 아래 그대로 */}
+        <span style={{ display: 'inline-flex', background: '#fff', border: '1px solid #D1D7E1',
+                       borderRadius: 10, overflow: 'hidden' }}>
+          {([['cards', '카드'], ['timeline', '타임라인'], ['calendar', '캘린더']] as const).map(([v, label]) => (
+            <button key={v} onClick={() => setViewMode(v)}
+              style={{ border: 'none', padding: '6px 14px', fontSize: 12, fontFamily: FONT, cursor: 'pointer',
+                       background: viewMode === v ? '#111' : 'transparent',
+                       color: viewMode === v ? '#fff' : '#111' }}>{label}</button>
+          ))}
+        </span>
       </div>
 
       {/* 카테고리 칩 — 2개 이상일 때만 */}
@@ -147,6 +167,7 @@ export function ResourcePage({ users, authUserId, showToast }: Props) {
         </p>
       ) : (
         <>
+          {viewMode === 'cards' && <>
           {/* 개체 카드 그리드 */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
             {visibleItems.map(item => {
@@ -202,6 +223,29 @@ export function ResourcePage({ users, authUserId, showToast }: Props) {
               </div>
             </div>
           )}
+          </>}
+
+          {/* ── [Phase 2B] 타임라인뷰 ── */}
+          {viewMode === 'timeline' && activeCat && (
+            <ResourceTimelineView
+              category={activeCat}
+              items={visibleItems}
+              users={users} date={tlDate} isMobile={isMobile}
+              onDateChange={setTlDate}
+              onSlotClick={(item, startHM) => { setPrefill({ date: tlDate, startHM }); setTarget(item) }}
+              showToast={showToast} reloadKey={reloadKey}
+            />
+          )}
+
+          {/* ── [Phase 2B] 캘린더뷰 — 조회 중심, 생성은 타임라인·카드에 위임 ── */}
+          {viewMode === 'calendar' && (
+            <ResourceCalendarView
+              categoryItems={visibleItems}
+              users={users} authUserId={authUserId} isMobile={isMobile}
+              onGoTimeline={d => { setTlDate(d); setViewMode('timeline') }}
+              showToast={showToast} reloadKey={reloadKey}
+            />
+          )}
         </>
       )}
 
@@ -213,9 +257,10 @@ export function ResourcePage({ users, authUserId, showToast }: Props) {
             user_name: users.find(u => u.user_id === authUserId)?.name ?? '',
             user_dept: users.find(u => u.user_id === authUserId)?.dept ?? '',
           }}
+          initialDate={prefill?.date} initialStartHM={prefill?.startHM}
           showToast={showToast}
-          onDone={() => { setTarget(null); void reload() }}
-          onClose={() => setTarget(null)}
+          onDone={() => { setTarget(null); setPrefill(null); setReloadKey(k => k + 1); void reload() }}
+          onClose={() => { setTarget(null); setPrefill(null) }}
         />
       )}
 
@@ -231,6 +276,7 @@ export function ResourcePage({ users, authUserId, showToast }: Props) {
               await cancelResourceBooking(cancelTarget.id)
               showToast('예약이 취소되었습니다.')
               setCancelTarget(null)
+              setReloadKey(k => k + 1)   // ← [Phase 2B] 타임라인·캘린더 갱신
               void reload()
             } catch (e) {
               showToast(e instanceof Error ? e.message : '취소에 실패했습니다.')

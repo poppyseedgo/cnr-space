@@ -63,6 +63,22 @@ export async function loadResourceBookings(): Promise<ResourceBooking[]> {
   return (data ?? []) as ResourceBooking[]
 }
 
+/**
+ * 범위 조회 (Phase 2B 타임라인·캘린더) — 점유구간이 [from, to] 와 겹치는 confirmed 예약.
+ * 과거 달 조회를 위해 2A 의 loadResourceBookings(현재성 버퍼)와 별도로 둔다.
+ */
+export async function loadResourceBookingsRange(fromISO: string, toISO: string): Promise<ResourceBooking[]> {
+  const { data, error } = await supabase
+    .from('resource_bookings')
+    .select('*')
+    .eq('status', 'confirmed')
+    .gte('occupied_until', fromISO)
+    .lte('start_at', toISO)
+    .order('start_at', { ascending: true })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as ResourceBooking[]
+}
+
 /* ── 생성 ─────────────────────────────────────────────────────────────── */
 
 /** 트리거·제약 에러 → 사용자 문구 (설계서 §3 매핑) */

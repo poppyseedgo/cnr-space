@@ -30,6 +30,9 @@ interface Props {
   snapshot:  { user_name: string; user_dept: string }
   /** 대리예약 — 지정 시 이 사용자가 예약자가 된다 (Phase 3, insert booker override) */
   booker?:   { user_id: string; email: string }
+  /** 타임라인 슬롯 클릭 프리필 (Phase 2B) — 'YYYY-MM-DD' / 'HH:MM' */
+  initialDate?:    string
+  initialStartHM?: string
   showToast: (msg: string) => void
   onDone:    () => void            // 성공 — 목록 리로드
   onClose:   () => void
@@ -108,16 +111,19 @@ function DateField({ value, min, onChange, disabled }: {
   )
 }
 
-export function ResourceBookingModal({ item, category, snapshot, booker, showToast, onDone, onClose }: Props) {  // ← [Phase 3] booker 추가
+export function ResourceBookingModal({ item, category, snapshot, booker, initialDate, initialStartHM, showToast, onDone, onClose }: Props) {  // ← [Phase 3] booker / [Phase 2B] 프리필 추가
   const step  = category.slot_step_minutes
   const open  = category.open_time.slice(0, 5)
   const close = category.close_time.slice(0, 5)
   const opts  = useMemo(() => timeOpts(open, close, step), [open, close, step])
 
-  const [useDate, setUseDate]   = useState(todayStr())
-  const [startHM, setStartHM]   = useState(opts[0] ?? '09:00')
-  const [endHM, setEndHM]       = useState(opts[1] ?? '10:00')
-  const [dueDate, setDueDate]   = useState(todayStr())
+  // ← [Phase 2B] 타임라인 슬롯 프리필 — 시작 slot 다음 옵션을 종료 기본값으로
+  const initStart = initialStartHM && opts.includes(initialStartHM) ? initialStartHM : (opts[0] ?? '09:00')
+  const initEnd   = opts[opts.indexOf(initStart) + 1] ?? opts[opts.length - 1] ?? '10:00'
+  const [useDate, setUseDate]   = useState(initialDate ?? todayStr())
+  const [startHM, setStartHM]   = useState(initStart)
+  const [endHM, setEndHM]       = useState(initEnd)
+  const [dueDate, setDueDate]   = useState(initialDate ?? todayStr())
   const [memo, setMemo]         = useState('')
   const [saving, setSaving]     = useState(false)
 
