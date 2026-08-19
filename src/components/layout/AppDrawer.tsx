@@ -130,13 +130,13 @@ export function AppDrawer({ open, view, isAdmin, isMobile, onSetView, onClose }:
 
             {/* ── 서비스 ── */}
             <div style={{ ...sectionLabel, marginTop: 14 }}>서비스</div>
-            <button className="btn" style={itemStyle(view === 'library')} onClick={() => go('library')}>
-              <IcoBook size={18} /> 도서관 {/* ← [2026-07-31] 자원 드롭다운 동일 SVG */}
-            </button>
-            {/* ← [2026-08-19] 자원예약 정식 오픈 (Phase 2A) — 준비중 '포인터 예약' 승격, 아이콘 유지 */}
+            {/* ← [2026-08-19 고지 지시] 서비스 순서: 자원예약 → 도서관 → 마이페이지 → Release Note → 어드민 */}
             <button className="btn" style={itemStyle(view === 'resources')} onClick={() => go('resources')}>
               <IcoPointer />
               자원예약
+            </button>
+            <button className="btn" style={itemStyle(view === 'library')} onClick={() => go('library')}>
+              <IcoBook size={18} /> 도서관 {/* ← [2026-07-31] 자원 드롭다운 동일 SVG */}
             </button>
             <button className="btn" style={itemStyle(view === 'mypage')} onClick={() => go('mypage')}>
               <UserCircle size={17} strokeWidth={1.8} /> 마이페이지
