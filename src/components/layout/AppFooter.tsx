@@ -52,7 +52,7 @@ export function AppFooter({ isMobile, onSetView, onGoMyPage }: AppFooterProps) {
   /* 담당자 블록 — Figma 3136:7675~ */
   const CONTACTS: { role: string; names: string[] }[] = [
     { role: 'Super Admin',              names: ['김기남', '송보람'] },
-    { role: '사용 기능 및 노쇼 관련 문의', names: ['고현정'] },
+    { role: '사용 기능 및 노쇼 해제 관련 문의', names: ['고현정'] },   // ← [2026-08-20] Figma 문구 갱신 ('해제' 추가)
     { role: '에메랄드룸 예약 승인',        names: ['김수빈', '송지나'] },
     { role: '도서 관리',                 names: ['박찬희'] },
   ]
@@ -69,14 +69,15 @@ export function AppFooter({ isMobile, onSetView, onGoMyPage }: AppFooterProps) {
     ]},
   ]
   const GROUP_2: FooterSection[] = [
+    // ← [2026-08-20] Figma 갱신 — 도서예약이 마이 페이지 앞 (3143:7699 순서)
+    { title: '도서예약', links: [
+      { label: '이 달의 신규 도서', go: () => onSetView('library') },
+    ]},
     { title: '마이 페이지', links: [
       { label: '노쇼 현황',        go: () => onGoMyPage('room') },     // 상단 노쇼 카드가 첫 화면
       { label: '회의실 예약 현황', go: () => onGoMyPage('room') },
       { label: '자원 예약 현황',   go: () => onGoMyPage('resource') },
       { label: '도서 예약 현황',   go: () => onGoMyPage('book') },
-    ]},
-    { title: '도서예약', links: [
-      { label: '이 달의 신규 도서', go: () => onSetView('library') },
     ]},
   ]
   const ETC: FooterSection = {
@@ -154,12 +155,8 @@ export function AppFooter({ isMobile, onSetView, onGoMyPage }: AppFooterProps) {
             <span style={{ display: 'flex', transform: 'rotate(90deg)' }}><IcoArrowOutward size={32} /></span>
           </button>
 
-          {/* 그룹 1 — 회의실 · 자원 */}
-          <div>{GROUP_1.map(renderSection)}</div>
-          {/* 그룹 간 간격 32 (Figma 3143:7700 gap) */}
-          <div style={{ height: 32 }} aria-hidden="true" />
-          {/* 그룹 2 — 마이페이지 · 도서 */}
-          <div>{GROUP_2.map(renderSection)}</div>
+          {/* 섹션 — 회의실 · 자원 · 도서 · 마이페이지 (← [2026-08-20] Figma 갱신: 그룹 간 32 간격 제거, 행 py24 일관) */}
+          <div>{GROUP_1.map(renderSection)}{GROUP_2.map(renderSection)}</div>
 
           {/* C&R Chatbot — 링크 미정: 회색 + '예정' (고지 확정) */}
           <div style={{ display: 'flex', gap: 4, alignItems: 'center',
