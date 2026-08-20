@@ -117,7 +117,7 @@ export function ResourcePage({ users, authUserId, showToast, isMobile, onGoMyRes
   }
 
   return (
-    <div style={{ maxWidth: 1080, margin: '0 auto', padding: '24px 16px 60px', fontFamily: FONT, color: '#111' }}>
+    <div style={{ width: '100%', maxWidth: 1080, margin: '0 auto', padding: '24px 16px 60px', fontFamily: FONT, color: '#111' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>자원예약</h1>
         {/* ← [Phase 2B] 뷰 세그먼트 — 3뷰 공통 카테고리 칩은 아래 그대로 */}

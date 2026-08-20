@@ -557,7 +557,7 @@ export function MyBookingWeeklyView({bookings, currentUser, rooms=[], onDetail, 
   const goWeek = (dir: number) => setSelectedDate(addDays(selectedDate, dir * 7))
 
   return (
-    <div style={{maxWidth:1400, margin:"0 auto", padding: isMobile?"16px 12px":"28px 28px"}}>
+    <div style={{width:"100%", maxWidth:1400, margin:"0 auto", padding: isMobile?"16px 12px":"28px 28px"}}>
 
       {/* ── 오늘 내 예약 — HomeView 동일 카드 UI ── */}
       <div style={{marginBottom:28}}>

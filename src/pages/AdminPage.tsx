@@ -960,6 +960,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
           · 데스크톱: paddingLeft 244 = 24(좌) + 160(사이드) + 60(gap) — 사이드 자리 확보
           · 모바일: 일반 padding 12, 사이드는 콘텐츠 위 인라인 */}
       <div style={{
+        width: '100%',         // ← [2026-08-20] flex column 래퍼에서 auto 마진 수축 방지 (홈 폭 축소 사고와 동일 원인 선제 차단)
         maxWidth: shellMaxW,   // ← [2026-07-24 #10] 대시보드 1920 / 그 외 1400 (네비 left 와 동일 값)
         margin:   '0 auto',
         // ← [2026-07-24] 태블릿은 사이드가 인라인이므로 좌측 244 여백이 필요 없다

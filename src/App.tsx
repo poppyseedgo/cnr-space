@@ -1920,7 +1920,7 @@ function AppContent() {
 
       {/* ── Views ── */}
       {(view==="home"||view==="calendar") && (
-        <div style={{maxWidth:1400, margin:"0 auto", padding: isMobile?"16px 12px":(view==="calendar"?"20px 28px":"28px 28px")}}>{/* ← [2026-05-13] 캘린더 뷰만 padding 20px 28px (홈은 28px 28px 유지) - CalendarSkeleton과 의도값 일치 */}
+        <div style={{width:"100%", maxWidth:1400, margin:"0 auto", padding: isMobile?"16px 12px":(view==="calendar"?"20px 28px":"28px 28px")}}>{/* ← [2026-05-13] 캘린더 뷰만 padding 20px 28px (홈은 28px 28px 유지) - CalendarSkeleton과 의도값 일치 */}
           {view==="home"     && <HomeView     bookings={bookings} rooms={rooms} tick={tick} searchQ={searchQ} setSearchQ={setSearchQ} filterFloor={homeFilterFloor} setFilterFloor={setHomeFilterFloor} onBook={(r, status)=>{
               // 바로예약: 지금 시각부터 다음 예약 직전까지 자동 설정
               const now = nowMinutes();
