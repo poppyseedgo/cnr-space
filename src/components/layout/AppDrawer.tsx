@@ -22,7 +22,7 @@
 
 import { useEffect, useState } from 'react'
 import { X, UserCircle, Settings,
-  MessageCircleQuestion, FileText, Bot, Armchair } from 'lucide-react'
+  MessageCircleQuestion, FileText, Bot, Armchair, Megaphone } from 'lucide-react'
 // ← [2026-07-31] 헤더 필 네비와 동일 아이콘·명칭 (IcoSchedule=실시간 현황 / IcoCalendar=캘린더 뷰)
 import { IcoSchedule, IcoCalendar } from './HeaderNav'
 import { ModalPortal } from '../common/ModalPortal'
@@ -140,6 +140,10 @@ export function AppDrawer({ open, view, isAdmin, isMobile, onSetView, onClose }:
             </button>
             <button className="btn" style={itemStyle(view === 'mypage')} onClick={() => go('mypage')}>
               <UserCircle size={17} strokeWidth={1.8} /> 마이페이지
+            </button>
+            {/* ← [2026-08-19] 공지사항 신설 (고지 확정 순서: 마이페이지 다음) — 헤더 배너 이력 페이지 */}
+            <button className="btn" style={itemStyle(view === 'announcements')} onClick={() => go('announcements')}>
+              <Megaphone size={17} strokeWidth={1.8} /> 공지사항
             </button>
             {/* ← [2026-08-03] 준비중에서 정식 승격 — 타이틀 'Release Note + Hotfix' (고지 확정) */}
             <button className="btn" style={itemStyle(view === 'release-notes')} onClick={() => go('release-notes')}>

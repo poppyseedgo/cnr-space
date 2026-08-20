@@ -252,7 +252,8 @@ import type { AdminBookLoan } from './types'
 import { NotificationBell } from './components/layout/NotificationBell'  // ← [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 3)
 // ← [2026-07-31] lucide Menu import 제거 — 햄버거를 고지 제공 인라인 SVG 로 교체
 import { ResourceDropdown } from './components/layout/ResourceDropdown'
-import { ResourcePage } from './pages/ResourcePage'  // ← [2026-08-19] 자원예약 Phase 2A  // ← [2026-07-31] 복구 (고지 확정 — ZOOM 만 제거한 v16). 드롭다운=데스크탑 퀵 진입, 드로어=전 해상도 전체 메뉴
+import { ResourcePage } from './pages/ResourcePage'  // ← [2026-08-19] 자원예약 Phase 2A
+import { AnnouncementsPage } from './pages/AnnouncementsPage'  // ← [2026-08-19] 공지사항 페이지 신설  // ← [2026-07-31] 복구 (고지 확정 — ZOOM 만 제거한 v16). 드롭다운=데스크탑 퀵 진입, 드로어=전 해상도 전체 메뉴
 import { BrandLogo } from './components/layout/BrandLogo'  // ← [2026-07-31] 워드마크 SVG SSOT
 import { AppDrawer } from './components/layout/AppDrawer'
 import { AppFooter } from './components/layout/AppFooter'
@@ -1953,6 +1954,7 @@ function AppContent() {
       {view==="admin" && <LazyErrorBoundary><Suspense fallback={<AdminSkeleton />}><AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={confirmAndAdminForceCancel} onDetail={b=>setModal({type:'detail',data:b})} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} headerHeight={headerHeight} /></Suspense></LazyErrorBoundary>}
       {view==="library" && <LibraryPage isAdmin={isAdmin} users={users} authUserId={authUser?.user_id ?? ''} showToast={showToast} onGoMyLoans={() => { setMyPageInitialTab('book'); setView('mypage') }} />}{/* ← [2026-07-16] 도서관 모듈 추가 */}
       {view==="resources" && <ResourcePage users={users} authUserId={authUser?.user_id ?? ''} showToast={showToast} isMobile={isMobile} onGoMyResources={() => { setMyPageInitialTab('resource'); setView('mypage') }} />}{/* ← [2026-08-19] 자원예약 Phase 2A — 카드+Figma 모달, 2B(타임라인·캘린더) 예정 */}
+      {view==="announcements" && <AnnouncementsPage showToast={showToast} />}{/* ← [2026-08-19] 공지사항 — 헤더 배너 이력, RLS 20260749 필요 */}
       {view==="release-notes" && <ReleaseNotesPage />}{/* ← [2026-08-03] Release Note + Hotfix — 데이터 SSOT: src/data/releaseNotes.ts */}
 
       {/* ── Modals ── */}
