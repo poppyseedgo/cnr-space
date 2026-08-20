@@ -51,7 +51,7 @@ export function AnnouncementsPage({ showToast }: Props) {
   const past   = rows.filter(a => !active.includes(a))
 
   return (
-    <div style={{ maxWidth: 680, margin: '0 auto', padding: '24px 16px 60px', fontFamily: FONT, color: '#111' }}>
+    <div style={{ maxWidth: 860 /* ← [2026-08-19 고지 지시] 680 좁음 — Release Note 와 동일 텍스트 페이지 폭 */, margin: '0 auto', padding: '24px 16px 60px', fontFamily: FONT, color: '#111' }}>
       <h1 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 16px' }}>공지사항</h1>
 
       {loading ? (

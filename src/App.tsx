@@ -1737,7 +1737,7 @@ function AppContent() {
   return (
     <div className={dark ? "dark" : ""}>
     <div
-      className="dark:bg-slate-900 min-h-screen text-slate-800 dark:text-slate-200"
+      className="dark:bg-slate-900 min-h-screen flex flex-col text-slate-800 dark:text-slate-200"  // ← [2026-08-19 고지 지시] sticky footer — 콘텐츠 짧아도 푸터 바닥 고정
       style={{
         background: "#F5F7F9",
         // ── [2026-04-30] 헤더 fixed로 인한 본문 가림 방지 ──
@@ -2112,6 +2112,10 @@ function AppContent() {
         </div>
       )}
 
+      {/* ← [2026-08-19 고지 지시] sticky footer 스페이서 — 콘텐츠가 짧으면 flexGrow 가
+            남는 화면을 흡수해 푸터를 뷰포트 바닥에 붙이고, 길면 최소 간격(기존 160px)만 남긴다.
+            푸터 fixed 오버레이가 아니라 문서 흐름 유지 — 콘텐츠를 가리지 않는 근본 해법 */}
+      <div style={{ flexGrow: 1, minHeight: 160 }} aria-hidden="true" />
       {/* ── Footer — ← [2026-07-30] 서비스 나열 푸터로 교체 (AppFooter) ── */}
       <AppFooter isMobile={isMobile} onSetView={setView} />
 

@@ -28,7 +28,7 @@ export function AppFooter({ isMobile, onSetView }: AppFooterProps) {
   }
 
   return (
-    <footer style={{ borderTop: '1px solid #F1F5F9', marginTop: 160, background: '#FFFFFF' }}>
+    <footer style={{ borderTop: '1px solid #F1F5F9', background: '#FFFFFF' }}>{/* ← [2026-08-19] marginTop 160 제거 — 간격은 App 스페이서(minHeight 160)가 단일 책임 */}
       <div style={{
         maxWidth: 1400, margin: '0 auto',
         padding: isMobile ? '28px 20px 18px' : '36px 28px 20px',
