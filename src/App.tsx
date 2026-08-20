@@ -2117,7 +2117,7 @@ function AppContent() {
             푸터 fixed 오버레이가 아니라 문서 흐름 유지 — 콘텐츠를 가리지 않는 근본 해법 */}
       <div style={{ flexGrow: 1, minHeight: 160 }} aria-hidden="true" />
       {/* ── Footer — ← [2026-07-30] 서비스 나열 푸터로 교체 (AppFooter) ── */}
-      <AppFooter isMobile={isMobile} onSetView={setView} />
+      <AppFooter isMobile={isMobile} onSetView={setView} onGoMyPage={(t) => { setMyPageInitialTab(t); setView('mypage') }} />{/* ← [2026-08-19] 신규 푸터 — 마이페이지 탭 정확 이동 */}
 
       {/* ── 전역 사이드 드로어 — ← [2026-07-30] ── */}
       <AppDrawer
