@@ -89,7 +89,8 @@ export function AppFooter({ isMobile, onSetView, onGoMyPage }: AppFooterProps) {
 
   const linkBtn: CSSProperties = {
     background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-    fontFamily: FONT, fontSize: 16, lineHeight: 1.2, color: '#111',
+    fontFamily: FONT, fontSize: 16, fontWeight: 400, lineHeight: 1.2, color: '#111',
+    // ↑ fontWeight 400 명시 — 전역 .btn 이 600 을 강제해 링크가 두껍게 렌더되던 문제 정정 (Figma Regular)
     width: 280, textAlign: 'left',
   }
   const sectionTitle: CSSProperties = {
