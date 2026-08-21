@@ -182,8 +182,8 @@ export function ResourcePage({ users, authUserId, showToast, isMobile, onGoMyRes
                            padding: 12, cursor: clickable ? 'pointer' : 'default',
                            opacity: st === 'maintenance' ? 0.65 : 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <ResourceName icon={activeCat?.icon} size={15} gap={6}
-                      style={{ fontWeight: 500, fontSize: 15 }}>{item.label}</ResourceName>{/* ← [2026-08-21] 카테고리 아이콘 상속 */}
+                    <ResourceName icon={activeCat?.icon} size={20} gap={6}
+                      style={{ fontWeight: 500, fontSize: 15 }}>{item.label}</ResourceName>{/* ← [2026-08-21] 카테고리 아이콘 상속 · 카드만 20px(고지 지정) */}
                     <span style={{ background: badge.bg, color: badge.fg, borderRadius: 6,
                                    fontSize: 11, padding: '2px 6px' }}>{badge.label}</span>
                   </div>
