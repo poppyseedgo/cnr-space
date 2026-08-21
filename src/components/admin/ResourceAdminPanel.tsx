@@ -28,6 +28,7 @@ import {
 import { fmtDueShort, fmtTimeShort, isOccupying, isResourceOverdue } from '../../utils/resourceStatus'
 import { ResourceBookingModal } from '../resource/ResourceBookingModal'
 import { ConfirmDialog } from '../common/ConfirmDialog'
+import { ResourceIcon, ResourceName, isSvgIcon } from '../resource/ResourceIcon'  // ← [2026-08-21] 카테고리 SVG 아이콘
 import { ModalPortal } from '../common/ModalPortal'
 
 const FONT = "'Pretendard', -apple-system, sans-serif"
@@ -189,7 +190,12 @@ export function ResourceAdminPanel({ users, currentUserId, showToast, isMobile }
                   <tbody>
                     {rows.map(({ b, st }) => (
                       <tr key={b.id}>
-                        <td style={{ ...td, fontWeight: 500 }}>{itemById.get(b.item_id)?.label ?? `#${b.item_id}`}</td>
+                        <td style={{ ...td, fontWeight: 500 }}>
+                          {/* ← [2026-08-21] 소속 카테고리 아이콘 상속 (CSV 는 텍스트 유지) */}
+                          <ResourceName icon={categories.find(c => c.id === itemById.get(b.item_id)?.category_id)?.icon} size={13} gap={5}>
+                            {itemById.get(b.item_id)?.label ?? `#${b.item_id}`}
+                          </ResourceName>
+                        </td>
                         <td style={td}>{userName(b)}</td>
                         <td style={td}>{fmtDueShort(b.start_at.slice(0, 10))} {fmtTimeShort(b.start_at)}~{fmtTimeShort(b.end_at)}</td>
                         <td style={{ ...td, color: st === 'overdue' ? '#B91C1C' : undefined }}>{fmtDueShort(b.return_due)}</td>
@@ -491,7 +497,7 @@ function CategoriesTab({ categories, showToast, onSaved }: {
   categories: ResourceCategory[]; showToast: (m: string) => void; onSaved: () => void
 }) {
   const empty: ResourceCategoryDraft = { name: '', slot_step_minutes: 60, allow_multi_day: true,
-    open_time: '07:00', close_time: '19:00', is_active: true }
+    open_time: '07:00', close_time: '19:00', is_active: true, icon: null }  // ← [2026-08-21] icon
   const [drafts, setDrafts] = useState<Record<number, ResourceCategoryDraft>>({})
   const [adding, setAdding] = useState<ResourceCategoryDraft | null>(null)
   const [busy, setBusy] = useState(false)
@@ -499,12 +505,15 @@ function CategoriesTab({ categories, showToast, onSaved }: {
   const draftOf = (c: ResourceCategory): ResourceCategoryDraft =>
     drafts[c.id] ?? { id: c.id, name: c.name, slot_step_minutes: c.slot_step_minutes,
       allow_multi_day: c.allow_multi_day, open_time: c.open_time.slice(0, 5),
-      close_time: c.close_time.slice(0, 5), is_active: c.is_active }
+      close_time: c.close_time.slice(0, 5), is_active: c.is_active, icon: c.icon ?? null }  // ← [2026-08-21] icon 동반 — 없으면 저장 시 NULL 로 소실
   const setDraft = (id: number, d: ResourceCategoryDraft) => setDrafts(prev => ({ ...prev, [id]: d }))
 
   const save = async (d: ResourceCategoryDraft) => {
     if (!d.name.trim()) { showToast('카테고리 이름을 입력해 주세요.'); return }
     if (d.open_time >= d.close_time) { showToast('운영 종료는 시작보다 늦어야 합니다.'); return }
+    // ← [2026-08-21] 아이콘 검증 — SVG 원문만 허용(<svg 시작) · 10KB 이하 (data-URI img 렌더 전제)
+    if (d.icon && !isSvgIcon(d.icon)) { showToast('아이콘은 <svg 로 시작하는 SVG 코드여야 합니다.'); return }
+    if (d.icon && d.icon.length > 10240) { showToast('아이콘 SVG 는 10KB 이하여야 합니다.'); return }
     setBusy(true)
     try {
       await upsertResourceCategory(d)
@@ -517,6 +526,33 @@ function CategoriesTab({ categories, showToast, onSaved }: {
 
   const rowInputs = (d: ResourceCategoryDraft, set: (d: ResourceCategoryDraft) => void, actions: React.ReactNode) => (
     <>
+      {/* ← [2026-08-21] SVG 아이콘 — 미리보기 + .svg 파일 선택 + 코드 붙여넣기 겸용 (미리보기 승인 UI) */}
+      <td style={{ ...td, whiteSpace: 'nowrap' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ width: 30, height: 30, border: '1px solid #E2E8F0', borderRadius: 8,
+                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                         background: '#fff', flexShrink: 0 }}>
+            {isSvgIcon(d.icon) ? <ResourceIcon icon={d.icon} size={16} /> : <span style={{ color: '#CBD5E1', fontSize: 11 }}>—</span>}
+          </span>
+          <label style={{ border: '1px dashed #CBD5E1', borderRadius: 8, padding: '5px 8px', fontSize: 11,
+                          color: '#64748B', background: '#F8FAFC', cursor: 'pointer', flexShrink: 0 }}>
+            .svg 파일
+            <input type="file" accept=".svg,image/svg+xml" style={{ display: 'none' }} aria-label="SVG 아이콘 파일"
+              onChange={e => {
+                const f = e.target.files?.[0]; e.target.value = ''   // 같은 파일 재선택 허용
+                if (!f) return
+                const r = new FileReader()
+                r.onload = () => set({ ...d, icon: String(r.result ?? '') })
+                r.readAsText(f)
+              }} />
+          </label>
+          <input style={{ ...inputS, width: 110 }} value={d.icon ?? ''} placeholder="<svg …> 붙여넣기"
+            aria-label="SVG 아이콘 코드"
+            onChange={e => set({ ...d, icon: e.target.value || null })} />
+          {d.icon && <button style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: 12, padding: 0 }}
+            aria-label="아이콘 제거" onClick={() => set({ ...d, icon: null })}>✕</button>}
+        </span>
+      </td>
       <td style={td}><input style={inputS} value={d.name} placeholder="레이저 포인터"
         onChange={e => set({ ...d, name: e.target.value })} /></td>
       <td style={td}>
@@ -558,9 +594,9 @@ function CategoriesTab({ categories, showToast, onSaved }: {
         <button style={btnDark} onClick={() => setAdding({ ...empty })}>+ 카테고리 추가</button>
       </div>
       <div style={{ ...card, overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 880 }}>{/* ← [2026-08-21] 아이콘 컬럼 추가 680→880 */}
           <thead><tr>
-            <th style={th}>이름</th><th style={th}>시간 단위</th><th style={th}>복수일 반납</th>
+            <th style={th}>아이콘</th><th style={th}>이름</th><th style={th}>시간 단위</th><th style={th}>복수일 반납</th>{/* ← [2026-08-21] 아이콘 컬럼 */}
             <th style={th}>운영시간</th><th style={th}>노출</th><th style={{ ...th, textAlign: 'right' }}>액션</th>
           </tr></thead>
           <tbody>
@@ -579,7 +615,7 @@ function CategoriesTab({ categories, showToast, onSaved }: {
               </tr>
             })}
             {categories.length === 0 && !adding && (
-              <tr><td style={{ ...td, color: '#64748B' }} colSpan={6}>
+              <tr><td style={{ ...td, color: '#64748B' }} colSpan={7}>{/* ← [2026-08-21] 아이콘 컬럼 추가로 6→7 */}
                 등록된 카테고리가 없습니다. 첫 카테고리를 추가해 주세요.</td></tr>)}
           </tbody>
         </table>

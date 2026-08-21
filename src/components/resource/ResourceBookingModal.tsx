@@ -27,6 +27,7 @@ import { ModalPortal } from '../common/ModalPortal'
 import { ModalCloseButton } from '../common/ModalCloseButton'   // ← [2026-08-21] 회의실 모달과 동일 헤더 X
 import { Button } from '../common/Button'                       // ← [2026-08-21] 회의실 모달과 동일 푸터 버튼
 import { insertResourceBooking } from '../../lib/resourceApi'
+import { ResourceName } from './ResourceIcon'  // ← [2026-08-21] 카테고리 SVG 아이콘 공통 표기
 import type { ResourceCategory, ResourceItem } from '../../types/resource'
 
 const FONT = "'Pretendard', -apple-system, sans-serif"
@@ -191,7 +192,8 @@ export function ResourceBookingModal({ item, category, snapshot, booker, initial
           {/* 헤더 — Figma: 아이콘 + "{카테고리} 예약" + X */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         padding: '22px 24px 12px' }}>
-            <span style={{ fontSize: 19, fontWeight: 600, color: '#191F28' }}>{category.name} 예약</span>
+            <ResourceName icon={category.icon} size={18} gap={7}
+              style={{ fontSize: 19, fontWeight: 600, color: '#191F28' }}>{category.name} 예약</ResourceName>{/* ← [2026-08-21] 아이콘 */}
             {/* ← [2026-08-21] 회의실 모달과 동일 공통 X (32×32 원형 · hover #F1F5F9 · SVG) */}
             <ModalCloseButton onClick={onClose} />
           </div>
@@ -201,7 +203,8 @@ export function ResourceBookingModal({ item, category, snapshot, booker, initial
             <Row label={`${category.name} 번호`} required>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8,
                              background: '#F2F4F6', borderRadius: 10, padding: '8px 12px' }}>
-                <span style={{ fontSize: 14, fontWeight: 500, color: '#191F28' }}>{item.label}</span>
+                <ResourceName icon={category.icon} size={14}
+                  style={{ fontSize: 14, fontWeight: 500, color: '#191F28' }}>{item.label}</ResourceName>{/* ← [2026-08-21] 아이콘 */}
                 <span style={{ background: '#D5F0FF', color: '#111', borderRadius: 6,
                                fontSize: 11, padding: '2px 7px' }}>예약가능</span>
                 <button onClick={onClose} aria-label="자원 선택 해제"

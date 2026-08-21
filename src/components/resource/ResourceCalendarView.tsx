@@ -20,6 +20,7 @@ import type { AppUser } from '../../types'
 import type { ResourceBooking, ResourceItem } from '../../types/resource'
 import { loadResourceBookingsRange } from '../../lib/resourceApi'
 import { fmtDueShort, fmtTimeShort } from '../../utils/resourceStatus'
+import { ResourceName } from './ResourceIcon'  // ← [2026-08-21] 카테고리 SVG 아이콘 공통 표기
 
 const FONT = "'Pretendard', -apple-system, sans-serif"
 
@@ -32,6 +33,8 @@ const MARK_STYLE = {
 
 interface Props {
   categoryItems: ResourceItem[]        // 선택 카테고리의 개체 (필터 기준)
+  /** ← [2026-08-21] 선택 카테고리의 SVG 아이콘 — 리스트 자원명 앞 공통 표기 */
+  categoryIcon:  string | null
   users:         AppUser[]
   authUserId:    string
   isMobile:      boolean
@@ -46,7 +49,7 @@ function ymd(d: Date): string {
 function localDay(iso: string): string { return ymd(new Date(iso)) }
 
 export function ResourceCalendarView({
-  categoryItems, users, authUserId, isMobile, onGoTimeline, showToast, reloadKey,
+  categoryItems, categoryIcon, users, authUserId, isMobile, onGoTimeline, showToast, reloadKey,  // ← [2026-08-21] categoryIcon
 }: Props) {
   const now = new Date()
   const [year, setYear]   = useState(now.getFullYear())
@@ -181,7 +184,7 @@ export function ResourceCalendarView({
                     <div key={j} style={{ background: MARK_STYLE[m.kind].bg, color: MARK_STYLE[m.kind].fg,
                                           borderRadius: 5, padding: '1px 4px', marginTop: 2, fontSize: 10,
                                           overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                      {itemLabel(m.b.item_id)} {m.kind === 'usage'
+                      <ResourceName icon={categoryIcon} size={10} gap={3}>{itemLabel(m.b.item_id)}</ResourceName> {m.kind === 'usage'
                         ? nameOf(m.b).split(' · ')[0]
                         : MARK_STYLE[m.kind].label}
                     </div>
@@ -215,7 +218,7 @@ export function ResourceCalendarView({
                                  borderRadius: 4, fontSize: 10, padding: '1px 5px', marginRight: 6 }}>
                     {m.kind === 'usage' ? '예약' : MARK_STYLE[m.kind].label}
                   </span>
-                  {itemLabel(m.b.item_id)} · {nameOf(m.b)}{' '}
+                  <ResourceName icon={categoryIcon} size={12} gap={4}>{itemLabel(m.b.item_id)}</ResourceName> · {nameOf(m.b)}{' '}
                   <span style={{ color: '#64748B' }}>
                     {m.kind === 'usage'
                       ? `${fmtTimeShort(m.b.start_at)}~${fmtTimeShort(m.b.end_at)}`

@@ -20,6 +20,7 @@ import type { AppUser } from '../../types'
 import type { ResourceBooking, ResourceCategory, ResourceItem } from '../../types/resource'
 import { loadResourceBookingsRange } from '../../lib/resourceApi'
 import { fmtDueShort, fmtTimeShort } from '../../utils/resourceStatus'
+import { ResourceName } from './ResourceIcon'  // ← [2026-08-21] 카테고리 SVG 아이콘 공통 표기
 
 const FONT = "'Pretendard', -apple-system, sans-serif"
 const OVERDUE_STRIPE =
@@ -165,7 +166,9 @@ export function ResourceTimelineView({
               <div key={`h${i.id}`}
                 style={{ padding: '8px 4px', textAlign: 'center', borderBottom: '1px solid #E2E8F0',
                          borderLeft: '1px solid #F1F5F9' }}>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>{i.label}</div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>
+                  <ResourceName icon={category.icon} size={13}>{i.label}</ResourceName>{/* ← [2026-08-21] 아이콘 */}
+                </div>
                 <div style={{ fontSize: 11, color: s.color }}>{s.text}</div>
               </div>
             )

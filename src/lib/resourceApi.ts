@@ -167,6 +167,8 @@ export interface ResourceCategoryDraft {
   close_time:        string
   is_active:         boolean
   sort_order?:       number
+  /** ← [2026-08-21] SVG 원문 (null = 아이콘 없음 — 텍스트만 표기) */
+  icon?:             string | null
 }
 
 /** 카테고리 생성/수정 (id 유무로 분기) */
@@ -174,7 +176,8 @@ export async function upsertResourceCategory(d: ResourceCategoryDraft): Promise<
   const payload = {
     name: d.name.trim(), slot_step_minutes: d.slot_step_minutes,
     allow_multi_day: d.allow_multi_day, open_time: d.open_time, close_time: d.close_time,
-    is_active: d.is_active, ...(d.sort_order != null ? { sort_order: d.sort_order } : {}),
+    is_active: d.is_active, icon: d.icon ?? null,  // ← [2026-08-21] draftOf 가 기존 icon 을 항상 실어 오므로 무조건 포함해도 소실 없음
+    ...(d.sort_order != null ? { sort_order: d.sort_order } : {}),
   }
   const q = d.id != null
     ? supabase.from('resource_categories').update(payload).eq('id', d.id)
@@ -284,11 +287,11 @@ function fireResourceNotification(
 /** 마이페이지 자원 탭 — 본인 예약 이력 (최근 90일 시작분 + 미반납 전체) */
 export async function loadMyResourceBookings(
   userId: string,
-): Promise<(ResourceBooking & { resource_items?: { label: string } | null })[]> {
+): Promise<(ResourceBooking & { resource_items?: { label: string; category?: { icon: string | null } | null } | null })[]> {  // ← [2026-08-21] 아이콘 조인
   const since = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString()
   const { data, error } = await supabase
     .from('resource_bookings')
-    .select('*, resource_items ( label )')   // ← 개체 라벨 조인 — 마이페이지 표기용
+    .select('*, resource_items ( label, category:resource_categories ( icon ) )')   // ← 개체 라벨 조인 — 마이페이지 표기용  ← [2026-08-21] 카테고리 아이콘 동반 조인
     .eq('user_id', userId)
     .or(`start_at.gte.${since},and(status.eq.confirmed,returned_at.is.null)`)
     .order('start_at', { ascending: false })

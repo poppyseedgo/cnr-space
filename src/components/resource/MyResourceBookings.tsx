@@ -12,10 +12,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ResourceBooking } from '../../types/resource'
 
-type MyRow = ResourceBooking & { resource_items?: { label: string } | null }
+type MyRow = ResourceBooking & { resource_items?: { label: string; category?: { icon: string | null } | null } | null }  // ← [2026-08-21] 아이콘 조인
 import { cancelResourceBooking, loadMyResourceBookings } from '../../lib/resourceApi'
 import { fmtDueShort, fmtTimeShort, isOccupying, isResourceOverdue } from '../../utils/resourceStatus'
 import { ConfirmDialog } from '../common/ConfirmDialog'
+import { ResourceName } from './ResourceIcon'  // ← [2026-08-21] 카테고리 SVG 아이콘 공통 표기
 
 const FONT = "'Pretendard', -apple-system, sans-serif"
 
@@ -81,7 +82,8 @@ export function MyResourceBookings({ authUserId, showToast, isMobile }: Props) {
                      opacity: dim ? 0.7 : 1, fontSize: isMobile ? 12 : 13, color: '#111' }}>
             <span style={{ background: badge.bg, color: badge.fg, borderRadius: 6,
                            fontSize: 11, padding: '2px 7px' }}>{badge.label}</span>
-            <span style={{ fontWeight: 500 }}>{(b as MyRow).resource_items?.label ?? `자원 #${b.item_id}`}</span>
+            <ResourceName icon={(b as MyRow).resource_items?.category?.icon} size={14} gap={5}
+              style={{ fontWeight: 500 }}>{(b as MyRow).resource_items?.label ?? `자원 #${b.item_id}`}</ResourceName>{/* ← [2026-08-21] 아이콘 */}
             <span style={{ color: st === 'overdue' ? '#B91C1C' : '#64748B' }}>
               {st === 'overdue'
                 ? `${fmtDueShort(b.return_due)} 반납 예정이었습니다 — 관리자에게 반납해 주세요`

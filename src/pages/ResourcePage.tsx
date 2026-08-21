@@ -24,6 +24,7 @@ import type { ResourceBooking, ResourceCategory, ResourceItem } from '../types/r
 import { loadResourceBookings, loadResourceCategories, loadResourceItems } from '../lib/resourceApi'  // ← [Phase 4] cancel 은 마이페이지로 이관
 import { currentHolderBooking, deriveItemStatus, fmtDueShort, fmtTimeShort, isResourceOverdue, nextBooking, type ResourceDisplayStatus } from '../utils/resourceStatus'
 import { ResourceBookingModal } from '../components/resource/ResourceBookingModal'
+import { ResourceName } from '../components/resource/ResourceIcon'  // ← [2026-08-21] 카테고리 SVG 아이콘 공통 표기
 import { ResourceTimelineView } from '../components/resource/ResourceTimelineView'  // ← [2026-08-19 Phase 2B]
 import { ResourceCalendarView } from '../components/resource/ResourceCalendarView'  // ← [2026-08-19 Phase 2B]
 
@@ -149,7 +150,8 @@ export function ResourcePage({ users, authUserId, showToast, isMobile, onGoMyRes
                          border: active ? '1px solid #111' : '1px solid #D1D7E1',
                          borderRadius: 999, padding: '6px 14px', fontSize: 13,
                          fontFamily: FONT, cursor: 'pointer' }}>
-                {c.name}
+                {/* ← [2026-08-21] 카테고리 아이콘 — 활성(검정 배경) 시 흰색 반전 */}
+                <ResourceName icon={c.icon} size={14} invert={active} gap={6}>{c.name}</ResourceName>
               </button>
             )
           })}
@@ -180,7 +182,8 @@ export function ResourcePage({ users, authUserId, showToast, isMobile, onGoMyRes
                            padding: 12, cursor: clickable ? 'pointer' : 'default',
                            opacity: st === 'maintenance' ? 0.65 : 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <span style={{ fontWeight: 500, fontSize: 15 }}>{item.label}</span>
+                    <ResourceName icon={activeCat?.icon} size={15} gap={6}
+                      style={{ fontWeight: 500, fontSize: 15 }}>{item.label}</ResourceName>{/* ← [2026-08-21] 카테고리 아이콘 상속 */}
                     <span style={{ background: badge.bg, color: badge.fg, borderRadius: 6,
                                    fontSize: 11, padding: '2px 6px' }}>{badge.label}</span>
                   </div>
@@ -212,6 +215,7 @@ export function ResourcePage({ users, authUserId, showToast, isMobile, onGoMyRes
           {viewMode === 'calendar' && (
             <ResourceCalendarView
               categoryItems={visibleItems}
+              categoryIcon={activeCat?.icon ?? null /* ← [2026-08-21] 리스트 자원명 아이콘 */}
               users={users} authUserId={authUserId} isMobile={isMobile}
               onGoTimeline={d => { setTlDate(d); setViewMode('timeline') }}
               showToast={showToast} reloadKey={reloadKey}
