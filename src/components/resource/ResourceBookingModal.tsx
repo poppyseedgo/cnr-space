@@ -15,10 +15,17 @@
  *
  * ✅ 변경 이력
  *  - [2026-08-19] 최초 작성 (Phase 2A)
+ *  - [2026-08-21] 회의실 BookingModal 기준 정합 (미리보기 승인)
+ *      ① 사용시간 고정 배너("N단위 동적 등록") → 동적 "N분/시간 사용" 배지 (Figma 337:1265 스펙 동일)
+ *      ② 필수 dot: 텍스트 ● 9px → 4×4px 원형 #EF4444, 라벨 우상단(top) 정렬 (BookingModal Field 동일)
+ *      ③ 헤더 X: 텍스트 ✕ → ModalCloseButton 공통 컴포넌트 (칩 내부 제거용 ✕는 공통화 대상 아님 — 유지)
+ *      ④ 푸터: gap 10·padding 24·자체 버튼 → gap 8·padding 8 + 공통 Button(ghost/primary, h56·r16), flex 1:1
  */
 
 import { useMemo, useState } from 'react'
 import { ModalPortal } from '../common/ModalPortal'
+import { ModalCloseButton } from '../common/ModalCloseButton'   // ← [2026-08-21] 회의실 모달과 동일 헤더 X
+import { Button } from '../common/Button'                       // ← [2026-08-21] 회의실 모달과 동일 푸터 버튼
 import { insertResourceBooking } from '../../lib/resourceApi'
 import type { ResourceCategory, ResourceItem } from '../../types/resource'
 
@@ -68,9 +75,12 @@ function timeOpts(open: string, close: string, step: number): string[] {
   return out
 }
 
-/* 필수 표시 빨간점 (Figma: 라벨 우상단 dot) */
+/* 필수 표시 빨간점 — ← [2026-08-21] 회의실 BookingModal Field 스펙 1:1 (4×4px 원형 #EF4444) */
 function Req() {
-  return <span style={{ color: '#F04452', fontSize: 9, verticalAlign: 'top', marginLeft: 2 }}>●</span>
+  return <span aria-hidden="true" style={{
+    width: 4, height: 4, borderRadius: '50%', background: '#EF4444',
+    flexShrink: 0, display: 'inline-block', marginTop: 2,   // ← 라벨 우상단(top) 정렬 (미리보기 확정)
+  }} />
 }
 
 /* 좌 라벨 + 우 콘텐츠 행 — Figma 라벨 열 고정폭 */
@@ -82,7 +92,11 @@ function Row({ label, required, hairline = true, children, alignTop = false }: {
       display: 'flex', alignItems: alignTop ? 'flex-start' : 'center', gap: 16,
       padding: '15px 0', borderBottom: hairline ? '1px solid #F2F4F6' : 'none',
     }}>
-      <span style={{ width: 76, flexShrink: 0, color: '#6B7684', fontSize: 14, paddingTop: alignTop ? 2 : 0 }}>
+      {/* ← [2026-08-21] dot top 정렬을 위해 inline-flex + alignItems flex-start + gap 2 (BookingModal Field 동일) */}
+      <span style={{
+        width: 76, flexShrink: 0, color: '#6B7684', fontSize: 14, paddingTop: alignTop ? 2 : 0,
+        display: 'inline-flex', alignItems: 'flex-start', gap: 2,
+      }}>
         {label}{required && <Req />}
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
@@ -130,6 +144,12 @@ export function ResourceBookingModal({ item, category, snapshot, booker, initial
   // 사용일 변경 시 반납일이 앞서지 않게 보정 / 당일반납 강제 카테고리는 항상 동일
   const effDue = category.allow_multi_day ? (dueDate < useDate ? useDate : dueDate) : useDate
   const valid  = startHM < endHM
+  // ← [2026-08-21] 동적 "N분 사용" 배지 — 회의실 BookingModal durMin 산식 동일 (종료−시작, 분)
+  const durMin = useMemo(() => {
+    const [sh, sm] = startHM.split(':').map(Number)
+    const [eh, em] = endHM.split(':').map(Number)
+    return (eh * 60 + em) - (sh * 60 + sm)
+  }, [startHM, endHM])
 
   const submit = async () => {
     if (!valid || saving) return
@@ -172,9 +192,8 @@ export function ResourceBookingModal({ item, category, snapshot, booker, initial
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         padding: '22px 24px 12px' }}>
             <span style={{ fontSize: 19, fontWeight: 600, color: '#191F28' }}>{category.name} 예약</span>
-            <button onClick={onClose} aria-label="닫기"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8B95A1',
-                       fontSize: 20, lineHeight: 1, padding: 4 }}>✕</button>
+            {/* ← [2026-08-21] 회의실 모달과 동일 공통 X (32×32 원형 · hover #F1F5F9 · SVG) */}
+            <ModalCloseButton onClick={onClose} />
           </div>
 
           <div style={{ padding: '0 24px' }}>
@@ -213,10 +232,27 @@ export function ResourceBookingModal({ item, category, snapshot, booker, initial
                   종료 시간은 시작 시간보다 늦어야 합니다
                 </p>
               )}
-              <div style={{ background: '#E8F3FF', color: '#333D4B', borderRadius: 10,
-                            fontSize: 12, textAlign: 'center', padding: '9px 0', marginTop: 10 }}>
-                {step === 60 ? '1시간' : `${step}분`} 단위로 동적 등록
-              </div>
+              {/* ← [2026-08-21] 고정 문구 배너 → 동적 "N분 사용" 배지 (회의실 Figma 337:1265 —
+                    h26 / r6 / bg #edf8ff / 12px Regular #111 / 시간행과 gap 16). valid일 때만 노출 */}
+              {valid && (
+                <div style={{
+                  width: '100%', height: 26, padding: '16px 4px', borderRadius: 6,
+                  background: '#edf8ff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxSizing: 'border-box', marginTop: 16,
+                }}>
+                  <span style={{ fontFamily: FONT, fontWeight: 400, fontSize: 12, lineHeight: 1.5, color: '#111' }}>
+                    {(() => {
+                      // 회의실 BookingModal 표기 산식 동일 — "15분 사용" / "1시간 사용" / "1시간 30분 사용"
+                      const h = Math.floor(durMin / 60)
+                      const m = durMin % 60
+                      const parts: string[] = []
+                      if (h > 0) parts.push(`${h}시간`)
+                      if (m > 0) parts.push(`${m}분`)
+                      return `${parts.join(' ')} 사용`
+                    })()}
+                  </span>
+                </div>
+              )}
             </Row>
 
             {/* 반납일 */}
@@ -249,19 +285,15 @@ export function ResourceBookingModal({ item, category, snapshot, booker, initial
             )}
           </div>
 
-          {/* 하단 버튼 */}
-          <div style={{ display: 'flex', gap: 10, padding: '24px 24px 24px' }}>
-            <button onClick={onClose} disabled={saving}
-              style={{ flex: 1, background: '#F2F4F6', color: '#4E5968', border: 'none',
-                       borderRadius: 12, padding: '14px 0', fontSize: 15, fontWeight: 500,
-                       fontFamily: FONT, cursor: 'pointer' }}>취소</button>
-            <button onClick={submit} disabled={!valid || saving}
-              style={{ flex: 1.6, background: '#191F28', color: '#fff', border: 'none',
-                       borderRadius: 12, padding: '14px 0', fontSize: 15, fontWeight: 500,
-                       fontFamily: FONT, cursor: valid && !saving ? 'pointer' : 'default',
-                       opacity: !valid || saving ? 0.5 : 1 }}>
-              {saving ? '예약 중…' : `${category.name} 예약하기`}
-            </button>
+          {/* 하단 버튼 — ← [2026-08-21] 회의실 BookingModal 푸터 1:1
+                gap 8 · padding 8 · 공통 Button(ghost/primary) · minHeight 56 · radius 16 · flex 1:1 */}
+          <div style={{ display: 'flex', gap: 8, padding: 8 }}>
+            <Button variant="ghost" flex onClick={onClose} disabled={saving}
+              style={{ minHeight: 56, borderRadius: 16 }}>취소</Button>
+            <Button variant="primary" flex onClick={submit} disabled={!valid} loading={saving}
+              style={{ minHeight: 56, borderRadius: 16 }}>
+              {category.name} 예약하기
+            </Button>
           </div>
         </div>
       </div>
