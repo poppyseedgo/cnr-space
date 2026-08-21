@@ -28,6 +28,7 @@ import {
   toggleRoomActive, saveRoomFeatures, loadFeatures, updateProfile,
   loadAllRooms, loadBookingsByRange, expirePendingBooking,
   syncAllUsers, loadUsers, loadDepartedUsers, type SyncResult,
+  fetchNoshowPenalties,   // ← [2026-08-21] 이용 제재 현황 카드 — NoshowAdminPanel과 동일 조회 경로 재사용
   // ← [2026-07-30] countFutureBookings/manualDepartUser import 제거 —
   //   수동 퇴사는 EmploymentStatusModal → depart-user Edge Function 경로로 이관.
   //   (manualDepartUser 는 api.ts 에서 제거 — 비원자적·노쇼 오염 구방식)
@@ -91,6 +92,7 @@ import { DashboardRangeRow, SmallDateTrigger, RANGE_PRESETS_RECENT,
 import { UserRankingCard, UserNoshowCard } from '../components/admin/DashboardUserCards'
 import { MeetingPurposeCard } from '../components/admin/MeetingPurposeCard'      // ← [2026-07-23 Phase 3] 위젯 ⑨
 import { DashboardUserCell } from '../components/admin/DashboardUserCell'         // ← [2026-07-23] 사용자 표시 공통 셀
+import { type NoshowPenaltyRow } from '../utils/noshowPenalty'                    // ← [2026-08-21] 이용 제재 현황 카드 — 테이블 1:1 타입 (판정은 서버 SSOT)
 import { RoomUtilizationCard, RoomUtilizationByRoomCard } from '../components/admin/RoomUtilizationCard'  // ← [2026-07-23] 요일별 가동률 + 회의실별 가동률
 import { aggregatePurposes, aggregatePurposeByDept, classifyPurpose, PURPOSE_DEFS, type PurposeCode } from '../utils/meetingPurpose'  // ← [2026-07-23] 분류·집계 SSOT (DetailDrawer 공용) + 드릴다운 판정
 import { useBookingsByRange } from '../components/admin/useBookingsByRange'
@@ -983,7 +985,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
 
         {/* ── 콘텐츠 영역 ──────────────────────────────────────────── */}
         <div style={{ minWidth: 0 /* ← overflow 안전장치 */ }}>
-      {activeTab==='dashboard' && <AdminDashboard bookings={bookings} rooms={rooms} users={users} isMobile={isMobile} onDetail={onDetail} onGoApprovals={() => setTab('approvals')} currentUserId={currentUserId} currentUserEmail={currentUserEmail}/>/* ← [2026-05-28] currentUserId/Email 전달 — DetailDrawer 내 BookingStatusBadge 'mine' 칩 판정용  ← [2026-06-10] onGoApprovals 추가 — 승인 대기 카드 클릭 시 '승인 관리' 탭으로 이동 */}
+      {activeTab==='dashboard' && <AdminDashboard bookings={bookings} rooms={rooms} users={users} isMobile={isMobile} onDetail={onDetail} onGoApprovals={() => setTab('approvals')} onGoNoshowAdmin={() => { setTab('bookings'); setBookingsView('noshow') }} currentUserId={currentUserId} currentUserEmail={currentUserEmail}/>/* ← [2026-05-28] currentUserId/Email 전달 — DetailDrawer 내 BookingStatusBadge 'mine' 칩 판정용  ← [2026-06-10] onGoApprovals 추가 — 승인 대기 카드 클릭 시 '승인 관리' 탭으로 이동 */}
       {activeTab==='bookings'  && <>
         {/* ← [2026-08-05] 하위 뷰 토글 — 예약 목록 / 노쇼 관리 */}
         <div style={{display:'flex',gap:6,marginBottom:16}}>
@@ -1726,6 +1728,130 @@ function RecentBookingsCard({
             ))}
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ─── 이용 제재 현황 카드 (Figma node 3156:7157 — 2026-08-21 신규) ───────────
+//   사용처: Row 1 Col 3 (456×367 — Figma 551:3316 재갱신으로 Row1이 2-col→3-col)
+//   데이터: fetchNoshowPenalties() 1회 로드(제재는 건수가 적어 클라 기간 필터로 충분)
+//          + 기간 겹침 필터. 기간 프리셋은 '최근 생성된 예약'과 동일(오늘/일주일/한 달).
+//   기간 의미: 제재기간 [starts_at, ends_at)가 선택 기간(KST 자정~익일 자정)과 "겹치는" 건.
+//            → 기본 '오늘' = 지금 진행 중인 제재. 해제(revoked)된 제재는 무효이므로 제외.
+//   클릭: 카드 전체·행 개별 모두 '예약 관리 > 노쇼 관리' 탭으로 이동 (고지 확정 — 통일).
+//        행이 별도 동작을 갖지 않으므로 stopPropagation 없이 wrapper onClick에 버블링.
+//   ※ RLS: noshow_penalties SELECT = 본인 행 또는 has_admin_role('booking').
+//     booking 권한이 없는 관리자는 목록이 비어 보인다 — NoshowAdminPanel과 동일 동작.
+function NoshowPenaltyCard({ users }: { users: AppUser[] }) {
+  const [dateFrom, setDateFrom] = useState<string>(() => todayStr())   // ← 기본 '오늘' (Figma 첫 pill 활성)
+  const [dateTo,   setDateTo]   = useState<string>(() => todayStr())
+
+  const [rows,    setRows]    = useState<NoshowPenaltyRow[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetchNoshowPenalties()
+      .then(d => { if (!cancelled) setRows(d) })
+      .catch(e => console.error('[NoshowPenaltyCard] fetch failed', e))
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  // 기간 겹침: starts_at < (to+1일 KST 자정) && ends_at > (from KST 자정)
+  //   time.ts의 KST 문자열('YYYY-MM-DD')에 +09:00 오프셋을 명시해 브라우저 TZ 무관하게 판정.
+  const visible = useMemo(() => {
+    const fromMs = new Date(`${dateFrom}T00:00:00+09:00`).getTime()
+    const toMs   = new Date(`${addDays(dateTo, 1)}T00:00:00+09:00`).getTime()
+    return rows.filter(p =>
+      !p.revoked_at &&
+      new Date(p.starts_at).getTime() < toMs &&
+      new Date(p.ends_at).getTime()   > fromMs
+    )
+  }, [rows, dateFrom, dateTo])
+
+  return (
+    <div style={{
+      background:   '#fff',
+      borderRadius: 24,
+      padding:      '12px 16px 16px 16px',
+      display:      'flex',
+      flexDirection:'column',
+      alignItems:   'flex-start',
+      gap:          36,                             // ← Figma 3156:7157 헤더↔본문 gap
+      height:       367,                            // ← Row1 공통 높이 (승인 대기·최근 생성된 예약과 동일)
+      width:        '100%',
+    }}>
+      {/* ── 헤더 (Figma 3156:7158 — 타이틀 + gap4 + 날짜행) ─────────────── */}
+      <div style={{ display:'flex', flexDirection:'column', gap:4, width:'100%' }}>
+        <p style={{
+          fontFamily:"'Pretendard', -apple-system, sans-serif",
+          fontWeight:500, fontSize:16, lineHeight:1.4, color:'#111', margin:0,
+          whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+        }}>이용 제재 현황</p>
+        <DashboardRangeRow
+          from={dateFrom}
+          to={dateTo}
+          onChange={r => { setDateFrom(r.from); setDateTo(r.to) }}
+          presets={RANGE_PRESETS_RECENT}
+        />
+      </div>
+
+      {/* ── 본문 (Figma 3156:7269 — 정책 문구 + 표, gap 8) ──────────────── */}
+      <div style={{ display:'flex', flexDirection:'column', gap:8, width:'100%', minHeight:0, flex:1 }}>
+        <p style={{
+          fontFamily:"'Pretendard', -apple-system, sans-serif",
+          fontWeight:400, fontSize:11, lineHeight:1.5, color:'#FF8282', margin:0, whiteSpace:'nowrap',
+        }}>노쇼 최초 발생일부터 1개월 내 3회 누적 시 1주일 예약 생성 제한 중</p>
+
+        <div style={{ display:'flex', flexDirection:'column', width:'100%', minHeight:0, flex:1 }}>
+          {/* 컬럼 헤더 (Figma 3156:7177 — 대상자 110 고정 + 제재기간 flex, gap 12) */}
+          <div style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 0' }}>
+            <span style={{
+              width:110, flexShrink:0,
+              fontFamily:"'Pretendard', -apple-system, sans-serif",
+              fontWeight:500, fontSize:11, lineHeight:1.5, color:'#9CA3AF', whiteSpace:'nowrap',
+            }}>대상자</span>
+            <span style={{
+              flex:1, minWidth:0,
+              fontFamily:"'Pretendard', -apple-system, sans-serif",
+              fontWeight:500, fontSize:11, lineHeight:1.5, color:'#9CA3AF', whiteSpace:'nowrap',
+            }}>제재기간</span>
+          </div>
+
+          {visible.length === 0 ? (
+            <div style={{
+              flex:1, display:'flex', alignItems:'center', justifyContent:'center',
+              fontFamily:"'Pretendard', -apple-system, sans-serif", fontSize:12, color:'#CBD5E1',
+            }}>{loading ? '로딩 중…' : '기간 내 이용 제재가 없습니다'}</div>
+          ) : (
+            <div style={{ width:'100%', minHeight:0, flex:1, overflowY:'auto' }}>{/* ← 제재 다건 시 카드 높이 367 유지 + 내부 스크롤 */}
+              {visible.map(p => {
+                // 표시명·프로필: users 배열 live 우선, 스냅샷 fallback (프로젝트 live-first 원칙 — NoshowAdminPanel 동일)
+                const owner = users.find(u => u.user_id === p.user_id)
+                const name  = owner?.name ?? p.user_name ?? '—'
+                return (
+                  <div key={p.id} style={{
+                    display:'flex', alignItems:'center', gap:12, padding:'8px 0',
+                    borderTop:'1px solid #FAFBFF',
+                  }}>
+                    <div style={{ width:110, flexShrink:0, minWidth:0 }}>
+                      <DashboardUserCell name={name} avatarUrl={owner?.avatar_url ?? null} fontSize={12} />
+                    </div>
+                    <span style={{
+                      flex:1, minWidth:0,
+                      fontFamily:"'Pretendard', -apple-system, sans-serif",
+                      fontWeight:300, fontSize:12, lineHeight:1.5, color:'#64748B',
+                      whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+                    }}>{fmtTSDateFull(p.starts_at)} {tsTime(p.starts_at)} ~ {fmtTSDateFull(p.ends_at)} {tsTime(p.ends_at)}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -3017,7 +3143,7 @@ function DashboardPlaceholderCard({ height, title, subtitle, dateRange, phaseNot
 
 // ─── AdminDashboard ────────────────────────────────────────────────────────────
 // ← [2026-05-28] currentUserId/currentUserEmail prop 추가 — DetailDrawer 내부 BookingStatusBadge 'mine' 칩 판정용 (P4-B 패턴)
-export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onGoApprovals = () => {}, currentUserId = '', currentUserEmail = '' }) {  // ← [2026-06-10] onGoApprovals 추가 — 승인 대기 카드 → '승인 관리' 탭 이동용
+export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onGoApprovals = () => {}, onGoNoshowAdmin = () => {}, currentUserId = '', currentUserEmail = '' }) {  // ← [2026-06-10] onGoApprovals 추가 — 승인 대기 카드 → '승인 관리' 탭 이동용  ← [2026-08-21] onGoNoshowAdmin 추가 — 이용 제재 현황 카드 → '예약 관리 > 노쇼 관리' 이동용
   // ── [2026-05-11 Phase 3.5] 외곽 정비 — 카드별 독립 날짜 필터로 전환 ──────
   //   · 사유: Q1 결정 — 위젯 ②~⑧이 각자 dateFrom/dateTo state + own
   //            loadBookingsByRange fetch + DateDisplay picker 보유
@@ -3142,8 +3268,10 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
            · 기존 카드의 onClick(DetailDrawer 진입) 동작은 1건도 변경하지 않음.
          ═══════════════════════════════════════════════════════════════════════ */}
 
-      {/* ── Row 1: ① 승인 대기 / ② 최근 생성된 예약 (2-col 592×342) ── */}
-      <div className={gridCls(cols2)}>
+      {/* ── Row 1: ① 승인 대기 / ② 최근 생성된 예약 / ③ 이용 제재 현황 (3-col 456×367) ──
+            ← [2026-08-21] Figma 551:3316 재갱신 — 이용 제재 현황 카드 추가로 Row1 2-col→3-col.
+              cols2→cols3: 좁은 화면(<1450) 2열 wrap 은 Row2~4 와 동일 규칙이라 일관. */}
+      <div className={gridCls(cols3)}>
         {/* ① 승인 대기 → [2026-06-10] 드로어 대신 '승인 관리' 탭으로 즉시 이동 (동작 유지) */}
         <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
           onClick={() => onGoApprovals()}>
@@ -3159,6 +3287,13 @@ export function AdminDashboard({ bookings, rooms, users, isMobile, onDetail, onG
             onDetail={onDetail}
             onRangeChange={reportRange('recent')}
           />
+        </div>
+
+        {/* ③ 이용 제재 현황 → '예약 관리 > 노쇼 관리' 탭 이동 (← [2026-08-21] 신규)
+              행 개별 클릭도 동일 이동으로 통일(고지 확정) — 행에 별도 onClick 없이 wrapper 버블링 */}
+        <div style={cardWrapStyle} onMouseEnter={cardWrapHover} onMouseLeave={cardWrapLeave}
+          onClick={() => onGoNoshowAdmin()}>
+          <NoshowPenaltyCard users={users} />
         </div>
       </div>
 
