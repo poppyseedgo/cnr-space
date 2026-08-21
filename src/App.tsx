@@ -373,6 +373,19 @@ function AppContent() {
   //   변경: booking- deeplink는 home으로 폴백 (앱 첫 진입 시) + DetailModal은 별도 useEffect가 오픈
   //         admin-booking-는 그대로 admin 폴백 유지 (관리자 워크플로 의도 보존)
   //   페이지 컨텍스트 유지: 이미 앱에 있던 사용자는 별도 useEffect에서 view 변경 안 함
+  // ← [2026-08-21] 🔴근본수정: 직접 진입(새로고침·URL 공유) 가능한 view 화이트리스트 SSOT.
+  //   증상: #resources 에서 F5 → 홈으로 튕김.
+  //   근본원인: 해시 화이트리스트가 ①getViewFromHash ②로그인 effect isValidHash 두 곳에
+  //   **수동 복붙 배열**로 흩어져 있어, 8/19 신규 페이지 2종(resources·announcements)을
+  //   추가할 때 두 배열 모두 갱신이 누락됨. 그 결과
+  //     ① 초기 렌더: getViewFromHash 가 'resources' 미인식 → 'home' 반환
+  //     ② 직후 로그인 effect: isValidHash=false → setView('home') 이 해시까지 #home 으로
+  //        덮어써 URL 컨텍스트 자체가 파괴됨 (뒤로가기로도 복구 불가)
+  //   해결: 상수 하나로 통일 — 두 판정이 같은 배열을 참조하므로 어긋날 방법이 사라진다.
+  //   ⭐운영 규칙: 새 페이지(view) 추가 시 렌더 분기와 함께 이 배열에만 추가하면 끝.
+  //   (myloans 는 view 가 아니라 mypage 로 매핑되는 딥링크 별칭 — 여기 넣지 않는다)
+  const DIRECT_VIEWS = ['home','calendar','mypage','admin','library','resources','announcements','release-notes']
+
   const getViewFromHash = (): string => {
     const hash = window.location.hash.replace('#', '')
     if (hash.startsWith('admin-tab-')) return 'admin'
@@ -384,7 +397,7 @@ function AppContent() {
     if (saved?.startsWith('admin-booking-')) return 'admin'
     if (saved?.startsWith('booking-')) return 'home'  // ← [2026-05-12] mypage → home
     if (saved === 'myloans') return 'mypage'          // ← [2026-08-11] OAuth 복원 경로에도 myloans — home 스침 방지
-    return ['home','calendar','mypage','admin','library','release-notes'].includes(hash) ? hash : 'home'  // ← [2026-07-16] library / [2026-08-03] release-notes 추가
+    return DIRECT_VIEWS.includes(hash) ? hash : 'home'  // ← [2026-08-21] 복붙 배열 → SSOT (resources·announcements 포함)
   }
   const [view, setViewState] = useState<string>(getViewFromHash);
   // ← [2026-07-30] 전역 사이드 드로어 (헤더 햄버거 트리거)
@@ -566,7 +579,8 @@ function AppContent() {
     }
     // 최초 로그인(hash 없을 때)만 홈으로 이동, 새로고침 시 현재 hash 유지
     const currentHash = window.location.hash.replace('#', '');
-    const isValidHash = ['home','calendar','mypage','admin','library','release-notes','myloans'].includes(currentHash)  // ← [2026-07-16] library / [2026-08-03] release-notes 추가 / [2026-08-11] myloans(도서 CTA)
+    const isValidHash = DIRECT_VIEWS.includes(currentHash)  // ← [2026-08-21] 복붙 배열 → SSOT (getViewFromHash 와 동일 근거 — resources·announcements 누락으로 새로고침이 홈 이동하던 버그의 두 번째 지점)
+      || currentHash === 'myloans'                          // ← [2026-08-11] 도서 CTA 딥링크 별칭 (view 아님 — SSOT 밖 유지)
       || currentHash.startsWith('admin-tab-')
       || currentHash.startsWith('admin-booking-')
       || currentHash.startsWith('booking-')
