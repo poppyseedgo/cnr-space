@@ -10,7 +10,8 @@
 //     · 폭 = max(anchor 폭, 300), 뷰포트 우/하단 침범 시 좌/상으로 클램프·플립
 //     · 헤더: "9월 1일 (화)" + "17건" / 본문: CalendarCompactCard 전체 목록(내부 스크롤, 최대 320px)
 //     · 푸터: [일간 뷰로 이동] [닫기]
-//     · 닫힘: 외부 클릭(mousedown) / Esc / 창 리사이즈·스크롤
+//     · 닫힘: 외부 클릭(mousedown) / Esc / 창 리사이즈 / 팝오버 밖 스크롤 (내부 목록 스크롤은 유지)
+// [2026-08-25 v2] 내부 목록 스크롤 시 닫히던 결함 수정 — scroll 리스너에서 target ∈ 팝오버면 무시
 //     · 카드 클릭 → onBookingClick(기존 DetailModal 경로) 후 닫힘. 로직·API 무변경, 표시 전용
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -70,16 +71,23 @@ export function MonthlyDayPopover({
       if (boxRef.current && !boxRef.current.contains(e.target as Node)) onClose()
     }
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    const onMove = () => onClose()
+    const onResize = () => onClose()
+    // ← [2026-08-25 v2 FIX] 캡처 단계 scroll 리스너가 팝오버 내부 목록 스크롤까지 잡아 즉시 닫히던 결함
+    //   · 내부 스크롤(target이 팝오버 안) → 무시 / 외부(페이지·컨테이너) 스크롤 → 앵커가 어긋나므로 닫기
+    const onScroll = (e: Event) => {
+      const t = e.target as Node | null
+      if (t && boxRef.current && boxRef.current.contains(t)) return
+      onClose()
+    }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
-    window.addEventListener('resize', onMove)
-    window.addEventListener('scroll', onMove, true)
+    window.addEventListener('resize', onResize)
+    window.addEventListener('scroll', onScroll, true)
     return () => {
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('keydown', onKey)
-      window.removeEventListener('resize', onMove)
-      window.removeEventListener('scroll', onMove, true)
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('scroll', onScroll, true)
     }
   }, [onClose])
 
