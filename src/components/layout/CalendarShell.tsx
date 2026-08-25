@@ -2,6 +2,16 @@
  * CalendarShell.tsx — 캘린더 뷰 (Daily / Weekly / Monthly)
  *
  * ✅ 변경 이력
+ *  - [2026-08-25] MonthlyView 셀 오버플로 근본 수정 — 노출 카드 수 자동 계산 + "+N건 더보기" 칩 + 팝오버
+ *    · 증상: 셀 높이는 뷰포트/주 수(4~6)에 따라 유동(grid 1fr)인데 노출 수는 4 고정 → 5주 월에서
+ *      "+N개" 텍스트가 셀 하단에서 잘리고(overflow:hidden), 나머지 예약에 접근할 진입점이 사라짐
+ *    · 원인: 노출 수가 셀 높이에서 파생되지 않음 + 더보기 표시가 카드와 같은 flow에 있어 함께 잘림
+ *    · 변경: 본체 grid에 ResizeObserver 1개 → 행 높이에서 목록 영역 높이 산출 → visibleCount 파생(SSOT)
+ *      · 전부 들어가면 전부 노출, 아니면 [더보기 칩(22) 자리 먼저 확보] 후 남은 높이만큼 카드 노출
+ *      · 더보기 칩은 flexShrink:0 + marginTop:auto — 절대 잘리지 않음. 잔여 수 = total − visibleCount
+ *      · 칩 클릭 → MonthlyDayPopover(신규) 당일 전체 목록(내부 스크롤) + [일간 뷰로 이동]
+ *    · 셀 내부 스크롤은 채택 안 함(페이지 휠 충돌, 월 그리드 관례) — overflow:hidden 설계 유지
+ *    · 예약 필터·정렬·클릭 경로(onBookingClick/onDayClick) 무변경, 표시 로직만 변경
  *  - [2026-06-10] DailyView '일' 뷰 타임라인 좌/우 스크롤 화살표 추가 (Figma 1308:611 / 1308:615)
  *    · 추가: IcoTimelineLeft / IcoTimelineRight 인라인 SVG (업로드 arrow.svg / arrow_back.svg, fill #C7C7C7)
  *    · 추가: scrollRef div를 position:relative wrapper로 감싸고 화살표 2개를 absolute 고정
@@ -72,6 +82,7 @@ import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react
 import { useHolidayMap } from '../../utils/holidays' // ← [2026-08-03] 공휴일·회사 이벤트 표기 (모듈 캐시 — 뷰별 hook 호출 무비용)
 import { CalendarSlotCard } from '../calendar/CalendarSlotCard'  // ← [2026-04-23] Daily 뷰 슬롯 전용 카드 (구 SlotContent 대체)
 import { CalendarCompactCard } from '../calendar/CalendarCompactCard'  // ← [2026-04-24] Weekly/Monthly 공용 컴팩트 카드
+import { MonthlyDayPopover } from '../calendar/MonthlyDayPopover'      // ← [2026-08-25] 월간 셀 "+N건 더보기" 팝오버
 import { getSlotState, isShownInDailyView, isShownInCalendar } from '../calendar/slotHelpers'
 import { isBooker } from '../../utils/bookingOwnership'  // ← [2026-04-24 P5] filterMine 필터 UUID/email OR 판정
 import { useBreakpoint } from '../../hooks/useBreakpoint'
@@ -730,8 +741,33 @@ export function CalendarShell({
 }
 
 // ─── Monthly View ─────────────────────────────────────────────────────────────
+// ← [2026-08-25] 월간 셀 레이아웃 상수 (노출 카드 수 산출 SSOT — 셀 스타일 값과 반드시 동기)
+const M_CELL_PAD_Y   = 7 * 2      // 셀 padding 7px 상하
+const M_CELL_BORDER  = 1          // 셀 borderBottom
+const M_HEADER_H     = 24 + 5     // 날짜 배지 24 + marginBottom 5
+const M_CARD_H       = 24         // CalendarCompactCard 높이
+const M_CARD_GAP     = 2          // 목록 gap
+const M_MORE_H       = 22         // 더보기 칩 높이
+/** 목록 영역 높이(px)와 예약 수로 노출 카드 수 결정
+ *  · 전부 들어가면 전부, 아니면 더보기 칩 자리(22+gap)를 먼저 빼고 남은 높이만큼 */
+export function calcMonthlyVisible(listH: number, total: number): { visible: number; more: number } {
+  if (total <= 0) return { visible: 0, more: 0 }
+  const fitAll = Math.floor((listH + M_CARD_GAP) / (M_CARD_H + M_CARD_GAP))
+  if (fitAll >= total) return { visible: total, more: 0 }
+  const avail = listH - M_MORE_H - M_CARD_GAP                       // 칩 + 칩 위 gap 제외
+  const withMore = Math.max(0, Math.floor((avail + M_CARD_GAP) / (M_CARD_H + M_CARD_GAP)))
+  const visible = Math.min(withMore, total - 1)   // 더보기가 있으면 최소 1건은 숨겨진 상태
+  return { visible, more: total - visible }
+}
+
 export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick, rooms: mvRooms = [], currentUser = '', isAdmin = false }) {
   const holidayMap = useHolidayMap()   // ← [2026-08-03] 셀 공휴일·이벤트 라벨
+  // ← [2026-08-25] 본체 grid 높이 실측 → 셀 목록 영역 높이 (모든 셀 동일 행 높이이므로 1개 관측으로 충분)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const [listH, setListH] = useState<number>(0)
+  // ← [2026-08-25] 더보기 팝오버 상태 (날짜 + 셀 anchor rect)
+  const [popover, setPopover] = useState<{ ds: string; rect: { top: number; left: number; width: number; height: number } } | null>(null)
+  const closePopover = useCallback(() => setPopover(null), [])
   const d = dateToObj(selectedDate), year = d.getFullYear(), month = d.getMonth()
   const firstDay = new Date(year, month, 1).getDay()
   const dim = new Date(year, month + 1, 0).getDate()
@@ -743,6 +779,23 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
   for (let i = 0; i < firstDay; i++) cells.push(null)
   for (let i = 1; i <= dim; i++) cells.push(i)
   while (cells.length % 7 !== 0) cells.push(null)
+  const rowCount = cells.length / 7
+
+  // ← [2026-08-25] 행 높이 = 본체 높이 / 주 수 → 목록 영역 = 행 − padding − border − 헤더
+  useLayoutEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    const measure = () => {
+      const rowH = el.clientHeight / rowCount
+      setListH(Math.max(0, Math.floor(rowH - M_CELL_PAD_Y - M_CELL_BORDER - M_HEADER_H)))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [rowCount])
+  // 월 이동 시 열려 있던 팝오버 닫기
+  useEffect(() => { setPopover(null) }, [year, month])
 
   return (
     // ← [2026-04-24 v2] Monthly 뷰 full height 적용
@@ -762,7 +815,7 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
         ))}
       </div>
       {/* ← [2026-04-24] 본체 grid: flex 1로 남은 세로 공간 전체 차지 + rows 균등 분할 */}
-      <div style={{
+      <div ref={bodyRef} style={{   /* ← [2026-08-25] ResizeObserver 대상 */
         flex: 1, minHeight: 0,
         display: 'grid',
         gridTemplateColumns: 'repeat(7,minmax(0,1fr))',
@@ -803,7 +856,7 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
           // ← [2026-04-23] 차단 셀(30일 초과)에만 커스텀 툴팁 — blocked=dimmed
           const mtH = getMonthlyTooltipHandlers({ blocked: dimmed, message: tooltipMsg })
           return (
-            <div key={day} onClick={() => { if (canNavigate) onDayClick(ds) }}
+            <div key={day} data-mcell="" onClick={() => { if (canNavigate) onDayClick(ds) }}   /* ← [2026-08-25] data-mcell: 더보기 칩의 anchor 탐색용 */
               aria-label={!canNavigate ? tooltipMsg : undefined}   // ← [2026-04-23] 접근성: 스크린리더용
               onMouseEnter={mtH.onMouseEnter}                       // ← [2026-04-23] 커스텀 툴팁: 진입
               onMouseMove={mtH.onMouseMove}                         // ← [2026-04-23] 커스텀 툴팁: 이동
@@ -846,22 +899,69 @@ export function MonthlyView({ bookings, selectedDate, onDayClick, onBookingClick
                    · 셀 높이에 들어갈 수 있는 만큼만 노출, 초과분은 +N개로 표시
                    · 주간뷰와 동일한 CompactCard 스타일 사용 (isToday 기반 검정/회색 테마)
                    ← [2026-04-24 v2] 노출 카드 수 3 → 4 (6주 월에서도 거의 다 보이도록) */}
-              <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden' }}>
-                {dbs.slice(0, 4).map(b => (
-                  <CalendarCompactCard
-                    key={b.id}
-                    booking={b}
-                    isToday={isToday}
-                    onClick={e => { e.stopPropagation(); onBookingClick(b) }}
-                  />
-                ))}
-                {dbs.length > 4 && <div style={{ fontSize: 9, color: '#94A3B8', paddingLeft: 3, flexShrink: 0 }}>+{dbs.length-4}개</div>}
-              </div>
+              {/* ← [2026-08-25] 노출 수 = calcMonthlyVisible(listH, total) 파생. 4 고정 폐기.
+                   · 더보기 칩: flexShrink 0 + marginTop auto → 항상 셀 안에 온전히 표시
+                   · 칩 클릭은 셀 onDayClick(일간 이동)과 분리 — stopPropagation 후 팝오버 */}
+              {(() => {
+                const { visible, more } = calcMonthlyVisible(listH, dbs.length)
+                return (
+                  <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: M_CARD_GAP, overflow: 'hidden' }}>
+                    {dbs.slice(0, visible).map(b => (
+                      <CalendarCompactCard
+                        key={b.id}
+                        booking={b}
+                        isToday={isToday}
+                        onClick={e => { e.stopPropagation(); onBookingClick(b) }}
+                      />
+                    ))}
+                    {more > 0 && (
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation()
+                          const r = (e.currentTarget.closest('[data-mcell]') as HTMLElement | null)?.getBoundingClientRect()
+                          if (!r) return
+                          setPopover(prev => prev?.ds === ds ? null : { ds, rect: { top: r.top, left: r.left, width: r.width, height: r.height } })
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = isToday ? '#E7E7E7' : '#F1F5F9' }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                        style={{
+                          flexShrink: 0, marginTop: 'auto', height: M_MORE_H, borderRadius: 6,
+                          border: '1px solid #E2E8F0', background: 'transparent',
+                          fontSize: 11, fontWeight: 500, color: '#475569', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                        }}
+                      >+{more}건 더보기</button>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           )
         })}
       </div>
       {monthlyTooltipNode /* ← [2026-04-23] Monthly 차단 셀용 커스텀 툴팁 Portal 렌더 */}
+      {/* ← [2026-08-25] 더보기 팝오버 — 셀 필터와 동일 조건으로 당일 전체 목록 재산출 (SSOT: 위 dbs 필터와 1:1) */}
+      {popover && (() => {
+        const ds = popover.ds
+        const isTodayCell = ds === today
+        const list = bookings.filter(b => {
+          if (tsDate(b.start_at) !== ds) return false
+          if (!isShownInCalendar(b, now, isTodayCell)) return false
+          return !getSlotState(b, now, isTodayCell, '').isNoshow
+        })
+        return (
+          <MonthlyDayPopover
+            date={ds}
+            bookings={list}
+            isToday={isTodayCell}
+            anchorRect={popover.rect}
+            onBookingClick={onBookingClick}
+            onGoDaily={onDayClick}
+            onClose={closePopover}
+          />
+        )
+      })()}
     </div>
   )
 }
