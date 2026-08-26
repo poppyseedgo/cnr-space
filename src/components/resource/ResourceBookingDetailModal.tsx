@@ -5,8 +5,17 @@
  * 역할: 상세 표시 + 액션 분기 — [예약 변경](confirmed·미반납, 본인 또는 자원 관리자) / [예약 취소](시작 전, 본인)
  *       변경은 ResourceBookingModal edit 모드로 위임(onEdit), 취소는 호출부 ConfirmDialog 로 위임(onCancel)
  *
+ * 버튼 영역 — 회의실 DetailModal 조합 규칙 이식 (공통 Button variant 동일):
+ *   종료·취소·반납완료        → [닫기]
+ *   관리자 · 사용중/연체      → [닫기] [예약 변경(info-outline)] [반납 확인(success)]   ← [2026-08-26] 고지 지시
+ *   관리자 · 시작 전          → [닫기 | 본인이면 예약 취소(danger-outline)] [예약 변경]
+ *   본인   · 사용중/연체      → [닫기] [예약 변경]
+ *   본인   · 시작 전          → [예약 취소] [예약 변경]
+ *   타인(비관리자)            → [닫기]
+ *
  * ✅ 변경 이력
  *  - [2026-08-26] 최초 작성 (기한 변경 기능과 함께 — 고지 지시: 카드 클릭 즉시 상세·변경)
+ *  - [2026-08-26] 관리자 [반납 확인] CTA 추가 — 회의실 상세 모달 버튼 조합 규칙으로 정리
  */
 
 import { ModalPortal } from '../common/ModalPortal'
@@ -47,6 +56,8 @@ interface Props {
   isAdmin:      boolean
   onEdit:       () => void
   onCancel?:    () => void
+  /** ← [2026-08-26] 관리자 반납 확인 — 사용중·연체 건 (호출부 ConfirmDialog "실물 수령") */
+  onReturn?:    () => void
   onClose:      () => void
 }
 
@@ -57,7 +68,7 @@ function fmtDateKo(ymd: string): string {
 }
 
 export function ResourceBookingDetailModal({
-  booking: b, itemLabel, categoryName, categoryIcon, holderLabel, isMine, isAdmin, onEdit, onCancel, onClose,
+  booking: b, itemLabel, categoryName, categoryIcon, holderLabel, isMine, isAdmin, onEdit, onCancel, onReturn, onClose,
 }: Props) {
   const now = new Date()
   const st = bookingDisplayStatus(b, now)
@@ -65,9 +76,21 @@ export function ResourceBookingDetailModal({
   const useDay = b.start_at.slice(0, 10)
   const localUseDay = (() => { const d = new Date(b.start_at)
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` })()
-  const editable = (isMine || isAdmin) && b.status === 'confirmed' && !b.returned_at
-                   && (st === 'upcoming' || st === 'inuse' || st === 'overdue')
+  const active     = b.status === 'confirmed' && !b.returned_at && (st === 'upcoming' || st === 'inuse' || st === 'overdue')
+  const editable   = (isMine || isAdmin) && active
   const cancellable = isMine && st === 'upcoming' && !!onCancel
+  const returnable = isAdmin && (st === 'inuse' || st === 'overdue') && !!onReturn
+  const btn: React.CSSProperties = { minHeight: 56, borderRadius: 16 }
+  // 회의실 DetailModal 버튼 조합 — 닫기/취소가 왼쪽, 주요 액션이 오른쪽
+  const BtnClose  = () => <Button variant="ghost"          flex onClick={onClose}  style={btn}>닫기</Button>
+  const BtnCancel = () => <Button variant="danger-outline" flex onClick={onCancel} style={btn}>예약 취소</Button>
+  const BtnEdit   = () => <Button variant="info-outline"   flex onClick={onEdit}   style={btn}>예약 변경</Button>
+  const BtnReturn = () => <Button variant="success"        flex onClick={onReturn} style={btn}>반납 확인</Button>
+  const actions = !editable
+    ? <BtnClose />
+    : returnable
+      ? <>{cancellable ? <BtnCancel /> : <BtnClose />}<BtnEdit /><BtnReturn /></>
+      : <>{cancellable ? <BtnCancel /> : <BtnClose />}<BtnEdit /></>
 
   const row = (label: string, value: React.ReactNode) => (
     <div style={{ display: 'flex', gap: 16, padding: '13px 0', borderBottom: '1px solid #F2F4F6', fontSize: 14 }}>
@@ -117,16 +140,7 @@ export function ResourceBookingDetailModal({
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: 8, padding: 8, marginTop: 8 }}>
-            {cancellable && (
-              <Button variant="ghost" flex onClick={onCancel} style={{ minHeight: 56, borderRadius: 16, color: '#DC2626' }}>예약 취소</Button>
-            )}
-            {editable ? (
-              <Button variant="primary" flex onClick={onEdit} style={{ minHeight: 56, borderRadius: 16 }}>예약 변경</Button>
-            ) : (
-              <Button variant="ghost" flex onClick={onClose} style={{ minHeight: 56, borderRadius: 16 }}>닫기</Button>
-            )}
-          </div>
+          <div style={{ display: 'flex', gap: 8, padding: 8, marginTop: 8 }}>{actions}</div>
         </div>
       </div>
     </ModalPortal>

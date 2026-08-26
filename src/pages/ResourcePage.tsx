@@ -24,7 +24,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AppUser } from '../types'
 import type { ResourceBooking, ResourceCategory, ResourceItem } from '../types/resource'
-import { cancelResourceBooking, loadResourceBookings, loadResourceBookingsRange, loadResourceCategories,
+import { adminConfirmResourceReturn, cancelResourceBooking, loadResourceBookings, loadResourceBookingsRange, loadResourceCategories,
          loadResourceItems } from '../lib/resourceApi'
 import { loadMyAdminRoles } from '../lib/api'   // ← [2026-08-26] 자원 관리자 판정 (30일 제한 면제·타인 예약 변경)
 import { currentHolderBooking, deriveItemStatus, fmtDueShort, fmtTimeShort, isResourceOverdue, nextBooking, type ResourceDisplayStatus } from '../utils/resourceStatus'
@@ -79,6 +79,7 @@ export function ResourcePage({ users, authUserId, showToast, isMobile, onGoMyRes
   const [detail, setDetail]     = useState<ResourceBooking | null>(null)
   const [editing, setEditing]   = useState<ResourceBooking | null>(null)
   const [cancelTarget, setCancelTarget] = useState<ResourceBooking | null>(null)
+  const [returnTarget, setReturnTarget] = useState<ResourceBooking | null>(null)   // ← [2026-08-26] 관리자 반납 확인
   const [busy, setBusy]         = useState(false)
   const timelineRef = useRef<HTMLDivElement>(null)
 
@@ -304,6 +305,7 @@ export function ResourcePage({ users, authUserId, showToast, isMobile, onGoMyRes
             isMine={detail.user_id === authUserId} isAdmin={isAdmin}
             onEdit={() => setEditing(detail)}
             onCancel={() => setCancelTarget(detail)}
+            onReturn={() => setReturnTarget(detail)}
             onClose={() => setDetail(null)}
           />
         )
@@ -324,6 +326,25 @@ export function ResourcePage({ users, authUserId, showToast, isMobile, onGoMyRes
           />
         )
       })()}
+
+      {/* ← [2026-08-26] 관리자 반납 확인 — 어드민 패널과 동일 ConfirmDialog("실물 수령"), 트리거 RETURN_CONFIRM_ADMIN_ONLY 최종 방어 */}
+      {returnTarget && (
+        <ConfirmDialog
+          title="반납을 확인할까요?"
+          message={`${itemById.get(returnTarget.item_id)?.label ?? ''} · ${holderLabel(returnTarget)}\n실물을 수령하셨습니까? 확인 즉시 이 자원이 예약 가능 상태가 됩니다.`}
+          confirmLabel="반납 확인" variant="neutral" loading={busy}
+          onConfirm={async () => {
+            setBusy(true)
+            try {
+              await adminConfirmResourceReturn(returnTarget.id, authUserId)
+              showToast('반납이 확인되었습니다.')
+              setReturnTarget(null); afterChange()
+            } catch (e) { showToast(e instanceof Error ? e.message : '반납 확인에 실패했습니다.') }
+            finally { setBusy(false) }
+          }}
+          onClose={() => { if (!busy) setReturnTarget(null) }}
+        />
+      )}
 
       {/* 취소 확인 — 시작 전·본인 (마이페이지와 동일 ConfirmDialog) */}
       {cancelTarget && (
