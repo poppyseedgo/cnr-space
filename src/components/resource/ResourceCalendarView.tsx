@@ -9,16 +9,16 @@
  *  - 모바일: 점(최대 3) + 날짜 탭 시 하단 리스트 (데스크톱도 날짜 클릭 시 동일 리스트)
  *  - [이 날짜 타임라인 보기] → 부모 콜백으로 타임라인 전환
  *
- * 데이터: 표시 월이 바뀔 때 스스로 범위 로드 (loadResourceBookingsRange)
+ * 데이터: ← [2026-08-26] 부모가 표시 월 기준으로 로드한 예약을 props 로 받고, 월 이동은 onMonthChange 로 부모에 알린다
  *
  * ✅ 변경 이력
  *  - [2026-08-19] 최초 작성 (Phase 2B)
+ *  - [2026-08-26] B안 — 선택 날짜 패널 [이 날짜에 예약](과거 비활성) + 리스트 항목 클릭 → 상세, bookings props 화
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { AppUser } from '../../types'
 import type { ResourceBooking, ResourceItem } from '../../types/resource'
-import { loadResourceBookingsRange } from '../../lib/resourceApi'
 import { fmtDueShort, fmtTimeShort } from '../../utils/resourceStatus'
 import { ResourceName } from './ResourceIcon'  // ← [2026-08-21] 카테고리 SVG 아이콘 공통 표기
 
@@ -38,9 +38,14 @@ interface Props {
   users:         AppUser[]
   authUserId:    string
   isMobile:      boolean
+  /** ← [2026-08-26] 부모 로드 예약 + 표시 월 동기화 */
+  bookings:      ResourceBooking[]
+  onMonthChange: (year: number, month: number) => void
   onGoTimeline:  (date: string) => void
-  showToast:     (m: string) => void
-  reloadKey:     number
+  /** ← [2026-08-26] B안 — 선택 날짜에 예약 (날짜만 프리필) */
+  onBookAt:      (date: string) => void
+  /** ← [2026-08-26] 리스트 항목 클릭 — 상세 모달 */
+  onBookingClick: (b: ResourceBooking) => void
 }
 
 function ymd(d: Date): string {
@@ -49,24 +54,13 @@ function ymd(d: Date): string {
 function localDay(iso: string): string { return ymd(new Date(iso)) }
 
 export function ResourceCalendarView({
-  categoryItems, categoryIcon, users, authUserId, isMobile, onGoTimeline, showToast, reloadKey,  // ← [2026-08-21] categoryIcon
+  categoryItems, categoryIcon, users, authUserId, isMobile, bookings, onMonthChange, onGoTimeline, onBookAt, onBookingClick,
 }: Props) {
   const now = new Date()
   const [year, setYear]   = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth())      // 0-based
   const [mineOnly, setMineOnly] = useState(false)
   const [selected, setSelected] = useState<string | null>(ymd(now))
-  const [bookings, setBookings] = useState<ResourceBooking[]>([])
-
-  useEffect(() => {
-    let alive = true
-    const from = new Date(year, month, -14)               // 이전 달 점유가 이번 달로 넘어오는 케이스
-    const to   = new Date(year, month + 1, 1)
-    loadResourceBookingsRange(from.toISOString(), to.toISOString())
-      .then(bs => { if (alive) setBookings(bs) })
-      .catch(e => showToast(e instanceof Error ? e.message : '예약을 불러오지 못했습니다.'))
-    return () => { alive = false }
-  }, [year, month, reloadKey, showToast])
 
   const itemIds = useMemo(() => new Set(categoryItems.map(i => i.id)), [categoryItems])
   const itemLabel = (id: number) => categoryItems.find(i => i.id === id)?.label ?? `#${id}`
@@ -125,6 +119,7 @@ export function ResourceCalendarView({
   const move = (delta: number) => {
     const d = new Date(year, month + delta, 1)
     setYear(d.getFullYear()); setMonth(d.getMonth()); setSelected(null)
+    onMonthChange(d.getFullYear(), d.getMonth())   // ← [2026-08-26] 부모 재로드
   }
 
   const navBtn: React.CSSProperties = { background: '#fff', border: '1px solid #D1D7E1',
@@ -206,14 +201,23 @@ export function ResourceCalendarView({
             <button style={{ ...navBtn, fontSize: 11 }} onClick={() => onGoTimeline(selected)}>
               이 날짜 타임라인 보기
             </button>
+            <span style={{ flex: 1 }} />
+            {/* ← [2026-08-26] B안 — 과거 날짜는 비활성 (DB PAST_START 와 정합) */}
+            <button disabled={selected < todayStr} onClick={() => onBookAt(selected)}
+              style={{ ...navBtn, fontSize: 11, background: selected < todayStr ? '#F1F5F9' : '#111',
+                       color: selected < todayStr ? '#94A3B8' : '#fff', border: 'none',
+                       cursor: selected < todayStr ? 'default' : 'pointer' }}>
+              + 이 날짜에 예약
+            </button>
           </div>
           {selMarks.length === 0 ? (
             <p style={{ fontSize: 12, color: '#64748B', margin: 0 }}>이 날짜의 예약이 없습니다.</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {selMarks.map((m, j) => (
-                <div key={j} style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8,
-                                      padding: '6px 10px', fontSize: 12 }}>
+                <div key={j} role="button" onClick={() => onBookingClick(m.b)}
+                     style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8,
+                              padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>{/* ← [2026-08-26] 상세 */}
                   <span style={{ background: MARK_STYLE[m.kind].bg, color: MARK_STYLE[m.kind].fg,
                                  borderRadius: 4, fontSize: 10, padding: '1px 5px', marginRight: 6 }}>
                     {m.kind === 'usage' ? '예약' : MARK_STYLE[m.kind].label}

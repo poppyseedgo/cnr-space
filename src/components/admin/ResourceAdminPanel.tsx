@@ -94,6 +94,7 @@ export function ResourceAdminPanel({ users, currentUserId, showToast, isMobile }
   const [proxyItem, setProxyItem]       = useState<ResourceItem | null>(null)
   const [proxySearch, setProxySearch]   = useState('')
   const [proxyBooking, setProxyBooking] = useState<{ item: ResourceItem; cat: ResourceCategory; user: AppUser } | null>(null)
+  const [editing, setEditing]           = useState<ResourceBooking | null>(null)   // ← [2026-08-26] 관리자 기한 변경
 
   const reload = useCallback(async (days = fDays) => {
     try {
@@ -204,10 +205,12 @@ export function ResourceAdminPanel({ users, currentUserId, showToast, isMobile }
                                          borderRadius: 6, fontSize: 11, padding: '2px 6px' }}>{ROW_BADGE[st].label}</span>
                         </td>
                         <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          {(st === 'upcoming' || st === 'inuse' || st === 'overdue') && (
+                            <button style={{ ...btnLine, marginRight: 6 }} onClick={() => setEditing(b)}>기한 변경</button>)}{/* ← [2026-08-26] */}
                           {(st === 'inuse' || st === 'overdue') && (
                             <button style={btnLine} onClick={() => setReturnTarget(b)}>반납 확인</button>)}
                           {st === 'upcoming' && (
-                            <button style={btnDanger} onClick={() => { setCancelReason(''); setCancelTarget(b) }}>취소</button>)}
+                            <button style={{ ...btnDanger, marginLeft: 6 }} onClick={() => { setCancelReason(''); setCancelTarget(b) }}>취소</button>)}
                         </td>
                       </tr>
                     ))}
@@ -360,10 +363,27 @@ export function ResourceAdminPanel({ users, currentUserId, showToast, isMobile }
         </ModalPortal>
       )}
 
+      {/* ← [2026-08-26] 관리자 기한 변경 — edit 모드 (30일 제한 면제, 알림 라벨 '(관리자 변경)') */}
+      {editing && (() => {
+        const cat = categories.find(c => c.id === itemById.get(editing.item_id)?.category_id)
+        if (!cat) return null
+        return (
+          <ResourceBookingModal
+            category={cat} items={items.filter(i => i.category_id === cat.id && i.status !== 'retired')}
+            editBooking={editing} isAdmin
+            snapshot={{ user_name: editing.user_name ?? '', user_dept: editing.user_dept ?? '' }}
+            showToast={showToast}
+            onDone={() => { setEditing(null); void reload() }}
+            onClose={() => setEditing(null)}
+          />
+        )
+      })()}
+
       {/* 대리예약 2단계 — Figma 예약 모달 재사용 (booker override) */}
       {proxyBooking && (
         <ResourceBookingModal
-          item={proxyBooking.item} category={proxyBooking.cat}
+          initialItem={proxyBooking.item} category={proxyBooking.cat} isAdmin
+          items={items.filter(i => i.category_id === proxyBooking.cat.id && i.status !== 'retired')}
           snapshot={{ user_name: proxyBooking.user.name, user_dept: proxyBooking.user.dept }}
           booker={{ user_id: proxyBooking.user.user_id, email: proxyBooking.user.email }}
           showToast={showToast}

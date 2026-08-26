@@ -8,6 +8,7 @@
  *
  * ✅ 변경 이력
  *  - [2026-08-19] 최초 작성 (Phase 2A)
+ *  - [2026-08-26] period_changed_* 이력 + ResourceBookingPeriodDraft (기한 변경)
  */
 
 export interface ResourceCategory {
@@ -62,6 +63,17 @@ export interface ResourceBooking {
   cancelled_by:   string | null     // 'user' | 'admin' | 'departed'
   memo:           string | null
   created_at:     string
+  /** ← [2026-08-26] 기간(사용시간·반납일) 최근 변경 이력 — 20260752 트리거 자동 기록 */
+  period_changed_at?: string | null
+  period_changed_by?: string | null
+}
+
+/** ← [2026-08-26] 기간 변경 시 클라가 보내는 필드 (start_at 은 시작 후 잠금 — 트리거 START_LOCKED) */
+export interface ResourceBookingPeriodDraft {
+  start_at:   string
+  end_at:     string
+  return_due: string
+  memo:       string | null
 }
 
 /** insert 시 클라가 채우는 필드 (트리거 계산·기본값 제외) */

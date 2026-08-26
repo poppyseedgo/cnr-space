@@ -14,12 +14,13 @@
  *
  * ✅ 변경 이력
  *  - [2026-08-19] 최초 작성 (Phase 2A)
+ *  - [2026-08-26] 기한 변경(updateResourceBookingPeriod) + 20260752 가드 에러 매핑 + 연체 조회
  */
 
 import { supabase } from './supabase'
 // ← [2026-08-19 Phase 4] 알림 발사 — send-notification invoke (fire-and-forget, 도서 *WithNotify 패턴)
 import type {
-  ResourceBooking, ResourceBookingDraft, ResourceCategory, ResourceItem,
+  ResourceBooking, ResourceBookingDraft, ResourceBookingPeriodDraft, ResourceCategory, ResourceItem,
 } from '../types/resource'
 
 /* ── 조회 ─────────────────────────────────────────────────────────────── */
@@ -80,6 +81,21 @@ export async function loadResourceBookingsRange(fromISO: string, toISO: string):
   return (data ?? []) as ResourceBooking[]
 }
 
+/**
+ * ← [2026-08-26] 미반납 연체 예약 — 점유구간이 끝났지만 실물이 돌아오지 않은 건.
+ * 범위 조회는 occupied_until ≥ from 이라 오래된 연체가 빠질 수 있어 모달 개체 가용 판정용으로 별도 조회.
+ */
+export async function loadOverdueResourceBookings(): Promise<ResourceBooking[]> {
+  const { data, error } = await supabase
+    .from('resource_bookings')
+    .select('*')
+    .eq('status', 'confirmed')
+    .is('returned_at', null)
+    .lt('occupied_until', new Date().toISOString())
+  if (error) throw new Error(error.message)
+  return (data ?? []) as ResourceBooking[]
+}
+
 /* ── 생성 ─────────────────────────────────────────────────────────────── */
 
 /** 트리거·제약 에러 → 사용자 문구 (설계서 §3 매핑) */
@@ -92,6 +108,21 @@ function resourceErrorMessage(code: string | undefined, message: string): string
     return '반납일은 사용일보다 빠를 수 없습니다.'
   if (message.includes('EMPLOYMENT') || message.includes('DEPART'))
     return '재직 상태에서만 예약할 수 있습니다.'   // 퇴사자 게이트 (assert_employment_can_create)
+  // ← [2026-08-26] 20260752 가드 트리거 — 회의실 prevent_past_booking / date_limit 과 동일 정책
+  if (message.includes('PAST_START'))
+    return '이미 지난 시간은 예약할 수 없습니다. 시간을 다시 선택해 주세요.'
+  if (message.includes('PAST_END'))
+    return '종료 시간은 현재 시각 이후여야 합니다.'
+  if (message.includes('PAST_RETURN_DUE'))
+    return '반납일은 오늘 이후여야 합니다.'
+  if (message.includes('DATE_LIMIT_30D'))
+    return '예약은 오늘부터 30일 이내만 가능합니다.'
+  if (message.includes('START_LOCKED'))
+    return '이미 시작한 예약은 시작 시간을 변경할 수 없습니다.'
+  if (message.includes('BOOKING_CLOSED'))
+    return '취소되었거나 반납이 완료된 예약은 변경할 수 없습니다.'
+  if (message.includes('IMMUTABLE_FIELD'))
+    return '자원과 예약자는 변경할 수 없습니다. 취소 후 다시 예약해 주세요.'
   return message
 }
 
@@ -135,6 +166,27 @@ export async function cancelResourceBooking(id: string): Promise<void> {
     .eq('id', id)
     .eq('status', 'confirmed')
   if (error) throw new Error(error.message)
+}
+
+/**
+ * ← [2026-08-26] 기한 변경 — 예약자 본인·자원 관리자 공통 (RLS update_self_or_admin).
+ * 규칙은 20260752 guard_update 트리거가 최종 방어(시작 후 start 잠금·과거·30일·닫힌 건),
+ * 겹침은 EXCLUDE 가 UPDATE 에도 적용. period_changed_at/by 는 트리거 자동 기록.
+ */
+export async function updateResourceBookingPeriod(
+  bookingId: string,
+  draft: ResourceBookingPeriodDraft,
+  byAdmin: boolean,
+): Promise<ResourceBooking> {
+  const { data, error } = await supabase
+    .from('resource_bookings')
+    .update({ start_at: draft.start_at, end_at: draft.end_at, return_due: draft.return_due, memo: draft.memo })
+    .eq('id', bookingId).eq('status', 'confirmed')
+    .select(BOOKING_WITH_ITEM).single()
+  if (error) throw new Error(resourceErrorMessage(error.code, error.message))
+  fireResourceNotification('resource_booking_period_changed', data,
+    byAdmin ? { labelSuffix: ' (관리자 변경)' } : {})
+  return data as ResourceBooking
 }
 
 /* ── 어드민 (Phase 3) — RLS has_admin_role('resource') 전제 ──────────────── */
@@ -261,7 +313,8 @@ function fmtHm(iso: string): string {
 
 /** 발송 실패가 본 동작을 막지 않는다 — 알림은 부가 기능 (fire-and-forget) */
 function fireResourceNotification(
-  type: 'resource_booking_created' | 'resource_booking_cancelled_by_admin' | 'resource_return_confirmed',
+  type: 'resource_booking_created' | 'resource_booking_cancelled_by_admin' | 'resource_return_confirmed'
+      | 'resource_booking_period_changed',   // ← [2026-08-26] 기한 변경
   row: any,
   extra: { labelSuffix?: string; cancelReason?: string } = {},
 ): void {

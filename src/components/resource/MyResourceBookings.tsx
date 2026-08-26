@@ -7,16 +7,21 @@
  *
  * ✅ 변경 이력
  *  - [2026-08-19] 최초 작성 (Phase 4 — 미리보기 승인분)
+ *  - [2026-08-26] 행 클릭 → 상세 모달(ResourceBookingDetailModal) → [예약 변경] edit 모달 / [예약 취소]
+ *      (취소 버튼은 행에서 제거 — 상세 모달로 단일화, 고지 지시)
  */
 
 import { useCallback, useEffect, useState } from 'react'
 import type { ResourceBooking } from '../../types/resource'
 
 type MyRow = ResourceBooking & { resource_items?: { label: string; category?: { icon: string | null } | null } | null }  // ← [2026-08-21] 아이콘 조인
-import { cancelResourceBooking, loadMyResourceBookings } from '../../lib/resourceApi'
+import type { ResourceCategory, ResourceItem } from '../../types/resource'
+import { cancelResourceBooking, loadMyResourceBookings, loadResourceCategories, loadResourceItems } from '../../lib/resourceApi'
 import { fmtDueShort, fmtTimeShort, isOccupying, isResourceOverdue } from '../../utils/resourceStatus'
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import { ResourceName } from './ResourceIcon'  // ← [2026-08-21] 카테고리 SVG 아이콘 공통 표기
+import { ResourceBookingDetailModal } from './ResourceBookingDetailModal'   // ← [2026-08-26]
+import { ResourceBookingModal } from './ResourceBookingModal'               // ← [2026-08-26] edit 모드
 
 const FONT = "'Pretendard', -apple-system, sans-serif"
 
@@ -49,6 +54,16 @@ export function MyResourceBookings({ authUserId, showToast, isMobile }: Props) {
   const [loading, setLoading] = useState(true)
   const [cancelTarget, setCancelTarget] = useState<ResourceBooking | null>(null)
   const [busy, setBusy] = useState(false)
+  // ← [2026-08-26] 상세·변경 — 카테고리(slot_step 등)·개체는 edit 모달용으로 별도 로드
+  const [detail, setDetail]   = useState<ResourceBooking | null>(null)
+  const [editing, setEditing] = useState<ResourceBooking | null>(null)
+  const [categories, setCategories] = useState<ResourceCategory[]>([])
+  const [items, setItems] = useState<ResourceItem[]>([])
+  useEffect(() => {
+    Promise.all([loadResourceCategories(), loadResourceItems()])
+      .then(([cs, is]) => { setCategories(cs); setItems(is) })
+      .catch(e => showToast(e instanceof Error ? e.message : '자원 정보를 불러오지 못했습니다.'))
+  }, [showToast])
 
   const reload = useCallback(() => {
     loadMyResourceBookings(authUserId)
@@ -75,11 +90,11 @@ export function MyResourceBookings({ authUserId, showToast, isMobile }: Props) {
         const dim = st === 'returned' || st === 'cancelled' || st === 'done'
         const useDay = b.start_at.slice(0, 10)
         return (
-          <div key={b.id}
+          <div key={b.id} role="button" onClick={() => setDetail(b)}
             style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-                     background: '#fff', borderRadius: 10, padding: '10px 14px',
+                     background: '#fff', borderRadius: 10, padding: '10px 14px', cursor: 'pointer',
                      border: st === 'overdue' ? '1px solid #FECACA' : '1px solid #E2E8F0',
-                     opacity: dim ? 0.7 : 1, fontSize: isMobile ? 12 : 13, color: '#111' }}>
+                     opacity: dim ? 0.7 : 1, fontSize: isMobile ? 12 : 13, color: '#111' }}>{/* ← [2026-08-26] 행 클릭 = 상세 */}
             <span style={{ background: badge.bg, color: badge.fg, borderRadius: 6,
                            fontSize: 11, padding: '2px 7px' }}>{badge.label}</span>
             <ResourceName icon={(b as MyRow).resource_items?.category?.icon} size={14} gap={5}
@@ -95,15 +110,46 @@ export function MyResourceBookings({ authUserId, showToast, isMobile }: Props) {
                   </>}
             </span>
             <span style={{ flex: 1 }} />
-            {st === 'upcoming' && (
-              <button onClick={() => setCancelTarget(b)}
-                style={{ background: '#fff', color: '#DC2626', border: '1px solid #FECACA',
-                         borderRadius: 8, padding: '5px 12px', fontSize: 12, fontFamily: FONT,
-                         cursor: 'pointer' }}>예약 취소</button>
+            {(st === 'upcoming' || st === 'inuse' || st === 'overdue') && (
+              <span style={{ fontSize: 11, color: '#94A3B8' }}>상세 · 변경 ›</span>
             )}
           </div>
         )
       })}
+
+      {/* ← [2026-08-26] 상세 모달 */}
+      {detail && !editing && (() => {
+        const item = items.find(i => i.id === detail.item_id)
+        const cat  = categories.find(c => c.id === item?.category_id)
+        const row  = detail as MyRow
+        return (
+          <ResourceBookingDetailModal
+            booking={detail}
+            itemLabel={row.resource_items?.label ?? item?.label ?? `자원 #${detail.item_id}`}
+            categoryName={cat?.name ?? '자원'} categoryIcon={row.resource_items?.category?.icon ?? cat?.icon}
+            holderLabel={detail.user_dept ? `${detail.user_name} · ${detail.user_dept}` : (detail.user_name ?? detail.user_email)}
+            isMine isAdmin={false}
+            onEdit={() => setEditing(detail)}
+            onCancel={() => setCancelTarget(detail)}
+            onClose={() => setDetail(null)}
+          />
+        )
+      })()}
+      {editing && (() => {
+        const item = items.find(i => i.id === editing.item_id)
+        const cat  = categories.find(c => c.id === item?.category_id)
+        if (!cat) return null
+        return (
+          <ResourceBookingModal
+            category={cat} items={items.filter(i => i.category_id === cat.id && i.status !== 'retired')}
+            editBooking={editing}
+            snapshot={{ user_name: editing.user_name ?? '', user_dept: editing.user_dept ?? '' }}
+            showToast={showToast}
+            onDone={() => { setEditing(null); setDetail(null); reload() }}
+            onClose={() => setEditing(null)}
+          />
+        )
+      })()}
 
       {cancelTarget && (
         <ConfirmDialog
@@ -115,7 +161,7 @@ export function MyResourceBookings({ authUserId, showToast, isMobile }: Props) {
             try {
               await cancelResourceBooking(cancelTarget.id)
               showToast('예약이 취소되었습니다.')
-              setCancelTarget(null); reload()
+              setCancelTarget(null); setDetail(null); reload()
             } catch (e) { showToast(e instanceof Error ? e.message : '취소에 실패했습니다.') }
             finally { setBusy(false) }
           }}

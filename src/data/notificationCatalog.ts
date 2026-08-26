@@ -136,6 +136,9 @@ export const NOTIFICATION_CATALOG: NotifCatalogItem[] = [
   { type: 'resource_booking_cancelled_by_admin', label: '관리자 취소 통지', group: '자원예약',
     trigger: '관리자가 예약을 취소한 즉시 (사유 포함)', audience: 'resource_owner',
     channels: ['email','inapp'], toAdmins: false },
+  { type: 'resource_booking_period_changed', label: '예약 기간 변경', group: '자원예약',   // ← [2026-08-26]
+    trigger: '예약자 또는 관리자가 사용시간·반납일을 변경한 즉시 (관리자 변경은 라벨에 명시)', audience: 'resource_owner',
+    channels: ['email','inapp'], toAdmins: false },
   { type: 'resource_return_confirmed', label: '반납 확인 완료', group: '자원예약',
     trigger: '관리자 반납 확인 즉시', audience: 'resource_owner',
     channels: ['email','inapp'], toAdmins: false },

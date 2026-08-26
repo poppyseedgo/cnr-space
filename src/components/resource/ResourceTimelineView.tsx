@@ -9,16 +9,16 @@
  *  - 빈 미래 슬롯 클릭 → 개체·날짜·시작시간 프리필 예약 모달 (부모 콜백)
  *  - 모바일: 시간축 열 sticky + 개체 열(108px) 가로 스와이프 / 데스크톱 열 유동(min 140px)
  *
- * 데이터: 표시 날짜가 바뀔 때 스스로 범위 로드 (loadResourceBookingsRange)
+ * 데이터: ← [2026-08-26] 부모(ResourcePage)가 한 번 로드한 범위 예약을 props 로 받는다 (3뷰 공유·자체 쿼리 제거)
  *
  * ✅ 변경 이력
  *  - [2026-08-19] 최초 작성 (Phase 2B)
+ *  - [2026-08-26] 세로 스택 레이아웃 — bookings props 화, 사용 블록 클릭 → 상세 모달(onBookingClick)
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import type { AppUser } from '../../types'
 import type { ResourceBooking, ResourceCategory, ResourceItem } from '../../types/resource'
-import { loadResourceBookingsRange } from '../../lib/resourceApi'
 import { fmtDueShort, fmtTimeShort } from '../../utils/resourceStatus'
 import { ResourceName } from './ResourceIcon'  // ← [2026-08-21] 카테고리 SVG 아이콘 공통 표기
 
@@ -31,13 +31,14 @@ interface Props {
   items:     ResourceItem[]          // 선택 카테고리의 비폐기 개체
   users:     AppUser[]
   date:      string                  // 'YYYY-MM-DD' (KST)
+  /** ← [2026-08-26] 부모가 로드한 범위 예약 (confirmed) */
+  bookings:  ResourceBooking[]
   isMobile:  boolean
   onDateChange: (d: string) => void
   /** 빈 미래 슬롯 클릭 — 예약 모달 프리필 */
   onSlotClick: (item: ResourceItem, startHM: string) => void
-  showToast: (m: string) => void
-  /** 리로드 트리거 — 예약 생성 후 부모가 증가시켜 재조회 유도 */
-  reloadKey: number
+  /** ← [2026-08-26] 사용·점유·연체 블록 클릭 — 상세 모달 */
+  onBookingClick: (b: ResourceBooking) => void
 }
 
 function shiftDate(ymd: string, days: number): string {
@@ -62,20 +63,8 @@ function localDay(iso: string): string {
 }
 
 export function ResourceTimelineView({
-  category, items, users, date, isMobile, onDateChange, onSlotClick, showToast, reloadKey,
+  category, items, users, date, bookings, isMobile, onDateChange, onSlotClick, onBookingClick,
 }: Props) {
-  const [bookings, setBookings] = useState<ResourceBooking[]>([])
-
-  useEffect(() => {
-    let alive = true
-    // 연체 띠가 과거 예약에서 나오므로 앞뒤 여유 14일 로드
-    loadResourceBookingsRange(
-      atLocal(shiftDate(date, -14)).toISOString(),
-      atLocal(shiftDate(date, 1)).toISOString(),
-    ).then(bs => { if (alive) setBookings(bs) })
-      .catch(e => showToast(e instanceof Error ? e.message : '예약을 불러오지 못했습니다.'))
-    return () => { alive = false }
-  }, [date, reloadKey, showToast])
 
   const step  = category.slot_step_minutes
   const slots = useMemo(() => {
@@ -177,27 +166,28 @@ export function ResourceTimelineView({
           {/* 슬롯 행 */}
           {slots.map((hm, idx) => (
             <FragmentRow key={hm} hm={hm} idx={idx} items={items} cellOf={cellOf}
-              nameOf={nameOf} deptOf={deptOf} rowH={rowH} onSlotClick={onSlotClick}
+              nameOf={nameOf} deptOf={deptOf} rowH={rowH} onSlotClick={onSlotClick} onBookingClick={onBookingClick}
               maintenanceGuard={i => i.status === 'maintenance'} />
           ))}
         </div>
       </div>
 
       <p style={{ margin: '8px 0 0', fontSize: 11, color: '#64748B' }}>
-        분홍 음영 = 반납일까지 점유 · 빗금 = 연체 점유 · 빈 칸을 {isMobile ? '탭' : '클릭'}하면 그 시간으로 예약이 열립니다
+        분홍 음영 = 반납일까지 점유 · 빗금 = 연체 점유 · 빈 칸을 {isMobile ? '탭' : '클릭'}하면 그 시간으로 예약이 열리고, 예약 블록을 {isMobile ? '탭' : '클릭'}하면 상세가 열립니다
       </p>
     </div>
   )
 }
 
 /* 행 렌더 — grid 는 평평하게 이어 붙인다 (React.Fragment 로 셀 나열) */
-function FragmentRow({ hm, idx, items, cellOf, nameOf, deptOf, rowH, onSlotClick, maintenanceGuard }: {
+function FragmentRow({ hm, idx, items, cellOf, nameOf, deptOf, rowH, onSlotClick, onBookingClick, maintenanceGuard }: {
   hm: string; idx: number; items: ResourceItem[]
   cellOf: (i: ResourceItem, hm: string, idx: number) => any
   nameOf: (b: ResourceBooking) => string
   deptOf: (b: ResourceBooking) => string
   rowH: number
   onSlotClick: (i: ResourceItem, hm: string) => void
+  onBookingClick: (b: ResourceBooking) => void
   maintenanceGuard: (i: ResourceItem) => boolean
 }) {
   const base: React.CSSProperties = { borderLeft: '1px solid #F1F5F9',
@@ -214,7 +204,8 @@ function FragmentRow({ hm, idx, items, cellOf, nameOf, deptOf, rowH, onSlotClick
         if (c.kind === 'usage') {
           const inuse = new Date(c.b.start_at) <= new Date() && new Date() < new Date(c.b.end_at)
           return (
-            <div key={item.id} style={{ ...base, padding: 2 }}>
+            <div key={item.id} style={{ ...base, padding: 2, cursor: 'pointer' }} role="button"
+                 onClick={() => onBookingClick(c.b)}>{/* ← [2026-08-26] 상세 모달 */}
               <div style={{ background: inuse ? '#FCE7F3' : '#CBECFF',
                             color: inuse ? '#BE185D' : '#111',
                             borderRadius: 6, height: '100%', boxSizing: 'border-box',
@@ -230,15 +221,17 @@ function FragmentRow({ hm, idx, items, cellOf, nameOf, deptOf, rowH, onSlotClick
         }
         if (c.kind === 'occupied')
           return (
-            <div key={item.id} style={{ ...base, background: '#FDF2F8', padding: '2px 6px',
-                                        fontSize: 10, color: '#BE185D' }}>
+            <div key={item.id} role="button" onClick={() => onBookingClick(c.b)}
+                 style={{ ...base, background: '#FDF2F8', padding: '2px 6px',
+                          fontSize: 10, color: '#BE185D', cursor: 'pointer' }}>
               {c.first && <>{nameOf(c.b)} · ~{fmtDueShort(c.b.return_due)} 반납 점유</>}
             </div>
           )
         if (c.kind === 'overdue')
           return (
-            <div key={item.id} style={{ ...base, background: OVERDUE_STRIPE, padding: '2px 6px',
-                                        fontSize: 10, color: '#B91C1C' }}>
+            <div key={item.id} role="button" onClick={() => onBookingClick(c.b)}
+                 style={{ ...base, background: OVERDUE_STRIPE, padding: '2px 6px',
+                          fontSize: 10, color: '#B91C1C', cursor: 'pointer' }}>
               {c.first && <>{nameOf(c.b)} · {fmtDueShort(c.b.return_due)} 반납 연체</>}
             </div>
           )

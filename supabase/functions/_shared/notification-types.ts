@@ -119,6 +119,7 @@ export type NotificationType =
   | 'resource_return_confirmed'            // 반납 확인 → 예약자
   | 'resource_due_reminder'                // 반납일 당일 09:00 KST → 예약자
   | 'resource_overdue'                     // 연체 09:00 KST 매일 반복 → 예약자+자원 관리자
+  | 'resource_booking_period_changed'      // ← [2026-08-26] 기간(사용시간·반납일) 변경 → 예약자 (관리자 변경 시 라벨 접미)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 2. 수신자 규칙
@@ -830,6 +831,27 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
         ...BANNER_PRESETS.warning,
         title: '오늘 19:00까지 관리자에게 반납해 주세요.',
         body:  '반납 확인 전까지 다른 임직원이 이 자원을 예약할 수 없습니다.',
+      },
+    },
+    cta: null,
+    isCancelledStyle: false,
+  },
+
+  // ← [2026-08-26] 기간 변경 — 예약자 본인 변경·관리자 변경 공통. 관리자 변경은 라벨 접미 ' (관리자 변경)' 로 구분
+  resource_booking_period_changed: {
+    subjectTag:         '[예약변경]',
+    headerLabel:        '자원 예약 기간이 변경되었습니다',
+    headerColor:        COLORS.INDIGO,
+    recipients:         'resource_owner',
+    inappType:          'resource_booking_period_changed',
+    inappTitleBooker:   '자원 예약 기간이 변경되었습니다',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '',
+    contextBanner: {
+      booker: {
+        ...BANNER_PRESETS.info,
+        title: '예약 기간이 변경되었습니다.',
+        body:  '변경된 사용시간과 반납일은 본문을 확인해 주세요. 반납일이 사용일과 다르면 반납일 19:00까지 자원이 점유됩니다.',
       },
     },
     cta: null,
