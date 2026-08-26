@@ -19,6 +19,7 @@
  * ✅ 변경 이력
  *  - [2026-08-19] 최초 작성 (Phase 2A) / 2B 세그먼트 뷰 / Phase 4 내 예약 섹션 이관
  *  - [2026-08-26] 세로 스택 + 고정 예약 버튼 + 상세 모달 + 기한 변경 + 단일 로드 (미리보기 승인)
+ *  - [2026-08-26] 헤더 배경 흰색 → 투명 (하단 hairline 제거, blur 로 스크롤 겹침 방지)
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -164,8 +165,10 @@ export function ResourcePage({ users, authUserId, showToast, isMobile, onGoMyRes
   return (
     <div style={{ width: '100%', maxWidth: 1080, margin: '0 auto', padding: '0 16px 80px', fontFamily: FONT, color: '#111' }}>
       {/* sticky 헤더 — 고정 [자원예약] 버튼 (미리보기 승인) */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 5, background: '#fff', display: 'flex', alignItems: 'center',
-                    gap: 12, padding: '20px 0 12px', borderBottom: '1px solid #F1F5F9', marginBottom: 14 }}>
+      {/* ← [2026-08-26] 배경 흰색 제거(투명) — 페이지 배경과 이질감(고지 지시). sticky 스크롤 시 겹침 방지는 backdrop-filter 로 */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 5, background: 'transparent', backdropFilter: 'blur(8px)',
+                    WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center',
+                    gap: 12, padding: '20px 0 12px', marginBottom: 14 }}>
         <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>자원예약</h1>
         <span style={{ flex: 1 }} />
         <button onClick={onGoMyResources}
