@@ -758,27 +758,21 @@ export async function cancelBooking(id: string, cancelledByUserId: string): Prom
  *     · 호출 측 useEffect의 Promise.all(...).catch(console.error) 패턴과 호환
  *   짝 배포: 없음 (lib/api.ts 단일 파일)
  */
-export async function markNoshow(id: string): Promise<void> {
+export async function markNoshow(id: string): Promise<number> {
   // localStorage fallback (Supabase 미사용 환경) — 가드 불필요, 단일 사용자 환경
   if (!isSupabaseEnabled) {
     await updateBooking(id, { autoCancelled: true, cancelledBy: 'system' })
-    return
+    return 1
   }
 
-  // 원자적 조건부 UPDATE — DB 단에서 stale state 시도를 거름
-  // 0 rows = 가드 통과 못 함 = 정상 (silent skip)
-  const { error } = await supabase
-    .from('bookings')
-    .update({ auto_cancelled: true, cancelled_by: 'system' })
-    .eq('id', id)
-    .eq('status',          'confirmed')   // ← 가드 ①
-    .eq('checked_in',      false)          // ← 가드 ②
-    .eq('early_ended',     false)          // ← 가드 ③
-    .eq('auto_cancelled',  false)         // ← 가드 ④
-    .is('cancelled_by',    null)           // ← 가드 ⑤
-
+  // ← [2026-08-27 시간가드] RPC mark_noshow — 가드 5종 + `now() >= start_at + 10분` 을 서버 시계로 단일 판정
+  //   배경: 8/27 13:00 사고 — 참석자 브라우저의 tick 이 클라이언트 시계 기준으로 13:15 예약을 노쇼 마킹.
+  //         기존 PATCH 가드 5종에는 시간 조건이 없어 미래 예약(체크인 전)이 통과됨.
+  //   반환: 실제 갱신 행 수(0|1). 0 = 서버 거부(시간 미달·이미 처리·체크인 등) — 호출 측은 0이면
+  //         낙관적 UI/audit 을 하지 않는다. DB 트리거 trg_block_premature_noshow 가 모든 경로의 최종 안전망.
+  const { data, error } = await supabase.rpc('mark_noshow', { p_booking_id: id })
   if (error) throw error
-  // 0 rows일 때 throw 없음 — 호출 측 useEffect는 다음 tick에 다시 시도
+  return Number(data ?? 0)
 }
 
 // ── Realtime 구독 ────────────────────────────────────────────────────────────

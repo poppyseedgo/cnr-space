@@ -1568,39 +1568,39 @@ function AppContent() {
       now > tsMin(b.start_at)+CHECKIN_WINDOW_MIN
     );
     if(toNoshow.length>0){
-      const ids=new Set(toNoshow.map(b=>b.id));
-      // ← [v3] 낙관적 UI: state에 즉시 반영 (system으로 기록 — 노쇼 뱃지 즉시 표시)
-      // ← [2026-04-30 Step 1] DB markNoshow 가드 5종 대칭 적용 (api.ts:562~590)
-      //   배경: filter 시점은 effect 클로저 캡처 bookings, prev는 React 보장 최신 state.
-      //         이 사이에 b.checkedIn 등이 변할 수 있어 prev 시점 재검증 필수.
-      //   특히 가드 ②(checkedIn) — 사용자 본인이 같은 탭에서 체크인 중이거나
-      //   Realtime으로 다른 사용자 체크인이 들어온 race를 차단.
-      setBookings(prev => prev.map(b => {
-        if (!ids.has(b.id))           return b
-        if (b.status !== 'confirmed') return b   // ① status='confirmed'
-        if (b.checkedIn)              return b   // ② !checkedIn (양방향 오염 핵심)
-        if (b.earlyEnded)             return b   // ③ !earlyEnded
-        if (b.autoCancelled)          return b   // ④ !autoCancelled (멱등성)
-        if (b.cancelledBy != null)    return b   // ⑤ cancelledBy IS NULL
-        return {...b, status:'confirmed', autoCancelled:true, cancelledBy:'system'}
-      }));
-      // ← [v3] DB에 cancelled_by='system'으로 기록 (과거 apiCancelBooking = 'user' 오염 해결)
-      //   이메일/인앱 알림은 auto-cancel-bookings cron이 noshow_notified=false 조회로 발송
-      Promise.all(toNoshow.map(b => markNoshow(b.id))).catch(console.error);
-      // ← [2026-04-29 Phase 1] 노쇼 처리 audit 기록 (BOOKING_NOSHOW)
-      //   각 노쇼 건마다 actor='system', entityId=booking.id로 기록
-      //   메모리 원칙: 시스템 자동 변경도 audit (옵션 ③ B)
-      //   주의: cron이 추가로 처리하는 노쇼는 Edge Function 측에서 별도 audit 필요 (Phase 외)
-      for (const b of toNoshow) {
-        insertAuditLog({
-          action: 'BOOKING_NOSHOW',
-          entityType: 'booking',
-          entityId: b.id,
-          actorName: 'system',
-          beforeData: { status: 'confirmed', checkedIn: false },
-          afterData:  { status: 'confirmed', autoCancelled: true, cancelledBy: 'system' },
-        }).catch(() => {})
-      }
+      // ← [2026-08-27 시간가드] 낙관적 UI·audit 을 "서버가 실제로 마킹한 건"으로 한정
+      //   배경: 8/27 13:00 사고 — 참석자 브라우저의 stale state + 클라이언트 시계로 13:15 예약이
+      //         노쇼 마킹됨. 이전 구조는 DB 결과와 무관하게 먼저 state 를 노쇼로 바꾸고 audit 을
+      //         남겨서, 가드에 막힌 9건도 가짜 BOOKING_NOSHOW audit 이 기록됐다.
+      //   변경: markNoshow(RPC mark_noshow) 반환값 1인 건만 state 반영 + audit.
+      //         0 = 서버(시계 SSOT) 거부 → state 유지, 다음 tick/Realtime 이 진실 반영.
+      //         allSettled 로 한 건 예외가 나머지를 중단시키지 않음.
+      Promise.allSettled(toNoshow.map(async b => {
+        const n = await markNoshow(b.id)
+        return n === 1 ? b.id : null
+      })).then(results => {
+        const marked = new Set<string>()
+        for (const r of results) {
+          if (r.status === 'fulfilled' && r.value) marked.add(r.value)
+          else if (r.status === 'rejected') console.error('[noshow] markNoshow failed', r.reason)
+        }
+        if (marked.size === 0) return
+        setBookings(prev => prev.map(b =>
+          marked.has(b.id) ? {...b, status:'confirmed', autoCancelled:true, cancelledBy:'system'} : b
+        ))
+        // ← [2026-04-29 Phase 1] 노쇼 처리 audit 기록 (BOOKING_NOSHOW) — 실제 마킹된 건만
+        for (const b of toNoshow) {
+          if (!marked.has(b.id)) continue
+          insertAuditLog({
+            action: 'BOOKING_NOSHOW',
+            entityType: 'booking',
+            entityId: b.id,
+            actorName: 'system',
+            beforeData: { status: 'confirmed', checkedIn: false },
+            afterData:  { status: 'confirmed', autoCancelled: true, cancelledBy: 'system' },
+          }).catch(() => {})
+        }
+      })
     }
 
     // ② pending 승인 기한 초과: start_at 1분 전 이후 경과
