@@ -116,7 +116,7 @@ export function ResourceBookingDetailModal({
                 {fmtDueShort(b.return_due)} 반납 예정이었습니다 — 관리자에게 반납해 주세요
               </div>
             )}
-            {st === 'inuse' && now >= new Date(b.occupied_until) && (   /* ← [2026-08-27] 점유 끝 ~ 반납일 자정: 사용중이지만 반납 안내 */
+            {st === 'inuse' && now >= new Date(b.end_at) && (   /* ← [2026-08-27] 사용시간 종료 후 ~ 반납일: 반납 확인 전까지 점유 — 반납 안내 */
               <div style={{ background: '#FDF2F8', color: '#BE185D', borderRadius: 8, padding: '7px 12px', fontSize: 12, marginBottom: 4 }}>
                 {fmtDueShort(b.return_due)} 반납 예정입니다 — 관리자에게 반납해 주세요
               </div>
@@ -128,8 +128,8 @@ export function ResourceBookingDetailModal({
             {row('예약자', holderLabel)}
             {row('사용일', fmtDateKo(localUseDay))}
             {row('사용시간', `${fmtTimeShort(b.start_at)} ~ ${fmtTimeShort(b.end_at)}`)}
-            {row('반납일', <>{fmtDateKo(b.return_due)}{b.return_due !== useDay && b.return_due !== localUseDay && (
-              <span style={{ display: 'block', fontSize: 12, fontWeight: 400, color: '#8B95A1', marginTop: 2 }}>반납일 19:00까지 점유</span>)}</>)}
+            {row('반납일', <>{fmtDateKo(b.return_due)}{!b.returned_at && b.status === 'confirmed' && (
+              <span style={{ display: 'block', fontSize: 12, fontWeight: 400, color: '#8B95A1', marginTop: 2 }}>관리자 반납 확인 전까지 점유 · 타인 예약은 반납일 19:00 이후부터</span>)}</>)}   {/* ← [2026-08-27] 당일 건 포함 */}
             {b.returned_at && row('반납 확인', `${fmtDueShort(b.returned_at.slice(0, 10))} ${fmtTimeShort(b.returned_at)}`)}
             {b.memo && row('메모', <span style={{ fontWeight: 400 }}>{b.memo}</span>)}
             {b.period_changed_at && (

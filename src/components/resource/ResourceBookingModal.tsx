@@ -22,6 +22,7 @@
  *  - [2026-08-21] 회의실 BookingModal 기준 정합 (배지·dot·X·푸터)
  *  - [2026-08-26] 과거 시간 차단·tick 보정·DatePickerPopup·개체 칩 선택·edit 모드 (근본 수정)
  *  - [2026-08-27] 사용중 종료시간 변경 — 현재 종료값을 옵션에 유지(select 값 불일치로 변경 불가하던 근본 원인), 과거 사용일 건은 종료 잠금 표시
+ *  - [2026-08-27] 20260760 — 개체 가용 판정 점유구간을 항상 반납일 19:00 까지로 (당일 분기 삭제, DB 동일)
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -271,7 +272,7 @@ export function ResourceBookingModal({
   }, [useDate, effDue, showToast])
 
   const occStart = atLocal(useDate, startHM)
-  const occEnd   = effDue === useDate ? atLocal(useDate, endHM) : atLocal(effDue, '19:00')   // 반납일 19:00 KST 독점
+  const occEnd   = atLocal(effDue, '19:00')   // ← [2026-08-27 20260760] 당일 반납도 19:00 까지 독점 (DB compute_occupancy 동일 산식)
   const chipState = (item: ResourceItem): ChipState => {
     if (item.status !== 'available') return 'maintenance'
     if (overdueBookings.some(b => b.item_id === item.id && b.id !== editBooking?.id)) return 'overdue'

@@ -141,10 +141,7 @@ export function ResourcePage({ users, authUserId, showToast, isMobile, onGoMyRes
       const due = fmtDueShort(holder.return_due)
       return isResourceOverdue(holder, now)
         ? { who: holderLabel(holder), line: `${due} 반납 예정이었음` }
-        : { who: holderLabel(holder),
-            line: holder.return_due === holder.start_at.slice(0, 10)
-              ? `${fmtTimeShort(holder.end_at)}까지 사용 중`
-              : `~${due} 반납 예정` }
+        : { who: holderLabel(holder), line: `~${due} 반납 예정` }   // ← [2026-08-27] 당일 건도 반납 확인 전까지 점유 — 문구 통일
     }
     const next = nextBooking(bookings, item.id, now)
     if (next && kstDay(new Date(next.start_at)) === kstDay(now))   // ← [2026-08-27] UTC slice → KST 날짜 (00~09시 오판 수정)

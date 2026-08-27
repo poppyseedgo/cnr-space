@@ -15,6 +15,7 @@
  *  - [2026-08-19] 최초 작성 (Phase 2B)
  *  - [2026-08-26] 세로 스택 레이아웃 — bookings props 화, 사용 블록 클릭 → 상세 모달(onBookingClick)
  *  - [2026-08-27] 헤더·띠·블록 색 판정을 utils/resourceStatus SSOT 로 이관 (반납일 당일 연체 오표기·과거 사용블록 파랑 수정), 점유 띠 = occupied_until 날짜
+ *  - [2026-08-27] 반납 확인 전 무조건 점유 — 당일 건 사용시간 뒤 점유 띠, 반납 완료 건 이력 유지(반납 시각까지 띠)
  */
 
 import { useMemo } from 'react'
@@ -104,18 +105,24 @@ export function ResourceTimelineView({
   const cellOf = (item: ResourceItem, hm: string, idx: number): Cell => {
     const slotStart = atLocal(date, hm)
     const slotEnd   = new Date(slotStart.getTime() + step * 60000)
-    const mine = bookings.filter(b => b.item_id === item.id && !b.returned_at)
+    const mine = bookings.filter(b => b.item_id === item.id && b.status === 'confirmed')   // ← [2026-08-27] 반납 완료 건도 이력·점유 띠(반납 시각까지) 표시
 
     // ① 사용시간 블록 (해당 날짜의 start~end 와 slot 겹침)
     const usage = mine.find(b => localDay(b.start_at) === date
       && new Date(b.start_at) < slotEnd && new Date(b.end_at) > slotStart)
     if (usage) return { kind: 'usage', b: usage, first: new Date(usage.start_at) >= slotStart || idx === 0 }
 
-    // ② 복수일 점유 띠: 사용일 < date ≤ 점유 끝 날짜(occupied_until — 조기 반납이면 반납 시각) ← [2026-08-27]
-    const occ = mine.find(b => localDay(b.start_at) < date && date <= occupiedUntilDay(b))
-    if (occ) return { kind: 'occupied', b: occ, first: idx === 0 }
+    // ② 점유 띠 — 반납 확인 전까지 점유 (고지 확정 2026-08-27)
+    //    복수일: 사용일 < date ≤ 점유 끝 날짜 / 당일: 사용시간 뒤 슬롯 (반납 확인됐으면 반납 시각까지만)
+    const occ = mine.find(b => {
+      const useDay = localDay(b.start_at)
+      if (useDay < date) return date <= occupiedUntilDay(b)
+      if (useDay !== date || new Date(b.end_at) > slotStart) return false
+      return b.returned_at ? new Date(b.returned_at) > slotStart : true
+    })
+    if (occ) return { kind: 'occupied', b: occ, first: idx === 0 || (localDay(occ.start_at) === date && new Date(occ.end_at) > new Date(slotStart.getTime() - step * 60000)) }
 
-    // ③ 연체 띠: 반납일 < date ≤ 오늘, 연체(SSOT — 반납일 KST 경과 && 미반납) ← [2026-08-27]
+    // ③ 연체 띠: 반납일 < date ≤ 오늘, 연체(SSOT — 점유 중 && 반납일 KST 경과) ← [2026-08-27]
     const od = mine.find(b => b.return_due < date && date <= today && isResourceOverdue(b, now))
     if (od) return { kind: 'overdue', b: od, first: idx === 0 }
 
@@ -198,8 +205,8 @@ function FragmentRow({ hm, idx, items, cellOf, nameOf, deptOf, rowH, onSlotClick
         if (c.kind === 'usage') {
           // ← [2026-08-27] 블록 색 = 예약 판정 SSOT (예정 파랑 / 사용중 분홍 / 연체 빨강) — 열 헤더·카드와 정합
           const st = bookingDisplayStatus(c.b, new Date())
-          const bg = st === 'overdue' ? '#FEE2E2' : st === 'inuse' ? '#FCE7F3' : '#CBECFF'
-          const fg = st === 'overdue' ? '#B91C1C' : st === 'inuse' ? '#BE185D' : '#111'
+          const bg = st === 'overdue' ? '#FEE2E2' : st === 'inuse' ? '#FCE7F3' : st === 'returned' ? '#E2E8F0' : '#CBECFF'
+          const fg = st === 'overdue' ? '#B91C1C' : st === 'inuse' ? '#BE185D' : st === 'returned' ? '#64748B' : '#111'
           return (
             <div key={item.id} style={{ ...base, padding: 2, cursor: 'pointer' }} role="button"
                  onClick={() => onBookingClick(c.b)}>{/* ← [2026-08-26] 상세 모달 */}
@@ -220,7 +227,7 @@ function FragmentRow({ hm, idx, items, cellOf, nameOf, deptOf, rowH, onSlotClick
             <div key={item.id} role="button" onClick={() => onBookingClick(c.b)}
                  style={{ ...base, background: '#FDF2F8', padding: '2px 6px',
                           fontSize: 10, color: '#BE185D', cursor: 'pointer' }}>
-              {c.first && <>{nameOf(c.b)} · ~{fmtDueShort(c.b.return_due)} 반납 점유</>}
+              {c.first && <>{nameOf(c.b)} · {c.b.returned_at ? `${fmtTimeShort(c.b.returned_at)} 반납 확인` : `~${fmtDueShort(c.b.return_due)} 반납 점유`}</>}
             </div>
           )
         if (c.kind === 'overdue')

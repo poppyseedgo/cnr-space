@@ -89,7 +89,7 @@ export function MyResourceBookings({ authUserId, showToast, isMobile }: Props) {
             <span style={{ color: st === 'overdue' ? '#B91C1C' : '#64748B' }}>
               {st === 'overdue'
                 ? `${fmtDueShort(b.return_due)} 반납 예정이었습니다 — 관리자에게 반납해 주세요`
-                : st === 'inuse' && now >= new Date(b.occupied_until)   /* ← [2026-08-27] 점유 끝~반납일: 사용중 + 반납 안내 */
+                : st === 'inuse' && now >= new Date(b.end_at)   /* ← [2026-08-27] 사용시간 종료 후: 반납 확인 전까지 점유 — 반납 안내 */
                 ? `${fmtDueShort(useDay)} ${fmtTimeShort(b.start_at)}~${fmtTimeShort(b.end_at)} · ${fmtDueShort(b.return_due)} 반납 예정 — 관리자에게 반납해 주세요`
                 : <>
                     {fmtDueShort(useDay)} {fmtTimeShort(b.start_at)}~{fmtTimeShort(b.end_at)}

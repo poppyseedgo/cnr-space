@@ -5,24 +5,27 @@
  *       "예약가능/사용중/연체" 는 confirmed 예약 + 현재 시각에서 매번 계산한다.
  *       (회의실 getRoomStatus, 도서 utils/bookLoan.ts 와 동일 원칙)
  *
- * ★ 두 축을 분리한다 (2026-08-27 개정 — 반납일 당일이 '연체'로 찍히던 사고)
- *   · 점유(occupancy)  = 시각 단위. occupied_until 이 SSOT (DB compute_occupancy, EXCLUDE 와 동일 값).
- *                        "다른 사람이 이 개체를 예약할 수 있는가" 를 결정한다.
- *   · 반납 기한(due)   = 날짜 단위(KST). return_due 가 SSOT.
- *                        "연체인가" 를 결정한다 — 점유가 끝났어도 반납일 당일까지는 연체가 아니다.
+ * ★ 원칙 (2026-08-27 고지 확정)
+ *   실물 점유 = 시작 후 ~ 관리자 [반납 확인] 까지. 시각·반납일과 무관하게 반납 확인 전엔 계속 점유다.
+ *   반납일(KST 날짜)이 지나도록 점유 중이면 연체. 반납일 당일까지는 사용중.
+ *
+ *   · 점유(isOccupying) = confirmed AND 미반납 AND start_at ≤ now   ← 상한 없음
+ *   · 연체(isResourceOverdue) = 점유 중 AND return_due < today(KST)
+ *   · occupied_until 은 DB EXCLUDE 의 "예약 가능 범위" 계산값(시작~반납일 19:00, 조기 반납이면 반납 시각)이다.
+ *     표시 판정에는 쓰지 않는다 — 반납 확인 전 점유는 그 값을 넘어서도 계속된다. 타임라인·캘린더 띠의 끝 날짜에만 쓴다.
  *
  * 예약 판정식 (status='confirmed' 대상, today = KST 날짜)
  *   예정(upcoming)   now < start_at
- *   사용중(inuse)    start_at ≤ now  AND  return_due ≥ today  AND  미반납   ← 점유 끝 여부 무관 (반납 대기 흡수)
- *   연체(overdue)    return_due < today  AND  미반납
+ *   사용중(inuse)    start_at ≤ now  AND  return_due ≥ today  AND  미반납
+ *   연체(overdue)    start_at ≤ now  AND  return_due < today  AND  미반납
  *   반납완료         returned_at IS NOT NULL
  *   취소             status='cancelled'
  *
- * 개체 판정식 (카드·타임라인 열 헤더)
+ * 개체 판정식 (카드·타임라인 열 헤더) — 홀더 = 미반납 시작 건 중 가장 먼저 시작한 것(실물을 쥔 사람)
  *   점검중/폐기      items.status
- *   사용중           지금 점유 중인 예약이 있다 (isOccupying)
- *   연체             점유 중인 예약은 없고 연체 예약이 있다
- *   예약가능         그 외 — 사용중 예약이라도 점유가 끝났으면 타인 예약 가능 (EXCLUDE 와 정합)
+ *   연체             홀더가 연체
+ *   사용중           홀더가 사용중
+ *   예약가능         홀더 없음
  *
  * 표시처 전부가 이 파일의 함수만 쓴다 — 판정식 inline 재구현 금지.
  *   ResourcePage · ResourceTimelineView · ResourceCalendarView · ResourceBookingModal(resourceApi 연체 조회)
@@ -32,6 +35,7 @@
  *  - [2026-08-19] 최초 작성 (Phase 2A)
  *  - [2026-08-26] occupiedUntilDay — 조기 반납 시 점유 끝(20260753) 표시 정합
  *  - [2026-08-27] 연체 판정을 occupied_until(시각) → return_due(KST 날짜) 로 분리. bookingDisplayStatus SSOT 승격
+ *  - [2026-08-27] 점유 상한 제거 — 반납 확인 전엔 무조건 점유 (고지 확정). 홀더 = 가장 먼저 시작한 미반납 건
  */
 
 import type { ResourceBooking, ResourceItem } from '../types/resource'
@@ -45,16 +49,15 @@ export type ResourceDisplayStatus = 'available' | 'inuse' | 'overdue' | 'mainten
 /** 예약 1건의 파생 상태 */
 export type ResourceBookingDisplayStatus = 'upcoming' | 'inuse' | 'overdue' | 'returned' | 'cancelled'
 
-/** 이 예약이 지금 개체를 점유 중인가 (start_at ≤ now < occupied_until) */
+/** 이 예약이 지금 개체를 점유 중인가 — 시작 후 미반납이면 반납 확인 전까지 무조건 점유 (상한 없음) */
 export function isOccupying(b: ResourceBooking, now: Date): boolean {
   if (b.status !== 'confirmed' || b.returned_at) return false
-  return new Date(b.start_at) <= now && now < new Date(b.occupied_until)
+  return new Date(b.start_at) <= now
 }
 
-/** 연체인가 — 반납일(KST 날짜)이 지났는데 반납 확인이 없다. 점유 끝 시각과 무관 */
+/** 연체인가 — 점유 중인데 반납일(KST 날짜)이 지났다 */
 export function isResourceOverdue(b: ResourceBooking, now: Date): boolean {
-  if (b.status !== 'confirmed' || b.returned_at) return false
-  return b.return_due < kstDay(now)
+  return isOccupying(b, now) && b.return_due < kstDay(now)
 }
 
 /** 예약 1건의 표시 상태 — 상세 모달·마이페이지·어드민 현황·타임라인 블록 공용 */
@@ -65,18 +68,18 @@ export function bookingDisplayStatus(b: ResourceBooking, now: Date): ResourceBoo
   return new Date(b.start_at) > now ? 'upcoming' : 'inuse'
 }
 
-/** 점유가 끝나는 KST 날짜 — 표시 계층은 return_due 로 점유일을 늘리지 않는다 (조기 반납 반영) */
-export function occupiedUntilDay(b: ResourceBooking): string { return tsDate(b.occupied_until) }
+/** 점유 띠가 끝나는 KST 날짜 — 반납 확인됐으면 그 날, 아니면 반납일 (타임라인·캘린더 띠 전용) */
+export function occupiedUntilDay(b: ResourceBooking): string {
+  return b.returned_at ? tsDate(b.returned_at) : b.return_due
+}
 
-/** 개체의 현재 홀더 예약 (점유중 우선, 없으면 연체 중 반납일이 가장 늦은 건) */
+/** 개체의 현재 홀더 예약 — 점유 중(미반납·시작 후) 건 가운데 가장 먼저 시작한 것 = 실물을 쥔 사람 */
 export function currentHolderBooking(
   bookings: ResourceBooking[], itemId: number, now: Date,
 ): ResourceBooking | null {
-  const mine = bookings.filter(b => b.item_id === itemId)
-  return mine.find(b => isOccupying(b, now))
-    ?? mine.filter(b => isResourceOverdue(b, now))
-           .sort((a, b) => b.return_due.localeCompare(a.return_due))[0]
-    ?? null
+  return bookings
+    .filter(b => b.item_id === itemId && isOccupying(b, now))
+    .sort((a, b) => a.start_at.localeCompare(b.start_at))[0] ?? null
 }
 
 /** 카드 뱃지용 개체 파생 상태 */
