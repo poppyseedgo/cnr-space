@@ -14,12 +14,13 @@
  * ✅ 변경 이력
  *  - [2026-08-19] 최초 작성 (Phase 2B)
  *  - [2026-08-26] B안 — 선택 날짜 패널 [이 날짜에 예약](과거 비활성) + 리스트 항목 클릭 → 상세, bookings props 화
+ *  - [2026-08-27] 연체 확장 판정 SSOT(isResourceOverdue), 점유일 = occupied_until 날짜(조기 반납 반영), KST 오늘
  */
 
 import { useMemo, useState } from 'react'
 import type { AppUser } from '../../types'
 import type { ResourceBooking, ResourceItem } from '../../types/resource'
-import { fmtDueShort, fmtTimeShort } from '../../utils/resourceStatus'
+import { fmtDueShort, fmtTimeShort, isResourceOverdue, kstDay, occupiedUntilDay } from '../../utils/resourceStatus'   // ← [2026-08-27] 판정식 SSOT
 import { ResourceName } from './ResourceIcon'  // ← [2026-08-21] 카테고리 SVG 아이콘 공통 표기
 
 const FONT = "'Pretendard', -apple-system, sans-serif"
@@ -74,7 +75,7 @@ export function ResourceCalendarView({
   /** 날짜별 마크 — 사용일/점유일/연체일 확장 */
   const marksByDay = useMemo(() => {
     const map = new Map<string, DayMark[]>()
-    const today = ymd(now)
+    const today = kstDay(now)   // ← [2026-08-27] KST 날짜
     const push = (day: string, m: DayMark) => {
       const arr = map.get(day) ?? []
       arr.push(m); map.set(day, arr)
@@ -84,15 +85,16 @@ export function ResourceCalendarView({
       if (mineOnly && b.user_id !== authUserId) continue
       const startDay = localDay(b.start_at)
       push(startDay, { b, kind: 'usage' })
-      // 점유일: 사용일 다음날 ~ 반납일
+      // 점유일: 사용일 다음날 ~ 점유 끝 날짜(occupied_until — 조기 반납이면 그 날까지만) ← [2026-08-27]
+      const occEnd = occupiedUntilDay(b)
       for (let d = new Date(`${startDay}T00:00:00`); ;) {
         d.setDate(d.getDate() + 1)
         const day = ymd(d)
-        if (day > b.return_due) break
+        if (day > occEnd) break
         push(day, { b, kind: 'occupied' })
       }
-      // 연체일: 반납일 다음날 ~ 오늘
-      if (!b.returned_at && now >= new Date(b.occupied_until)) {
+      // 연체일: 반납일 다음날 ~ 오늘 — 연체 판정 SSOT(반납일 KST 경과 && 미반납) ← [2026-08-27]
+      if (isResourceOverdue(b, now)) {
         for (let d = new Date(`${b.return_due}T00:00:00`); ;) {
           d.setDate(d.getDate() + 1)
           const day = ymd(d)
@@ -124,7 +126,7 @@ export function ResourceCalendarView({
 
   const navBtn: React.CSSProperties = { background: '#fff', border: '1px solid #D1D7E1',
     borderRadius: 8, padding: '3px 9px', fontSize: 12, fontFamily: FONT, cursor: 'pointer' }
-  const todayStr = ymd(now)
+  const todayStr = kstDay(now)   // ← [2026-08-27] KST 날짜
   const selMarks = selected ? (marksByDay.get(selected) ?? []) : []
 
   return (

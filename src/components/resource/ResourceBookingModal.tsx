@@ -14,13 +14,14 @@
  *  - 개체 칩: 카테고리 전체 개체 나열(개수 제한 없음, wrap), 선택 조합(사용일·시간·반납일)과 충돌하는
  *    개체·점검중·연체 홀더는 비활성 뱃지. 시간 변경으로 선택 개체가 불가해지면 자동 해제.
  *    프론트 판정은 안내용 — 겹침 방어는 DB EXCLUDE, 시간 규칙은 20260752 트리거가 최종.
- *  - edit 모드: 개체·예약자 잠금, 시작 후 건은 사용일·시작시간 잠금(START_LOCKED), 반납일 앞당기기 가능(min = 오늘)
+ *  - edit 모드: 개체·예약자 잠금, 시작 후 건은 사용일·시작시간 잠금(START_LOCKED), 종료는 현재 이후로 변경(PAST_END), 반납일 앞당기기 가능(min = 오늘)
  *  - allow_multi_day=false → 반납일 고정(사용일과 동일)
  *
  * ✅ 변경 이력
  *  - [2026-08-19] 최초 작성 (Phase 2A)
  *  - [2026-08-21] 회의실 BookingModal 기준 정합 (배지·dot·X·푸터)
  *  - [2026-08-26] 과거 시간 차단·tick 보정·DatePickerPopup·개체 칩 선택·edit 모드 (근본 수정)
+ *  - [2026-08-27] 사용중 종료시간 변경 — 현재 종료값을 옵션에 유지(select 값 불일치로 변경 불가하던 근본 원인), 과거 사용일 건은 종료 잠금 표시
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -213,13 +214,21 @@ export function ResourceBookingModal({
     return isToday ? starts.filter(t => timeToMin(t) > nowMin) : starts
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allOpts, isToday, nowMin, started, tick])
+  // ← [2026-08-27] 사용중 종료시간 변경 (고지 확정): 시작 후 건은 종료를 현재 이후 슬롯으로만 바꿀 수 있다 (DB PAST_END 동일 선).
+  //   현재 종료값은 과거여도 옵션에 남긴다 — 빼면 <select value> 가 옵션에 없어 첫 옵션이 그려지고
+  //   그 값을 골라도 onChange 가 안 나 "종료를 못 바꾸는" 현상이 났다 (근본 원인). 안 바꾸면 DB 는 end_at 을 검사하지 않는다.
+  //   사용일이 지난 복수일 건은 그날의 모든 슬롯이 과거라 현재 종료만 남는다 = 사실상 잠금 (DB 와 동일).
   const endOpts = useMemo(() => {
     const s = timeToMin(startHM)
     let ends = allOpts.filter(t => timeToMin(t) > s)
-    if (started && isToday) ends = ends.filter(t => timeToMin(t) > nowMin)   // PAST_END — 단축은 now 까지
+    if (started) {
+      const cur = init.end
+      ends = ends.filter(t => t === cur || atLocal(useDate, t) > new Date())   // PAST_END — 단축은 now 까지
+    }
     return ends
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allOpts, startHM, started, isToday, nowMin, tick])
+  }, [allOpts, startHM, started, useDate, nowMin, tick])
+  const endLocked = started && endOpts.length === 1   // 바꿀 수 있는 종료 슬롯이 없다
   const noTimeLeft = !started && isToday && startOpts.length === 0
 
   // ── tick 자동 보정 — 회의실 BookingModal ③: 시작이 과거로 밀리면 첫 슬롯으로 점프, 개체 유지 ──
@@ -346,7 +355,9 @@ export function ResourceBookingModal({
             {started && (
               <div style={{ background: '#FDF2F8', color: '#BE185D', borderRadius: 8, padding: '7px 12px',
                             fontSize: 12, marginBottom: 4 }}>
-                사용 중인 예약입니다. 사용일과 시작 시간은 변경할 수 없습니다
+                {endLocked
+                  ? '사용 중인 예약입니다. 사용일·사용시간은 변경할 수 없습니다 — 반납일만 변경할 수 있습니다'
+                  : '사용 중인 예약입니다. 사용일과 시작 시간은 변경할 수 없습니다 — 종료 시간은 현재 이후로, 반납일은 변경할 수 있습니다'}
               </div>
             )}
             {noTimeLeft && (
@@ -406,7 +417,8 @@ export function ResourceBookingModal({
                     {startOpts.map(t => <option key={t} value={t}>{fmtTimeKo(t)}</option>)}
                   </select>
                   <span style={{ color: '#B0B8C1', fontSize: 13 }}>부터</span>
-                  <select value={endHM} onChange={e => setEndHM(e.target.value)} style={selStyle} aria-label="종료 시간">
+                  <select value={endHM} onChange={e => setEndHM(e.target.value)} disabled={endLocked}
+                    style={endLocked ? lockStyle : selStyle} aria-label="종료 시간">
                     {endOpts.map(t => <option key={t} value={t}>{fmtTimeKo(t)}</option>)}
                   </select>
                   <span style={{ color: '#B0B8C1', fontSize: 13 }}>까지</span>

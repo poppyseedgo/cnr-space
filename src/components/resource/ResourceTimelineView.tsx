@@ -14,12 +14,13 @@
  * ✅ 변경 이력
  *  - [2026-08-19] 최초 작성 (Phase 2B)
  *  - [2026-08-26] 세로 스택 레이아웃 — bookings props 화, 사용 블록 클릭 → 상세 모달(onBookingClick)
+ *  - [2026-08-27] 헤더·띠·블록 색 판정을 utils/resourceStatus SSOT 로 이관 (반납일 당일 연체 오표기·과거 사용블록 파랑 수정), 점유 띠 = occupied_until 날짜
  */
 
 import { useMemo } from 'react'
 import type { AppUser } from '../../types'
 import type { ResourceBooking, ResourceCategory, ResourceItem } from '../../types/resource'
-import { fmtDueShort, fmtTimeShort } from '../../utils/resourceStatus'
+import { bookingDisplayStatus, currentHolderBooking, fmtDueShort, fmtTimeShort, isResourceOverdue, kstDay, occupiedUntilDay } from '../../utils/resourceStatus'   // ← [2026-08-27] 판정식 SSOT
 import { ResourceName } from './ResourceIcon'  // ← [2026-08-21] 카테고리 SVG 아이콘 공통 표기
 
 const FONT = "'Pretendard', -apple-system, sans-serif"
@@ -45,10 +46,6 @@ function shiftDate(ymd: string, days: number): string {
   const [y, m, d] = ymd.split('-').map(Number)
   const dt = new Date(y, m - 1, d + days)
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
-}
-function todayStr(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 const DOW = ['일', '월', '화', '수', '목', '금', '토']
 function fmtHeader(ymd: string): string {
@@ -77,7 +74,7 @@ export function ResourceTimelineView({
   }, [category, step])
 
   const now = new Date()
-  const today = todayStr()
+  const today = kstDay(now)   // ← [2026-08-27] KST 날짜 (time.ts 규약)
 
   const nameOf = (b: ResourceBooking) => {
     const live = users.find(u => u.user_id === b.user_id)
@@ -88,16 +85,14 @@ export function ResourceTimelineView({
     return live?.dept ?? b.user_dept ?? ''
   }
 
-  /** 열 헤더 요약 — 오늘 기준 홀더 */
+  /** 열 헤더 요약 — 개체 판정 SSOT(점유 우선, 없으면 연체). 개체 카드 뱃지와 동일 ← [2026-08-27] */
   const headSummary = (item: ResourceItem): { text: string; color: string } => {
     if (item.status === 'maintenance') return { text: '점검중', color: '#64748B' }
-    const holder = bookings.find(b => b.item_id === item.id && !b.returned_at
-      && new Date(b.start_at) <= now && now < new Date(b.occupied_until))
-    if (holder) return { text: `사용중 · ${nameOf(holder)}`, color: '#BE185D' }
-    const overdue = bookings.find(b => b.item_id === item.id && !b.returned_at
-      && now >= new Date(b.occupied_until))
-    if (overdue) return { text: `연체 · ${nameOf(overdue)}`, color: '#B91C1C' }
-    return { text: '예약가능', color: '#64748B' }
+    const holder = currentHolderBooking(bookings, item.id, now)
+    if (!holder) return { text: '예약가능', color: '#64748B' }
+    return isResourceOverdue(holder, now)
+      ? { text: `연체 · ${nameOf(holder)}`, color: '#B91C1C' }
+      : { text: `사용중 · ${nameOf(holder)}`, color: '#BE185D' }
   }
 
   /** 표시 날짜의 셀 상태 계산 */
@@ -116,13 +111,12 @@ export function ResourceTimelineView({
       && new Date(b.start_at) < slotEnd && new Date(b.end_at) > slotStart)
     if (usage) return { kind: 'usage', b: usage, first: new Date(usage.start_at) >= slotStart || idx === 0 }
 
-    // ② 복수일 점유 띠: 사용일 < date ≤ 반납일
-    const occ = mine.find(b => localDay(b.start_at) < date && date <= b.return_due)
+    // ② 복수일 점유 띠: 사용일 < date ≤ 점유 끝 날짜(occupied_until — 조기 반납이면 반납 시각) ← [2026-08-27]
+    const occ = mine.find(b => localDay(b.start_at) < date && date <= occupiedUntilDay(b))
     if (occ) return { kind: 'occupied', b: occ, first: idx === 0 }
 
-    // ③ 연체 띠: 반납일 < date ≤ 오늘, 미반납
-    const od = mine.find(b => b.return_due < date && date <= today
-      && now >= new Date(b.occupied_until))
+    // ③ 연체 띠: 반납일 < date ≤ 오늘, 연체(SSOT — 반납일 KST 경과 && 미반납) ← [2026-08-27]
+    const od = mine.find(b => b.return_due < date && date <= today && isResourceOverdue(b, now))
     if (od) return { kind: 'overdue', b: od, first: idx === 0 }
 
     return { kind: 'empty', past: slotStart <= now }
@@ -202,12 +196,14 @@ function FragmentRow({ hm, idx, items, cellOf, nameOf, deptOf, rowH, onSlotClick
           return <div key={item.id} style={{ ...base, background: '#F1F5F9' }} />
         const c = cellOf(item, hm, idx)
         if (c.kind === 'usage') {
-          const inuse = new Date(c.b.start_at) <= new Date() && new Date() < new Date(c.b.end_at)
+          // ← [2026-08-27] 블록 색 = 예약 판정 SSOT (예정 파랑 / 사용중 분홍 / 연체 빨강) — 열 헤더·카드와 정합
+          const st = bookingDisplayStatus(c.b, new Date())
+          const bg = st === 'overdue' ? '#FEE2E2' : st === 'inuse' ? '#FCE7F3' : '#CBECFF'
+          const fg = st === 'overdue' ? '#B91C1C' : st === 'inuse' ? '#BE185D' : '#111'
           return (
             <div key={item.id} style={{ ...base, padding: 2, cursor: 'pointer' }} role="button"
                  onClick={() => onBookingClick(c.b)}>{/* ← [2026-08-26] 상세 모달 */}
-              <div style={{ background: inuse ? '#FCE7F3' : '#CBECFF',
-                            color: inuse ? '#BE185D' : '#111',
+              <div style={{ background: bg, color: fg,
                             borderRadius: 6, height: '100%', boxSizing: 'border-box',
                             padding: '3px 6px', fontSize: 10, overflow: 'hidden' }}>
                 {c.first && <>

@@ -17,31 +17,18 @@ import type { ResourceBooking } from '../../types/resource'
 type MyRow = ResourceBooking & { resource_items?: { label: string; category?: { icon: string | null } | null } | null }  // ← [2026-08-21] 아이콘 조인
 import type { ResourceCategory, ResourceItem } from '../../types/resource'
 import { cancelResourceBooking, loadMyResourceBookings, loadResourceCategories, loadResourceItems } from '../../lib/resourceApi'
-import { fmtDueShort, fmtTimeShort, isOccupying, isResourceOverdue } from '../../utils/resourceStatus'
+import { bookingDisplayStatus, fmtDueShort, fmtTimeShort, type ResourceBookingDisplayStatus } from '../../utils/resourceStatus'   // ← [2026-08-27] 판정식 SSOT
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import { ResourceName } from './ResourceIcon'  // ← [2026-08-21] 카테고리 SVG 아이콘 공통 표기
-import { ResourceBookingDetailModal } from './ResourceBookingDetailModal'   // ← [2026-08-26]
+import { ResourceBookingDetailModal, RESOURCE_BOOKING_BADGE } from './ResourceBookingDetailModal'   // ← [2026-08-26] / [2026-08-27] 뱃지 SSOT
 import { ResourceBookingModal } from './ResourceBookingModal'               // ← [2026-08-26] edit 모드
 
 const FONT = "'Pretendard', -apple-system, sans-serif"
 
-type St = 'upcoming' | 'inuse' | 'overdue' | 'returned' | 'cancelled' | 'done'
-const BADGE: Record<St, { label: string; bg: string; fg: string }> = {
-  upcoming:  { label: '예약중',   bg: '#CBECFF', fg: '#111' },
-  inuse:     { label: '사용중',   bg: '#FCE7F3', fg: '#BE185D' },
-  overdue:   { label: '연체',     bg: '#FEE2E2', fg: '#B91C1C' },
-  returned:  { label: '반납완료', bg: '#DCFCE7', fg: '#16A34A' },
-  cancelled: { label: '취소',     bg: '#E2E8F0', fg: '#64748B' },
-  done:      { label: '사용완료', bg: '#E2E8F0', fg: '#64748B' },   // 당일반납 건 — 반납확인 전이나 점유 종료
-}
-
-function stOf(b: ResourceBooking, now: Date): St {
-  if (b.status === 'cancelled') return 'cancelled'
-  if (b.returned_at)            return 'returned'
-  if (isResourceOverdue(b, now)) return 'overdue'
-  if (isOccupying(b, now))      return 'inuse'
-  return new Date(b.start_at) > now ? 'upcoming' : 'done'
-}
+/** ← [2026-08-27] 판정·뱃지 SSOT: utils/resourceStatus + ResourceBookingDetailModal.RESOURCE_BOOKING_BADGE ('done' 폐지) */
+type St = ResourceBookingDisplayStatus
+const BADGE = RESOURCE_BOOKING_BADGE
+const stOf = bookingDisplayStatus
 
 interface Props {
   authUserId: string
@@ -75,7 +62,7 @@ export function MyResourceBookings({ authUserId, showToast, isMobile }: Props) {
 
   const now = new Date()
   // 진행형(연체·사용중·예약중) 먼저, 그 안에서는 최근순 유지
-  const order: Record<St, number> = { overdue: 0, inuse: 1, upcoming: 2, done: 3, returned: 4, cancelled: 5 }
+  const order: Record<St, number> = { overdue: 0, inuse: 1, upcoming: 2, returned: 3, cancelled: 4 }
   const sorted: MyRow[] = [...rows].sort((a, b) => order[stOf(a, now)] - order[stOf(b, now)])
 
   if (loading) return <p style={{ fontFamily: FONT, fontSize: 13, color: '#64748B' }}>불러오는 중…</p>
@@ -87,7 +74,7 @@ export function MyResourceBookings({ authUserId, showToast, isMobile }: Props) {
       {sorted.map(b => {
         const st = stOf(b, now)
         const badge = BADGE[st]
-        const dim = st === 'returned' || st === 'cancelled' || st === 'done'
+        const dim = st === 'returned' || st === 'cancelled'
         const useDay = b.start_at.slice(0, 10)
         return (
           <div key={b.id} role="button" onClick={() => setDetail(b)}
@@ -102,6 +89,8 @@ export function MyResourceBookings({ authUserId, showToast, isMobile }: Props) {
             <span style={{ color: st === 'overdue' ? '#B91C1C' : '#64748B' }}>
               {st === 'overdue'
                 ? `${fmtDueShort(b.return_due)} 반납 예정이었습니다 — 관리자에게 반납해 주세요`
+                : st === 'inuse' && now >= new Date(b.occupied_until)   /* ← [2026-08-27] 점유 끝~반납일: 사용중 + 반납 안내 */
+                ? `${fmtDueShort(useDay)} ${fmtTimeShort(b.start_at)}~${fmtTimeShort(b.end_at)} · ${fmtDueShort(b.return_due)} 반납 예정 — 관리자에게 반납해 주세요`
                 : <>
                     {fmtDueShort(useDay)} {fmtTimeShort(b.start_at)}~{fmtTimeShort(b.end_at)}
                     {b.return_due !== useDay && ` · ${fmtDueShort(b.return_due)} 반납`}

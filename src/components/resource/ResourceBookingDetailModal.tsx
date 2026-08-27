@@ -16,34 +16,28 @@
  * ✅ 변경 이력
  *  - [2026-08-26] 최초 작성 (기한 변경 기능과 함께 — 고지 지시: 카드 클릭 즉시 상세·변경)
  *  - [2026-08-26] 관리자 [반납 확인] CTA 추가 — 회의실 상세 모달 버튼 조합 규칙으로 정리
+ *  - [2026-08-27] 판정식 SSOT 이관(bookingDisplayStatus → utils/resourceStatus), 반납일 당일 '연체' 오표기 수정
  */
 
 import { ModalPortal } from '../common/ModalPortal'
 import { ModalCloseButton } from '../common/ModalCloseButton'
 import { Button } from '../common/Button'
 import { ResourceName } from './ResourceIcon'
-import { fmtDueShort, fmtTimeShort, isOccupying, isResourceOverdue } from '../../utils/resourceStatus'
+import { bookingDisplayStatus, fmtDueShort, fmtTimeShort, type ResourceBookingDisplayStatus } from '../../utils/resourceStatus'   // ← [2026-08-27] 판정식 SSOT
 import type { ResourceBooking } from '../../types/resource'
 
 const FONT = "'Pretendard', -apple-system, sans-serif"
 
-type St = 'upcoming' | 'inuse' | 'overdue' | 'returned' | 'cancelled' | 'done'
-const BADGE: Record<St, { label: string; bg: string; fg: string }> = {
+/** ← [2026-08-27] 판정은 utils/resourceStatus.bookingDisplayStatus (SSOT). 'done' 상태 폐지 — 점유 끝~반납일은 '사용중' */
+type St = ResourceBookingDisplayStatus
+export const RESOURCE_BOOKING_BADGE: Record<St, { label: string; bg: string; fg: string }> = {
   upcoming:  { label: '예약중',   bg: '#CBECFF', fg: '#111' },
   inuse:     { label: '사용중',   bg: '#FCE7F3', fg: '#BE185D' },
   overdue:   { label: '연체',     bg: '#FEE2E2', fg: '#B91C1C' },
   returned:  { label: '반납완료', bg: '#DCFCE7', fg: '#16A34A' },
   cancelled: { label: '취소',     bg: '#E2E8F0', fg: '#64748B' },
-  done:      { label: '사용완료', bg: '#E2E8F0', fg: '#64748B' },
 }
-/** MyResourceBookings stOf 와 동일 판정 (SSOT 로 export 해 공유) */
-export function bookingDisplayStatus(b: ResourceBooking, now: Date): St {
-  if (b.status === 'cancelled') return 'cancelled'
-  if (b.returned_at)            return 'returned'
-  if (isResourceOverdue(b, now)) return 'overdue'
-  if (isOccupying(b, now))      return 'inuse'
-  return new Date(b.start_at) > now ? 'upcoming' : 'done'
-}
+const BADGE = RESOURCE_BOOKING_BADGE
 
 interface Props {
   booking:      ResourceBooking
@@ -120,6 +114,11 @@ export function ResourceBookingDetailModal({
             {st === 'overdue' && (
               <div style={{ background: '#FEE2E2', color: '#B91C1C', borderRadius: 8, padding: '7px 12px', fontSize: 12, marginBottom: 4 }}>
                 {fmtDueShort(b.return_due)} 반납 예정이었습니다 — 관리자에게 반납해 주세요
+              </div>
+            )}
+            {st === 'inuse' && now >= new Date(b.occupied_until) && (   /* ← [2026-08-27] 점유 끝 ~ 반납일 자정: 사용중이지만 반납 안내 */
+              <div style={{ background: '#FDF2F8', color: '#BE185D', borderRadius: 8, padding: '7px 12px', fontSize: 12, marginBottom: 4 }}>
+                {fmtDueShort(b.return_due)} 반납 예정입니다 — 관리자에게 반납해 주세요
               </div>
             )}
             {row(`${categoryName} 번호`,

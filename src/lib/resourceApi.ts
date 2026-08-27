@@ -15,9 +15,11 @@
  * ✅ 변경 이력
  *  - [2026-08-19] 최초 작성 (Phase 2A)
  *  - [2026-08-26] 기한 변경(updateResourceBookingPeriod) + 20260752 가드 에러 매핑 + 연체 조회
+ *  - [2026-08-27] 연체 조회 return_due<오늘(KST) 로 SSOT 정합 / 표시 조회에 미반납 건 항상 포함
  */
 
 import { supabase } from './supabase'
+import { todayStr } from '../utils/time'   // ← [2026-08-27] KST 오늘
 // ← [2026-08-19 Phase 4] 알림 발사 — send-notification invoke (fire-and-forget, 도서 *WithNotify 패턴)
 import type {
   ResourceBooking, ResourceBookingDraft, ResourceBookingPeriodDraft, ResourceCategory, ResourceItem,
@@ -50,8 +52,9 @@ export async function loadResourceItems(): Promise<ResourceItem[]> {
 
 /**
  * 표시에 필요한 confirmed 예약:
- * 아직 점유가 살아있거나(occupied_until ≥ now-7d 여유) 미래인 것.
- * 연체(점유 종료 후 미반납)도 카드에 보여야 하므로 과거 7일 버퍼를 둔다.
+ * 아직 점유가 살아있거나(occupied_until ≥ now-7d 여유) 미래인 것 + 미반납 건 전부.
+ * ← [2026-08-27] 미반납(사용중·연체)은 기간 무관하게 카드·헤더에 보여야 하므로 OR 로 항상 포함
+ *   (구: 7일 버퍼만 → 7일 넘은 연체가 카드에서 사라져 '예약가능'으로 오표기)
  */
 export async function loadResourceBookings(): Promise<ResourceBooking[]> {
   const since = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString()
@@ -59,7 +62,7 @@ export async function loadResourceBookings(): Promise<ResourceBooking[]> {
     .from('resource_bookings')
     .select('*')
     .eq('status', 'confirmed')
-    .gte('occupied_until', since)
+    .or(`occupied_until.gte.${since},returned_at.is.null`)
     .order('start_at', { ascending: true })
   if (error) throw new Error(error.message)
   return (data ?? []) as ResourceBooking[]
@@ -82,8 +85,9 @@ export async function loadResourceBookingsRange(fromISO: string, toISO: string):
 }
 
 /**
- * ← [2026-08-26] 미반납 연체 예약 — 점유구간이 끝났지만 실물이 돌아오지 않은 건.
+ * ← [2026-08-26] 미반납 연체 예약 — 실물이 돌아오지 않은 건.
  * 범위 조회는 occupied_until ≥ from 이라 오래된 연체가 빠질 수 있어 모달 개체 가용 판정용으로 별도 조회.
+ * ← [2026-08-27] 연체 판정 SSOT 와 동일: return_due < 오늘(KST). (구: occupied_until < now → 반납일 당일도 연체)
  */
 export async function loadOverdueResourceBookings(): Promise<ResourceBooking[]> {
   const { data, error } = await supabase
@@ -91,7 +95,7 @@ export async function loadOverdueResourceBookings(): Promise<ResourceBooking[]> 
     .select('*')
     .eq('status', 'confirmed')
     .is('returned_at', null)
-    .lt('occupied_until', new Date().toISOString())
+    .lt('return_due', todayStr())
   if (error) throw new Error(error.message)
   return (data ?? []) as ResourceBooking[]
 }

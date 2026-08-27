@@ -14,6 +14,7 @@
  *
  * ✅ 변경 이력
  *  - [2026-08-19] 최초 작성 (Phase 3)
+ *  - [2026-08-27] 행 상태 판정을 utils/resourceStatus SSOT 로 이관 (반납일 당일 '연체' 오표기 수정)
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -25,7 +26,7 @@ import {
   upsertResourceCategory, upsertResourceItem,
   type ResourceCategoryDraft, type ResourceItemDraft,
 } from '../../lib/resourceApi'
-import { fmtDueShort, fmtTimeShort, isOccupying, isResourceOverdue } from '../../utils/resourceStatus'
+import { bookingDisplayStatus, fmtDueShort, fmtTimeShort, type ResourceBookingDisplayStatus } from '../../utils/resourceStatus'   // ← [2026-08-27] 판정식 SSOT
 import { ResourceBookingModal } from '../resource/ResourceBookingModal'
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import { ResourceIcon, ResourceName, isSvgIcon } from '../resource/ResourceIcon'  // ← [2026-08-21] 카테고리 SVG 아이콘
@@ -35,15 +36,9 @@ const FONT = "'Pretendard', -apple-system, sans-serif"
 
 type SubTab = 'bookings' | 'items' | 'categories'
 
-/** 현황 행 파생 상태 */
-type RowStatus = 'upcoming' | 'inuse' | 'overdue' | 'returned' | 'cancelled'
-function rowStatus(b: ResourceBooking, now: Date): RowStatus {
-  if (b.status === 'cancelled') return 'cancelled'
-  if (b.returned_at)            return 'returned'
-  if (isResourceOverdue(b, now)) return 'overdue'
-  if (isOccupying(b, now))      return 'inuse'
-  return 'upcoming'
-}
+/** 현황 행 파생 상태 — ← [2026-08-27] 판정은 utils/resourceStatus.bookingDisplayStatus (SSOT) */
+type RowStatus = ResourceBookingDisplayStatus
+const rowStatus = bookingDisplayStatus
 const ROW_BADGE: Record<RowStatus, { label: string; bg: string; fg: string }> = {
   upcoming:  { label: '예약중',   bg: '#CBECFF', fg: '#111' },
   inuse:     { label: '사용중',   bg: '#FCE7F3', fg: '#BE185D' },

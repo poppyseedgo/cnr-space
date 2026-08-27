@@ -20,6 +20,7 @@
  *  - [2026-08-19] 최초 작성 (Phase 2A) / 2B 세그먼트 뷰 / Phase 4 내 예약 섹션 이관
  *  - [2026-08-26] 세로 스택 + 고정 예약 버튼 + 상세 모달 + 기한 변경 + 단일 로드 (미리보기 승인)
  *  - [2026-08-26] 헤더 배경 흰색 → 투명 (하단 hairline 제거, blur 로 스크롤 겹침 방지)
+ *  - [2026-08-27] '오늘 예약 있음' 날짜 비교 UTC slice → KST (kstDay)
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -28,7 +29,7 @@ import type { ResourceBooking, ResourceCategory, ResourceItem } from '../types/r
 import { adminConfirmResourceReturn, cancelResourceBooking, loadResourceBookings, loadResourceBookingsRange, loadResourceCategories,
          loadResourceItems } from '../lib/resourceApi'
 import { loadMyAdminRoles } from '../lib/api'   // ← [2026-08-26] 자원 관리자 판정 (30일 제한 면제·타인 예약 변경)
-import { currentHolderBooking, deriveItemStatus, fmtDueShort, fmtTimeShort, isResourceOverdue, nextBooking, type ResourceDisplayStatus } from '../utils/resourceStatus'
+import { currentHolderBooking, deriveItemStatus, fmtDueShort, fmtTimeShort, isResourceOverdue, kstDay, nextBooking, type ResourceDisplayStatus } from '../utils/resourceStatus'   // ← [2026-08-27] kstDay
 import { ResourceBookingModal } from '../components/resource/ResourceBookingModal'
 import { ResourceBookingDetailModal } from '../components/resource/ResourceBookingDetailModal'   // ← [2026-08-26]
 import { ResourceName } from '../components/resource/ResourceIcon'
@@ -146,7 +147,7 @@ export function ResourcePage({ users, authUserId, showToast, isMobile, onGoMyRes
               : `~${due} 반납 예정` }
     }
     const next = nextBooking(bookings, item.id, now)
-    if (next && next.start_at.slice(0, 10) === now.toISOString().slice(0, 10))
+    if (next && kstDay(new Date(next.start_at)) === kstDay(now))   // ← [2026-08-27] UTC slice → KST 날짜 (00~09시 오판 수정)
       return { line: `오늘 ${fmtTimeShort(next.start_at)}~${fmtTimeShort(next.end_at)} 예약 있음` }
     return { line: '오늘 예약 없음' }
   }
