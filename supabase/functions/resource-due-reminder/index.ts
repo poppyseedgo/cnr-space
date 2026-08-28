@@ -6,9 +6,12 @@
  * 판정 (KST 오늘 = today):
  *  ① resource_due_reminder — return_due == today, 미반납, confirmed
  *  ② resource_overdue      — return_due <  today, 미반납, confirmed (매일 반복 — 도서 book_overdue 관례)
+ *  ③ resource_hold_conflict — 시작일 == today 인 confirmed·미반납 건에 선행 미반납 홀더(같은 개체,
+ *     더 이른 시작, 이미 시작됨)가 존재 → 예약자+자원 관리자 1회 통지 (← [2026-08-28] 20260761 잔여 케이스.
+ *     홀드 게이트 ITEM_STILL_HELD 는 신규 생성만 막으므로, 게이트 이전에 생성된 예약은 여기서 대응)
  *
- * 멱등: resource_bookings.notified_due_on / notified_overdue_on 에 발송일(KST date) 마킹.
- *       같은 날 재실행·수동 호출해도 중복 발송 없음 (book_checkouts dedupe 컬럼 패턴).
+ * 멱등: resource_bookings.notified_due_on / notified_overdue_on / notified_hold_conflict_on 에
+ *       발송일(KST date) 마킹. 같은 날 재실행·수동 호출해도 중복 발송 없음 (book_checkouts dedupe 컬럼 패턴).
  *
  * 발송: send-notification 함수 invoke — 채널 게이트·수신자 해석·로그는 그쪽 SSOT.
  *       booking payload 의 *_kst 필드는 여기서 완성한 문자열 (수신측 재변환 금지 규칙).
@@ -25,6 +28,10 @@ const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 /** KST 오늘 'YYYY-MM-DD' — Intl(Asia/Seoul), UTC cron 이므로 반드시 변환 */
 function todayKST(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date())
+}
+/** ISO → KST 'YYYY-MM-DD' — start_at.slice(0,10) 은 UTC 날짜라 07~08시 KST 시작 건이 전날로 밀리는 버그 (← [2026-08-28] 수정) */
+function kstDate(iso: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date(iso))
 }
 /** ISO → 'H:MM' KST */
 function hmKST(iso: string): string {
@@ -81,7 +88,7 @@ Deno.serve(async (_req) => {
             user_name:      r.user_name,
             user_dept:      r.user_dept,
             resource_label: label,
-            use_time_kst:   `${fmtDue(r.start_at.slice(0, 10))} ${hmKST(r.start_at)}~${hmKST(r.end_at)}`,
+            use_time_kst:   `${fmtDue(kstDate(r.start_at))} ${hmKST(r.start_at)}~${hmKST(r.end_at)}`,
             return_due_kst: fmtDue(r.return_due),
             ...(isOverdue ? { days_overdue: daysBetween(r.return_due, today) } : {}),
           },
@@ -99,8 +106,79 @@ Deno.serve(async (_req) => {
     }
   }
 
-  console.log('[resource-due-reminder]', today, JSON.stringify(result))
-  return new Response(JSON.stringify({ ok: true, today, ...result }), {
+  // ── ③ resource_hold_conflict — 오늘 시작하는 건 중 선행 미반납 홀더 충돌 (← [2026-08-28]) ──
+  const holdResult = { holdConflictNotified: 0, holdSkipped: 0, holdFailed: 0 }
+  {
+    // KST 오늘 00:00 ~ 내일 00:00 (UTC ISO 경계)
+    const dayStartUtc = new Date(`${today}T00:00:00+09:00`).toISOString()
+    const dayEndUtc   = new Date(new Date(`${today}T00:00:00+09:00`).getTime() + 86400000).toISOString()
+
+    const { data: starting, error: e1 } = await supabase
+      .from('resource_bookings')
+      .select(`id, item_id, user_id, user_name, user_dept, start_at, end_at, return_due,
+               notified_hold_conflict_on,
+               resource_items ( label, resource_categories ( name ) )`)
+      .eq('status', 'confirmed')
+      .is('returned_at', null)
+      .gte('start_at', dayStartUtc)
+      .lt('start_at', dayEndUtc)
+    if (e1) {
+      console.error('[resource-due-reminder] hold-conflict 조회 실패:', e1.message)
+    } else if ((starting ?? []).length > 0) {
+      // 대상 개체들의 미반납·시작된 건 일괄 조회 → JS 매칭 (홀더 = 더 이른 시작, 이미 시작됨)
+      const itemIds = [...new Set((starting as any[]).map(r => r.item_id))]
+      const { data: held, error: e2 } = await supabase
+        .from('resource_bookings')
+        .select('id, item_id, user_name, return_due, start_at')
+        .eq('status', 'confirmed')
+        .is('returned_at', null)
+        .lte('start_at', new Date().toISOString())
+        .in('item_id', itemIds)
+      if (e2) {
+        console.error('[resource-due-reminder] 홀더 조회 실패:', e2.message)
+      } else {
+        for (const r of (starting ?? []) as any[]) {
+          if (r.notified_hold_conflict_on) { holdResult.holdSkipped++; continue }   // 1회성 멱등
+          const holder = (held ?? []).find((h: any) =>
+            h.item_id === r.item_id && h.id !== r.id && h.start_at < r.start_at)
+          if (!holder) continue
+
+          const item = Array.isArray(r.resource_items) ? r.resource_items[0] : r.resource_items
+          const cat  = item ? (Array.isArray(item.resource_categories) ? item.resource_categories[0] : item.resource_categories) : null
+          const label = `${cat?.name ?? '자원'} · ${item?.label ?? '-'}`
+
+          try {
+            const { error: fnErr } = await supabase.functions.invoke('send-notification', {
+              body: {
+                type: 'resource_hold_conflict',
+                booking: {
+                  id:             r.id,
+                  title:          label,
+                  user_id:        r.user_id,
+                  user_name:      r.user_name,
+                  user_dept:      r.user_dept,
+                  resource_label: label,
+                  use_time_kst:   `${fmtDue(kstDate(r.start_at))} ${hmKST(r.start_at)}~${hmKST(r.end_at)}`,
+                  return_due_kst: fmtDue(r.return_due),
+                  holder_note:    `이전 대여 미반납 (${(holder as any).user_name ?? '-'} · 반납 예정 ${fmtDue((holder as any).return_due)})`,
+                },
+              },
+            })
+            if (fnErr) throw fnErr
+            await supabase.from('resource_bookings')
+              .update({ notified_hold_conflict_on: today }).eq('id', r.id)
+            holdResult.holdConflictNotified++
+          } catch (e) {
+            console.error(`[resource-due-reminder] hold-conflict 발송 실패 booking=${r.id}:`, e)   // 미마킹 → 다음 실행 재시도
+            holdResult.holdFailed++
+          }
+        }
+      }
+    }
+  }
+
+  console.log('[resource-due-reminder]', today, JSON.stringify({ ...result, ...holdResult }))
+  return new Response(JSON.stringify({ ok: true, today, ...result, ...holdResult }), {
     headers: { 'Content-Type': 'application/json' },
   })
 })

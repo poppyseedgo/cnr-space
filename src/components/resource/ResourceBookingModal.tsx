@@ -30,8 +30,9 @@ import { ModalPortal } from '../common/ModalPortal'
 import { ModalCloseButton } from '../common/ModalCloseButton'
 import { Button } from '../common/Button'
 import { DatePickerPopup } from '../common/DatePickerPopup'   // ← [2026-08-26] 공통 날짜 선택 (회의실·도서·어드민 공용 SSOT)
-import { insertResourceBooking, loadOverdueResourceBookings, loadResourceBookingsRange,
+import { insertResourceBooking, loadHeldResourceBookings, loadResourceBookingsRange,
          updateResourceBookingPeriod } from '../../lib/resourceApi'
+import { isResourceOverdue } from '../../utils/resourceStatus'   // ← [2026-08-28] 홀드 게이트 연체 분류 SSOT
 import { ResourceName } from './ResourceIcon'
 import { nowMinutes, todayStr, timeToMin } from '../../utils/time'   // ← [2026-08-26] 회의실과 동일 KST 기준
 import type { ResourceBooking, ResourceCategory, ResourceItem } from '../../types/resource'
@@ -153,12 +154,14 @@ function DateText({ value, min, max, onChange, disabled }: {
   )
 }
 
-type ChipState = 'available' | 'conflict' | 'overdue' | 'maintenance'
+// ← [2026-08-28] 홀드 게이트: inuse/overdue = 미반납 홀더 존재 — 선택 날짜와 무관하게 비활성 (DB ITEM_STILL_HELD 미러)
+type ChipState = 'available' | 'conflict' | 'inuse' | 'overdue' | 'maintenance'
 const CHIP_BADGE: Record<ChipState, { label: string; bg: string; fg: string }> = {
-  available:   { label: '예약가능', bg: '#D5F0FF', fg: '#111' },
-  conflict:    { label: '예약중',   bg: '#FCE7F3', fg: '#BE185D' },
-  overdue:     { label: '연체',     bg: '#FEE2E2', fg: '#B91C1C' },
-  maintenance: { label: '점검중',   bg: '#E2E8F0', fg: '#64748B' },
+  available:   { label: '예약가능',        bg: '#D5F0FF', fg: '#111' },
+  conflict:    { label: '예약중',          bg: '#FCE7F3', fg: '#BE185D' },
+  inuse:       { label: '사용중 · 미반납', bg: '#FCE7F3', fg: '#BE185D' },
+  overdue:     { label: '연체 · 미반납',   bg: '#FEE2E2', fg: '#B91C1C' },
+  maintenance: { label: '점검중',          bg: '#E2E8F0', fg: '#64748B' },
 }
 
 export function ResourceBookingModal({
@@ -259,14 +262,14 @@ export function ResourceBookingModal({
 
   // ── 개체 가용 판정 — 선택 조합의 점유구간(DB compute_occupancy 동일 산식)과 겹치는 confirmed 건 ──
   const [rangeBookings, setRangeBookings] = useState<ResourceBooking[]>([])
-  const [overdueBookings, setOverdueBookings] = useState<ResourceBooking[]>([])
+  const [heldBookings, setHeldBookings] = useState<ResourceBooking[]>([])   // ← [2026-08-28] 미반납 홀더 (홀드 게이트)
   useEffect(() => {
     let alive = true
     Promise.all([
       loadResourceBookingsRange(atLocal(shiftYmd(useDate, -1), '00:00').toISOString(),
                                 atLocal(shiftYmd(effDue, 1), '00:00').toISOString()),
-      loadOverdueResourceBookings(),
-    ]).then(([r, o]) => { if (alive) { setRangeBookings(r); setOverdueBookings(o) } })
+      loadHeldResourceBookings(),
+    ]).then(([r, h]) => { if (alive) { setRangeBookings(r); setHeldBookings(h) } })
       .catch(e => showToast(e instanceof Error ? e.message : '예약 정보를 불러오지 못했습니다.'))
     return () => { alive = false }
   }, [useDate, effDue, showToast])
@@ -275,14 +278,19 @@ export function ResourceBookingModal({
   const occEnd   = atLocal(effDue, '19:00')   // ← [2026-08-27 20260760] 당일 반납도 19:00 까지 독점 (DB compute_occupancy 동일 산식)
   const chipState = (item: ResourceItem): ChipState => {
     if (item.status !== 'available') return 'maintenance'
-    if (overdueBookings.some(b => b.item_id === item.id && b.id !== editBooking?.id)) return 'overdue'
+    // ← [2026-08-28] 홀드 게이트 — 미반납 홀더가 있으면 선택 날짜와 무관하게 예약 불가 (DB ITEM_STILL_HELD 미러).
+    //   edit 모드는 신규 INSERT 가 아니라 게이트 비대상 (DB guard_update 도 동일) — 자기 건 연장 등 허용.
+    if (!isEdit) {
+      const holder = heldBookings.find(b => b.item_id === item.id && b.id !== editBooking?.id)
+      if (holder) return isResourceOverdue(holder, new Date()) ? 'overdue' : 'inuse'
+    }
     const hit = rangeBookings.some(b => b.item_id === item.id && b.id !== editBooking?.id
       && new Date(b.start_at) < occEnd && new Date(b.occupied_until) > occStart)
     return hit ? 'conflict' : 'available'
   }
   const states = useMemo(() => new Map(items.map(i => [i.id, chipState(i)])),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items, rangeBookings, overdueBookings, useDate, startHM, endHM, effDue])
+    [items, rangeBookings, heldBookings, useDate, startHM, endHM, effDue])
 
   // ── 회의실 ④ 개체 자동 해제 — 조합 변경으로 선택 개체가 불가해지면 해제 (초기 마운트·tick 보정 직후 skip) ──
   const isMounted = useRef(false)

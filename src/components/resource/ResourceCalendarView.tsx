@@ -15,22 +15,33 @@
  *  - [2026-08-19] 최초 작성 (Phase 2B)
  *  - [2026-08-26] B안 — 선택 날짜 패널 [이 날짜에 예약](과거 비활성) + 리스트 항목 클릭 → 상세, bookings props 화
  *  - [2026-08-27] 연체 확장 판정 SSOT(isResourceOverdue), 점유일 = occupied_until 날짜(조기 반납 반영), KST 오늘
+ *  - [2026-08-28] '반납됨' 규칙 통일 — 칩·점·뱃지 색 = 예약 상태 SSOT(반납됨 회색, 연체 건은 사용일 칩도 빨강),
+ *    선택일 리스트는 반납 확인 시각 표기
  */
 
 import { useMemo, useState } from 'react'
 import type { AppUser } from '../../types'
 import type { ResourceBooking, ResourceItem } from '../../types/resource'
-import { fmtDueShort, fmtTimeShort, isResourceOverdue, kstDay, occupiedUntilDay } from '../../utils/resourceStatus'   // ← [2026-08-27] 판정식 SSOT
+import { bookingDisplayStatus, fmtDueShort, fmtTimeShort, isResourceOverdue, kstDay, occupiedUntilDay } from '../../utils/resourceStatus'   // ← [2026-08-27] 판정식 SSOT
 import { ResourceName } from './ResourceIcon'  // ← [2026-08-21] 카테고리 SVG 아이콘 공통 표기
 
 const FONT = "'Pretendard', -apple-system, sans-serif"
 
-type DayMark = { b: ResourceBooking; kind: 'usage' | 'occupied' | 'overdue' }
-const MARK_STYLE = {
-  usage:    { bg: '#CBECFF', fg: '#111',    dot: '#60A5FA', label: '예약' },
-  occupied: { bg: '#FCE7F3', fg: '#BE185D', dot: '#F472B6', label: '점유' },
-  overdue:  { bg: '#FEE2E2', fg: '#B91C1C', dot: '#EF4444', label: '연체' },
-} as const
+// ← [2026-08-28] '반납됨' 규칙 통일 — 색은 예약의 현재 상태(SSOT bookingDisplayStatus)가,
+//   칩 텍스트는 날짜의 역할(kind)이 결정한다. 반납 완료 건은 어디서도 분홍·빨강 금지(회색 이력).
+type MarkState = 'upcoming' | 'inuse' | 'overdue' | 'returned'
+type DayMark = { b: ResourceBooking; kind: 'usage' | 'occupied' | 'overdue'; st: MarkState }
+const STATE_STYLE: Record<MarkState, { bg: string; fg: string; dot: string }> = {
+  upcoming: { bg: '#CBECFF', fg: '#111',    dot: '#60A5FA' },
+  inuse:    { bg: '#FCE7F3', fg: '#BE185D', dot: '#F472B6' },
+  overdue:  { bg: '#FEE2E2', fg: '#B91C1C', dot: '#EF4444' },
+  returned: { bg: '#F1F5F9', fg: '#64748B', dot: '#94A3B8' },
+}
+const STATE_LABEL: Record<MarkState, string> = {
+  upcoming: '예약', inuse: '사용중', overdue: '연체', returned: '반납됨',
+}
+/** 점유 확장일 칩 텍스트 — 역할 기준 (반납 완료만 '반납됨') */
+const occLabel = (m: DayMark) => m.st === 'returned' ? '반납됨' : m.kind === 'overdue' ? '연체' : '점유'
 
 interface Props {
   categoryItems: ResourceItem[]        // 선택 카테고리의 개체 (필터 기준)
@@ -83,15 +94,18 @@ export function ResourceCalendarView({
     for (const b of bookings) {
       if (!itemIds.has(b.item_id)) continue
       if (mineOnly && b.user_id !== authUserId) continue
+      const raw = bookingDisplayStatus(b, now)   // ← [2026-08-28] 상태 = 색 SSOT
+      if (raw === 'cancelled') continue
+      const st: MarkState = raw
       const startDay = localDay(b.start_at)
-      push(startDay, { b, kind: 'usage' })
+      push(startDay, { b, kind: 'usage', st })
       // 점유일: 사용일 다음날 ~ 점유 끝 날짜(occupied_until — 조기 반납이면 그 날까지만) ← [2026-08-27]
       const occEnd = occupiedUntilDay(b)
       for (let d = new Date(`${startDay}T00:00:00`); ;) {
         d.setDate(d.getDate() + 1)
         const day = ymd(d)
         if (day > occEnd) break
-        push(day, { b, kind: 'occupied' })
+        push(day, { b, kind: 'occupied', st })
       }
       // 연체일: 반납일 다음날 ~ 오늘 — 연체 판정 SSOT(반납일 KST 경과 && 미반납) ← [2026-08-27]
       if (isResourceOverdue(b, now)) {
@@ -99,7 +113,7 @@ export function ResourceCalendarView({
           d.setDate(d.getDate() + 1)
           const day = ymd(d)
           if (day > today) break
-          push(day, { b, kind: 'overdue' })
+          push(day, { b, kind: 'overdue', st })
         }
       }
     }
@@ -172,18 +186,18 @@ export function ResourceCalendarView({
               {isMobile ? (
                 <div style={{ lineHeight: '8px', marginTop: 2 }}>
                   {marks.slice(0, 3).map((m, j) => (
-                    <span key={j} style={{ color: MARK_STYLE[m.kind].dot, fontSize: 8, marginRight: 1 }}>●</span>
+                    <span key={j} style={{ color: STATE_STYLE[m.st].dot, fontSize: 8, marginRight: 1 }}>●</span>
                   ))}
                 </div>
               ) : (
                 <>
                   {marks.slice(0, 3).map((m, j) => (
-                    <div key={j} style={{ background: MARK_STYLE[m.kind].bg, color: MARK_STYLE[m.kind].fg,
+                    <div key={j} style={{ background: STATE_STYLE[m.st].bg, color: STATE_STYLE[m.st].fg,
                                           borderRadius: 5, padding: '1px 4px', marginTop: 2, fontSize: 10,
                                           overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
                       <ResourceName icon={categoryIcon} size={10} gap={3}>{itemLabel(m.b.item_id)}</ResourceName> {m.kind === 'usage'
                         ? nameOf(m.b).split(' · ')[0]
-                        : MARK_STYLE[m.kind].label}
+                        : occLabel(m)}
                     </div>
                   ))}
                   {marks.length > 3 && (
@@ -220,15 +234,17 @@ export function ResourceCalendarView({
                 <div key={j} role="button" onClick={() => onBookingClick(m.b)}
                      style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8,
                               padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>{/* ← [2026-08-26] 상세 */}
-                  <span style={{ background: MARK_STYLE[m.kind].bg, color: MARK_STYLE[m.kind].fg,
+                  <span style={{ background: STATE_STYLE[m.st].bg, color: STATE_STYLE[m.st].fg,
                                  borderRadius: 4, fontSize: 10, padding: '1px 5px', marginRight: 6 }}>
-                    {m.kind === 'usage' ? '예약' : MARK_STYLE[m.kind].label}
+                    {STATE_LABEL[m.st]}{/* ← [2026-08-28] 뱃지 = 예약 상태 (사용중·연체·반납됨) */}
                   </span>
                   <ResourceName icon={categoryIcon} size={12} gap={4}>{itemLabel(m.b.item_id)}</ResourceName> · {nameOf(m.b)}{' '}
                   <span style={{ color: '#64748B' }}>
-                    {m.kind === 'usage'
-                      ? `${fmtTimeShort(m.b.start_at)}~${fmtTimeShort(m.b.end_at)}`
-                      : `~${fmtDueShort(m.b.return_due)} 반납`}
+                    {m.st === 'returned'
+                      ? `${m.kind === 'usage' ? `${fmtTimeShort(m.b.start_at)}~${fmtTimeShort(m.b.end_at)} · ` : ''}${fmtTimeShort(m.b.returned_at!)} 반납 확인`
+                      : m.kind === 'usage'
+                        ? `${fmtTimeShort(m.b.start_at)}~${fmtTimeShort(m.b.end_at)}`
+                        : `~${fmtDueShort(m.b.return_due)} 반납`}
                     {m.b.memo ? ` · ${m.b.memo}` : ''}
                   </span>
                 </div>

@@ -128,6 +128,7 @@ interface EmailBookingData {
   book_title?: string; due_date_kst?: string; days_overdue?: number; checkout_date_kst?: string
   // ← [2026-08-19 Phase 4] 자원예약 — 서버 완성 KST 문자열, 재변환 금지 (도서와 동일 규칙)
   resource_label?: string; use_time_kst?: string; return_due_kst?: string
+  holder_note?: string   // ← [2026-08-28] resource_hold_conflict — 선행 미반납 대여 건 요약 (서버 완성 문자열)
   // ← [2026-08-10 v2] 노쇼 이용 제재 (20260745) — 서버 완성 KST 문자열, 재변환 금지
   noshow_count?: number; penalty_starts_kst?: string; penalty_ends_kst?: string
 }
@@ -708,6 +709,7 @@ function buildInAppBody(type: NotificationType, d: InAppBookingData): string {
     const parts = [d.resource_label]
     if (d.use_time_kst)      parts.push(d.use_time_kst)
     if (d.return_due_kst)    parts.push(`반납일 ${d.return_due_kst}`)
+    if (d.holder_note)       parts.push(d.holder_note)   // ← [2026-08-28] 미반납 선행 건 안내
     if (typeof d.days_overdue === 'number' && d.days_overdue > 0) parts.push(`연체 ${d.days_overdue}일`)
     if (d.cancel_reason)     parts.push(d.cancel_reason)
     return parts.join(' · ')

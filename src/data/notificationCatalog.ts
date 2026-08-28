@@ -149,6 +149,10 @@ export const NOTIFICATION_CATALOG: NotifCatalogItem[] = [
     trigger: '반납일 경과 09:00 KST 매일 반복 (resource-due-reminder)', audience: 'resource_admins_and_owner',
     channels: ['email','inapp'], toAdmins: true,
     note: '★ 예약자 + 자원 담당(admin_roles resource/super). 수신자 지정 시 관리자 집합만 대체 — 예약자는 항상 수신.' },
+  { type: 'resource_hold_conflict', label: '미반납 자원 예약 도래', group: '자원예약',   // ← [2026-08-28] 홀드 게이트 잔여 케이스
+    trigger: '예약 시작일 09:00 KST — 선행 대여 건이 미반납이면 1회 (resource-due-reminder)', audience: 'resource_admins_and_owner',
+    channels: ['email','inapp'], toAdmins: true,
+    note: '★ 홀드 게이트(ITEM_STILL_HELD) 이전에 생성된 예약만 해당 — 시작일 도래 시 예약자 + 자원 담당에게 통지.' },
   { type: 'book_checkout_created', label: '대여 접수(관리자)', group: '도서관',
     trigger: '대여·예약이 생성된 즉시',              audience: 'book_admins',
     channels: ['email','inapp'], toAdmins: true,

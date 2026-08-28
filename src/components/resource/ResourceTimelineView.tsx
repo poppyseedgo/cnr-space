@@ -16,6 +16,7 @@
  *  - [2026-08-26] 세로 스택 레이아웃 — bookings props 화, 사용 블록 클릭 → 상세 모달(onBookingClick)
  *  - [2026-08-27] 헤더·띠·블록 색 판정을 utils/resourceStatus SSOT 로 이관 (반납일 당일 연체 오표기·과거 사용블록 파랑 수정), 점유 띠 = occupied_until 날짜
  *  - [2026-08-27] 반납 확인 전 무조건 점유 — 당일 건 사용시간 뒤 점유 띠, 반납 완료 건 이력 유지(반납 시각까지 띠)
+ *  - [2026-08-28] '반납됨' 규칙 통일 — 반납 완료 띠 회색(이력)·복수일 분기에도 반납 시각 컷 적용, 범례 갱신
  */
 
 import { useMemo } from 'react'
@@ -113,12 +114,16 @@ export function ResourceTimelineView({
     if (usage) return { kind: 'usage', b: usage, first: new Date(usage.start_at) >= slotStart || idx === 0 }
 
     // ② 점유 띠 — 반납 확인 전까지 점유 (고지 확정 2026-08-27)
-    //    복수일: 사용일 < date ≤ 점유 끝 날짜 / 당일: 사용시간 뒤 슬롯 (반납 확인됐으면 반납 시각까지만)
+    //    ← [2026-08-28] 당일·복수일 분기 통합: 반납 확인된 건은 어느 날짜든 반납 시각 슬롯에서 컷
+    //    (구: 복수일 분기가 날짜만 비교해 반납 후에도 하루 종일 띠가 남던 버그)
     const occ = mine.find(b => {
       const useDay = localDay(b.start_at)
-      if (useDay < date) return date <= occupiedUntilDay(b)
-      if (useDay !== date || new Date(b.end_at) > slotStart) return false
-      return b.returned_at ? new Date(b.returned_at) > slotStart : true
+      if (useDay > date) return false
+      if (useDay === date && new Date(b.end_at) > slotStart) return false   // 사용시간 구간은 ① usage 담당
+      if (date > occupiedUntilDay(b)) return false                          // 미반납=반납일까지 / 반납됨=반납일(그날)까지
+      if (b.returned_at && localDay(b.returned_at) === date
+          && new Date(b.returned_at) <= slotStart) return false             // 반납 시각 이후 슬롯은 빈칸(예약 가능)
+      return true
     })
     if (occ) return { kind: 'occupied', b: occ, first: idx === 0 || (localDay(occ.start_at) === date && new Date(occ.end_at) > new Date(slotStart.getTime() - step * 60000)) }
 
@@ -174,7 +179,7 @@ export function ResourceTimelineView({
       </div>
 
       <p style={{ margin: '8px 0 0', fontSize: 11, color: '#64748B' }}>
-        분홍 음영 = 반납일까지 점유 · 빗금 = 연체 점유 · 빈 칸을 {isMobile ? '탭' : '클릭'}하면 그 시간으로 예약이 열리고, 예약 블록을 {isMobile ? '탭' : '클릭'}하면 상세가 열립니다
+        분홍 음영 = 반납 확인 전 점유 · 빗금 = 연체 · 회색 = 반납 완료 이력 · 빈 칸을 {isMobile ? '탭' : '클릭'}하면 그 시간으로 예약이 열리고, 예약 블록을 {isMobile ? '탭' : '클릭'}하면 상세가 열립니다
       </p>
     </div>
   )
@@ -222,14 +227,17 @@ function FragmentRow({ hm, idx, items, cellOf, nameOf, deptOf, rowH, onSlotClick
             </div>
           )
         }
-        if (c.kind === 'occupied')
+        if (c.kind === 'occupied') {
+          // ← [2026-08-28] '반납됨' 통일 — 반납 완료 건은 회색 이력, 미반납만 분홍 점유 (색 = 예약 상태 SSOT)
+          const ret = !!c.b.returned_at
           return (
             <div key={item.id} role="button" onClick={() => onBookingClick(c.b)}
-                 style={{ ...base, background: '#FDF2F8', padding: '2px 6px',
-                          fontSize: 10, color: '#BE185D', cursor: 'pointer' }}>
-              {c.first && <>{nameOf(c.b)} · {c.b.returned_at ? `${fmtTimeShort(c.b.returned_at)} 반납 확인` : `~${fmtDueShort(c.b.return_due)} 반납 점유`}</>}
+                 style={{ ...base, background: ret ? '#F1F5F9' : '#FDF2F8', padding: '2px 6px',
+                          fontSize: 10, color: ret ? '#64748B' : '#BE185D', cursor: 'pointer' }}>
+              {c.first && <>{nameOf(c.b)} · {ret ? `${fmtTimeShort(c.b.returned_at!)} 반납 확인` : `~${fmtDueShort(c.b.return_due)} 반납 점유`}</>}
             </div>
           )
+        }
         if (c.kind === 'overdue')
           return (
             <div key={item.id} role="button" onClick={() => onBookingClick(c.b)}

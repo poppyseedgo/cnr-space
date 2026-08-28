@@ -120,6 +120,7 @@ export type NotificationType =
   | 'resource_due_reminder'                // 반납일 당일 09:00 KST → 예약자
   | 'resource_overdue'                     // 연체 09:00 KST 매일 반복 → 예약자+자원 관리자
   | 'resource_booking_period_changed'      // ← [2026-08-26] 기간(사용시간·반납일) 변경 → 예약자 (관리자 변경 시 라벨 접미)
+  | 'resource_hold_conflict'               // ← [2026-08-28] 시작일 도래 시 선행 건 미반납 09:00 KST 1회 → 예약자+자원 관리자
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 2. 수신자 규칙
@@ -852,6 +853,35 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
         ...BANNER_PRESETS.info,
         title: '예약 기간이 변경되었습니다.',
         body:  '변경된 사용시간과 반납일은 본문을 확인해 주세요. 반납일이 사용일과 다르면 반납일 19:00까지 자원이 점유됩니다.',
+      },
+    },
+    cta: null,
+    isCancelledStyle: false,
+  },
+
+  // ← [2026-08-28] 홀드 게이트(20260761 ITEM_STILL_HELD) 잔여 케이스 —
+  //   게이트 이전에 이미 생성돼 있던 예약의 시작일이 도래했는데 선행 대여 건이
+  //   아직 반납 확인되지 않은 경우. 생성 시점엔 논리적으로 차단 불가하므로
+  //   시작일 09:00 KST 에 예약자 + 자원 담당 관리자에게 1회 통지한다 (멱등: notified_hold_conflict_on).
+  resource_hold_conflict: {
+    subjectTag:         '[예약안내]',
+    headerLabel:        '예약한 자원이 아직 반납되지 않았습니다',
+    headerColor:        COLORS.AMBER,
+    recipients:         'resource_admins_and_owner',
+    inappType:          'resource_hold_conflict',
+    inappTitleBooker:   '예약한 자원이 아직 반납되지 않았습니다',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '미반납 자원에 다음 예약이 시작됩니다',
+    contextBanner: {
+      booker: {
+        ...BANNER_PRESETS.warning,
+        title: '이전 대여 건이 아직 반납되지 않았습니다.',
+        body:  '반납 확인 전까지 자원 수령이 어려울 수 있습니다. 관리자가 회수를 진행 중이니 이용에 참고해 주세요.',
+      },
+      admin: {
+        ...BANNER_PRESETS.warning,
+        title: '미반납 자원에 다음 예약이 시작됩니다.',
+        body:  '이전 대여자에게 회수 후 어드민 자원 관리 화면에서 반납 확인을 진행해 주세요.',
       },
     },
     cta: null,

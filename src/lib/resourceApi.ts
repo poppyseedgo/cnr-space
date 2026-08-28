@@ -85,17 +85,18 @@ export async function loadResourceBookingsRange(fromISO: string, toISO: string):
 }
 
 /**
- * ← [2026-08-26] 미반납 연체 예약 — 실물이 돌아오지 않은 건.
- * 범위 조회는 occupied_until ≥ from 이라 오래된 연체가 빠질 수 있어 모달 개체 가용 판정용으로 별도 조회.
- * ← [2026-08-27] 연체 판정 SSOT 와 동일: return_due < 오늘(KST). (구: occupied_until < now → 반납일 당일도 연체)
+ * ← [2026-08-28] 실물 홀드 중(미반납 홀더) 예약 — 시작됐고 반납 확인 전인 confirmed 전부.
+ * 홀드 게이트 운영 규칙: 이 건이 존재하는 개체는 날짜와 무관하게 신규 예약 불가 (DB ITEM_STILL_HELD 미러).
+ * 연체 여부 분류는 SSOT(isResourceOverdue)가 담당하므로 여기선 조회만 한다.
+ * (구 loadOverdueResourceBookings 대체 — 연체뿐 아니라 사용중 홀더도 게이트 대상)
  */
-export async function loadOverdueResourceBookings(): Promise<ResourceBooking[]> {
+export async function loadHeldResourceBookings(): Promise<ResourceBooking[]> {
   const { data, error } = await supabase
     .from('resource_bookings')
     .select('*')
     .eq('status', 'confirmed')
     .is('returned_at', null)
-    .lt('return_due', todayStr())
+    .lte('start_at', new Date().toISOString())
   if (error) throw new Error(error.message)
   return (data ?? []) as ResourceBooking[]
 }
@@ -121,6 +122,9 @@ function resourceErrorMessage(code: string | undefined, message: string): string
     return '반납일은 오늘 이후여야 합니다.'
   if (message.includes('DATE_LIMIT_30D'))
     return '예약은 오늘부터 30일 이내만 가능합니다.'
+  // ← [2026-08-28] 20260761 홀드 게이트 — 반납 확인 전 자원은 예약 가능한 상태가 아님 (운영 규칙)
+  if (message.includes('ITEM_STILL_HELD'))
+    return '아직 반납 확인되지 않은 자원입니다. 반납 확인 후 예약할 수 있습니다.'
   if (message.includes('START_LOCKED'))
     return '이미 시작한 예약은 시작 시간을 변경할 수 없습니다.'
   if (message.includes('BOOKING_CLOSED'))
