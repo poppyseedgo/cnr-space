@@ -3,8 +3,8 @@
  *
  * 구성 (미리보기 승인분):
  *  - 서브탭 3: 예약 현황 / 개체 관리 / 카테고리 관리
- *  - 대리예약 = 현황 우상단 버튼 (별도 탭 아님) — 예약자·개체 선택 후
- *    ResourceBookingModal(booker override) 재사용
+ *  - 대리예약 = 현황 우상단 버튼 (별도 탭 아님) — 개체 선택 후 ResourceBookingModal 재사용.
+ *    ← [2026-09-02] 예약자 선택은 모달 내부 '예약자' Row 로 이동(회의실 동일 SSOT) — 1단계는 개체 선택만
  *  - 반납 확인 = 사용중·연체 행 핵심 액션 (ConfirmDialog, 실물 수령 확인)
  *  - 관리자 취소 = 시작 전 '예약중' 건만, 사유 입력 → memo '[관리자취소]' 기록
  *  - 개체 삭제 없음 — '폐기(retired)' 단일화 (고지 확정, 도서관 lost 패턴)
@@ -15,6 +15,7 @@
  * ✅ 변경 이력
  *  - [2026-08-19] 최초 작성 (Phase 3)
  *  - [2026-08-27] 행 상태 판정을 utils/resourceStatus SSOT 로 이관 (반납일 당일 '연체' 오표기 수정)
+ *  - [2026-09-02] 대리예약 1단계 예약자 검색 제거 → 모달 내부 '예약자' Row 로 이관 (snapshot/booker prop 제거, me/users 전달)
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -27,7 +28,7 @@ import {
   type ResourceCategoryDraft, type ResourceItemDraft,
 } from '../../lib/resourceApi'
 import { bookingDisplayStatus, fmtDueShort, fmtTimeShort, type ResourceBookingDisplayStatus } from '../../utils/resourceStatus'   // ← [2026-08-27] 판정식 SSOT
-import { ResourceBookingModal } from '../resource/ResourceBookingModal'
+import { ResourceBookingModal, bookerOfBooking } from '../resource/ResourceBookingModal'
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import { ResourceIcon, ResourceName, isSvgIcon } from '../resource/ResourceIcon'  // ← [2026-08-21] 카테고리 SVG 아이콘
 import { ModalPortal } from '../common/ModalPortal'
@@ -85,10 +86,14 @@ export function ResourceAdminPanel({ users, currentUserId, showToast, isMobile }
   const [cancelReason, setCancelReason] = useState('')
   const [busy, setBusy]                 = useState(false)
   const [proxyOpen, setProxyOpen]       = useState(false)
-  const [proxyUser, setProxyUser]       = useState<AppUser | null>(null)
   const [proxyItem, setProxyItem]       = useState<ResourceItem | null>(null)
-  const [proxySearch, setProxySearch]   = useState('')
-  const [proxyBooking, setProxyBooking] = useState<{ item: ResourceItem; cat: ResourceCategory; user: AppUser } | null>(null)
+  // ← [2026-09-02] proxyUser/proxySearch 제거 — 예약자 선택은 ResourceBookingModal '예약자' Row (SSOT, canPickUser 적용)
+  const [proxyBooking, setProxyBooking] = useState<{ item: ResourceItem; cat: ResourceCategory } | null>(null)
+  // ← [2026-09-02] 로그인 관리자 = 모달 기본 예약자(본인) — 모달 안에서 타인 지정
+  const me = useMemo(() => {
+    const u = users.find(x => x.user_id === currentUserId)
+    return { user_id: currentUserId, email: u?.email ?? '', name: u?.name ?? '', dept: u?.dept ?? '', avatar_url: u?.avatar_url ?? null }
+  }, [users, currentUserId])
   const [editing, setEditing]           = useState<ResourceBooking | null>(null)   // ← [2026-08-26] 관리자 기한 변경
 
   const reload = useCallback(async (days = fDays) => {
@@ -172,7 +177,7 @@ export function ResourceAdminPanel({ users, currentUserId, showToast, isMobile }
                     <option key={k} value={k}>{ROW_BADGE[k].label}</option>)}
                 </select>
                 <span style={{ flex: 1 }} />
-                <button style={btnDark} onClick={() => { setProxyUser(null); setProxyItem(null); setProxySearch(''); setProxyOpen(true) }}>+ 대리예약</button>
+                <button style={btnDark} onClick={() => { setProxyItem(null); setProxyOpen(true) }}>+ 대리예약</button>
                 <button style={{ ...selS, cursor: 'pointer' }} onClick={exportCsv}>CSV</button>
               </div>
 
@@ -287,7 +292,7 @@ export function ResourceAdminPanel({ users, currentUserId, showToast, isMobile }
         </ModalPortal>
       )}
 
-      {/* 대리예약 1단계 — 예약자·개체 선택 */}
+      {/* 대리예약 1단계 — 개체 선택 (예약자는 2단계 모달 내부) */}
       {proxyOpen && (
         <ModalPortal>
           <div onClick={() => setProxyOpen(false)}
@@ -298,37 +303,10 @@ export function ResourceAdminPanel({ users, currentUserId, showToast, isMobile }
                        padding: '22px 24px 20px', fontFamily: FONT }}>
               <p style={{ fontSize: 16, fontWeight: 600, margin: '0 0 12px' }}>대리예약</p>
 
-              <p style={{ fontSize: 12, color: '#6B7684', margin: '0 0 6px' }}>예약자</p>
-              {proxyUser ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <span style={{ background: '#F2F4F6', borderRadius: 8, padding: '6px 10px', fontSize: 13 }}>
-                    {proxyUser.name} · {proxyUser.dept}
-                  </span>
-                  <button style={{ ...btnLine, border: 'none', color: '#8B95A1' }} onClick={() => setProxyUser(null)}>변경</button>
-                </div>
-              ) : (
-                <div style={{ marginBottom: 12 }}>
-                  <input style={{ ...inputS, width: '100%', boxSizing: 'border-box' }} value={proxySearch}
-                    onChange={e => setProxySearch(e.target.value)} placeholder="이름·부서·이메일 검색" />
-                  {proxySearch.trim() && (
-                    <div style={{ ...card, marginTop: 6, maxHeight: 160, overflowY: 'auto' }}>
-                      {users
-                        .filter(u => (u.employment_status ?? 'active') === 'active')
-                        .filter(u => [u.name, u.dept, u.email].join(' ').toLowerCase().includes(proxySearch.trim().toLowerCase()))
-                        .slice(0, 8)
-                        .map(u => (
-                          <button key={u.user_id} onClick={() => setProxyUser(u)}
-                            style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none',
-                                     border: 'none', borderBottom: '1px solid #F1F5F9', padding: '8px 10px',
-                                     fontSize: 13, fontFamily: FONT, cursor: 'pointer' }}>
-                            {u.name} <span style={{ color: '#64748B' }}>· {u.dept}</span>
-                          </button>
-                        ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
+              {/* ← [2026-09-02] 예약자 검색 블록 제거 — 다음 단계 모달의 '예약자' Row 에서 지정 (본인 기본) */}
+              <p style={{ fontSize: 12, color: '#6B7684', margin: '0 0 10px', lineHeight: 1.5 }}>
+                자원을 선택하면 예약 모달이 열립니다. 예약자는 모달에서 지정할 수 있습니다 (기본: 본인).
+              </p>
               <p style={{ fontSize: 12, color: '#6B7684', margin: '0 0 6px' }}>자원</p>
               <select style={{ ...selS, width: '100%', marginBottom: 16 }}
                 value={proxyItem?.id ?? ''} aria-label="자원 선택"
@@ -344,14 +322,14 @@ export function ResourceAdminPanel({ users, currentUserId, showToast, isMobile }
 
               <div style={{ display: 'flex', gap: 8 }}>
                 <button style={{ ...btnLine, flex: 1, padding: '10px 0' }} onClick={() => setProxyOpen(false)}>닫기</button>
-                <button style={{ ...btnDark, flex: 1, padding: '10px 0', opacity: proxyUser && proxyItem ? 1 : 0.5 }}
-                  disabled={!proxyUser || !proxyItem}
+                <button style={{ ...btnDark, flex: 1, padding: '10px 0', opacity: proxyItem ? 1 : 0.5 }}
+                  disabled={!proxyItem}
                   onClick={() => {
                     const cat = categories.find(c => c.id === proxyItem!.category_id)
                     if (!cat) return
                     setProxyOpen(false)
-                    setProxyBooking({ item: proxyItem!, cat, user: proxyUser! })
-                  }}>다음 — 일정 선택</button>
+                    setProxyBooking({ item: proxyItem!, cat })
+                  }}>다음 — 예약자·일정 선택</button>
               </div>
             </div>
           </div>
@@ -366,7 +344,7 @@ export function ResourceAdminPanel({ users, currentUserId, showToast, isMobile }
           <ResourceBookingModal
             category={cat} items={items.filter(i => i.category_id === cat.id && i.status !== 'retired')}
             editBooking={editing} isAdmin
-            snapshot={{ user_name: editing.user_name ?? '', user_dept: editing.user_dept ?? '' }}
+            me={bookerOfBooking(editing)}   // ← [2026-09-02] edit 은 예약자 잠금 — 예약 소유자
             showToast={showToast}
             onDone={() => { setEditing(null); void reload() }}
             onClose={() => setEditing(null)}
@@ -374,13 +352,12 @@ export function ResourceAdminPanel({ users, currentUserId, showToast, isMobile }
         )
       })()}
 
-      {/* 대리예약 2단계 — Figma 예약 모달 재사용 (booker override) */}
+      {/* 대리예약 2단계 — Figma 예약 모달 재사용. ← [2026-09-02] 예약자는 모달 '예약자' Row 에서 지정 (me/users 전달) */}
       {proxyBooking && (
         <ResourceBookingModal
           initialItem={proxyBooking.item} category={proxyBooking.cat} isAdmin
           items={items.filter(i => i.category_id === proxyBooking.cat.id && i.status !== 'retired')}
-          snapshot={{ user_name: proxyBooking.user.name, user_dept: proxyBooking.user.dept }}
-          booker={{ user_id: proxyBooking.user.user_id, email: proxyBooking.user.email }}
+          me={me} users={users}
           showToast={showToast}
           onDone={() => { setProxyBooking(null); void reload() }}
           onClose={() => setProxyBooking(null)}

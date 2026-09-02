@@ -8,6 +8,7 @@
  * ✅ 변경 이력
  *  - [2026-08-19] 최초 작성 (Phase 4 — 미리보기 승인분)
  *  - [2026-08-26] 행 클릭 → 상세 모달(ResourceBookingDetailModal) → [예약 변경] edit 모달 / [예약 취소]
+ *  - [2026-09-02] edit 모달 snapshot prop → me={bookerOfBooking(editing)} (모달 props 개편 정합)
  *      (취소 버튼은 행에서 제거 — 상세 모달로 단일화, 고지 지시)
  */
 
@@ -21,7 +22,7 @@ import { bookingDisplayStatus, fmtDueShort, fmtTimeShort, type ResourceBookingDi
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import { ResourceName } from './ResourceIcon'  // ← [2026-08-21] 카테고리 SVG 아이콘 공통 표기
 import { ResourceBookingDetailModal, RESOURCE_BOOKING_BADGE } from './ResourceBookingDetailModal'   // ← [2026-08-26] / [2026-08-27] 뱃지 SSOT
-import { ResourceBookingModal } from './ResourceBookingModal'               // ← [2026-08-26] edit 모드
+import { ResourceBookingModal, bookerOfBooking } from './ResourceBookingModal'               // ← [2026-08-26] edit 모드
 
 const FONT = "'Pretendard', -apple-system, sans-serif"
 
@@ -132,7 +133,7 @@ export function MyResourceBookings({ authUserId, showToast, isMobile }: Props) {
           <ResourceBookingModal
             category={cat} items={items.filter(i => i.category_id === cat.id && i.status !== 'retired')}
             editBooking={editing}
-            snapshot={{ user_name: editing.user_name ?? '', user_dept: editing.user_dept ?? '' }}
+            me={bookerOfBooking(editing)}   // ← [2026-09-02] snapshot prop 제거 — edit 은 예약자 잠금(예약 소유자)
             showToast={showToast}
             onDone={() => { setEditing(null); setDetail(null); reload() }}
             onClose={() => setEditing(null)}

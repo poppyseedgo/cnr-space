@@ -21,6 +21,7 @@
  *  - [2026-08-26] 세로 스택 + 고정 예약 버튼 + 상세 모달 + 기한 변경 + 단일 로드 (미리보기 승인)
  *  - [2026-08-26] 헤더 배경 흰색 → 투명 (하단 hairline 제거, blur 로 스크롤 겹침 방지)
  *  - [2026-08-27] '오늘 예약 있음' 날짜 비교 UTC slice → KST (kstDay)
+ *  - [2026-09-02] 생성 모달 me/users 전달 — 관리자 예약자 지정(대리예약)을 모달 내부로 (snapshot prop 제거)
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -30,7 +31,7 @@ import { adminConfirmResourceReturn, cancelResourceBooking, loadResourceBookings
          loadResourceItems } from '../lib/resourceApi'
 import { loadMyAdminRoles } from '../lib/api'   // ← [2026-08-26] 자원 관리자 판정 (30일 제한 면제·타인 예약 변경)
 import { currentHolderBooking, deriveItemStatus, fmtDueShort, fmtTimeShort, isResourceOverdue, kstDay, nextBooking, type ResourceDisplayStatus } from '../utils/resourceStatus'   // ← [2026-08-27] kstDay
-import { ResourceBookingModal } from '../components/resource/ResourceBookingModal'
+import { ResourceBookingModal, bookerOfBooking } from '../components/resource/ResourceBookingModal'
 import { ResourceBookingDetailModal } from '../components/resource/ResourceBookingDetailModal'   // ← [2026-08-26]
 import { ResourceName } from '../components/resource/ResourceIcon'
 import { ResourceTimelineView } from '../components/resource/ResourceTimelineView'
@@ -73,6 +74,11 @@ export function ResourcePage({ users, authUserId, showToast, isMobile, onGoMyRes
   const [loading, setLoading]       = useState(true)
   const [catId, setCatId]           = useState<number | null>(null)
   const [isAdmin, setIsAdmin]       = useState(false)
+  // ← [2026-09-02] 로그인 사용자 → 모달 기본 예약자(본인). users 미로드/부재 시 빈 스냅샷(기존 동작 동일)
+  const me = useMemo(() => {
+    const u = users.find(x => x.user_id === authUserId)
+    return { user_id: authUserId, email: u?.email ?? '', name: u?.name ?? '', dept: u?.dept ?? '', avatar_url: u?.avatar_url ?? null }
+  }, [users, authUserId])
   const todayYmd = todayStr()
   const [tlDate, setTlDate] = useState(todayYmd)
   const [calYM, setCalYM]   = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() } })
@@ -283,10 +289,7 @@ export function ResourcePage({ users, authUserId, showToast, isMobile, onGoMyRes
       {prefill && activeCat && (
         <ResourceBookingModal
           category={activeCat} items={visibleItems} initialItem={prefill.item ?? null} isAdmin={isAdmin}
-          snapshot={{
-            user_name: users.find(u => u.user_id === authUserId)?.name ?? '',
-            user_dept: users.find(u => u.user_id === authUserId)?.dept ?? '',
-          }}
+          me={me} users={users}   // ← [2026-09-02] 예약자 Row — 관리자는 모달 안에서 타인 지정(대리예약), 스냅샷은 모달이 파생
           initialDate={prefill.date} initialStartHM={prefill.startHM}
           showToast={showToast}
           onDone={afterChange}
@@ -320,7 +323,7 @@ export function ResourcePage({ users, authUserId, showToast, isMobile, onGoMyRes
           <ResourceBookingModal
             category={cat} items={items.filter(i => i.category_id === cat.id && i.status !== 'retired')}
             editBooking={editing} isAdmin={isAdmin}
-            snapshot={{ user_name: editing.user_name ?? '', user_dept: editing.user_dept ?? '' }}
+            me={bookerOfBooking(editing)}   // ← [2026-09-02] edit 은 예약자 잠금 — 예약 소유자
             showToast={showToast}
             onDone={afterChange}
             onClose={() => setEditing(null)}

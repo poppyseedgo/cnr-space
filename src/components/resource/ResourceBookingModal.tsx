@@ -16,6 +16,7 @@
  *    프론트 판정은 안내용 — 겹침 방어는 DB EXCLUDE, 시간 규칙은 20260752 트리거가 최종.
  *  - edit 모드: 개체·예약자 잠금, 시작 후 건은 사용일·시작시간 잠금(START_LOCKED), 종료는 현재 이후로 변경(PAST_END), 반납일 앞당기기 가능(min = 오늘)
  *  - allow_multi_day=false → 반납일 고정(사용일과 동일)
+ *  - 예약자: 기본 본인. 관리자는 생성 시 '예약자' Row 에서 타인 지정 가능(대리예약) — 회의실 BookerSection 동일 규칙
  *
  * ✅ 변경 이력
  *  - [2026-08-19] 최초 작성 (Phase 2A)
@@ -23,6 +24,11 @@
  *  - [2026-08-26] 과거 시간 차단·tick 보정·DatePickerPopup·개체 칩 선택·edit 모드 (근본 수정)
  *  - [2026-08-27] 사용중 종료시간 변경 — 현재 종료값을 옵션에 유지(select 값 불일치로 변경 불가하던 근본 원인), 과거 사용일 건은 종료 잠금 표시
  *  - [2026-08-27] 20260760 — 개체 가용 판정 점유구간을 항상 반납일 19:00 까지로 (당일 분기 삭제, DB 동일)
+ *  - [2026-09-02] 관리자 예약자 지정 — 회의실 BookingModal BookerSection 이식 (모달 내부 '예약자' Row, isAdmin && !edit).
+ *      · props snapshot/booker 제거 → me/users/initialBooker. 스냅샷(user_name/dept)·booker override 는 선택된 예약자에서
+ *        모달이 파생 — 호출부가 고정 전달하던 snapshot 과 모달 내 예약자가 어긋날 여지를 구조적으로 제거.
+ *      · 검색 필터 = 회의실 동일: 본인 제외 + canPickUser(휴직 제외) + 이메일 필수(user_email NOT NULL). 최대 8건.
+ *      · 어드민 패널 대리예약 1단계의 예약자 검색은 제거(개체 선택만) — 예약자 선택 UI SSOT 를 이 모달 1곳으로.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -34,6 +40,9 @@ import { insertResourceBooking, loadHeldResourceBookings, loadResourceBookingsRa
          updateResourceBookingPeriod } from '../../lib/resourceApi'
 import { isResourceOverdue } from '../../utils/resourceStatus'   // ← [2026-08-28] 홀드 게이트 연체 분류 SSOT
 import { ResourceName } from './ResourceIcon'
+import { UserAvatar } from '../common/UserAvatar'          // ← [2026-09-02] 예약자 Row — 회의실 BookerSection 동일 아바타
+import { canPickUser } from '../../utils/employment'       // ← [2026-09-02] 피커 제외 판정 SSOT (휴직 제외)
+import type { AppUser } from '../../types'
 import { nowMinutes, todayStr, timeToMin } from '../../utils/time'   // ← [2026-08-26] 회의실과 동일 KST 기준
 import type { ResourceBooking, ResourceCategory, ResourceItem } from '../../types/resource'
 
@@ -50,9 +59,12 @@ interface Props {
   editBooking?:    ResourceBooking | null
   /** 자원 관리자 여부 — 30일 제한 면제(DB 동일) */
   isAdmin?:        boolean
-  snapshot:  { user_name: string; user_dept: string }
-  /** 대리예약 — 지정 시 이 사용자가 예약자가 된다 (Phase 3, insert booker override) */
-  booker?:   { user_id: string; email: string }
+  /** 생성: 로그인 사용자(기본 예약자=본인, 스냅샷 파생) / 변경: 해당 예약의 소유자(bookerOfBooking) */
+  me:        BookerInfo
+  /** 예약자 검색 풀 (앱 시작 시 1회 로드된 users — DB 호출 0회 메모리 필터) */
+  users?:    AppUser[]
+  /** 어드민 패널 등 진입부에서 예약자를 미리 지정할 때 (모달 안에서 변경 가능) */
+  initialBooker?: AppUser | null
   /** 타임라인 슬롯·캘린더 날짜 프리필 — 'YYYY-MM-DD' / 'HH:MM' */
   initialDate?:    string
   initialStartHM?: string
@@ -60,6 +72,14 @@ interface Props {
   onDone:    () => void
   onClose:   () => void
 }
+
+/** 예약자 정보 — 본인(me) 또는 지정된 타인 */
+export interface BookerInfo { user_id: string; email: string; name: string; dept: string; avatar_url?: string | null }
+const toBooker = (u: AppUser): BookerInfo =>
+  ({ user_id: u.user_id, email: u.email, name: u.name, dept: u.dept ?? '', avatar_url: u.avatar_url ?? null })
+/** edit 모드용 — 예약자는 해당 예약의 소유자로 잠금. 호출부 3곳(ResourcePage·MyResourceBookings·ResourceAdminPanel) 공용 */
+export const bookerOfBooking = (b: ResourceBooking): BookerInfo =>
+  ({ user_id: b.user_id, email: b.user_email, name: b.user_name ?? '', dept: b.user_dept ?? '' })
 
 const DOW_FULL = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일']
 function fmtDateKo(ymd: string): string {
@@ -165,10 +185,35 @@ const CHIP_BADGE: Record<ChipState, { label: string; bg: string; fg: string }> =
 }
 
 export function ResourceBookingModal({
-  category, items, initialItem, editBooking, isAdmin = false, snapshot, booker,
+  category, items, initialItem, editBooking, isAdmin = false, me, users = [], initialBooker = null,
   initialDate, initialStartHM, showToast, onDone, onClose,
 }: Props) {
   const isEdit  = !!editBooking
+  // ── [2026-09-02] 예약자 — 기본 본인, 관리자만 타인 지정 (생성 시 한정). 스냅샷·booker override 는 여기서 파생 ──
+  const canPickBooker = isAdmin && !isEdit
+  const [bookerOverride, setBookerOverride] = useState<BookerInfo | null>(
+    canPickBooker && initialBooker ? toBooker(initialBooker) : null)
+  const [bookerQ, setBookerQ]         = useState('')
+  const [bookerFocus, setBookerFocus] = useState(false)
+  const bookerRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (bookerRef.current && !bookerRef.current.contains(e.target as Node)) setBookerFocus(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+  const bookerSuggestions = useMemo(() => {
+    const q = bookerQ.trim().toLowerCase()
+    if (q.length < 1) return [] as AppUser[]
+    return users.filter(u => {
+      if (u.user_id === me.user_id) return false   // 본인 제외 — 기본값이 본인 (회의실 동일)
+      if (!canPickUser(u)) return false            // 휴직자 제외 SSOT (퇴사자는 users 부재로 자연 제외)
+      if (!u.email) return false                   // user_email NOT NULL
+      return [u.name, u.email, u.dept].some(v => (v ?? '').toLowerCase().includes(q))
+    }).slice(0, 8)
+  }, [bookerQ, users, me.user_id])
+  const pickBooker  = (u: AppUser) => { setBookerOverride(toBooker(u)); setBookerQ(''); setBookerFocus(false) }
+  const clearBooker = () => setBookerOverride(null)
+  const effBooker: BookerInfo = bookerOverride ?? me   // 실제 예약자 (insert user_id/email/스냅샷 원천)
   const step    = category.slot_step_minutes
   const open    = category.open_time.slice(0, 5)
   const close   = category.close_time.slice(0, 5)
@@ -319,9 +364,12 @@ export function ResourceBookingModal({
         await updateResourceBookingPeriod(editBooking!.id, payload, isAdmin)
         showToast('예약이 변경되었습니다.')
       } else {
-        await insertResourceBooking({ item_id: selectedItem.id, ...payload }, snapshot, booker)
-        showToast(booker ? `${snapshot.user_name}님 명의로 ${selectedItem.label} 대리예약이 완료되었습니다.`
-                         : `${selectedItem.label} 예약이 완료되었습니다.`)
+        // ← [2026-09-02] 스냅샷·booker 는 effBooker 에서 파생 — 타인 지정 시에만 override 전달(알림 '(관리자 대리예약)' 접미 게이트)
+        await insertResourceBooking({ item_id: selectedItem.id, ...payload },
+          { user_name: effBooker.name, user_dept: effBooker.dept },
+          bookerOverride ? { user_id: bookerOverride.user_id, email: bookerOverride.email } : undefined)
+        showToast(bookerOverride ? `${bookerOverride.name}님 명의로 ${selectedItem.label} 대리예약이 완료되었습니다.`
+                                 : `${selectedItem.label} 예약이 완료되었습니다.`)
       }
       onDone()
     } catch (e) {
@@ -374,6 +422,82 @@ export function ResourceBookingModal({
                             borderRadius: 8, padding: '7px 12px', fontSize: 12, marginBottom: 4 }}>
                 오늘은 예약 가능한 시간이 없습니다 — 날짜를 변경하세요
               </div>
+            )}
+
+            {/* ← [2026-09-02] 예약자 — 관리자 전용, 생성 시에만 (회의실 BookingModal BookerSection 1:1, Row 규격으로 배치) */}
+            {canPickBooker && (
+              <Row label="예약자" required alignTop>
+                {bookerOverride ? (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#EEF2FF',
+                                  border: '1px solid #C7D2FE', borderRadius: 10, padding: '8px 12px' }}>
+                      <UserAvatar name={bookerOverride.name} avatarUrl={bookerOverride.avatar_url ?? null} size={30} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{bookerOverride.name}</div>
+                        <div style={{ fontSize: 11, color: '#6366F1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {bookerOverride.dept}{bookerOverride.dept && bookerOverride.email ? ' · ' : ''}{bookerOverride.email}
+                        </div>
+                      </div>
+                      <button type="button" onClick={clearBooker}
+                        style={{ fontSize: 12, fontWeight: 600, color: '#4F46E5', background: 'transparent',
+                                 border: 0, cursor: 'pointer', flexShrink: 0, fontFamily: FONT }}>본인으로</button>
+                    </div>
+                    <p style={{ margin: '6px 0 0', fontSize: 11, color: '#64748B', lineHeight: 1.5 }}>
+                      이 사용자를 예약자로 지정해 대신 예약합니다.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F8FAFC',
+                                  border: '1px solid #E2E8F0', borderRadius: 10, padding: '8px 12px', marginBottom: 8 }}>
+                      <UserAvatar name={me.name} avatarUrl={me.avatar_url ?? null} size={28} />
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>
+                        {me.name} <span style={{ fontSize: 11, fontWeight: 400, color: '#94A3B8' }}>(본인)</span>
+                      </div>
+                    </div>
+                    <div ref={bookerRef} style={{ position: 'relative' }}>
+                      <input
+                        value={bookerQ} aria-label="예약자 검색"
+                        onChange={e => { setBookerQ(e.target.value); setBookerFocus(true) }}
+                        onFocus={() => setBookerFocus(true)}
+                        placeholder="다른 사람을 예약자로 지정 (이름/부서 검색)"
+                        style={{ width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', padding: '6px 0',
+                                 borderBottom: `1px solid ${bookerFocus || bookerQ ? '#191F28' : '#E5E8EB'}`,
+                                 fontFamily: FONT, fontSize: 14, color: '#191F28', background: 'transparent' }}
+                      />
+                      {bookerFocus && bookerSuggestions.length > 0 && (
+                        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 400,
+                                      background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10,
+                                      boxShadow: '0 8px 24px rgba(0,0,0,0.10)', overflow: 'hidden' }}>
+                          {bookerSuggestions.map(u => (
+                            <div key={u.user_id} onClick={() => pickBooker(u)} role="option" aria-selected={false}
+                              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', cursor: 'pointer',
+                                       borderBottom: '1px solid #F8FAFC' }}
+                              onMouseEnter={e => (e.currentTarget.style.background = '#F8FAFC')}
+                              onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+                              <UserAvatar name={u.name} avatarUrl={u.avatar_url ?? null} size={28} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{u.name}</div>
+                                <div style={{ fontSize: 11, color: '#94A3B8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {u.dept} · {u.email}
+                                </div>
+                              </div>
+                              <span style={{ fontSize: 11, color: '#CBD5E1', flexShrink: 0 }}>지정</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {bookerFocus && bookerQ.trim().length > 0 && bookerSuggestions.length === 0 && (
+                        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 400,
+                                      background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, padding: '12px 14px',
+                                      fontSize: 12, color: '#94A3B8', boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}>
+                          검색 결과가 없습니다
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </Row>
             )}
 
             {/* 자원 번호 칩 — 전체 나열, 단건 선택 (edit 은 잠금) */}
