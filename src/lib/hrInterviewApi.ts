@@ -1,6 +1,6 @@
 // ============================================================
 // HR Interview API — [2026-09-03] 신규 (api.ts 와 분리: 임시 페이지라 종료 시 파일 단위 제거)
-//   · 접근 게이트: hr_interview_can_access() RPC (respondents 화이트리스트 OR 관리자)
+//   · 접근: 로그인 사용자 전원 (RLS 가 본인 행만 허용) — [2026-09-03] 화이트리스트 게이트 폐기
 //   · 답변: hr_interview_answers — (question_id, user_id) UNIQUE upsert
 //   · 이미지: private 버킷 hr-interview, 경로 {uid}/{question_id}/{ts}_{name}, 열람은 signed URL
 //   · 임시본: localStorage (즉시) + DB draft (debounce) — 다른 기기에서도 이어쓰기
@@ -12,13 +12,6 @@ export const HR_BUCKET = 'hr-interview'
 export const HR_IMAGE_MAX_BYTES = 10 * 1024 * 1024
 export const HR_IMAGE_MIME = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
 const SIGNED_URL_TTL_SEC = 60 * 60
-
-// ── 접근 게이트 ─────────────────────────────────────────────
-export async function fetchHrInterviewAccess(): Promise<boolean> {
-  const { data, error } = await supabase.rpc('hr_interview_can_access')
-  if (error) throw new Error(error.message)
-  return data === true
-}
 
 // ── 답변 조회/저장 ─────────────────────────────────────────
 export async function fetchMyHrAnswers(userId: string): Promise<HrInterviewAnswerRow[]> {

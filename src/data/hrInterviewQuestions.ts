@@ -1,6 +1,7 @@
 // ============================================================
 // HR 1차 인터뷰 문항 SSOT — [2026-09-03] 신규
-// 출처: Figma DgaNxRBXRAn65opFAZf3cG / node 7:750 "HR 1차 인터뷰" (확정본, 1:1 전사)
+// 출처: Figma DgaNxRBXRAn65opFAZf3cG / node 7:750 "HR 1차 인터뷰" (1:1 전사)
+//   · [2026-09-03 고지 지시] Figma 3번·5번 중복 → 3번을 5번 내용("필요한 기능 또는 Needs")으로 대체, 5번 삭제 → 총 7문항, id/no 재부여
 //   · hl:true = Figma #ff542e 강조 구간
 //   · [] = 빈 줄
 //   · 문항 텍스트 변경은 이 파일만 수정 (DB 무관)
@@ -47,7 +48,7 @@ export const HR_INTERVIEW_QUESTIONS: HrInterviewQuestion[] = [
       [{ text: '어떠한 데이터 인사이트를 얻고 있나요?' }],
       [],
       [{ text: '그리고 앞으로 더 확장된 데이터 인사이트를 위해 ', hl: true }],
-      [{ text: '필요한 기능', hl: true }, { text: '에 대해 자세하게 설명해 주세요.' }],
+      [{ text: '필요한 기능 또는 Needs', hl: true }, { text: ' 대해 자세하게 설명해 주세요.' }],
     ],
     placeholder: '의견을 작성해주세요.',
   },
@@ -67,19 +68,6 @@ export const HR_INTERVIEW_QUESTIONS: HrInterviewQuestion[] = [
   },
   {
     id: 'q5', no: 5,
-    purpose: ['AS-IS + TO-BE'], purposeColor: '#ff542e',
-    weight: 600, lineHeight: 1.45,
-    lines: [
-      [{ text: '현재 시프티에 누적된 근태 기록으로' }],
-      [{ text: '어떠한 데이터 인사이트를 얻고 있나요?' }],
-      [],
-      [{ text: '그리고 앞으로 더 확장된 데이터 인사이트를 위해 ', hl: true }],
-      [{ text: '필요한 기능 또는 Needs', hl: true }, { text: ' 대해 자세하게 설명해 주세요.' }],
-    ],
-    placeholder: '의견을 작성해주세요.',
-  },
-  {
-    id: 'q6', no: 6,
     purpose: ['근무 규정 관련'], purposeColor: '#ff542e',
     weight: 500, lineHeight: 1.45,
     lines: [
@@ -93,7 +81,7 @@ export const HR_INTERVIEW_QUESTIONS: HrInterviewQuestion[] = [
     placeholder: '의견을 작성해주세요.',
   },
   {
-    id: 'q7', no: 7,
+    id: 'q6', no: 6,
     purpose: ['확장 기능 설계안에 대한 의견'], purposeColor: '#ff542e',
     weight: 600, lineHeight: 1.45,
     lines: [
@@ -107,7 +95,7 @@ export const HR_INTERVIEW_QUESTIONS: HrInterviewQuestion[] = [
     placeholder: '의견을 자유롭게 작성해주세요.',
   },
   {
-    id: 'q8', no: 8,
+    id: 'q7', no: 7,
     purpose: ['핵심 사용자 목소리'], purposeColor: '#ff542e',
     weight: 500, lineHeight: 1.45,
     lines: [

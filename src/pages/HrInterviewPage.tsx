@@ -9,7 +9,8 @@
 //   · 편집 모드: textarea(Enter=줄바꿈) + 이미지 첨부(다중) + 미리보기 + 저장하기
 //   · 이탈 방지: 입력 즉시 localStorage + 1.5s debounce DB draft + blur/hidden/unmount 시 flush
 //   · 저장하기 → status=submitted → 열람 모드 → [답변 편집하기] 로 재편집
-//   · 접근: hr_interview_can_access() (respondents 화이트리스트 OR 관리자) 불통 시 게이트 화면
+//   · 접근: 로그인 사용자 전원 — [2026-09-03 고지 지시] 화이트리스트 게이트 폐기 (RLS 가 본인 행만 허용)
+//   · 문항 7개 — Figma 3·5번 중복으로 3번을 5번 내용으로 대체, 5번 삭제
 // 의존: useAuth().currentUser { user_id, ... } / hrInterviewApi / hrInterviewQuestions
 // ============================================================
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -17,7 +18,7 @@ import { useAuth } from '../hooks/useAuth'
 import { HR_INTERVIEW_QUESTIONS, HR_INTERVIEW_TITLE_LINE1, HR_INTERVIEW_TITLE_LINE2_EN, HR_INTERVIEW_TITLE_LINE2_KO } from '../data/hrInterviewQuestions'
 import type { HrInterviewAnswerRow, HrInterviewQuestion } from '../types/hrInterview'
 import {
-  fetchHrInterviewAccess, fetchMyHrAnswers, upsertHrAnswer,
+  fetchMyHrAnswers, upsertHrAnswer,
   uploadHrImage, removeHrImage, signHrImages,
   readLocalDraft, writeLocalDraft, clearLocalDraft,
   HR_IMAGE_MIME,
@@ -37,7 +38,7 @@ export default function HrInterviewPage() {
   const { currentUser } = useAuth()
   const uid = currentUser?.user_id ?? null
 
-  const [access, setAccess] = useState<boolean | null>(null)
+  const [ready, setReady] = useState(false)
   const [answers, setAnswers] = useState<AnswerMap>({})
   const [loadErr, setLoadErr] = useState<string | null>(null)
   const [currentId, setCurrentId] = useState<string | null>(null)  // null = 시작 화면
@@ -47,15 +48,12 @@ export default function HrInterviewPage() {
     let alive = true
     ;(async () => {
       try {
-        const ok = await fetchHrInterviewAccess()
-        if (!alive) return
-        setAccess(ok)
-        if (!ok) return
         const rows = await fetchMyHrAnswers(uid)
         if (!alive) return
         const map: AnswerMap = {}
         for (const r of rows) map[r.question_id] = r
         setAnswers(map)
+        setReady(true)
       } catch (e) {
         if (alive) setLoadErr(e instanceof Error ? e.message : String(e))
       }
@@ -69,8 +67,7 @@ export default function HrInterviewPage() {
 
   if (!uid) return null
   if (loadErr) return <Gate msg={`불러오기에 실패했습니다. ${loadErr}`} />
-  if (access === null) return <div className="hri-root" />
-  if (access === false) return <Gate msg="이 페이지는 HR 인터뷰 응답 대상자에게만 열려 있습니다." />
+  if (!ready) return <div className="hri-root" />
 
   if (currentId === null) {
     return <StartScreen onStart={() => setCurrentId(HR_INTERVIEW_QUESTIONS[0].id)} />
