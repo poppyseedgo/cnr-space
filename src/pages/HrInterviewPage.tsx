@@ -4,7 +4,7 @@
 //
 // 구성
 //   · 시작 화면(검정) → [인터뷰 답변 하기] → 문항 화면
-//   · 좌측 인덱스(문항 수만큼 동적) / 우측 720px: 번호+상태칩 → 조사목적 → 질문 → 입력/열람
+//   · 좌측 인덱스(0=시작 화면 복귀 + 문항 수만큼 동적) / 우측 720px: 번호+상태칩 → 조사목적 → 질문 → 입력/열람
 //   · 상태칩: submitted = 답변완료(#d0ffb7) / 그 외 = 답변하세요 (Figma 2종만 존재)
 //   · 편집 모드: textarea(Enter=줄바꿈) + 이미지 첨부(다중) + 미리보기 + 저장하기
 //   · 이탈 방지: 입력 즉시 localStorage + 1.5s debounce DB draft + blur/hidden/unmount 시 flush
@@ -79,6 +79,15 @@ export default function HrInterviewPage() {
     <div className="hri-root">
       <div className="hri-body">
         <nav className="hri-side" aria-label="문항 목록">
+          {/* ← [2026-09-03 고지 지시] '0' 단계 — 시작 화면으로 복귀 (Figma 인덱스 0 행과 동일 스타일, 항상 비활성 톤) */}
+          <button
+            type="button"
+            className="hri-side-row hri-is"
+            onClick={() => setCurrentId(null)}
+            aria-label="시작 화면으로"
+          >
+            <span>0</span><span className="hri-ln" />
+          </button>
           {HR_INTERVIEW_QUESTIONS.map(item => (
             <button
               key={item.id}
