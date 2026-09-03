@@ -271,6 +271,7 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } 
 import { HomeView } from './components/room/HomeView'
 import { LibraryPage } from './pages/LibraryPage'  // ← [2026-07-16] 도서관 모듈 추가
 import { ReleaseNotesPage } from './pages/ReleaseNotesPage'  // ← [2026-08-03] Release Note + Hotfix 페이지 추가
+import HrInterviewPage from './pages/HrInterviewPage'  // ← [2026-09-03] 근태 APP 내재화 HR 1차 인터뷰 임시 단독 페이지 (#hr-interview)
 import { RoomDetailModal } from './components/room/RoomDetailModal'
 import { CalendarSkeleton, MyPageSkeleton, AdminSkeleton } from './components/skeleton'
 import { initGlobalRipple } from './hooks/useGlobalRipple'
@@ -384,7 +385,7 @@ function AppContent() {
   //   해결: 상수 하나로 통일 — 두 판정이 같은 배열을 참조하므로 어긋날 방법이 사라진다.
   //   ⭐운영 규칙: 새 페이지(view) 추가 시 렌더 분기와 함께 이 배열에만 추가하면 끝.
   //   (myloans 는 view 가 아니라 mypage 로 매핑되는 딥링크 별칭 — 여기 넣지 않는다)
-  const DIRECT_VIEWS = ['home','calendar','mypage','admin','library','resources','announcements','release-notes']
+  const DIRECT_VIEWS = ['home','calendar','mypage','admin','library','resources','announcements','release-notes','hr-interview']  // ← [2026-09-03] hr-interview 추가 (임시 단독 페이지)
 
   const getViewFromHash = (): string => {
     const hash = window.location.hash.replace('#', '')
@@ -1713,6 +1714,12 @@ function AppContent() {
 
   // ── 미로그인 → 로그인 페이지 ──
   if (!authUser) return <LoginPage />
+
+  // ── [2026-09-03] HR 인터뷰 임시 단독 페이지 (#hr-interview) ──
+  //    헤더·푸터·드로어·모달·loading 스켈레톤을 모두 거치지 않는 풀블리드 트리.
+  //    bookings/users 등 앱 마스터 데이터를 쓰지 않고 자체 API(hrInterviewApi)만 사용하므로 loading 게이트 앞에 둔다.
+  //    로그인 게이트(authUser) 뒤라 Microsoft OAuth 세션은 그대로 승계. 종료 시 이 블록 + import + DIRECT_VIEWS 항목만 제거.
+  if (view === 'hr-interview') return <HrInterviewPage />
 
   // ── 데이터 로딩 중 ──
   if (loading) {
