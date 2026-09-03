@@ -10,6 +10,7 @@
 //   · 이탈 방지: 입력 즉시 localStorage + 1.5s debounce DB draft + blur/hidden/unmount 시 flush
 //   · 저장하기 → status=submitted → 열람 모드 → [답변 편집하기] 로 재편집
 //   · 접근: 로그인 사용자 전원 — [2026-09-03 고지 지시] 화이트리스트 게이트 폐기 (RLS 가 본인 행만 허용)
+//   · [2026-09-03 A안] 관리자(hr_interview_is_admin() RPC)에게만 인덱스 '현황' 행 → HrInterviewStatusView (참여자×문항 매트릭스)
 //   · 문항 7개 — Figma 3·5번 중복으로 3번을 5번 내용으로 대체, 5번 삭제
 // 의존: useAuth().currentUser { user_id, ... } / hrInterviewApi / hrInterviewQuestions
 // ============================================================
@@ -17,8 +18,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { HR_INTERVIEW_QUESTIONS, HR_INTERVIEW_TITLE_LINE1, HR_INTERVIEW_TITLE_LINE2_EN, HR_INTERVIEW_TITLE_LINE2_KO } from '../data/hrInterviewQuestions'
 import type { HrInterviewAnswerRow, HrInterviewQuestion } from '../types/hrInterview'
+import HrInterviewStatusView from './HrInterviewStatusView'
 import {
-  fetchMyHrAnswers, upsertHrAnswer,
+  fetchMyHrAnswers, upsertHrAnswer, fetchHrInterviewIsAdmin,
   uploadHrImage, removeHrImage, signHrImages,
   readLocalDraft, writeLocalDraft, clearLocalDraft,
   HR_IMAGE_MIME,
@@ -27,6 +29,7 @@ import './HrInterviewPage.css'
 
 const DRAFT_DEBOUNCE_MS = 1500
 const ASSET_BASE = '/hr-interview'   // public/hr-interview/*.svg (Figma 원본 SVG export)
+const STATUS_VIEW_ID = '__status'    // 인덱스 '현황' 행의 currentId 값 (문항 id 와 충돌 없음)
 
 type Mode = 'edit' | 'preview' | 'view'
 type AnswerMap = Record<string, HrInterviewAnswerRow>
@@ -39,6 +42,7 @@ export default function HrInterviewPage() {
   const uid = currentUser?.user_id ?? null
 
   const [ready, setReady] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)   // ← [A안] RLS 와 동일 RPC 판정 결과
   const [answers, setAnswers] = useState<AnswerMap>({})
   const [loadErr, setLoadErr] = useState<string | null>(null)
   const [currentId, setCurrentId] = useState<string | null>(null)  // null = 시작 화면
@@ -54,6 +58,8 @@ export default function HrInterviewPage() {
         for (const r of rows) map[r.question_id] = r
         setAnswers(map)
         setReady(true)
+        // 관리자 판정은 실패해도 페이지 동작에 영향 없음(현황 행만 미노출)
+        fetchHrInterviewIsAdmin().then(v => { if (alive) setIsAdmin(v) }).catch(() => {})
       } catch (e) {
         if (alive) setLoadErr(e instanceof Error ? e.message : String(e))
       }
@@ -73,6 +79,7 @@ export default function HrInterviewPage() {
     return <StartScreen onStart={() => setCurrentId(HR_INTERVIEW_QUESTIONS[0].id)} />
   }
 
+  const isStatus = isAdmin && currentId === STATUS_VIEW_ID   // ← [A안] 비관리자가 URL/상태로 진입해도 문항 1 로 폴백
   const q = HR_INTERVIEW_QUESTIONS.find(x => x.id === currentId) ?? HR_INTERVIEW_QUESTIONS[0]
 
   return (
@@ -92,23 +99,36 @@ export default function HrInterviewPage() {
             <button
               key={item.id}
               type="button"
-              className={`hri-side-row hri-is${item.id === q.id ? ' is-on' : ''}`}
+              className={`hri-side-row hri-is${!isStatus && item.id === q.id ? ' is-on' : ''}`}
               onClick={() => setCurrentId(item.id)}
-              aria-current={item.id === q.id ? 'page' : undefined}
+              aria-current={!isStatus && item.id === q.id ? 'page' : undefined}
             >
               <span>{item.no}</span><span className="hri-ln" />
             </button>
           ))}
+          {isAdmin && (
+            // ← [A안] 관리자 전용 '현황' 행 — 문항 목록 아래, 동일 스타일
+            <button
+              type="button"
+              className={`hri-side-row hri-side-row-ko${isStatus ? ' is-on' : ''}`}
+              onClick={() => setCurrentId(STATUS_VIEW_ID)}
+              aria-current={isStatus ? 'page' : undefined}
+            >
+              <span>현황</span><span className="hri-ln" />
+            </button>
+          )}
         </nav>
 
         <main className="hri-main">
-          <QuestionBlock
-            key={q.id}
-            uid={uid}
-            question={q}
-            row={answers[q.id]}
-            onSaved={onSaved}
-          />
+          {isStatus
+            ? <HrInterviewStatusView />
+            : <QuestionBlock
+                key={q.id}
+                uid={uid}
+                question={q}
+                row={answers[q.id]}
+                onSaved={onSaved}
+              />}
         </main>
       </div>
     </div>

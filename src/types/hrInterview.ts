@@ -54,3 +54,11 @@ export interface HrLocalDraft {
   /** epoch ms — DB updated_at 과 비교해 최신본 판정 */
   saved_at: number
 }
+
+/** [2026-09-03 A안] 관리자 현황용 — profiles 조인 행 */
+export interface HrAnswerWithProfile extends HrInterviewAnswerRow {
+  profiles: { name: string | null; dept: string | null; email: string | null } | null
+}
+
+/** 매트릭스 셀 상태 */
+export type HrCellStatus = 'none' | 'draft' | 'submitted'
