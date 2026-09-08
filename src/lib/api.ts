@@ -3314,7 +3314,7 @@ export async function revokeNoshowPenalty(penaltyId: string, reason?: string): P
 // [2026-09-08] cnr-res 로비 디스플레이(쇼츠 + 공지 슬라이드)의 공지 이미지 관리.
 //  · 테이블 lobby_notices / 버킷 lobby-notices (20260908_lobby_notices.sql — 배포 완료)
 //  · RLS: 읽기 공개(디스플레이가 비로그인 폴링), 쓰기 has_admin_role('notice')
-//  · 10개 제한은 DB 트리거(enforce_lobby_notice_limit)가 최종 방어 — 화면은 접근성만 담당
+//  · 등록 한도(LOBBY_NOTICE_LIMIT)는 DB 트리거(enforce_lobby_notice_limit)가 최종 방어 — 화면은 접근성만 담당. 한도 변경 시 양쪽 함께
 //  · Storage 키는 ASCII 생성 규칙({timestamp}_{rand}.{ext}, ext는 MIME 기준) —
 //    한글 원본 파일명을 키에 쓰면 400 Invalid key (2026-09-03 실사고 규칙)
 
@@ -3331,7 +3331,7 @@ export interface LobbyNotice {
   created_at: string
 }
 
-export const LOBBY_NOTICE_LIMIT = 10
+export const LOBBY_NOTICE_LIMIT = 15   // ← [2026-09-08] 10→15. DB 트리거(enforce_lobby_notice_limit)와 동기 — 변경 시 양쪽 함께
 const LOBBY_NOTICE_BUCKET = 'lobby-notices'
 
 /** MIME → 확장자 화이트리스트 — 여기 없는 타입은 업로드 거부 */
@@ -3382,7 +3382,7 @@ export async function uploadLobbyNotice(file: File, existing: LobbyNotice[]): Pr
   })
   if (error) {
     await supabase.storage.from(LOBBY_NOTICE_BUCKET).remove([key]).catch(() => {})
-    throw new Error(error.message.includes('LOBBY_NOTICE_LIMIT_10')
+    throw new Error(error.message.includes('LOBBY_NOTICE_LIMIT')   // ← [2026-09-08] 예외 코드에서 숫자 제거(_EXCEEDED) — 한도 변경이 프론트 매칭을 안 건드리게
       ? `최대 ${LOBBY_NOTICE_LIMIT}개까지 등록할 수 있습니다.`
       : `등록 실패: ${error.message}`)
   }

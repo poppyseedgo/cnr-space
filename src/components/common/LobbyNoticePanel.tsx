@@ -11,7 +11,7 @@
  *    RLS(lobby_notices·스토리지)도 has_admin_role('notice') 기준이라 탭 게이트와
  *    데이터 권한이 같은 역할 — 도서관에서 겪은 관리자 이중분리 사고가 구조적으로 불가능.
  *
- *  · 10개 제한은 UI(버튼 차단)와 DB 트리거(enforce_lobby_notice_limit) 이중.
+ *  · 등록 한도(LOBBY_NOTICE_LIMIT)는 UI(버튼 차단)와 DB 트리거(enforce_lobby_notice_limit) 이중.
  *    화면만 믿으면 탭 두 개를 동시에 열고 각각 올리는 경우가 뚫린다.
  *
  *  · Storage 키는 ASCII 생성 규칙({timestamp}_{rand}.{ext}, ext는 MIME 기준).
