@@ -56,6 +56,7 @@ import {
   BellIcon,         // ← [2026-07-23] 알림 설정 메뉴 아이콘
   CampaignIcon,     // ← [2026-07-24] 공지 배너 메뉴 아이콘
   SmartToyIcon,     // ← [2026-07-27] KB 관리 메뉴 아이콘 (GA 챗봇 지식베이스)
+  TvIcon,           // ← [2026-09-08] CANTEEN DP 메뉴 아이콘 (로비 디스플레이)
 } from '../icons/AdminMenuIcons'
 
 // ─── 활성 탭 ID (외부 export — 라우팅용) ────────────────────────────────────
@@ -66,6 +67,7 @@ export type AdminTabId = 'dashboard' | 'approvals' | 'bookings' | 'users' | 'roo
   | 'notices'        // ← [2026-07-24] 공지 배너 (헤더 상단 한 줄 배너 관리)
   | 'kb'             // ← [2026-07-27] KB 관리 (GA 챗봇 지식베이스 kb_chunks 편집)
   | 'resources'      // ← [2026-08-19] 자원 관리 활성화 (Phase 3 — 2026-05-11 비활성 예고 자리)
+  | 'canteen-dp'     // ← [2026-09-08] CANTEEN DP — 로비 디스플레이 공지 관리 (notice 역할 공유)
 
 // ─── 메뉴 ID (내부 전용) ─────────────────────────────────────────────────────
 //   · [2026-07-23] 도서 관리가 활성으로 전환되어 비활성은 'resources' 1개만 남았다.
@@ -94,6 +96,8 @@ const MENU_ITEMS: MenuItem[] = [
   { id: 'notifications', label: '알림 설정', icon: <BellIcon       /> },
   // ← [2026-07-24] 공지 배너 — 헤더 상단 한 줄 배너(내용·색·게시기간)
   { id: 'notices',       label: '공지 배너', icon: <CampaignIcon   /> },
+  // ← [2026-09-08] CANTEEN DP — 로비 디스플레이(쇼츠+공지 슬라이드) 이미지/GIF 관리. notice 역할 공유
+  { id: 'canteen-dp',    label: 'CANTEEN DP', icon: <TvIcon        /> },
   // ← [2026-07-27] KB 관리 — GA 챗봇 지식베이스(kb_chunks) 청크 편집·JSON 내보내기
   { id: 'kb',            label: 'KB 관리',   icon: <SmartToyIcon   /> },
   // ← [2026-08-19] 자원 관리 활성화 (Phase 3) — 2026-05-11 비활성 예고 자리 그대로 오픈

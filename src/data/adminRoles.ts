@@ -41,7 +41,7 @@ export const ADMIN_ROLES: AdminRoleDef[] = [
   { id: 'visitor',      label: '방문 기록',  tab: 'visitors',      desc: '방문자 로그 조회·반납 (2차 비밀번호 별도)' },
   { id: 'book',         label: '도서 관리',  tab: 'books',         desc: '도서·대여·연체 관리' },
   { id: 'notification', label: '알림 설정',  tab: 'notifications', desc: '알림 채널 on/off·관리자 수신자 지정' },
-  { id: 'notice',       label: '공지 배너',  tab: 'notices',       desc: '헤더 공지 내용·색·게시기간' },
+  { id: 'notice',       label: '공지 배너',  tab: 'notices',       desc: '헤더 공지 내용·색·게시기간 + CANTEEN DP(로비 디스플레이)' }, // ← [2026-09-08] 보조 탭 canteen-dp 포함
   { id: 'kb',           label: 'KB 관리',    tab: 'kb',            desc: 'GA 챗봇 지식베이스 청크 편집' }, // ← [2026-07-27] 20260733 CHECK와 동기화
   { id: 'resource',     label: '자원예약',   tab: 'resources',     desc: '자원 카테고리·개체 등록, 예약·반납 확인·대리예약' }, // ← [2026-08-19] Phase 3 화면 오픈, 탭 1:1 연결
   { id: 'super',        label: '최고 관리자', tab: null,           desc: '모든 메뉴 + 권한 부여·회수' },
@@ -51,6 +51,17 @@ export const ADMIN_ROLES: AdminRoleDef[] = [
   //       admin_role_grants 이력의 라벨 렌더링(roleSummary·권한 변경 이력)용으로만 남긴다
   { id: 'pointer',      label: '[구] 자원 관리', tab: null,        desc: "'resource'로 개명됨", deprecated: true }, // ← [2026-07-28] 이력 표시용
 ]
+
+/**
+ * [2026-09-08] '탭 = 역할 1:1' 원칙의 승인된 예외 — 한 역할이 여는 **보조 탭**.
+ *   CANTEEN DP(로비 디스플레이 공지)는 성격이 '공지'라 별도 역할을 신설하지 않고
+ *   notice 에 함께 건다(고지 확정). DB RLS(lobby_notices·스토리지)도
+ *   has_admin_role('notice') 기준이라 탭 게이트와 데이터 권한이 같은 역할이다.
+ *   ⚠ 여기 없는 탭을 AdminSideNav 에만 추가하면 visibleTabs 에 안 잡혀 아무에게도 안 보인다.
+ */
+export const ROLE_EXTRA_TABS: Record<string, AdminTabId[]> = {
+  notice: ['canteen-dp'],
+}
 
 /** super 는 모든 역할을 포함한다 (DB has_admin_role 과 동일 규칙) */
 export const SUPER_ROLE = 'super'
@@ -65,14 +76,25 @@ export const NORMAL_ROLES = GRANTABLE_ROLES.filter(r => r.id !== SUPER_ROLE)
 export function canSeeTab(roles: string[], tab: AdminTabId): boolean {
   if (roles.includes(SUPER_ROLE)) return true
   const def = ADMIN_ROLES.find(r => r.tab === tab)
-  return def ? roles.includes(def.id) : false
+  if (def && roles.includes(def.id)) return true
+  // ← [2026-09-08] 보조 탭(ROLE_EXTRA_TABS) — 주 역할 보유 시 함께 열림
+  return Object.entries(ROLE_EXTRA_TABS)
+    .some(([role, tabs]) => tabs.includes(tab) && roles.includes(role))
 }
 
 /** 역할 집합 → 볼 수 있는 탭 목록 (ADMIN_ROLES 순서 유지) */
 export function visibleTabs(roles: string[]): AdminTabId[] {
-  return ADMIN_ROLES
-    .filter(r => r.tab !== null && (roles.includes(SUPER_ROLE) || roles.includes(r.id)))
-    .map(r => r.tab as AdminTabId)
+  const isSuper = roles.includes(SUPER_ROLE)
+  const out: AdminTabId[] = []
+  for (const r of ADMIN_ROLES) {
+    if (r.tab === null) continue
+    if (!isSuper && !roles.includes(r.id)) continue
+    out.push(r.tab as AdminTabId)
+    // ← [2026-09-08] 주 탭 바로 뒤에 보조 탭 삽입 — 첫 탭 폴백 순서도 자연스럽게 유지
+    const extra = ROLE_EXTRA_TABS[r.id]
+    if (extra) out.push(...extra)
+  }
+  return out
 }
 
 /** 목록 배지용 요약 — super 우선, 그다음 개수 */

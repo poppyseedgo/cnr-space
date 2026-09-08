@@ -54,6 +54,7 @@ import { AdminSideNav, type AdminTabId } from '../components/layout/AdminSideNav
 import { NotificationSettingsPanel } from '../components/common/NotificationSettingsPanel'
 // ← [2026-07-24] 공지 배너 관리 패널
 import { AnnouncementPanel } from '../components/common/AnnouncementPanel'
+import { LobbyNoticePanel } from '../components/common/LobbyNoticePanel'   // ← [2026-09-08] CANTEEN DP
 // ← [2026-07-27] KB 관리 패널 — GA 챗봇 지식베이스(kb_chunks) 편집
 import { KBAdminPanel } from '../components/common/KBAdminPanel'
 // ← [2026-07-24 Phase 4] 역할 정리용 매트릭스 (사용자 × 역할)
@@ -792,7 +793,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
 
   // 로딩 중에는 기존 전체 탭을 유지한다. 빈 배열로 시작하면 진입 직후 한 프레임 동안
   // 메뉴가 통째로 사라졌다가 다시 나타나 깜빡인다.
-  const ALL_TABS = ['dashboard','bookings','approvals','rooms','users','visitors','books','notifications','notices','kb','resources']  // ← [2026-08-19] resources(자원 관리) 추가
+  const ALL_TABS = ['dashboard','bookings','approvals','rooms','users','visitors','books','notifications','notices','canteen-dp','kb','resources']  // ← [2026-09-08] canteen-dp(CANTEEN DP) 추가  // ← [2026-08-19] resources(자원 관리) 추가
   const TABS = myRoles === null ? ALL_TABS : (visibleTabs(myRoles) as string[])  // ← [2026-07-10] visitors / [2026-07-23] books(도서 관리) + notifications(알림 설정) 추가
   const getTabFromHash = () => {
     const hash = window.location.hash.replace('#', '')
@@ -1028,6 +1029,9 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
             데이터가 App.tsx 하드코딩(MOCK_ANNOUNCEMENT)이라 공지를 바꾸려면 배포가 필요했고,
             게시 기간이 없어 5/12 핫픽스 안내가 두 달 넘게 떠 있던 자리다. */}
       {activeTab==='notices' && <AnnouncementPanel showToast={showToast} isMobile={isMobile}/>}
+      {/* ← [2026-09-08] CANTEEN DP — 로비 디스플레이(쇼츠+공지 슬라이드)의 공지 이미지/GIF 관리.
+            cnr-res 단독 admin.html 이식. notice 역할 공유(ROLE_EXTRA_TABS), RLS도 has_admin_role('notice'). */}
+      {activeTab==='canteen-dp' && <LobbyNoticePanel showToast={showToast} isMobile={isMobile}/>}
       {/* ← [2026-07-27] KB 관리 — GA 챗봇 지식베이스(kb_chunks) 청크 편집·JSON 내보내기.
             Notion 가이드를 정제·시드(20260733)한 뒤로는 이 화면이 지식의 원본이다.
             챗봇 런타임은 service_role 로 같은 테이블을 읽는다(어드민은 쓰기, 봇은 읽기). */}

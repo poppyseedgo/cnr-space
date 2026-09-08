@@ -3309,3 +3309,108 @@ export async function revokeNoshowPenalty(penaltyId: string, reason?: string): P
     throw new Error(revokeNoshowPenaltyErrorMessage(new Error(error.message)))
   }
 }
+
+// ── CANTEEN DP (로비 디스플레이 공지) ────────────────────────────────────────
+// [2026-09-08] cnr-res 로비 디스플레이(쇼츠 + 공지 슬라이드)의 공지 이미지 관리.
+//  · 테이블 lobby_notices / 버킷 lobby-notices (20260908_lobby_notices.sql — 배포 완료)
+//  · RLS: 읽기 공개(디스플레이가 비로그인 폴링), 쓰기 has_admin_role('notice')
+//  · 10개 제한은 DB 트리거(enforce_lobby_notice_limit)가 최종 방어 — 화면은 접근성만 담당
+//  · Storage 키는 ASCII 생성 규칙({timestamp}_{rand}.{ext}, ext는 MIME 기준) —
+//    한글 원본 파일명을 키에 쓰면 400 Invalid key (2026-09-03 실사고 규칙)
+
+export interface LobbyNotice {
+  id:         string
+  file_path:  string
+  file_name:  string
+  mime_type:  string
+  sort_order: number
+  is_visible: boolean
+  starts_at:  string | null   // 'YYYY-MM-DD' (date 컬럼)
+  ends_at:    string | null
+  created_by: string | null
+  created_at: string
+}
+
+export const LOBBY_NOTICE_LIMIT = 10
+const LOBBY_NOTICE_BUCKET = 'lobby-notices'
+
+/** MIME → 확장자 화이트리스트 — 여기 없는 타입은 업로드 거부 */
+const LOBBY_NOTICE_MIME_EXT: Record<string, string> = {
+  'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp',
+}
+
+/** Storage 공개 URL (버킷 public) — 목록 썸네일·미리보기용 */
+export function lobbyNoticePublicUrl(path: string): string {
+  return supabase.storage.from(LOBBY_NOTICE_BUCKET).getPublicUrl(path).data.publicUrl
+}
+
+export async function loadLobbyNotices(): Promise<LobbyNotice[]> {
+  const { data, error } = await supabase
+    .from('lobby_notices')
+    .select('*')
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true })
+  if (error) {
+    console.error('[api] lobby_notices 조회 실패:', error.message)
+    throw new Error('로비 공지 목록을 불러오지 못했습니다.')
+  }
+  return (data ?? []) as LobbyNotice[]
+}
+
+/** 업로드 + 행 등록. insert 실패 시 방금 올린 Storage 객체를 정리해 고아 파일을 남기지 않는다 */
+export async function uploadLobbyNotice(file: File, existing: LobbyNotice[]): Promise<void> {
+  if (existing.length >= LOBBY_NOTICE_LIMIT) {
+    throw new Error(`최대 ${LOBBY_NOTICE_LIMIT}개까지 등록할 수 있습니다. 기존 항목을 삭제 후 업로드하세요.`)
+  }
+  const ext = LOBBY_NOTICE_MIME_EXT[file.type]
+  if (!ext) throw new Error('PNG / JPG / GIF / WEBP 만 업로드할 수 있습니다.')
+
+  const key = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
+  const { error: upErr } = await supabase.storage
+    .from(LOBBY_NOTICE_BUCKET)
+    .upload(key, file, { contentType: file.type })
+  if (upErr) throw new Error(`업로드 실패: ${upErr.message}`)
+
+  const { data: { user } } = await supabase.auth.getUser()
+  const maxOrder = existing.reduce((m, x) => Math.max(m, x.sort_order), -1)
+  const { error } = await supabase.from('lobby_notices').insert({
+    file_path:  key,
+    file_name:  file.name,
+    mime_type:  file.type,
+    sort_order: maxOrder + 1,
+    created_by: user?.id ?? null,
+  })
+  if (error) {
+    await supabase.storage.from(LOBBY_NOTICE_BUCKET).remove([key]).catch(() => {})
+    throw new Error(error.message.includes('LOBBY_NOTICE_LIMIT_10')
+      ? `최대 ${LOBBY_NOTICE_LIMIT}개까지 등록할 수 있습니다.`
+      : `등록 실패: ${error.message}`)
+  }
+}
+
+export async function updateLobbyNotice(
+  id: string,
+  patch: Partial<Pick<LobbyNotice, 'is_visible' | 'starts_at' | 'ends_at'>>,
+): Promise<void> {
+  const { error } = await supabase.from('lobby_notices').update(patch).eq('id', id)
+  if (error) throw new Error(`변경 실패: ${error.message}`)
+}
+
+/** 순서 전체 재부여 — 인접 스왑만 하면 초기값 0 중복 상태에서 순서가 안 바뀌는 근본 원인이 남는다 */
+export async function reorderLobbyNotices(orderedIds: string[]): Promise<void> {
+  const results = await Promise.all(
+    orderedIds.map((id, idx) =>
+      supabase.from('lobby_notices').update({ sort_order: idx }).eq('id', id)),
+  )
+  const failed = results.find(r => r.error)
+  if (failed?.error) throw new Error(`순서 변경 실패: ${failed.error.message}`)
+}
+
+/** Storage 객체 → 행 순서로 삭제. 행부터 지우면 실패 시 파일만 남아 재업로드가 막히지는 않지만
+ *  버킷에 고아가 쌓인다 — 파일 삭제 성공을 확인한 뒤 행을 지운다 */
+export async function deleteLobbyNotice(n: LobbyNotice): Promise<void> {
+  const { error: sErr } = await supabase.storage.from(LOBBY_NOTICE_BUCKET).remove([n.file_path])
+  if (sErr) throw new Error(`파일 삭제 실패: ${sErr.message}`)
+  const { error } = await supabase.from('lobby_notices').delete().eq('id', n.id)
+  if (error) throw new Error(`삭제 실패: ${error.message}`)
+}
