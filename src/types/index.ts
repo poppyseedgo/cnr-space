@@ -122,7 +122,10 @@ export interface Booking {
   processedByName?:   string | null  // 승인/거절 처리한 관리자 이름
   processedByAvatar?: string | null  // 승인/거절 처리한 관리자 아바타
   earlyEnded?: boolean
-  originalEndAt?: string | null  // 조기 반납 시 원래 예약 종료 시간
+  originalEndAt?: string | null  // 조기 반납 시 원래 예약 종료 시간 / ← [2026-09-09 노쇼 종결] 노쇼 15분 종결 시에도 원본 종료 보존 (공용)
+  // ← [2026-09-09 노쇼 종결] 노쇼 종결(강제 종료) 시각 — DB 트리거 trg_noshow_close_end 가 기록. 해제(사용완료) 후에도 유지 → 노쇼 이력 식별.
+  //   · DB 소유 컬럼(bookingToRow 에서 쓰지 않음). null = 노쇼 종결 이력 없음
+  noshowClosedAt?: string | null
   // ← [2026-07-27 목적] 회의 목적 코드 — SSOT: src/data/bookingPurpose.ts (10종)
   //   · null/undefined = 기능 도입 전 예약 → 전 화면에서 칩 생략 (고지 확정)
   purpose?: BookingPurposeCode | null

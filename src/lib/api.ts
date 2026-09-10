@@ -206,6 +206,8 @@ function rowToBooking(row: Record<string, any>): Booking {
     // ← [2026-04-22 HOTFIX] originalEndAt도 KST 변환 필수 (기존 UTC 그대로 → 조기반납 시 취소선 표기 시각 오류)
     //   start_at/end_at과 동일 패턴. null이면 null 유지.
     originalEndAt: row.original_end_at ? utcToKST(row.original_end_at) : null,
+    // ← [2026-09-09 노쇼 종결] DB 트리거가 기록하는 종결 시각 (읽기 전용 — bookingToRow 미포함)
+    noshowClosedAt: row.noshow_closed_at ? utcToKST(row.noshow_closed_at) : null,
     recurGroupId:  row.recur_group_id ?? null,
     // ← [2026-07-27 목적] 목적 코드 + 기타 상세 읽기 — null=기능 도입 전 예약(칩 생략)
     purpose:       row.purpose ?? null,
@@ -3249,19 +3251,29 @@ const NOSHOW_RPC_ERR: Record<string, string> = {
   NOT_ADMIN:         '예약 관리 권한이 없습니다.',
   BOOKING_NOT_FOUND: '예약을 찾을 수 없습니다. (이미 삭제되었을 수 있습니다)',
   NOT_NOSHOW:        '노쇼 상태가 아닌 예약입니다. 목록을 새로고침해 주세요.',
+  // ← [2026-09-09 노쇼 종결] 종결 구간 [start, start+15분) 에 살아있는 다른 예약이 있어 해제 불가
+  //   (RPC 사전검사 SLOT_OCCUPIED:{id} / 동시 INSERT 레이스 SLOT_OCCUPIED:RACE 공용)
+  SLOT_OCCUPIED:     '해당 시간에 다른 예약이 있어 해제할 수 없습니다.',
 }
 
-function mapNoshowRpcError(message: string, fallback: string): Error {
+// ← [2026-09-09] 폴백에 서버 code/message 를 그대로 노출.
+//   사고: 8/5~9/9 한 달간 exclusion 위반(23P01)이 매핑에 없어 "노쇼 해제에 실패했습니다" 로만 보여
+//   원인이 은폐됨. 매핑 밖 오류는 반드시 원문이 토스트에 보여야 한다.
+function mapNoshowRpcError(error: { message?: string; code?: string; details?: string }, fallback: string): Error {
+  const message = error.message ?? ''
   const key = Object.keys(NOSHOW_RPC_ERR).find(k => message.includes(k))
-  return new Error(key ? NOSHOW_RPC_ERR[key] : fallback)
+  if (key) return new Error(NOSHOW_RPC_ERR[key])
+  const raw = [error.code, message || error.details].filter(Boolean).join(': ')
+  return new Error(raw ? `${fallback} (${raw})` : fallback)
 }
 
-/** 노쇼 해제 — checked_in=true 전환으로 '사용완료' 처리 (재노쇼 원천 차단) */
+/** 노쇼 해제 — 종결된 15분 블록의 상태만 노쇼→'사용완료' (checked_in=true). end_at 은 복원하지 않는다.
+ *  ← [2026-09-09] 짝 배포: supabase/migrations/20260763_noshow_close_end.sql */
 export async function resolveNoshowBooking(bookingId: string): Promise<void> {
   const { error } = await supabase.rpc('admin_resolve_noshow', { p_booking_id: bookingId })
   if (error) {
-    console.error('[api] admin_resolve_noshow 실패:', error.message, { bookingId })
-    throw mapNoshowRpcError(error.message, '노쇼 해제에 실패했습니다.')
+    console.error('[api] admin_resolve_noshow 실패:', error.code, error.message, { bookingId })
+    throw mapNoshowRpcError(error, '노쇼 해제에 실패했습니다.')
   }
 }
 
@@ -3269,8 +3281,8 @@ export async function resolveNoshowBooking(bookingId: string): Promise<void> {
 export async function deleteNoshowBooking(bookingId: string): Promise<void> {
   const { error } = await supabase.rpc('admin_delete_noshow_booking', { p_booking_id: bookingId })
   if (error) {
-    console.error('[api] admin_delete_noshow_booking 실패:', error.message, { bookingId })
-    throw mapNoshowRpcError(error.message, '노쇼 예약 삭제에 실패했습니다.')
+    console.error('[api] admin_delete_noshow_booking 실패:', error.code, error.message, { bookingId })
+    throw mapNoshowRpcError(error, '노쇼 예약 삭제에 실패했습니다.')
   }
 }
 

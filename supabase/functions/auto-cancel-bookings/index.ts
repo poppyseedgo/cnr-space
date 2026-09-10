@@ -178,6 +178,10 @@ async function buildPayload(booking: any): Promise<any> {
   const roomName = await getRoomName(booking.room_id)
   return {
     ...booking,
+    // ← [2026-09-09 노쇼 종결] 노쇼 전환 시 DB 트리거(trg_noshow_close_end)가 end_at 을 start+15분으로
+    //   종결하고 원본을 original_end_at 에 보존한다. 이메일 본문의 예약 시간은 사용자가 잡은 원 구간이어야
+    //   하므로 원본을 복원해 전달. (조기반납 행은 이 함수 경로로 오지 않음 — noshow/pending 알림 전용)
+    end_at: booking.original_end_at ?? booking.end_at,
     user_name: booking.user_name ?? '',
     user_dept: booking.user_dept ?? '',
     room_name: roomName,

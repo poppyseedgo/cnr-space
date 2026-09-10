@@ -209,7 +209,7 @@ export function NoshowAdminPanel({ rooms, users, showToast, isMobile, PER_PAGE, 
         회의실: r?.room_name ?? '',
         날짜: tsDate(b.start_at),
         시작: b.start_at.slice(11, 16),
-        종료: b.end_at.slice(11, 16),
+        종료: (b.originalEndAt ?? b.end_at).slice(11, 16),   // ← [2026-09-09 노쇼 종결] 원 예약 종료 (end_at 은 15분 종결값)
         예약자: owner?.name ?? b.user ?? '',
         부서: owner?.dept ?? b.dept ?? '',
         상태: '노쇼',
@@ -424,7 +424,8 @@ export function NoshowAdminPanel({ rooms, users, showToast, isMobile, PER_PAGE, 
                       <td style={{ padding: '10px 14px', fontWeight: 600, color: '#111', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.title}</td>
                       <td style={{ padding: '10px 14px', color: '#64748B', whiteSpace: 'nowrap' }}>{r?.room_name ?? '?'}</td>
                       <td style={{ padding: '10px 14px', color: '#64748B', whiteSpace: 'nowrap' }}>{fmtTSDateFull(b.start_at)}</td>
-                      <td style={{ padding: '10px 14px', color: '#64748B', whiteSpace: 'nowrap' }}>{fmtTSRangeFull(b.start_at, b.end_at)}</td>
+                      {/* ← [2026-09-09 노쇼 종결] 시간 = 원 예약 구간. end_at 은 노쇼 시 start+15분으로 종결되므로 originalEndAt 우선 (레거시 행은 end_at 그대로 = 원본) */}
+                      <td style={{ padding: '10px 14px', color: '#64748B', whiteSpace: 'nowrap' }}>{fmtTSRangeFull(b.start_at, b.originalEndAt ?? b.end_at)}</td>
                       <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                           <div style={{ width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 500, flexShrink: 0, background: '#F1EFE8', color: '#444441' }}>{(displayName ?? '?')[0]}</div>
