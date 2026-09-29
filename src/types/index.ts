@@ -473,3 +473,111 @@ export interface AdminBookPenalty {
   revoked_reason: string | null
   created_at:     string
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WORKBOARD (Work Space) — ← [2026-09-29 WORKBOARD P3-A]
+//   DB: 20260929_workboard_phase1.sql (wb_ 8테이블). 컬럼명은 snake_case 그대로 — 변환 레이어 없음.
+//   사람 참조(owner·assignee·actor·author)는 uuid 값만 — 표시는 users live lookup → departed 폴백
+// ═══════════════════════════════════════════════════════════════════════════
+export type WbTaskStatus     = 'todo' | 'doing' | 'done' | 'hold'
+export type WbTaskPriority   = 'low' | 'normal' | 'high' | 'urgent'
+export type WbIssueStatus    = 'open' | 'in_progress' | 'resolved' | 'wontfix'
+export type WbIssueSeverity  = 'low' | 'medium' | 'high' | 'critical'
+export type WbMilestoneStatus = 'planned' | 'active' | 'done' | 'cancelled'
+export type WbRrule          = 'daily' | 'weekly' | 'monthly'
+
+export interface WbChecklistItem { id: string; text: string; done: boolean }
+
+export interface WbWorkArea {
+  id:               string
+  name:             string
+  description:      string | null
+  primary_owner_id: string | null
+  backup_owner_id:  string | null
+  sort_order:       number
+  is_active:        boolean
+  created_by:       string | null
+  created_at:       string
+  updated_at:       string
+}
+
+export interface WbMilestone {
+  id:          string
+  title:       string
+  description: string | null
+  start_on:    string | null
+  end_on:      string | null
+  status:      WbMilestoneStatus
+  created_by:  string | null
+  created_at:  string
+  updated_at:  string
+}
+
+export interface WbTaskTemplate {
+  id:                   string
+  area_id:              string
+  title:                string
+  description:          string | null
+  checklist:            { id: string; text: string }[]
+  rrule:                WbRrule
+  weekday:              number | null
+  month_day:            number | null
+  skip_non_workdays:    boolean
+  default_assignee_ids: string[]
+  is_active:            boolean
+}
+
+export interface WbTask {
+  id:            string
+  area_id:       string
+  milestone_id:  string | null
+  template_id:   string | null
+  period_key:    string | null
+  title:         string
+  description:   string | null
+  status:        WbTaskStatus
+  priority:      WbTaskPriority
+  due_at:        string | null
+  checklist:     WbChecklistItem[]
+  created_by:    string | null
+  created_at:    string
+  updated_at:    string
+  completed_at:  string | null
+  completed_by:  string | null
+  /** wb_task_assignees.user_id[] — 조회 시 nested select 로 채움 */
+  assignee_ids:  string[]
+  /** 반복 인스턴스 표시용 — template join (rrule) */
+  template_rrule?: WbRrule | null
+}
+
+export interface WbComment {
+  id:          string
+  target_type: 'task' | 'issue'
+  target_id:   string
+  body:        string
+  author_id:   string
+  created_at:  string
+}
+
+export interface WbActivity {
+  id:          string
+  target_type: 'area' | 'task' | 'issue'
+  target_id:   string
+  action:      string           // created | updated | status | assignees
+  diff:        Record<string, any> | null
+  actor_id:    string | null
+  created_at:  string
+}
+
+/** wb_upsert_task RPC 인자 (p_ 접두 제거) */
+export interface WbTaskUpsertInput {
+  id:           string | null
+  area_id:      string
+  title:        string
+  description:  string | null
+  priority:     WbTaskPriority
+  due_at:       string | null
+  milestone_id: string | null
+  checklist:    WbChecklistItem[]
+  assignee_ids: string[]
+}

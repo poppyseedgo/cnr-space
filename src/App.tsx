@@ -2,6 +2,7 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-09-29 WORKBOARD P3-A] WorkboardPage 에 users·authUserId·showToast 전달 (보드 구현)
  *  - [2026-09-29 WORKBOARD P2] Work Space(업무보드) 라우팅·권한 게이트
  *      · DIRECT_VIEWS += 'workboard' (#workboard 새로고침·딥링크 유지)
  *      · myAdminRoles 상태 신설 — authUser 확정 시 loadMyAdminRoles 1회. isAdmin(profiles.role) 과 **별개 축**:
@@ -2016,7 +2017,7 @@ function AppContent() {
       {view==="resources" && <ResourcePage users={users} authUserId={authUser?.user_id ?? ''} showToast={showToast} isMobile={isMobile} onGoMyResources={() => { setMyPageInitialTab('resource'); setView('mypage') }} />}{/* ← [2026-08-19] 자원예약 Phase 2A — 카드+Figma 모달, 2B(타임라인·캘린더) 예정 */}
       {view==="announcements" && <AnnouncementsPage showToast={showToast} />}{/* ← [2026-08-19] 공지사항 — 헤더 배너 이력, RLS 20260749 필요 */}
       {view==="release-notes" && <ReleaseNotesPage />}{/* ← [2026-08-03] Release Note + Hotfix — 데이터 SSOT: src/data/releaseNotes.ts */}
-      {view==="workboard" && canWorkboard && <WorkboardPage />}{/* ← [2026-09-29 WORKBOARD P2] Work Space — 권한 확정 전(null)·비권한은 렌더하지 않음 (비권한은 위 effect 가 home 으로) */}
+      {view==="workboard" && canWorkboard && <WorkboardPage users={users} authUserId={authUser?.user_id ?? ''} showToast={showToast} />}{/* ← [2026-09-29 WORKBOARD P3-A] users·authUserId·showToast 전달 (ResourcePage 관례) */}{/* ← [2026-09-29 WORKBOARD P2] 권한 확정 전(null)·비권한은 렌더하지 않음 */}
 
       {/* ── Modals ── */}
       {/* ← [2026-07-21] 도서 대여 상세 — 알림 클릭 진입점.
