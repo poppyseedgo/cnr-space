@@ -17,6 +17,14 @@ import { isMyBooking } from '../../utils/bookingOwnership'  // ← [2026-04-24 P
  * BookingDetailModal (export name: DetailModal)
  *
  * ✅ 변경 이력
+ *  - [2026-09-29] 관리자 → 승인완료 에메랄드룸 "예약 변경" 버튼 노출
+ *    · 증상: 에메랄드 confirmed 예약 상세에서 관리자에게 닫기·예약자 변경·강제취소만 보이고 "예약 변경" 없음
+ *    · 원인: isApprovedAdminRoom(에메랄드 && confirmed)이 isAdmin 무관하게 BtnEdit 차단 (사용자용 규칙이 관리자 분기에 상속)
+ *    · 근거: 관리자 행위 = 승인 내재 — 대리예약 즉시 confirmed / 승인룸 예약자 변경 허용 (2026-06-12 선례)
+ *    · 해결: editLockedByApproval = isApprovedAdminRoom && !isAdmin 을 잠금 SSOT로 신설, BtnEdit 5곳 전부 교체
+ *            (Admin·타인/Admin·본인 3곳 = 해제, 유저·본인 2곳 = isAdmin=false 라 동작 불변)
+ *    · 짝 변경: App.tsx updateBooking — 저장 차단을 !isAdmin 한정 + 관리자 변경 시 status confirmed 유지
+ *    · pending 예약은 기존대로 변경 불가 (confirmed 건만 대상 — 고지 확정)
  *  - [2026-06-12] 관리자 "예약자 변경" 버튼 추가 (onChangeOwner prop)
  *    · 노출: Admin·타인 + Admin·본인의 "미래 + confirmed" 분기 (확정 정책 #4: 본인 예약 포함)
  *    · BtnChangeOwner(secondary) → onChangeOwner(b)로 ChangeOwnerModal 오픈
@@ -199,8 +207,12 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
   const startMs = new Date(b.start_at).getTime();
   const adminCanApprove = isAdmin && b.status === 'pending' && !b.autoCancelled && nowMs < startMs - 60_000;
   const isExpiredPending = b.status === 'pending' && b.autoCancelled;
-  // 승인완료된 관리자 전용룸(에메랄드) → 변경 불가, 취소만 가능
+  // 승인완료된 관리자 전용룸(에메랄드) → 사용자는 변경 불가(취소만), 관리자는 변경 가능
   const isApprovedAdminRoom = !!(r?.is_admin_only && b.status === 'confirmed')
+  // ← [2026-09-29] 예약 변경 잠금 SSOT — 비관리자에게만 승인룸 잠금 적용
+  //   근거: 관리자 행위 = 승인 내재 (대리예약 즉시 confirmed · 예약자 변경 허용, 2026-06-12 선례)
+  //   App.tsx updateBooking 도 동일 조건(!isAdmin)으로 저장 차단 → 버튼/저장 정합
+  const editLockedByApproval = isApprovedAdminRoom && !isAdmin
   return(
     <div className="anm" style={{
       background:"#fff",
@@ -513,7 +525,8 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
           if (adminCanApprove) return btnWrap(<><BtnClose />{onReject&&<BtnReject />}{onApprove&&<BtnApprove />}</>)
           // confirmed 미래 → 닫기 + 변경 + 예약자 변경 + 강제취소
           //   ← [2026-06-12] BtnChangeOwner 추가 (미래+confirmed, 에메랄드 승인룸도 예약자 변경은 허용 — 룸/시간 불변)
-          if (b.status === 'confirmed' && isFuture) return btnWrap(<><BtnClose />{onEdit&&!isApprovedAdminRoom&&<BtnEdit />}{onChangeOwner&&<BtnChangeOwner />}{onForceCancel&&<BtnForce />}</>)
+          //   ← [2026-09-29] 에메랄드 승인룸도 관리자는 예약 변경 허용 — isApprovedAdminRoom → editLockedByApproval(관리자면 false)
+          if (b.status === 'confirmed' && isFuture) return btnWrap(<><BtnClose />{onEdit&&!editLockedByApproval&&<BtnEdit />}{onChangeOwner&&<BtnChangeOwner />}{onForceCancel&&<BtnForce />}</>)
           // 진행중 → 닫기 + 강제취소
           if (isAct) return btnWrap(<><BtnClose />{onForceCancel&&<BtnForce />}</>)
           return btnWrap(<BtnClose />)
@@ -530,11 +543,12 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
           // ← [2026-04-29] 진행중 체크인 완료 → 닫기 + 조기반납
           if (isAct && b.checkedIn) return btnWrap(<><BtnClose />{onEarlyEnd&&<BtnEarlyEnd />}</>)
           // ← [2026-05-12] 10~5분 전 confirmed → 취소 + 변경 + "곧 시작"(비활성)
-          //   에메랄드룸은 변경 불가 → 취소 + 곧시작만
-          if (showCheckinWait) return btnWrap(<><BtnCancel />{!isApprovedAdminRoom&&<BtnEdit />}<BtnCheckinWait /></>)
-          // 미래 confirmed → 변경 + 예약자 변경 + 취소 (승인완료 에메랄드룸은 변경 제외, 예약자 변경은 허용)
+          //   ← [2026-09-29] 에메랄드룸도 관리자 본인 예약은 변경 허용 (editLockedByApproval = 관리자면 false)
+          if (showCheckinWait) return btnWrap(<><BtnCancel />{!editLockedByApproval&&<BtnEdit />}<BtnCheckinWait /></>)
+          // 미래 confirmed → 변경 + 예약자 변경 + 취소
           //   ← [2026-06-12] BtnChangeOwner 추가 (관리자 본인 예약도 변경 가능 — 확정 정책 #4)
-          if (isFuture && b.status === 'confirmed') return btnWrap(<><BtnCancel />{!isApprovedAdminRoom&&<BtnEdit />}{onChangeOwner&&<BtnChangeOwner />}</>)
+          //   ← [2026-09-29] 승인완료 에메랄드룸 변경 제외 해제 (관리자 행위 = 승인 내재, 예약자 변경과 동일 기준)
+          if (isFuture && b.status === 'confirmed') return btnWrap(<><BtnCancel />{!editLockedByApproval&&<BtnEdit />}{onChangeOwner&&<BtnChangeOwner />}</>)
           return btnWrap(<BtnClose />)
         }
 
@@ -549,9 +563,9 @@ export function DetailModal({booking:b,onClose,onCheckIn,onCancel,onEdit,onEarly
           if (isAct && b.checkedIn) return btnWrap(<><BtnClose />{onEarlyEnd&&<BtnEarlyEnd />}</>)
           // ← [2026-05-12] 10~5분 전 confirmed → 취소 + 변경 + "곧 시작"(비활성)
           //   에메랄드룸 승인완료도 동일 로직 (에메랄드는 변경 불가이므로 BtnEdit 제외)
-          if (showCheckinWait) return btnWrap(<><BtnCancel />{!isApprovedAdminRoom&&<BtnEdit />}<BtnCheckinWait /></>)
+          if (showCheckinWait) return btnWrap(<><BtnCancel />{!editLockedByApproval&&<BtnEdit />}<BtnCheckinWait /></>)  // ← [2026-09-29] SSOT 변수로 교체 (유저 분기는 isAdmin=false → 동작 불변)
           // 미래 → 변경 + 취소 (승인완료 에메랄드룸은 취소만)
-          if (isFuture && b.status === 'confirmed') return btnWrap(<><BtnCancel />{!isApprovedAdminRoom&&<BtnEdit />}</>)
+          if (isFuture && b.status === 'confirmed') return btnWrap(<><BtnCancel />{!editLockedByApproval&&<BtnEdit />}</>)  // ← [2026-09-29] SSOT 변수로 교체 (동작 불변)
           // pending 미래 → 취소만
           if (isFuture && b.status === 'pending') return btnWrap(<><BtnCancel /></>)
           return btnWrap(<BtnClose />)

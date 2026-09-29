@@ -2,6 +2,14 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-09-29] 관리자 → 승인완료 에메랄드룸 예약 변경 허용 (updateBooking)
+ *      · 배경: DetailModal에서 관리자에게 "예약 변경" 버튼을 열어도 updateBooking이
+ *              "승인 완료된 예약은 변경할 수 없습니다"로 저장 차단 + newStatus 식이 pending으로 되돌림
+ *      · 변경 ①: 승인룸 confirmed 저장 차단을 !isAdmin 한정 (DetailModal editLockedByApproval 과 동일 조건)
+ *      · 변경 ②: newStatus = isAdmin ? 'confirmed' : (에메랄드 ? 'pending' : 'confirmed')
+ *                — 관리자 변경은 confirmed 유지 (고지 확정), 대리예약 즉시 확정(L929) 원칙과 동일
+ *      · 변경 ③: useCallback 의존성에 isAdmin 추가
+ *      · 불변: pending 예약 변경 차단(Bug 2) / 비관리자 경로 전체 / DB·RPC·Edge Function 무변경
  *  - [2026-07-27 목적 Phase 2] 예약 목적 카테고리 저장 연결
  *      · addBooking: 기본 유효성에 purpose 필수(+기타 상세) 추가, nb에 purpose/purposeDetail 포함
  *        → 반복 예약 전 회차 동일값 / 'created'·'pending' 알림 payload에 스프레드로 자동 포함
@@ -1408,9 +1416,11 @@ function AppContent() {
       showToast("승인 대기 중인 예약은 변경할 수 없습니다.", "error"); return false;
     }
 
-    // ── 승인완료된 에메랄드룸 예약은 변경 불가 ────────────────────────
+    // ── 승인완료된 에메랄드룸 예약은 사용자만 변경 불가 ────────────────
+    //   ← [2026-09-29] !isAdmin 한정 — 관리자는 승인 권한 보유자라 변경 허용
+    //     (DetailModal editLockedByApproval = isApprovedAdminRoom && !isAdmin 과 동일 조건 — 버튼/저장 정합)
     const originalRoom = rooms.find(r => r.room_id === originalBooking?.room_id)
-    if (originalRoom?.is_admin_only && originalBooking?.status === 'confirmed') {
+    if (!isAdmin && originalRoom?.is_admin_only && originalBooking?.status === 'confirmed') {
       showToast("승인 완료된 예약은 변경할 수 없습니다. 취소 후 재예약해주세요.", "error"); return false;
     }
 
@@ -1421,8 +1431,11 @@ function AppContent() {
     }
 
     // ── Bug 1: 변경 후 room이 에메랄드(is_admin_only)면 pending 재설정 ──
+    //   ← [2026-09-29] 관리자 변경은 confirmed 유지 (고지 확정: "관리자 변경이므로 confirmed 유지")
+    //     · 관리자 행위 = 승인 내재 — 대리예약 즉시 confirmed(L929)와 동일 원칙
+    //     · 비관리자는 기존 식 그대로 (에메랄드로 이동 시 pending + Admin 알림)
     const newRoom = rooms.find(r => r.room_id === form.room_id)
-    const newStatus = newRoom?.is_admin_only ? 'pending' : 'confirmed'
+    const newStatus = isAdmin ? 'confirmed' : (newRoom?.is_admin_only ? 'pending' : 'confirmed')
 
     const changes = {
       room_id:   form.room_id,
@@ -1538,7 +1551,7 @@ function AppContent() {
       showToast(err.message ?? "예약 변경에 실패했습니다.", "error");
     }
     return true;
-  }, [bookings, showToast]);
+  }, [bookings, showToast, isAdmin]);  // ← [2026-09-29] isAdmin 의존성 추가 (승인룸 변경 허용/상태 판정에 사용)
 
   // Auto-cancel: ① 노쇼(미체크인) 자동 취소  ② pending 승인 기한 초과 자동 취소
   //
