@@ -1,6 +1,8 @@
 /**
  * adminRoles.ts — 관리자 권한 카탈로그
  *
+ * [2026-09-29] 'workboard' 역할 추가 — 어드민 탭이 아닌 **일반 뷰**(Work Space, #workboard) 를 여는 첫 역할.
+ *              AdminRoleDef.view 필드 신설로 '탭 없음(미구현)' 과 '일반 뷰' 를 구분. 20260929_workboard_phase1.sql CHECK 와 동기화
  * [2026-07-28] 'pointer' → 'resource' 개명 — 자원예약 일반화 확정(20260734_resource_phase1.sql).
  *              구 'pointer' 는 권한 이력(admin_role_grants) 라벨 표시용으로만 deprecated 보존
  * [2026-07-27] 'kb' 역할 추가 — GA 챗봇 지식베이스 관리 탭 (20260733_kb_chunks.sql)
@@ -25,8 +27,10 @@ export interface AdminRoleDef {
   /** DB admin_roles.role 값 */
   id:    string
   label: string
-  /** 이 역할이 여는 어드민 탭. null = 대응 화면이 아직 없음 */
+  /** 이 역할이 여는 어드민 탭. null = 어드민 탭 없음 (view 도 없으면 미구현) */
   tab:   AdminTabId | null
+  /** ← [2026-09-29] 이 역할이 여는 **일반 뷰**(App.tsx DIRECT_VIEWS 의 view id). 탭 대신 페이지를 여는 역할용 */
+  view?: string
   desc:  string
   /** 폐기 예정 — 신규 부여 대상에서 제외하되 기존 데이터는 보존 */
   deprecated?: boolean
@@ -44,6 +48,7 @@ export const ADMIN_ROLES: AdminRoleDef[] = [
   { id: 'notice',       label: '공지 배너',  tab: 'notices',       desc: '헤더 공지 내용·색·게시기간 + CANTEEN DP(로비 디스플레이)' }, // ← [2026-09-08] 보조 탭 canteen-dp 포함
   { id: 'kb',           label: 'KB 관리',    tab: 'kb',            desc: 'GA 챗봇 지식베이스 청크 편집' }, // ← [2026-07-27] 20260733 CHECK와 동기화
   { id: 'resource',     label: '자원예약',   tab: 'resources',     desc: '자원 카테고리·개체 등록, 예약·반납 확인·대리예약' }, // ← [2026-08-19] Phase 3 화면 오픈, 탭 1:1 연결
+  { id: 'workboard',    label: 'Work Space', tab: null, view: 'workboard', desc: 'MS팀 업무보드 — 업무분장·일정·이슈보드 (드로어 Work Space)' }, // ← [2026-09-29] 일반 뷰 역할 — profiles.role 재계산 제외(20260929 phase1 [B])
   { id: 'super',        label: '최고 관리자', tab: null,           desc: '모든 메뉴 + 권한 부여·회수' },
   // 폐기: zoom — 사내 ZOOM 사용 종료(2026-07-21). 기존 데이터 보존을 위해 목록에만 남긴다
   { id: 'zoom',         label: '[폐기] ZOOM', tab: null,           desc: '사내 사용 종료', deprecated: true },
@@ -69,8 +74,18 @@ export const SUPER_ROLE = 'super'
 /** 신규 부여 화면에 노출할 역할 (폐기 제외) */
 export const GRANTABLE_ROLES = ADMIN_ROLES.filter(r => !r.deprecated)
 
-/** super 를 제외한 일반 역할 — 백필·'전 역할 보유' 판정에 쓴다 */
+/** super 를 제외한 일반 역할 — 부여 화면·권한 매트릭스 열 */
 export const NORMAL_ROLES = GRANTABLE_ROLES.filter(r => r.id !== SUPER_ROLE)
+
+/** ← [2026-09-29] 어드민 탭을 여는 역할만 — '전 역할 보유' 판정(정리 배너·roleSummary)의 분모.
+ *   workboard 같은 일반 뷰 역할이 늘어도 "탭 11종 전부 보유" 의 의미가 흔들리지 않게 분리한다 */
+export const TAB_ROLES = NORMAL_ROLES.filter(r => r.tab !== null)
+
+/** ← [2026-09-29] 이 역할 집합으로 해당 일반 뷰를 볼 수 있는가 (드로어 메뉴 노출·딥링크 게이트 공용) */
+export function canSeeView(roles: string[], view: string): boolean {
+  if (roles.includes(SUPER_ROLE)) return true
+  return ADMIN_ROLES.some(r => r.view === view && roles.includes(r.id))
+}
 
 /** 이 역할 집합으로 해당 탭을 볼 수 있는가 */
 export function canSeeTab(roles: string[], tab: AdminTabId): boolean {
@@ -102,7 +117,8 @@ export function roleSummary(roles: string[]): string {
   if (roles.includes(SUPER_ROLE)) return '최고 관리자'
   const normal = roles.filter(r => r !== SUPER_ROLE)
   if (normal.length === 0) return '-'
-  if (normal.length === NORMAL_ROLES.length) return '전 역할'
+  // ← [2026-09-29] 분모를 TAB_ROLES 로 — 탭 역할 전부 보유면 '전 역할' (workboard 유무 무관)
+  if (TAB_ROLES.every(r => normal.includes(r.id))) return '전 역할'
   const labels = normal
     .map(id => ADMIN_ROLES.find(r => r.id === id)?.label ?? id)
     .slice(0, 2)

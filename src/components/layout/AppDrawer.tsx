@@ -2,6 +2,9 @@
  * AppDrawer.tsx — 전역 사이드 드로어 내비게이션 (헤더 햄버거 트리거)
  *
  * ✅ 변경 이력
+ *  - [2026-09-29 WORKBOARD P2] '팀 워크스페이스' 섹션 신설 (어드민 아래·준비중 위, 미리보기 승인분)
+ *      · 항목 'Work Space'(view 'workboard', ClipboardList 아이콘, MS 배지) — canWorkboard 일 때만 섹션 자체를 렌더
+ *      · 권한 판정은 App 이 admin_roles 로 계산해 prop 으로 내려준다 (isAdmin=profiles.role 과 별개 축)
  *  - [2026-07-30] 신규 — 서비스 확장 대응 IA 개편 (고지 확정)
  *      · IA: '회의실 예약'이 상위 — 현황(home)·캘린더(calendar)는 그 하위 뷰
  *      · 도서관 / 마이페이지 / 어드민(권한자만 — 권한 없는 메뉴는 숨김 원칙)
@@ -22,7 +25,7 @@
 
 import { useEffect, useState } from 'react'
 import { X, UserCircle, Settings,
-  MessageCircleQuestion, FileText, Bot, Armchair, Megaphone } from 'lucide-react'
+  MessageCircleQuestion, FileText, Bot, Armchair, Megaphone, ClipboardList } from 'lucide-react'  // ← [2026-09-29] ClipboardList — Work Space
 // ← [2026-07-31] 헤더 필 네비와 동일 아이콘·명칭 (IcoSchedule=실시간 현황 / IcoCalendar=캘린더 뷰)
 import { IcoSchedule, IcoCalendar } from './HeaderNav'
 import { ModalPortal } from '../common/ModalPortal'
@@ -34,6 +37,8 @@ interface AppDrawerProps {
   open:      boolean
   view:      string
   isAdmin:   boolean
+  /** ← [2026-09-29 WORKBOARD P2] admin_roles 'workboard'(또는 super) 보유 여부 — 팀 워크스페이스 섹션 노출 */
+  canWorkboard: boolean
   isMobile:  boolean
   onSetView: (v: string) => void
   onClose:   () => void
@@ -47,7 +52,7 @@ export const UPCOMING_SERVICES = [
   { label: '자리 예약',           icon: Armchair },
 ] as const
 
-export function AppDrawer({ open, view, isAdmin, isMobile, onSetView, onClose }: AppDrawerProps) {
+export function AppDrawer({ open, view, isAdmin, canWorkboard, isMobile, onSetView, onClose }: AppDrawerProps) {
   // 슬라이드 애니메이션 — 마운트 다음 프레임에 in 상태로 전환
   const [entered, setEntered] = useState(false)
   useEffect(() => {
@@ -154,6 +159,24 @@ export function AppDrawer({ open, view, isAdmin, isMobile, onSetView, onClose }:
               <button className="btn" style={itemStyle(view === 'admin')} onClick={() => go('admin')}>
                 <Settings size={17} strokeWidth={1.8} /> 어드민
               </button>
+            )}
+
+            {/* ── 팀 워크스페이스 — ← [2026-09-29 WORKBOARD P2] 권한(workboard) 보유자에게만 섹션 통째로 노출.
+                  '권한 없음 = 숨김' 원칙 (어드민 항목과 동일). 서비스 섹션에 섞지 않고 분리 배치 (고지 확정) ── */}
+            {canWorkboard && (
+              <>
+                <div style={{ ...sectionLabel, marginTop: 14, borderTop: '1px solid #F8FAFC', paddingTop: 12 }}>
+                  팀 워크스페이스
+                </div>
+                <button className="btn" style={itemStyle(view === 'workboard')} onClick={() => go('workboard')}>
+                  <ClipboardList size={17} strokeWidth={1.8} /> Work Space
+                  <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '1px 7px',
+                    color: view === 'workboard' ? '#FFFFFF' : '#1E6FE8',
+                    background: view === 'workboard' ? 'rgba(255,255,255,0.18)' : '#EAF2FF' }}>
+                    MS
+                  </span>
+                </button>
+              </>
             )}
 
             {/* ── 준비중 — 고지 확정 5종. '권한 없음(숨김)'과 달리 '미구현'은 보여준다

@@ -2,6 +2,13 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-09-29 WORKBOARD P2] Work Space(업무보드) 라우팅·권한 게이트
+ *      · DIRECT_VIEWS += 'workboard' (#workboard 새로고침·딥링크 유지)
+ *      · myAdminRoles 상태 신설 — authUser 확정 시 loadMyAdminRoles 1회. isAdmin(profiles.role) 과 **별개 축**:
+ *        workboard 는 어드민 탭이 아닌 일반 뷰 권한이라 profiles.role 재계산에서 제외됨(20260929 phase1 [B]).
+ *        기존 loadMyAdminRoles 호출은 AdminPage·ResourcePage 각자였고 App 레벨엔 역할 상태가 없었다
+ *      · canWorkboard = canSeeView(myAdminRoles,'workboard') → AppDrawer 섹션 노출 + 렌더 분기
+ *      · 비권한 #workboard 딥링크 → home 폴백. myAdminRoles===null(로딩중)엔 판정 보류 (AdminView 의 null=전체탭 유지와 동일 이유 — 진입 직후 튕김 방지)
  *  - [2026-09-29] 관리자 → 승인완료 에메랄드룸 예약 변경 허용 (updateBooking)
  *      · 배경: DetailModal에서 관리자에게 "예약 변경" 버튼을 열어도 updateBooking이
  *              "승인 완료된 예약은 변경할 수 없습니다"로 저장 차단 + newStatus 식이 pending으로 되돌림
@@ -278,6 +285,9 @@ import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView } from './components/room/HomeView'
 import { LibraryPage } from './pages/LibraryPage'  // ← [2026-07-16] 도서관 모듈 추가
+import { WorkboardPage } from './pages/WorkboardPage'  // ← [2026-09-29 WORKBOARD P2] Work Space 임시 페이지 (#workboard)
+import { loadMyAdminRoles } from './lib/api'        // ← [2026-09-29 WORKBOARD P2] 내 admin_roles — 일반 뷰 권한 게이트용
+import { canSeeView } from './data/adminRoles'       // ← [2026-09-29 WORKBOARD P2] 역할 → 일반 뷰 판정 SSOT
 import { ReleaseNotesPage } from './pages/ReleaseNotesPage'  // ← [2026-08-03] Release Note + Hotfix 페이지 추가
 import HrInterviewPage from './pages/HrInterviewPage'  // ← [2026-09-03] 근태 APP 내재화 HR 1차 인터뷰 임시 단독 페이지 (#hr-interview)
 import { RoomDetailModal } from './components/room/RoomDetailModal'
@@ -393,7 +403,7 @@ function AppContent() {
   //   해결: 상수 하나로 통일 — 두 판정이 같은 배열을 참조하므로 어긋날 방법이 사라진다.
   //   ⭐운영 규칙: 새 페이지(view) 추가 시 렌더 분기와 함께 이 배열에만 추가하면 끝.
   //   (myloans 는 view 가 아니라 mypage 로 매핑되는 딥링크 별칭 — 여기 넣지 않는다)
-  const DIRECT_VIEWS = ['home','calendar','mypage','admin','library','resources','announcements','release-notes','hr-interview']  // ← [2026-09-03] hr-interview 추가 (임시 단독 페이지)
+  const DIRECT_VIEWS = ['home','calendar','mypage','admin','library','resources','announcements','release-notes','hr-interview','workboard']  // ← [2026-09-29] workboard 추가 (Work Space)  // ← [2026-09-03] hr-interview 추가 (임시 단독 페이지)
 
   const getViewFromHash = (): string => {
     const hash = window.location.hash.replace('#', '')
@@ -411,6 +421,9 @@ function AppContent() {
   const [view, setViewState] = useState<string>(getViewFromHash);
   // ← [2026-07-30] 전역 사이드 드로어 (헤더 햄버거 트리거)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // ← [2026-09-29 WORKBOARD P2] 내 admin_roles. null = 아직 조회 전(게이트 판정 보류) / [] = 없음
+  const [myAdminRoles, setMyAdminRoles] = useState<string[] | null>(null)
+  const canWorkboard = myAdminRoles !== null && canSeeView(myAdminRoles, 'workboard')
   // ← [2026-07-30] 마이페이지 진입 시 열 세그먼트 탭. 도서관 '나의 도서 대여'
   //   CTA 만 'book' 으로 세팅하고, 마이페이지를 벗어나면 'room' 으로 되돌린다 —
   //   되돌리지 않으면 CTA 를 한 번 쓴 뒤 헤더로 들어간 마이페이지도 계속
@@ -571,6 +584,19 @@ function AppContent() {
     if (!authUser) { setMyNoshowPenalty(null); return }
     fetchMyNoshowPenalty().then(setMyNoshowPenalty).catch(() => {})
   }, [authUser?.user_id])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ← [2026-09-29 WORKBOARD P2] 내 역할 1회 조회 — isAdmin 조건 없이 로그인 확정만으로 실행.
+  //   본인 행은 admin_roles RLS(user_id = auth.uid())가 항상 허용. 실패 시 [] (게이트는 닫힘 쪽으로)
+  useEffect(() => {
+    if (!authUser) { setMyAdminRoles(null); return }
+    loadMyAdminRoles(authUser.user_id).then(setMyAdminRoles).catch(() => setMyAdminRoles([]))
+  }, [authUser?.user_id])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ← [2026-09-29 WORKBOARD P2] 비권한 #workboard 진입 → home 폴백. 로딩중(null)엔 판정하지 않는다
+  useEffect(() => {
+    if (view !== 'workboard' || myAdminRoles === null) return
+    if (!canSeeView(myAdminRoles, 'workboard')) setView('home')
+  }, [view, myAdminRoles])  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (modal?.type === 'new' && authUser) {
       fetchMyNoshowPenalty().then(setMyNoshowPenalty).catch(() => {})
@@ -1990,6 +2016,7 @@ function AppContent() {
       {view==="resources" && <ResourcePage users={users} authUserId={authUser?.user_id ?? ''} showToast={showToast} isMobile={isMobile} onGoMyResources={() => { setMyPageInitialTab('resource'); setView('mypage') }} />}{/* ← [2026-08-19] 자원예약 Phase 2A — 카드+Figma 모달, 2B(타임라인·캘린더) 예정 */}
       {view==="announcements" && <AnnouncementsPage showToast={showToast} />}{/* ← [2026-08-19] 공지사항 — 헤더 배너 이력, RLS 20260749 필요 */}
       {view==="release-notes" && <ReleaseNotesPage />}{/* ← [2026-08-03] Release Note + Hotfix — 데이터 SSOT: src/data/releaseNotes.ts */}
+      {view==="workboard" && canWorkboard && <WorkboardPage />}{/* ← [2026-09-29 WORKBOARD P2] Work Space — 권한 확정 전(null)·비권한은 렌더하지 않음 (비권한은 위 effect 가 home 으로) */}
 
       {/* ── Modals ── */}
       {/* ← [2026-07-21] 도서 대여 상세 — 알림 클릭 진입점.
@@ -2158,6 +2185,7 @@ function AppContent() {
         open={drawerOpen}
         view={view}
         isAdmin={isAdmin}
+        canWorkboard={canWorkboard}
         isMobile={isMobile}
         onSetView={setView}
         onClose={() => setDrawerOpen(false)}

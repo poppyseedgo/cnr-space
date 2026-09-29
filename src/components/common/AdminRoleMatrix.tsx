@@ -1,6 +1,7 @@
 /**
  * AdminRoleMatrix.tsx — 관리자 × 역할 매트릭스
  *
+ * [2026-09-29 WORKBOARD P2] 열 수 하드코딩(11) → NORMAL_ROLES.length / 범례 '(화면 없음)' 을 일반 뷰 역할과 구분
  * [2026-07-24] Phase 4 · 역할 정리용
  *
  * ═══════════════════════════════════════════════════════════════════════════
@@ -138,7 +139,7 @@ export function AdminRoleMatrix({ users, roleMap, canEdit, showToast, onSaved }:
       </div>
 
       <div style={{ overflowX:'auto' }}>
-        <table style={{ borderCollapse:'collapse', fontFamily:FONT, minWidth: NAME_W + 11 * 64 + 90 }}>
+        <table style={{ borderCollapse:'collapse', fontFamily:FONT, minWidth: NAME_W + NORMAL_ROLES.length * 64 + 90 /* ← [2026-09-29] 열 수 SSOT */ }}>
           <thead>
             <tr>
               <th style={{
@@ -231,7 +232,7 @@ export function AdminRoleMatrix({ users, roleMap, canEdit, showToast, onSaved }:
                     display:'flex', gap:10, flexWrap:'wrap' }}>
         {ADMIN_ROLES.filter(r => !r.deprecated).map(r => (
           <span key={r.id} style={{ fontFamily:FONT, fontSize:11, color:'#94A3B8' }}>
-            <b style={{ color:'#64748B' }}>{r.label}</b> {r.tab === null ? '(화면 없음)' : ''}
+            <b style={{ color:'#64748B' }}>{r.label}</b> {r.tab === null ? (r.view ? '(일반 뷰)' : '(화면 없음)') : ''}{/* ← [2026-09-29 WORKBOARD P2] */}
           </span>
         ))}
       </div>

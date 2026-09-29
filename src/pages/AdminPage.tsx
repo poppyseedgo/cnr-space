@@ -2,6 +2,9 @@
  * AdminPage.tsx — 어드민 페이지 (대시보드 / 예약 / 승인 관리 / 회의실 / 사용자)
  *
  * ✅ 변경 이력
+ *  - [2026-09-29 WORKBOARD P2] 역할 카탈로그에 일반 뷰 역할(workboard) 추가에 따른 정합 2곳
+ *    · '전 역할 보유' 정리 배너 판정: rs.length === NORMAL_ROLES.length → TAB_ROLES 전부 포함 (분모 고정)
+ *    · 역할 체크박스 보조 라벨: tab===null → view 있으면 '일반 뷰', 없으면 '미구현'
  *  - [2026-06-10] 대시보드 '승인 대기' 카드(위젯 ①) 클릭 동작 변경
  *    · 기존: setCardDrawer({ type: 'pending' }) → DetailDrawer 'pending' 오픈
  *      문제: 드로어 기본 진입 기간(최근 30일) + 날짜모드 필터에 대기 예약이 걸려 목록이 비어 보임
@@ -60,8 +63,8 @@ import { KBAdminPanel } from '../components/common/KBAdminPanel'
 // ← [2026-07-24 Phase 4] 역할 정리용 매트릭스 (사용자 × 역할)
 import { AdminRoleMatrix } from '../components/common/AdminRoleMatrix'
 // ← [2026-07-24] 관리자 권한 Phase 1 — 역할 카탈로그 + 부여 API
-import { ADMIN_ROLES, GRANTABLE_ROLES, NORMAL_ROLES, SUPER_ROLE,
-         visibleTabs, roleSummary } from '../data/adminRoles'
+import { ADMIN_ROLES, GRANTABLE_ROLES, NORMAL_ROLES, SUPER_ROLE, TAB_ROLES,
+         visibleTabs, roleSummary } from '../data/adminRoles'  // ← [2026-09-29 WORKBOARD P2] TAB_ROLES — '전 역할' 판정 분모
 import { loadMyAdminRoles, loadAllUserRoles, setUserAdminRoles, loadRoleGrantLog, type RoleGrantLog } from '../lib/api'
 // ← [2026-08-05] 노쇼 관리 패널 — bookings 탭 하위 뷰 (기간 프리셋 + 해제/영구삭제)
 import { NoshowAdminPanel } from '../components/admin/NoshowAdminPanel'
@@ -4149,7 +4152,7 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
       {(() => {
         const allRoleUsers = activeUsers.filter(u => {
           const rs = roleMap[u.user_id] ?? []
-          return !rs.includes(SUPER_ROLE) && rs.length === NORMAL_ROLES.length
+          return !rs.includes(SUPER_ROLE) && TAB_ROLES.every(r => rs.includes(r.id))  // ← [2026-09-29 WORKBOARD P2] 분모 = 탭 역할 (workboard 유무 무관)
         })
         if (allRoleUsers.length === 0) return null
         return (
@@ -4525,7 +4528,7 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
                             onChange={e => setRoleDraft(d =>
                               e.target.checked ? [...d, r.id] : d.filter(x => x !== r.id))} />
                           {r.label}
-                          {r.tab === null && <span style={{ fontSize:10, color:'#CBD5E1' }}>미구현</span>}
+                          {r.tab === null && <span style={{ fontSize:10, color: r.view ? '#94A3B8' : '#CBD5E1' }}>{r.view ? '일반 뷰' : '미구현'}</span>}{/* ← [2026-09-29 WORKBOARD P2] 일반 뷰 역할 구분 */}
                         </label>
                       )
                     })}
