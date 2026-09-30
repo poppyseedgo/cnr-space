@@ -538,6 +538,7 @@ export interface WbTask {
   status:        WbTaskStatus
   priority:      WbTaskPriority
   due_at:        string | null
+  start_on:      string | null   // ← [2026-09-30 P3-D] 'YYYY-MM-DD' 기간 업무 시작일. NULL = 마감만
   checklist:     WbChecklistItem[]
   created_by:    string | null
   created_at:    string
@@ -577,6 +578,7 @@ export interface WbTaskUpsertInput {
   description:  string | null
   priority:     WbTaskPriority
   due_at:       string | null
+  start_on:     string | null   // ← [2026-09-30 P3-D]
   milestone_id: string | null
   checklist:    WbChecklistItem[]
   assignee_ids: string[]

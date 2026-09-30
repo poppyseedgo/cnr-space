@@ -2,6 +2,9 @@
  * WorkboardPage.tsx — Work Space (WORKBOARD) · MS팀 업무보드
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 WORKBOARD P3-D] '일정' 탭 구현 — 월 그리드(MonthGridView) + 타임라인(TimelineView, 줌 주/월/분기 · 업무영역별/마일스톤별)
+ *      · 타임라인 바 드래그 = wb_set_task_dates RPC(20260930 phase3d) → refreshTask. start_on 컬럼 신설
+ *      · 툴바(모드·줌·그룹·기간 내비)는 페이지 헤더 아래 카드 상단에 — 회의실 CalendarShell 툴바와 같은 자리
  *  - [2026-09-30 WORKBOARD P3-C] '이슈보드' 탭 구현 (IssueBoardView + IssueDrawer, 미리보기 승인분)
  *      · issues 상태 신설(진입 시 tasks 와 함께 1회 로드, 최근 30일 + 미해결 전부). 상태 이동·필드 저장 = wb_upsert_issue
  *      · 업무로 전환 = wb_convert_issue_to_task RPC(20260930 phase3c) → 생성된 업무 refreshTask 로 tasks 에 합류
@@ -25,11 +28,16 @@ import { TaskDrawer, type DrawerTask } from '../components/workboard/TaskDrawer'
 import { WB, WB_TOAST, DUE_PRESETS, matchesDuePreset, useUserLookup, wbStatusLabel, type DuePreset } from '../components/workboard/wbShared'  // ← [2026-09-29 P3-B] WB_TOAST·wbStatusLabel
 import { MyTasksView } from '../components/workboard/MyTasksView'  // ← [2026-09-29 P3-B] 내 업무
 import { IssueBoardView } from '../components/workboard/IssueBoardView'  // ← [2026-09-30 P3-C] 이슈보드
+import { TimelineView, type TimelineGroupBy } from '../components/workboard/TimelineView'  // ← [2026-09-30 P3-D]
+import { MonthGridView } from '../components/workboard/MonthGridView'  // ← [2026-09-30 P3-D]
+import { TIMELINE_ZOOMS, timelineRangeStart, timelineShift, timelineRangeEnd, fmtYmdShort, type TimelineZoom } from '../components/workboard/wbShared'  // ← [2026-09-30 P3-D]
+import { ChevronLeft, ChevronRight } from 'lucide-react'  // ← [2026-09-30 P3-D] 일정 내비
 import { IssueDrawer, type DrawerIssue } from '../components/workboard/IssueDrawer'  // ← [2026-09-30 P3-C]
 import { WB_ISSUE_TOAST, WB_SEVERITIES, wbIssueStatusLabel } from '../components/workboard/wbShared'  // ← [2026-09-30 P3-C]
 import {
   loadWbAreas, loadWbMilestones, loadWbTasks, loadWbTaskById, upsertWbTask, setWbTaskStatus, deleteWbTask, wbErrorMessage,
   loadWbIssues, loadWbIssueById, upsertWbIssue, convertWbIssueToTask, deleteWbIssue,   // ← [2026-09-30 P3-C]
+  setWbTaskDates,   // ← [2026-09-30 P3-D]
 } from '../lib/workboardApi'
 import { todayStr } from '../utils/time'  // ← [2026-09-30 P3-C] 빠른 등록 occurred_on
 
@@ -62,6 +70,19 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
   const [fArea, setFArea]         = useState<'all' | string>('all')
   const [fDue, setFDue]           = useState<DuePreset>('all')
   const [fRecur, setFRecur]       = useState(true)
+
+  // 일정 (← [P3-D])
+  const [calMode, setCalMode]   = useState<'grid' | 'timeline'>('timeline')
+  const [calZoom, setCalZoom]   = useState<TimelineZoom>('month')
+  const [calGroup, setCalGroup] = useState<TimelineGroupBy>('area')
+  const [calAnchor, setCalAnchor] = useState<string>(todayStr())
+  const calStart = calMode === 'grid' ? calAnchor.slice(0, 7) + '-01' : timelineRangeStart(calAnchor, calZoom)
+  const calEnd   = calMode === 'grid' ? new Date(Date.UTC(Number(calAnchor.slice(0, 4)), Number(calAnchor.slice(5, 7)), 0)).toISOString().slice(0, 10) : timelineRangeEnd(calStart, calZoom)
+  const calNav = (dir: 1 | -1) => setCalAnchor(a => calMode === 'grid' ? timelineShift(a, 'month', dir) : timelineShift(a, calZoom, dir))
+  const calTitle = calMode === 'grid' || calZoom === 'month'
+    ? `${calStart.slice(0, 4)}년 ${Number(calStart.slice(5, 7))}월`
+    : calZoom === 'week' ? `${fmtYmdShort(calStart)} – ${fmtYmdShort(calEnd)}`
+    : `${calStart.slice(0, 4)}년 ${Number(calStart.slice(5, 7))}월 – ${calEnd.slice(0, 4)}년 ${Number(calEnd.slice(5, 7))}월`
 
   // 내 업무 토글 (← [P3-B] 헤더 우측에 렌더하므로 페이지가 소유)
   const [mineShowDone, setMineShowDone] = useState(false)
@@ -105,9 +126,9 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
     if (fAssignee !== 'all' && fAssignee !== 'me' && !t.assignee_ids.includes(fAssignee)) return false
     if (fArea !== 'all' && t.area_id !== fArea) return false
     if (!fRecur && t.template_id) return false
-    if (!matchesDuePreset(t.due_at, fDue, t.status)) return false
+    if (tab === 'board' && !matchesDuePreset(t.due_at, fDue, t.status)) return false   // ← [P3-D] 마감 프리셋은 보드에서만 (일정 탭은 기간 자체가 축)
     return true
-  }), [tasks, fAssignee, fArea, fDue, fRecur, authUserId])
+  }), [tasks, fAssignee, fArea, fDue, fRecur, authUserId, tab])
 
   // 담당자 필터 후보 = 업무에 한 번이라도 태깅된 사람 (팀원 목록 대용)
   const assigneeOptions = useMemo(() => {
@@ -120,7 +141,7 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
     const now = new Date().toISOString()
     setDrawer({
       id: null, area_id: areas.find(a => a.is_active)?.id ?? '', milestone_id: null, template_id: null, period_key: null,
-      title: '', description: null, status, priority: 'normal', due_at: null, checklist: [],
+      title: '', description: null, status, priority: 'normal', due_at: null, start_on: null, checklist: [],
       created_by: authUserId, created_at: now, updated_at: now, completed_at: null, completed_by: null, assignee_ids: [],
     })
   }
@@ -157,6 +178,20 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
       if (prev) setTasks(ts => ts.map(t => t.id === id ? { ...t, status: prev } : t))
       throw e
     } finally { setMovingId(null) }
+  }
+
+  /** ← [P3-D] 타임라인 드래그 — 날짜만 갱신 */
+  const handleMoveDates = async (id: string, startOn: string | null, dueAt: string | null) => {
+    const prev = tasks.find(t => t.id === id); if (!prev) return
+    setMovingId(id)
+    try {
+      await setWbTaskDates(id, startOn, dueAt)
+      await refreshTask(id)
+      const from = prev.start_on ? `${fmtYmdShort(prev.start_on)}~` : ''
+      const to = startOn ? `${fmtYmdShort(startOn)}~` : ''
+      showToast(WB_TOAST.datesMoved(`${from}${prev.due_at ? fmtYmdShort(prev.due_at.slice(0, 10)) : '미정'}`, `${to}${dueAt ? fmtYmdShort(dueAt.slice(0, 10)) : '미정'}`))
+    } catch (e) { showToast(wbErrorMessage(e, '일정 변경에 실패했습니다')) }
+    finally { setMovingId(null) }
   }
 
   const handleDelete = async (id: string) => {
@@ -300,7 +335,7 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
             </button>
           </div>
         )}
-        {tab === 'board' && (
+        {(tab === 'board' || tab === 'calendar') && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <select value={fAssignee} onChange={e => setFAssignee(e.target.value)} style={{ ...chipSel, borderColor: fAssignee !== 'all' ? WB.ink : '#D1D7E1' }} aria-label="담당자 필터">
               <option value="all">담당자 · 전체</option>
@@ -311,9 +346,9 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
               <option value="all">업무영역 · 전체</option>
               {areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
-            <select value={fDue} onChange={e => setFDue(e.target.value as DuePreset)} style={{ ...chipSel, borderColor: fDue !== 'all' ? WB.ink : '#D1D7E1' }} aria-label="마감 필터">
+            {tab === 'board' && <select value={fDue} onChange={e => setFDue(e.target.value as DuePreset)} style={{ ...chipSel, borderColor: fDue !== 'all' ? WB.ink : '#D1D7E1' }} aria-label="마감 필터">
               {DUE_PRESETS.map(p => <option key={p.id} value={p.id}>마감 · {p.label}</option>)}
-            </select>
+            </select>}
             <button className="btn" onClick={() => setFRecur(v => !v)} title="반복 업무 포함/제외"
               style={{ ...chipSel, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 400, borderColor: fRecur ? '#D1D7E1' : WB.ink, color: fRecur ? WB.ink : WB.muted }}>
               <RotateCw size={13} /> 반복 {fRecur ? '포함' : '제외'}
@@ -341,6 +376,45 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
           <BoardView tasks={filtered} areas={areas} milestones={milestones} lookup={lookup}
             onOpenTask={t => setDrawer(t)} onNewTask={openNew} onMoveStatus={(id, to) => void handleSetStatus(id, to).catch(() => {})} movingId={movingId} />
         </>
+      ) : tab === 'calendar' ? (
+        <div>
+          {/* 일정 툴바 — CalendarShell 툴바 자리·필 스타일 */}
+          <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', padding: '12px 16px', borderBottom: `1px solid ${WB.cardBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 2, background: '#F3F4F8', borderRadius: 999, padding: 3 }}>
+                {([['grid', '월 그리드'], ['timeline', '타임라인']] as const).map(([id, label]) => (
+                  <button key={id} className="btn" onClick={() => setCalMode(id)} style={{ padding: '6px 14px', borderRadius: 999, fontSize: 12.5, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: calMode === id ? WB.ink : 'transparent', color: calMode === id ? '#fff' : '#657487', fontWeight: calMode === id ? 600 : 400 }}>{label}</button>
+                ))}
+              </div>
+              {calMode === 'timeline' && (
+                <>
+                  <div style={{ display: 'flex', gap: 2, background: '#F3F4F8', borderRadius: 999, padding: 3 }}>
+                    {TIMELINE_ZOOMS.map(z => (
+                      <button key={z.id} className="btn" onClick={() => setCalZoom(z.id)} style={{ padding: '6px 14px', borderRadius: 999, fontSize: 12.5, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: calZoom === z.id ? WB.ink : 'transparent', color: calZoom === z.id ? '#fff' : '#657487', fontWeight: calZoom === z.id ? 600 : 400 }}>{z.label}</button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 2, background: '#F3F4F8', borderRadius: 999, padding: 3 }}>
+                    {([['area', '업무영역별'], ['milestone', '마일스톤별']] as const).map(([id, label]) => (
+                      <button key={id} className="btn" onClick={() => setCalGroup(id)} style={{ padding: '6px 14px', borderRadius: 999, fontSize: 12.5, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: calGroup === id ? WB.ink : 'transparent', color: calGroup === id ? '#fff' : '#657487', fontWeight: calGroup === id ? 600 : 400 }}>{label}</button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 700 }}>
+              <button className="btn" onClick={() => calNav(-1)} aria-label="이전" style={{ border: 'none', background: 'transparent', color: WB.faint, cursor: 'pointer', display: 'flex', padding: 4 }}><ChevronLeft size={18} /></button>
+              <span style={{ minWidth: 160, textAlign: 'center' }}>{calTitle}</span>
+              <button className="btn" onClick={() => calNav(1)} aria-label="다음" style={{ border: 'none', background: 'transparent', color: WB.faint, cursor: 'pointer', display: 'flex', padding: 4 }}><ChevronRight size={18} /></button>
+              <button className="btn" onClick={() => setCalAnchor(todayStr())} style={{ ...chipSel, padding: '5px 10px', fontSize: 12, fontWeight: 400, marginLeft: 4 }}>오늘</button>
+            </div>
+          </div>
+          {calMode === 'grid' ? (
+            <MonthGridView tasks={filtered} areas={areas} month={calStart} lookup={lookup} onOpenTask={t => setDrawer(t)} />
+          ) : (
+            <TimelineView tasks={filtered} areas={areas} milestones={milestones} lookup={lookup} rangeStart={calStart} zoom={calZoom} groupBy={calGroup}
+              onOpenTask={t => setDrawer(t)} onMoveDates={handleMoveDates} movingId={movingId} />
+          )}
+        </div>
       ) : tab === 'issues' ? (
         <IssueBoardView issues={filteredIssues} allIssues={issues} tasks={tasks} milestones={milestones} lookup={lookup}
           onOpenIssue={i => setIssueDrawer(i)} onQuickCreate={handleQuickIssue} onMoveStatus={(id, to) => void handleIssueMove(id, to)} movingId={issueMovingId} />

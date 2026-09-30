@@ -2,6 +2,7 @@
  * TaskDrawer.tsx — Work Space 업무 상세 드로어 (미리보기 승인분 2026-09-29)
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 WORKBOARD P3-D] 시작일(start_on) 필드 — 마감 행 위. 시작 > 마감 은 클라에서도 차단(토스트)
  *  - [2026-09-29 WORKBOARD P3-B] 모든 액션 완료 시 토스트 (WB_TOAST SSOT, 고지 지시) — save(patch, toast) 시그니처
  *  - [2026-09-29 WORKBOARD P3-A] 신규
  *
@@ -25,8 +26,8 @@ import { ConfirmDialog } from '../common/ConfirmDialog'
 import { loadWbComments, loadWbActivity, insertWbComment, deleteWbComment, wbErrorMessage } from '../../lib/workboardApi'
 import {
   WB, WB_STATUSES, WB_PRIORITIES, WB_RRULE_LABEL, WB_TOAST, areaColor, checklistProgress, newChecklistId,
-  dueInfo, dueColor, kstDate, kstTime, fmtYmdShort, wbStatusLabel, wbPriorityDef, type WbPerson,
-} from './wbShared'  // ← [2026-09-29 P3-B] WB_TOAST — 액션별 완료 토스트
+  dueInfo, dueColor, kstDate, kstTime, fmtYmdShort, wbStatusLabel, wbPriorityDef, daysDiff, type WbPerson,
+} from './wbShared'  // ← [2026-09-29 P3-B] WB_TOAST — 액션별 완료 토스트  // ← [P3-D] daysDiff
 
 /** draft 는 id 만 null 인 WbTask 형태로 부모가 만들어 넘긴다 */
 export type DrawerTask = Omit<WbTask, 'id'> & { id: string | null }
@@ -69,12 +70,13 @@ export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup,
   const [msId, setMsId]         = useState<string | null>(task.milestone_id)
   const [priority, setPriority] = useState<WbTaskPriority>(task.priority)
   const [dueYmd, setDueYmd]     = useState(task.due_at ? kstDate(task.due_at) : '')
+  const [startOn, setStartOn]   = useState(task.start_on ?? '')   // ← [P3-D]
   const [dueHm, setDueHm]       = useState(task.due_at ? kstTime(task.due_at) : DEFAULT_TIME)
   const [checklist, setChecklist] = useState<WbChecklistItem[]>(task.checklist)
   const [assignees, setAssignees] = useState<string[]>(task.assignee_ids)
   useEffect(() => {
     setTitle(task.title); setDesc(task.description ?? ''); setAreaId(task.area_id); setMsId(task.milestone_id)
-    setPriority(task.priority); setDueYmd(task.due_at ? kstDate(task.due_at) : ''); setDueHm(task.due_at ? kstTime(task.due_at) : DEFAULT_TIME)
+    setPriority(task.priority); setDueYmd(task.due_at ? kstDate(task.due_at) : ''); setDueHm(task.due_at ? kstTime(task.due_at) : DEFAULT_TIME); setStartOn(task.start_on ?? '')
     setChecklist(task.checklist); setAssignees(task.assignee_ids)
   }, [task.id, task.updated_at])  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -119,7 +121,7 @@ export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup,
   // ── 저장 ──
   const buildInput = (patch: Partial<WbTaskUpsertInput> = {}): WbTaskUpsertInput => ({
     id: task.id, area_id: areaId, title: title.trim(), description: desc.trim() || null, priority,
-    due_at: dueYmd ? toDueAt(dueYmd, dueHm) : null, milestone_id: msId, checklist, assignee_ids: assignees, ...patch,
+    due_at: dueYmd ? toDueAt(dueYmd, dueHm) : null, start_on: startOn || null, milestone_id: msId, checklist, assignee_ids: assignees, ...patch,
   })
   const save = async (patch: Partial<WbTaskUpsertInput> = {}, toast?: string) => {
     if (isDraft) return                    // draft 는 [만들기] 로만
@@ -252,9 +254,25 @@ export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup,
               )}
             </div>
 
+            <span style={LABEL}>시작일</span>{/* ← [P3-D] 기간 업무 — 타임라인 바의 좌측 끝 */}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <DateField value={startOn} max={dueYmd || undefined}
+                onChange={d => {
+                  if (d && dueYmd && d > dueYmd) { showToast('시작일이 마감일보다 늦을 수 없습니다'); return }
+                  setStartOn(d); void save({ start_on: d || null }, d ? WB_TOAST.startSaved(fmtYmdShort(d)) : WB_TOAST.startCleared)
+                }} placeholder="없음 (마감만)"
+                style={{ border: `1px solid ${WB.cardBorder}`, borderRadius: 8, padding: '5px 10px', fontSize: 12.5, background: '#fff', fontFamily: 'inherit' }} />
+              {startOn && (
+                <>
+                  <span style={{ fontSize: 12, color: WB.faint }}>{dueYmd ? `${daysDiff(startOn, dueYmd) + 1}일간` : '마감 미정'}</span>
+                  <button className="btn" onClick={() => { setStartOn(''); void save({ start_on: null }, WB_TOAST.startCleared) }} aria-label="시작일 해제" style={{ border: 'none', background: 'transparent', color: WB.faint, cursor: 'pointer', display: 'flex', padding: 2 }}><X size={12} /></button>
+                </>
+              )}
+            </div>
+
             <span style={LABEL}>마감</span>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-              <DateField value={dueYmd} onChange={d => { setDueYmd(d); void save({ due_at: d ? toDueAt(d, dueHm) : null }, d ? WB_TOAST.dueSaved(`${fmtYmdShort(d)} ${dueHm}`) : WB_TOAST.dueCleared) }} placeholder="날짜 선택"
+              <DateField value={dueYmd} min={startOn || undefined} onChange={d => { if (d && startOn && d < startOn) { showToast('마감일이 시작일보다 빠를 수 없습니다'); return } setDueYmd(d); void save({ due_at: d ? toDueAt(d, dueHm) : null }, d ? WB_TOAST.dueSaved(`${fmtYmdShort(d)} ${dueHm}`) : WB_TOAST.dueCleared) }} placeholder="날짜 선택"
                 style={{ border: `1px solid ${WB.cardBorder}`, borderRadius: 8, padding: '5px 10px', fontSize: 12.5, background: '#fff', fontFamily: 'inherit' }} />
               {dueYmd && (
                 <>
@@ -400,12 +418,13 @@ export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup,
 
 // ─── 변경 이력 → 문장 ────────────────────────────────────────────────────────
 const FIELD_LABEL: Record<string, string> = {
-  title: '제목', description: '설명', priority: '우선순위', due_at: '마감', area_id: '업무영역', milestone_id: '마일스톤', checklist: '체크리스트',
+  title: '제목', description: '설명', priority: '우선순위', due_at: '마감', start_on: '시작일', area_id: '업무영역', milestone_id: '마일스톤', checklist: '체크리스트',
 }
 function fmtVal(key: string, v: any, lookup: (id: any) => WbPerson, areas: WbWorkArea[], milestones: WbMilestone[]): string {
   if (v === null || v === undefined || v === '') return '없음'
   switch (key) {
     case 'due_at':       return `${fmtYmdShort(kstDate(v))} ${kstTime(v)}`
+    case 'start_on':     return fmtYmdShort(v)
     case 'priority':     return wbPriorityDef(v).label
     case 'area_id':      return areas.find(a => a.id === v)?.name ?? '(삭제된 영역)'
     case 'milestone_id': return milestones.find(m => m.id === v)?.title ?? '(삭제된 마일스톤)'
@@ -422,6 +441,7 @@ function describeActivity(a: WbActivity, lookup: (id: any) => WbPerson, areas: W
       const add = (d.added ?? []).map((id: string) => lookup(id).name), rem = (d.removed ?? []).map((id: string) => lookup(id).name)
       return [add.length ? `담당 추가 ${add.join('·')}` : '', rem.length ? `담당 제외 ${rem.join('·')}` : ''].filter(Boolean).join(', ')
     }
+    case 'dates':     return `일정 이동: ${fmtVal('start_on', d.start_on?.from, lookup, areas, milestones)}~${fmtVal('due_at', d.due_at?.from, lookup, areas, milestones)} → ${fmtVal('start_on', d.start_on?.to, lookup, areas, milestones)}~${fmtVal('due_at', d.due_at?.to, lookup, areas, milestones)}`
     case 'updated':   return Object.entries(d).map(([k, v]: [string, any]) => `${FIELD_LABEL[k] ?? k}: ${fmtVal(k, v?.from, lookup, areas, milestones)} → ${fmtVal(k, v?.to, lookup, areas, milestones)}`).join(' / ')
     default:          return a.action
   }

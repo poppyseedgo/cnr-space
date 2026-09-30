@@ -2,6 +2,7 @@
  * workboardApi.ts — Work Space(WORKBOARD) 데이터 접근
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 WORKBOARD P3-D] start_on 컬럼 · setWbTaskDates(드래그) · START_AFTER_DUE
  *  - [2026-09-30 WORKBOARD P3-C] 이슈 조회·upsert·전환(wb_convert_issue_to_task)·삭제 + 에러코드 3종
  *  - [2026-09-29 WORKBOARD P3-A] 신규 — 보드·상세 드로어에 필요한 조회 + RPC 래퍼
  *
@@ -21,7 +22,7 @@ import type {
 // ─── 조회 ───────────────────────────────────────────────────────────────────
 
 const TASK_SELECT = `
-  id, area_id, milestone_id, template_id, period_key, title, description, status, priority, due_at,
+  id, area_id, milestone_id, template_id, period_key, title, description, status, priority, due_at, start_on,
   checklist, created_by, created_at, updated_at, completed_at, completed_by,
   wb_task_assignees ( user_id ),
   wb_task_templates ( rrule )
@@ -31,7 +32,7 @@ function rowToTask(r: any): WbTask {
   return {
     id: r.id, area_id: r.area_id, milestone_id: r.milestone_id ?? null, template_id: r.template_id ?? null,
     period_key: r.period_key ?? null, title: r.title, description: r.description ?? null,
-    status: r.status, priority: r.priority, due_at: r.due_at ?? null,
+    status: r.status, priority: r.priority, due_at: r.due_at ?? null, start_on: r.start_on ?? null,
     checklist: Array.isArray(r.checklist) ? r.checklist : [],
     created_by: r.created_by ?? null, created_at: r.created_at, updated_at: r.updated_at,
     completed_at: r.completed_at ?? null, completed_by: r.completed_by ?? null,
@@ -100,9 +101,16 @@ export async function upsertWbTask(input: WbTaskUpsertInput): Promise<string> {
     p_milestone_id: input.milestone_id,
     p_checklist:    input.checklist,
     p_assignee_ids: input.assignee_ids,
+    p_start_on:     input.start_on,   // ← [2026-09-30 P3-D] 20260930_workboard_phase3d 이후 10-인자
   })
   if (error) throw new Error(error.message)
   return data as string
+}
+
+/** ← [2026-09-30 P3-D] 타임라인 바 드래그 — 날짜만 갱신 (wb_set_task_dates) */
+export async function setWbTaskDates(id: string, startOn: string | null, dueAt: string | null): Promise<void> {
+  const { error } = await supabase.rpc('wb_set_task_dates', { p_id: id, p_start_on: startOn, p_due_at: dueAt })
+  if (error) throw new Error(error.message)
 }
 
 export async function setWbTaskStatus(id: string, status: WbTaskStatus): Promise<WbTaskStatus> {
@@ -148,6 +156,7 @@ const WB_ERR: Record<string, string> = {
   INVALID_STATUS:      '상태 값이 올바르지 않습니다',
   INVALID_CHECKLIST:   '체크리스트 형식이 올바르지 않습니다',
   INVALID_NAME:        '이름을 입력해 주세요',
+  START_AFTER_DUE:     '시작일이 마감일보다 늦을 수 없습니다',
   INVALID_SEVERITY:    '심각도 값이 올바르지 않습니다',
   ISSUE_NOT_FOUND:     '이슈를 찾을 수 없습니다',
   ALREADY_CONVERTED:   '이미 업무로 전환된 이슈입니다',

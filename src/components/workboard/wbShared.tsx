@@ -207,6 +207,9 @@ export const WB_TOAST = {
   assigneeRemoved:(name: string) => `${name} 님을 담당에서 제외했습니다`,
   dueSaved:       (label: string) => `마감을 ${label}(으)로 설정했습니다`,
   dueCleared:     '마감을 해제했습니다',
+  startSaved:     (label: string) => `시작일을 ${label}(으)로 설정했습니다`,   // ← [P3-D]
+  startCleared:   '시작일을 해제했습니다',
+  datesMoved:     (from: string, to: string) => `${from} → ${to}`,          // 타임라인 드래그
   prioritySaved:  (label: string) => `우선순위 '${label}'`,
   areaSaved:      (name: string) => `업무영역을 '${name}'(으)로 변경했습니다`,
   msSaved:        (title: string | null) => title ? `마일스톤 '${title}' 연결` : '마일스톤 연결을 해제했습니다',
@@ -254,3 +257,37 @@ export const WB_ISSUE_TOAST = {
   descSaved:      '설명을 저장했습니다',
   msSaved:        (title: string | null) => title ? `마일스톤 '${title}' 연결` : '마일스톤 연결을 해제했습니다',
 } as const
+
+// ─── 타임라인 — ← [2026-09-30 WORKBOARD P3-D] ───────────────────────────────
+export type TimelineZoom = 'week' | 'month' | 'quarter'
+export const TIMELINE_ZOOMS: { id: TimelineZoom; label: string; days: number }[] = [
+  { id: 'week',    label: '주',   days: 7 },
+  { id: 'month',   label: '월',   days: 31 },
+  { id: 'quarter', label: '분기', days: 153 },   // 5개월 (첨부 레이아웃)
+]
+export const TL = { labelW: 300, rowH: 44, groupH: 38, headerH: 44, barH: 22, msBarH: 18 } as const
+
+/** 줌별 표시 시작일 — week: 그 주 월요일 / month·quarter: 그 달 1일 */
+export function timelineRangeStart(anchor: string, zoom: TimelineZoom): string {
+  if (zoom === 'week') return weekRange(anchor)[0]
+  return anchor.slice(0, 7) + '-01'
+}
+/** 줌별 이동 단위 */
+export function timelineShift(anchor: string, zoom: TimelineZoom, dir: 1 | -1): string {
+  if (zoom === 'week') return addDaysYmd(anchor, 7 * dir)
+  const [y, m] = anchor.split('-').map(Number)
+  const step = zoom === 'month' ? 1 : 5
+  const d = new Date(Date.UTC(y, m - 1 + step * dir, 1))
+  return d.toISOString().slice(0, 10)
+}
+/** 표시 범위 종료일(포함) */
+export function timelineRangeEnd(start: string, zoom: TimelineZoom): string {
+  if (zoom === 'week') return addDaysYmd(start, 6)
+  const [y, m] = start.split('-').map(Number)
+  const months = zoom === 'month' ? 1 : 5
+  return new Date(Date.UTC(y, m - 1 + months, 0)).toISOString().slice(0, 10)
+}
+export function daysDiff(a: string, b: string): number {
+  const [ay, am, ad] = a.split('-').map(Number), [by, bm, bd] = b.split('-').map(Number)
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400_000)
+}
