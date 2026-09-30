@@ -2,6 +2,10 @@
  * WorkboardPage.tsx — Work Space (WORKBOARD) · MS팀 업무보드
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 WORKBOARD P4] 분장표 탭에 세그먼트 '업무영역 | 반복 업무'(TemplatesView + TemplateDrawer) — 미리보기 승인분
+ *      · templates·next(wb_templates_next)·lastRun 진입 시 로드. 저장 = wb_upsert_task_template → refreshTemplate + next 재조회
+ *      · '오늘분 지금 생성' = wb_generate_recurring_now → tasks 전체 재조회(생성분 합류) + lastRun 갱신 + 토스트(건수)
+ *      · 분장표 '반복 템플릿' 열은 templates 에서 파생(별도 카운트 조회 제거)
  *  - [2026-09-30 WORKBOARD P3-F] 사람 선택 통일 — members(wb_list_members) 1회 로드 → WbPersonPicker 로 담당자 필터·업무 담당자·주/부 담당.
  *      users(전 직원) 는 표시 룩업(퇴사·권한 회수자 이름)에만 쓴다. 담당자 필터는 멤버 ∪ 담당 이력자(하단 구분)
  *  - [2026-09-30 WORKBOARD P3-E] '마일스톤' 탭(MilestonesView + MilestoneDrawer) · '분장표' 탭 신설(AreasView) — 마지막 탭, 미리보기 승인분
@@ -29,7 +33,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { RotateCw } from 'lucide-react'
-import type { AppUser, WbTask, WbTaskStatus, WbWorkArea, WbMilestone, WbTaskUpsertInput, WbIssue, WbIssueStatus, WbIssueSeverity, WbIssueUpsertInput, WbMilestoneStatus, WbMilestoneUpsertInput, WbWorkAreaUpsertInput, WbMember } from '../types'  // ← [P3-C] 이슈 타입 · [P3-E] 마일스톤·영역
+import type { AppUser, WbTask, WbTaskStatus, WbWorkArea, WbMilestone, WbTaskUpsertInput, WbIssue, WbIssueStatus, WbIssueSeverity, WbIssueUpsertInput, WbMilestoneStatus, WbMilestoneUpsertInput, WbWorkAreaUpsertInput, WbMember, WbTaskTemplate, WbTemplateUpsertInput, WbTemplateDue, WbRecurringRun } from '../types'  // ← [P3-C] 이슈 타입 · [P3-E] 마일스톤·영역
 import { BoardView } from '../components/workboard/BoardView'
 import { TaskDrawer, type DrawerTask } from '../components/workboard/TaskDrawer'
 import { WB, WB_TOAST, DUE_PRESETS, matchesDuePreset, useUserLookup, wbStatusLabel, type DuePreset } from '../components/workboard/wbShared'  // ← [2026-09-29 P3-B] WB_TOAST·wbStatusLabel
@@ -49,10 +53,14 @@ import {
 import { todayStr } from '../utils/time'  // ← [2026-09-30 P3-C] 빠른 등록 occurred_on
 import { MilestonesView } from '../components/workboard/MilestonesView'   // ← [2026-09-30 P3-E]
 import { WbPersonPicker } from '../components/workboard/WbPersonPicker'   // ← [2026-09-30 P3-F]
+import { TemplatesView } from '../components/workboard/TemplatesView'     // ← [2026-09-30 P4]
+import { TemplateDrawer } from '../components/workboard/TemplateDrawer'   // ← [2026-09-30 P4]
+import { WB_TPL_TOAST } from '../components/workboard/wbShared'           // ← [2026-09-30 P4]
 import { MilestoneDrawer } from '../components/workboard/MilestoneDrawer' // ← [2026-09-30 P3-E]
 import { AreasView, type AreaEditor } from '../components/workboard/AreasView'  // ← [2026-09-30 P3-E]
 import { WB_MS_TOAST, WB_AREA_TOAST, wbMsStatusDef } from '../components/workboard/wbShared'  // ← [2026-09-30 P3-E]
-import { loadWbMilestoneById, loadWbAreaById, upsertWbMilestone, setWbMilestoneStatus, deleteWbMilestone, upsertWbArea, reorderWbAreas, loadWbTemplateCounts, loadWbMembers } from '../lib/workboardApi'  // ← [2026-09-30 P3-E] · [P3-F] loadWbMembers
+import { loadWbMilestoneById, loadWbAreaById, upsertWbMilestone, setWbMilestoneStatus, deleteWbMilestone, upsertWbArea, reorderWbAreas, loadWbMembers } from '../lib/workboardApi'  // ← [2026-09-30 P3-E] · [P3-F] loadWbMembers
+import { loadWbTemplates, loadWbTemplateById, upsertWbTemplate, loadWbTemplatesNext, generateWbRecurringNow, loadWbRecurringRuns } from '../lib/workboardApi'  // ← [2026-09-30 P4]
 
 type WbTab = 'board' | 'calendar' | 'milestones' | 'issues' | 'areas' | 'mine'
 const TABS: { id: WbTab; label: string }[] = [
@@ -122,14 +130,21 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
   const [msDrawer, setMsDrawer]       = useState<{ open: true; milestone: WbMilestone | null } | null>(null)
   const [areaEditor, setAreaEditor]   = useState<AreaEditor>(null)
   const [areaShowInactive, setAreaShowInactive] = useState(false)
-  const [templateCounts, setTemplateCounts] = useState<Map<string, number>>(new Map())
+  // ── 반복 업무 (← [P4]) ──
+  const [areaSeg, setAreaSeg]       = useState<'areas' | 'templates'>('areas')
+  const [templates, setTemplates]   = useState<WbTaskTemplate[]>([])
+  const [tplNext, setTplNext]       = useState<Map<string, WbTemplateDue>>(new Map())
+  const [lastRun, setLastRun]       = useState<WbRecurringRun | null>(null)
+  const [tplShowInactive, setTplShowInactive] = useState(false)
+  const [tplDrawer, setTplDrawer]   = useState<{ open: true; template: WbTaskTemplate | null } | null>(null)
+  const templateCounts = useMemo(() => { const m = new Map<string, number>(); for (const t of templates) m.set(t.area_id, (m.get(t.area_id) ?? 0) + 1); return m }, [templates])
   const [wbBusy, setWbBusy]           = useState(false)   // 마일스톤·영역 RPC 진행 중 (버튼 잠금)
 
   const loadAll = useCallback(async () => {
     setLoading(true); setLoadError(null)
     try {
-      const [a, m, t, i, tc, mem] = await Promise.all([loadWbAreas(), loadWbMilestones(), loadWbTasks(), loadWbIssues(365), loadWbTemplateCounts(), loadWbMembers()])  // ← [P3-C] 이슈는 1년치 · [P3-E] 템플릿 수 · [P3-F] 멤버 풀
-      setAreas(a); setMilestones(m); setTasks(t); setIssues(i); setTemplateCounts(tc); setMembers(mem)
+      const [a, m, t, i, mem, tpl, nx, runs] = await Promise.all([loadWbAreas(), loadWbMilestones(), loadWbTasks(), loadWbIssues(365), loadWbMembers(), loadWbTemplates(), loadWbTemplatesNext(), loadWbRecurringRuns(1)])  // ← [P3-C] 이슈 1년치 · [P3-F] 멤버 풀 · [P4] 템플릿·다음 생성·실행 로그
+      setAreas(a); setMilestones(m); setTasks(t); setIssues(i); setMembers(mem); setTemplates(tpl); setTplNext(nx); setLastRun(runs[0] ?? null)
     } catch (e) { setLoadError(wbErrorMessage(e, '데이터를 불러오지 못했습니다')) }
     finally { setLoading(false) }
   }, [])
@@ -370,6 +385,49 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
     finally { setWbBusy(false) }
   }
 
+  // ── 반복 업무 핸들러 (← [P4]) ──
+  const refreshTemplate = useCallback(async (id: string) => {
+    const [fresh, nx] = await Promise.all([loadWbTemplateById(id), loadWbTemplatesNext()])
+    setTplNext(nx)
+    if (!fresh) { setTemplates(prev => prev.filter(t => t.id !== id)); return null }
+    setTemplates(prev => prev.some(t => t.id === id) ? prev.map(t => t.id === id ? fresh : t) : [...prev, fresh])
+    setTplDrawer(d => (d && d.template?.id === id ? { open: true, template: fresh } : d))
+    return fresh
+  }, [])
+
+  const handleTplSave = async (input: WbTemplateUpsertInput) => {
+    setSaving(true)
+    try {
+      const id = await upsertWbTemplate(input)
+      const fresh = await refreshTemplate(id)
+      if (input.id === null) { setTplDrawer(fresh ? { open: true, template: fresh } : null); showToast(WB_TPL_TOAST.created(input.title)) }
+      else showToast(WB_TPL_TOAST.saved)
+    } finally { setSaving(false) }
+  }
+
+  const handleTplToggle = async (t: WbTaskTemplate) => {
+    const next = !t.is_active
+    setWbBusy(true)
+    try {
+      await upsertWbTemplate({ id: t.id, area_id: t.area_id, title: t.title, description: t.description, checklist: t.checklist, rrule: t.rrule, weekday: t.weekday, month_day: t.month_day, skip_non_workdays: t.skip_non_workdays, default_assignee_ids: t.default_assignee_ids, is_active: next })
+      await refreshTemplate(t.id)
+      showToast(next ? WB_TPL_TOAST.activated(t.title) : WB_TPL_TOAST.deactivated(t.title))
+    } catch (e) { showToast(wbErrorMessage(e, '변경에 실패했습니다')) }
+    finally { setWbBusy(false) }
+  }
+
+  /** 오늘(KST)분 생성 — 멱등. 생성분이 보드에 바로 보이도록 tasks 전체 재조회 */
+  const handleGenerateNow = async () => {
+    setWbBusy(true)
+    try {
+      const { created } = await generateWbRecurringNow()
+      const [t, runs, nx] = await Promise.all([loadWbTasks(), loadWbRecurringRuns(1), loadWbTemplatesNext()])
+      setTasks(t); setLastRun(runs[0] ?? null); setTplNext(nx)
+      showToast(WB_TPL_TOAST.generated(created))
+    } catch (e) { showToast(wbErrorMessage(e, '생성에 실패했습니다')) }
+    finally { setWbBusy(false) }
+  }
+
   /** 이슈 드로어 → 업무 열기: 이슈 드로어 닫고 TaskDrawer 로 */
   const openTaskFromIssue = (taskId: string) => {
     const t = tasks.find(x => x.id === taskId)
@@ -431,12 +489,23 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
             </button>
           </div>
         )}
-        {tab === 'areas' && (
+        {tab === 'areas' && areaSeg === 'areas' && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <button className="btn" onClick={() => setAreaShowInactive(v => !v)} style={{ ...chipSel, fontWeight: areaShowInactive ? 600 : 400, borderColor: areaShowInactive ? WB.ink : '#D1D7E1' }}>비활성 포함</button>
             <button className="btn" onClick={() => setAreaEditor({ mode: 'new' })} disabled={loading}
               style={{ background: WB.ink, color: '#fff', border: 'none', borderRadius: 8, padding: '9px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.5 : 1 }}>
               + 업무영역 추가
+            </button>
+          </div>
+        )}
+        {tab === 'areas' && areaSeg === 'templates' && (   /* ← [P4] */
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn" onClick={() => setTplShowInactive(v => !v)} style={{ ...chipSel, fontWeight: tplShowInactive ? 600 : 400, borderColor: tplShowInactive ? WB.ink : '#D1D7E1' }}>비활성 포함</button>
+            <button className="btn" onClick={() => void handleGenerateNow()} disabled={loading || wbBusy} title="오늘(KST) 기준 생성 — 이미 생성된 것은 건너뜀"
+              style={{ ...chipSel, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, opacity: loading || wbBusy ? .5 : 1 }}><RotateCw size={13} /> 오늘분 지금 생성</button>
+            <button className="btn" onClick={() => setTplDrawer({ open: true, template: null })} disabled={loading || areas.filter(a => a.is_active).length === 0}
+              style={{ background: WB.ink, color: '#fff', border: 'none', borderRadius: 8, padding: '9px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: loading || areas.filter(a => a.is_active).length === 0 ? 0.5 : 1 }}>
+              + 반복 업무 추가
             </button>
           </div>
         )}
@@ -539,14 +608,33 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
           selectedId={msSelected} onSelect={setMsSelected} onSetStatus={handleMsStatus} onEdit={m => setMsDrawer({ open: true, milestone: m })} onDelete={handleMsDelete}
           onAddTask={msId => openNew('todo', msId)} onOpenTask={t => setDrawer(t)} onOpenIssue={i => setIssueDrawer(i)} busy={wbBusy} />
       ) : tab === 'areas' ? (
-        <AreasView areas={areas} tasks={tasks} templateCounts={templateCounts} members={members} authUserId={authUserId} lookup={lookup} showInactive={areaShowInactive}
-          editor={areaEditor} onEditorChange={setAreaEditor} onSave={handleAreaSave} onToggleActive={handleAreaToggle} onReorder={handleAreaReorder} busy={wbBusy} />
+        <div>
+          {/* ← [P4] 세그먼트: 업무영역 | 반복 업무 */}
+          <div style={{ display: 'inline-flex', gap: 2, background: '#F3F4F8', borderRadius: 999, padding: 3, marginBottom: 14 }}>
+            {([['areas', '업무영역'], ['templates', '반복 업무']] as const).map(([id, label]) => (
+              <button key={id} className="btn" onClick={() => setAreaSeg(id)} style={{ padding: '6px 14px', borderRadius: 999, fontSize: 12.5, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: areaSeg === id ? WB.ink : 'transparent', color: areaSeg === id ? '#fff' : '#657487', fontWeight: areaSeg === id ? 600 : 400, display: 'flex', gap: 6, alignItems: 'center' }}>
+                {label}{id === 'templates' && templates.length > 0 && <b style={{ fontSize: 11 }}>{templates.filter(t => t.is_active).length}</b>}
+              </button>
+            ))}
+          </div>
+          {areaSeg === 'areas' ? (
+            <AreasView areas={areas} tasks={tasks} templateCounts={templateCounts} members={members} authUserId={authUserId} lookup={lookup} showInactive={areaShowInactive}
+              editor={areaEditor} onEditorChange={setAreaEditor} onSave={handleAreaSave} onToggleActive={handleAreaToggle} onReorder={handleAreaReorder} busy={wbBusy} />
+          ) : (
+            <TemplatesView templates={templates} areas={areas} next={tplNext} lastRun={lastRun} lookup={lookup} showInactive={tplShowInactive}
+              selectedId={tplDrawer?.template?.id ?? null} onOpen={t => setTplDrawer({ open: true, template: t })} onToggleActive={handleTplToggle} busy={wbBusy} />
+          )}
+        </div>
       ) : tab === 'mine' ? (
         <MyTasksView tasks={tasks} areas={areas} milestones={milestones} authUserId={authUserId} lookup={lookup}
           onOpenTask={t => setDrawer(t)} onSetStatus={(id, s) => handleSetStatus(id, s).catch(() => {})} movingId={movingId}
           showDone={mineShowDone} withRecur={mineRecur} />
       ) : null}
 
+      {tplDrawer && (
+        <TemplateDrawer template={tplDrawer.template} areas={areas} members={members} authUserId={authUserId} lookup={lookup} saving={saving}
+          onClose={() => setTplDrawer(null)} onSave={handleTplSave} onGenerateNow={handleGenerateNow} showToast={showToast} />
+      )}
       {msDrawer && (
         <MilestoneDrawer milestone={msDrawer.milestone} saving={saving} onClose={() => setMsDrawer(null)} onSave={handleMsSave} showToast={showToast} />
       )}

@@ -2,6 +2,7 @@
  * workboardApi.ts — Work Space(WORKBOARD) 데이터 접근
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 WORKBOARD P4] 반복 업무 — 템플릿 조회/upsert(RPC) · 미리보기(wb_template_preview · wb_templates_next, 규칙 SSOT=DB) · 수동 생성 · 실행 로그
  *  - [2026-09-30 WORKBOARD P3-F] loadWbMembers — 사람 선택 풀(wb_list_members RPC). users(전 직원) 는 표시 룩업에만 쓴다
  *  - [2026-09-30 WORKBOARD P3-E] 마일스톤 RPC 3종(upsert·status·delete) · 업무영역 upsert/reorder RPC · 단건 재조회 2종
  *      · wb_milestones 직접 쓰기는 20260930_workboard_phase3e 에서 회수됨 — 반드시 RPC
@@ -84,7 +85,7 @@ export async function loadWbComments(targetType: 'task' | 'issue', targetId: str
   return (data ?? []) as WbComment[]
 }
 
-export async function loadWbActivity(targetType: 'area' | 'task' | 'issue' | 'milestone', targetId: string): Promise<WbActivity[]> {
+export async function loadWbActivity(targetType: 'area' | 'task' | 'issue' | 'milestone' | 'template', targetId: string): Promise<WbActivity[]> {
   const { data, error } = await supabase.from('wb_activity_log').select('*')
     .eq('target_type', targetType).eq('target_id', targetId).order('created_at', { ascending: false })
   if (error) throw new Error(error.message)
@@ -167,6 +168,10 @@ const WB_ERR: Record<string, string> = {
   END_BEFORE_START:    '종료일이 시작일보다 빠를 수 없습니다',          // ← [P3-E]
   HAS_LINKS:           '연결된 업무·이슈가 있어 삭제할 수 없습니다 — 취소 상태로 종료하세요',
   INVALID_IDS:         '업무영역 순서 정보가 올바르지 않습니다 — 새로고침 후 다시 시도',
+  INVALID_RRULE:       '주기 값이 올바르지 않습니다',                 // ← [P4]
+  WEEKLY_NEEDS_WEEKDAY:'주간 반복은 요일을 선택해야 합니다',
+  MONTHLY_NEEDS_DAY:   '월간 반복은 날짜를 선택해야 합니다',
+  TEMPLATE_NOT_FOUND:  '반복 업무 템플릿을 찾을 수 없습니다',
 }
 
 export function wbErrorMessage(e: unknown, fallback = '처리에 실패했습니다'): string {
@@ -279,16 +284,6 @@ export async function reorderWbAreas(ids: string[]): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
-/** 분장표 '반복 템플릿' 열 — 영역별 템플릿 수 (Phase 4 전엔 비어 있음) */
-export async function loadWbTemplateCounts(): Promise<Map<string, number>> {
-  const m = new Map<string, number>()
-  if (!isSupabaseEnabled) return m
-  const { data, error } = await supabase.from('wb_task_templates').select('area_id')
-  if (error) throw new Error(error.message)
-  for (const r of (data ?? []) as { area_id: string }[]) m.set(r.area_id, (m.get(r.area_id) ?? 0) + 1)
-  return m
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // 멤버 풀 — ← [2026-09-30 WORKBOARD P3-F]
 // ═══════════════════════════════════════════════════════════════════════════
@@ -300,4 +295,65 @@ export async function loadWbMembers(): Promise<WbMember[]> {
   const { data, error } = await supabase.rpc('wb_list_members')
   if (error) throw new Error(error.message)
   return (data ?? []) as WbMember[]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 반복 업무 — ← [2026-09-30 WORKBOARD P4]
+//   주기 규칙(비영업일 이동·소급 창)은 DB 함수가 SSOT — 화면은 계산하지 않고 wb_template_preview / wb_templates_next 를 호출한다
+// ═══════════════════════════════════════════════════════════════════════════
+import type { WbTaskTemplate, WbTemplateUpsertInput, WbTemplateDue, WbRecurringRun } from '../types'
+
+export async function loadWbTemplates(): Promise<WbTaskTemplate[]> {
+  if (!isSupabaseEnabled) return []
+  const { data, error } = await supabase.from('wb_task_templates').select('*').order('created_at')
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r: any) => ({ ...r, checklist: Array.isArray(r.checklist) ? r.checklist : [], default_assignee_ids: r.default_assignee_ids ?? [] })) as WbTaskTemplate[]
+}
+
+export async function loadWbTemplateById(id: string): Promise<WbTaskTemplate | null> {
+  const { data, error } = await supabase.from('wb_task_templates').select('*').eq('id', id).maybeSingle()
+  if (error) throw new Error(error.message)
+  return data ? ({ ...data, checklist: Array.isArray(data.checklist) ? data.checklist : [], default_assignee_ids: data.default_assignee_ids ?? [] } as WbTaskTemplate) : null
+}
+
+export async function upsertWbTemplate(input: WbTemplateUpsertInput): Promise<string> {
+  const { data, error } = await supabase.rpc('wb_upsert_task_template', {
+    p_id: input.id, p_area_id: input.area_id, p_title: input.title, p_description: input.description, p_checklist: input.checklist,
+    p_rrule: input.rrule, p_weekday: input.weekday, p_month_day: input.month_day, p_skip_non_workdays: input.skip_non_workdays,
+    p_default_assignee_ids: input.default_assignee_ids, p_is_active: input.is_active,
+  })
+  if (error) throw new Error(error.message)
+  return data as string
+}
+
+/** 임의 파라미터 다음 생성일 N개 — 드로어 실시간 미리보기(저장 전) */
+export async function previewWbTemplate(rrule: WbRrule, weekday: number | null, monthDay: number | null, skip: boolean, count = 4): Promise<WbTemplateDue[]> {
+  const { data, error } = await supabase.rpc('wb_template_preview', { p_rrule: rrule, p_weekday: weekday, p_month_day: monthDay, p_skip: skip, p_count: count })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as WbTemplateDue[]
+}
+
+/** 활성 템플릿 전체의 다음 생성일 — 목록 열 */
+export async function loadWbTemplatesNext(): Promise<Map<string, WbTemplateDue>> {
+  const m = new Map<string, WbTemplateDue>()
+  if (!isSupabaseEnabled) return m
+  const { data, error } = await supabase.rpc('wb_templates_next')
+  if (error) throw new Error(error.message)
+  for (const r of (data ?? []) as (WbTemplateDue & { template_id: string })[]) m.set(r.template_id, { due_on: r.due_on, period_key: r.period_key, shifted: r.shifted })
+  return m
+}
+
+/** 오늘(KST)분 지금 생성 — 멱등(UNIQUE dedupe). 반환: 생성/스킵 수 */
+export async function generateWbRecurringNow(): Promise<{ created: number; skipped: number }> {
+  const { data, error } = await supabase.rpc('wb_generate_recurring_now')
+  if (error) throw new Error(error.message)
+  const row = Array.isArray(data) ? data[0] : data
+  return { created: row?.created_count ?? 0, skipped: row?.skipped_count ?? 0 }
+}
+
+export async function loadWbRecurringRuns(limit = 1): Promise<WbRecurringRun[]> {
+  if (!isSupabaseEnabled) return []
+  const { data, error } = await supabase.from('wb_recurring_runs').select('*').order('ran_at', { ascending: false }).limit(limit)
+  if (error) throw new Error(error.message)
+  return (data ?? []) as WbRecurringRun[]
 }

@@ -2,6 +2,7 @@
  * wbShared.tsx — Work Space(WORKBOARD) 공용 토큰·판정·룩업
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 WORKBOARD P4] 반복 업무 — WB_WEEKDAYS · rruleLabel · WB_TPL_TOAST
  *  - [2026-09-30 WORKBOARD P3-F] useUserLookup(users, members) — 멤버 풀 우선(is_super 배지), 그다음 users(전 직원, 표시 전용), 마지막 departed_users
  *  - [2026-09-30 WORKBOARD P3-E] 마일스톤 상태 카탈로그·진행률(milestoneProgress)·D-day(milestoneDday) · WB_MS_TOAST / WB_AREA_TOAST
  *  - [2026-09-29 WORKBOARD P3-A] 신규 — 보드 미리보기 승인분(2026-09-29) 토큰 SSOT
@@ -357,4 +358,30 @@ export const WB_AREA_TOAST = {
   activated:    (name: string) => `'${name}' 활성화`,
   deactivated:  (name: string) => `'${name}' 비활성화 — 새 업무 선택지에서 숨겨집니다`,
   reordered:    '순서를 저장했습니다',
+} as const
+
+// ─── 반복 업무 — ← [2026-09-30 WORKBOARD P4] ─────────────────────────────────
+import type { WbTaskTemplate } from '../../types'
+export const WB_WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'] as const
+/** 칩 라벨: '매일' · '주간 · 금' · '월간 · 1일' · '월간 · 말일' */
+export function rruleLabel(t: Pick<WbTaskTemplate, 'rrule' | 'weekday' | 'month_day'>): string {
+  if (t.rrule === 'daily') return '매일'
+  if (t.rrule === 'weekly') return `주간 · ${WB_WEEKDAYS[t.weekday ?? 1]}`
+  return `월간 · ${t.month_day === 31 ? '말일' : `${t.month_day}일`}`
+}
+/** 주기 설명 한 줄 (목록 부제) */
+export function rruleDescribe(t: Pick<WbTaskTemplate, 'rrule' | 'weekday' | 'month_day' | 'skip_non_workdays'>): string {
+  const base = t.rrule === 'daily' ? '매일' : t.rrule === 'weekly' ? `매주 ${WB_WEEKDAYS[t.weekday ?? 1]}요일` : `매월 ${t.month_day === 31 ? '말일' : `${t.month_day}일`}`
+  if (!t.skip_non_workdays) return `${base} · 비영업일 포함`
+  if (t.rrule === 'daily') return `${base} · 주말·공휴일 제외`
+  return `${base} · 비영업일이면 다음 영업일${t.rrule === 'monthly' ? ' (월 넘기면 이전 영업일)' : ' (주 넘기면 이전 영업일)'}`
+}
+export const shiftedLabel = (s: 'next' | 'prev' | null, from?: string) => s === 'next' ? `${from ? from + ' ' : ''}→ 다음 영업일` : s === 'prev' ? `${from ? from + ' ' : ''}→ 앞당김` : ''
+
+export const WB_TPL_TOAST = {
+  created:     (title: string) => `반복 업무 '${title}' 추가 — 다음 생성일부터 자동 생성`,
+  saved:       '반복 업무를 저장했습니다 — 다음 생성분부터 반영',
+  activated:   (title: string) => `'${title}' 자동 생성 켜짐`,
+  deactivated: (title: string) => `'${title}' 자동 생성 꺼짐 (생성된 업무는 유지)`,
+  generated:   (n: number) => n > 0 ? `오늘분 ${n}건 생성 — 보드에서 확인` : '오늘 생성할 반복 업무가 없습니다 (이미 생성됐거나 주기 아님)',
 } as const
