@@ -2,6 +2,7 @@
  * TimelineView.tsx — Work Space 일정 · 타임라인(간트) 모드 (미리보기 승인분 2026-09-30)
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 WORKBOARD P3-E] 업무영역별 모드에 마일스톤 밴드(날짜 헤더 아래 고정 행) — 3-D 미해결 정리. 바 클릭 → onOpenMilestone
  *  - [2026-09-30 WORKBOARD P3-D] 신규
  *
  * 구조: 좌 300px 고정 라벨 열(그룹 헤더 + 업무 행) · 우 시간축(줌 주/월/분기 — 열 폭만 다르고 구조 동일 → 주 뷰 = 주 줌)
@@ -38,6 +39,7 @@ interface Props {
   onOpenTask:  (t: WbTask) => void
   onMoveDates: (id: string, startOn: string | null, dueAt: string | null) => Promise<void>
   movingId:    string | null
+  onOpenMilestone?: (m: WbMilestone) => void   // ← [2026-09-30 P3-E] 마일스톤 바 클릭 → 마일스톤 탭
 }
 
 type DragMode = 'move' | 'start' | 'end' | 'point'
@@ -47,7 +49,7 @@ const DOW = ['일', '월', '화', '수', '목', '금', '토']
 const DEFAULT_TIME = '18:00'
 function toDueAt(ymd: string, hm: string) { return new Date(`${ymd}T${hm}:00+09:00`).toISOString() }
 
-export function TimelineView({ tasks, areas, milestones, lookup, rangeStart, zoom, groupBy, onOpenTask, onMoveDates, movingId }: Props) {
+export function TimelineView({ tasks, areas, milestones, lookup, rangeStart, zoom, groupBy, onOpenTask, onMoveDates, movingId, onOpenMilestone }: Props) {
   const holidayMap = useHolidayMap()
   const today = todayStr()
   const rangeEnd = timelineRangeEnd(rangeStart, zoom)
@@ -94,6 +96,14 @@ export function TimelineView({ tasks, areas, milestones, lookup, rangeStart, zoo
   }, [tasks, areas, milestones, groupBy, rangeStart, rangeEnd, areaIndex, msById, lookup])
 
   const undated = useMemo(() => tasks.filter(t => !t.start_on && !t.due_at && t.status !== 'done'), [tasks])
+
+  // ← [2026-09-30 P3-E] 업무영역별 모드: 날짜 헤더 바로 아래 고정 '마일스톤' 밴드 (기간이 있고 범위에 걸치는 것, 취소 제외)
+  //    마일스톤별 모드는 그룹 헤더가 이미 바를 그리므로 밴드 없음
+  const msBand = useMemo(() => groupBy === 'area'
+    ? milestones.filter(m => m.status !== 'cancelled' && m.start_on && m.end_on && !(m.end_on! < rangeStart || m.start_on! > rangeEnd)).sort((a, b) => a.start_on!.localeCompare(b.start_on!))
+    : [], [milestones, groupBy, rangeStart, rangeEnd])
+  const MS_ROW = TL.msBarH + 8
+  const bandH = msBand.length ? msBand.length * MS_ROW + 8 : 0
 
   // ── 축 헤더 ──
   const axis = useMemo(() => {
@@ -221,6 +231,17 @@ export function TimelineView({ tasks, areas, milestones, lookup, rangeStart, zoo
         {/* 라벨 열 */}
         <div style={{ borderRight: `1px solid ${WB.cardBorder}` }}>
           <div style={{ height: TL.headerH, borderBottom: `1px solid ${WB.cardBorder}`, display: 'flex', alignItems: 'center', padding: '0 16px', fontSize: 12, fontWeight: 600, color: '#64748B' }}>업무</div>
+          {bandH > 0 && (
+            <div style={{ height: bandH, borderBottom: `1px solid ${WB.cardBorder}`, background: '#FCFAFF', padding: '4px 16px', boxSizing: 'border-box' }}>
+              {msBand.map(m => (
+                <div key={m.id} onClick={() => onOpenMilestone?.(m)} style={{ height: MS_ROW, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: onOpenMilestone ? 'pointer' : 'default' }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 7px', borderRadius: 5, background: '#F5F3FF', color: '#7C3AED', whiteSpace: 'nowrap' }}>마일스톤</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>{m.title}</span>
+                  {m.status === 'done' && <span style={{ fontSize: 10.5, color: '#047857', fontWeight: 700 }}>완료</span>}
+                </div>
+              ))}
+            </div>
+          )}
           {groups.map(g => (
             <div key={g.key}>
               <div style={{ height: TL.groupH, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 8, background: '#F8FAFC', borderBottom: `1px solid ${WB.line}`, fontSize: 12 }}>
@@ -259,12 +280,26 @@ export function TimelineView({ tasks, areas, milestones, lookup, rangeStart, zoo
             {zoom === 'week' && axis.map((a, i) => a.isToday && <div key={'t' + i} style={{ position: 'absolute', left: `${a.x}%`, width: `${a.w}%`, top: 0, bottom: 0, background: '#FEF2F2', opacity: .5, pointerEvents: 'none' }} />)}
             {todayX !== null && (
               <div style={{ position: 'absolute', left: `${todayX}%`, top: 0, bottom: 0, borderLeft: '2px solid #EF4444', zIndex: 3, pointerEvents: 'none' }}>
-                <span style={{ position: 'absolute', top: 6, left: 6, fontSize: 11, fontWeight: 700, color: '#EF4444', whiteSpace: 'nowrap' }}>오늘 {today.slice(5).replace('-', '/')}</span>
+                <span style={{ position: 'absolute', top: bandH + 6, left: 6, fontSize: 11, fontWeight: 700, color: '#EF4444', whiteSpace: 'nowrap' }}>오늘 {today.slice(5).replace('-', '/')}</span>   {/* ← [P3-E] 마일스톤 밴드 아래로 */}
               </div>
             )}
 
+            {bandH > 0 && (
+              <div style={{ height: bandH, borderBottom: `1px solid ${WB.cardBorder}`, position: 'relative', background: 'rgba(245,243,255,.35)', boxSizing: 'border-box', paddingTop: 4 }}>
+                {msBand.map((m, i) => {
+                  const s = m.start_on! < rangeStart ? rangeStart : m.start_on!, e = m.end_on! > rangeEnd ? rangeEnd : m.end_on!
+                  return (
+                    <div key={m.id} onClick={() => onOpenMilestone?.(m)} title={`${m.title} · ${fmtYmdShort(m.start_on!)} – ${fmtYmdShort(m.end_on!)}`}
+                      style={{ position: 'absolute', left: `${dayX(s)}%`, width: `${((daysDiff(s, e) + 1) / totalDays) * 100}%`, top: 4 + i * MS_ROW + 4, height: TL.msBarH, borderRadius: 999, border: '1.5px solid #7C3AED', background: m.status === 'done' ? '#ECFDF5' : '#F5F3FF', fontSize: 10.5, color: '#7C3AED', fontWeight: 700, display: 'flex', alignItems: 'center', padding: '0 10px', whiteSpace: 'nowrap', overflow: 'hidden', cursor: onOpenMilestone ? 'pointer' : 'default', zIndex: 2,
+                        borderLeftStyle: m.start_on! < rangeStart ? 'dotted' : 'solid', borderRightStyle: m.end_on! > rangeEnd ? 'dotted' : 'solid' }}>
+                      ◆ {m.title} · {fmtYmdShort(m.start_on!)} – {fmtYmdShort(m.end_on!)}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
             {groups.map(g => {
-              // 그룹 헤더: 영역별이면 소속 마일스톤 바(가장 이른 1개)… 단순화: 마일스톤별 모드에서만 기간 바
+              // 그룹 헤더: 영역별 모드는 위 밴드가 마일스톤을 그리고, 마일스톤별 모드는 그룹 헤더가 그린다 (← [P3-E] 3-D 미해결 정리)
               const ms = g.milestone
               const msIn = ms && ms.start_on && ms.end_on && !(ms.end_on < rangeStart || ms.start_on > rangeEnd)
               return (

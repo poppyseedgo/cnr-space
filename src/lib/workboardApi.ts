@@ -2,6 +2,8 @@
  * workboardApi.ts — Work Space(WORKBOARD) 데이터 접근
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 WORKBOARD P3-E] 마일스톤 RPC 3종(upsert·status·delete) · 업무영역 upsert/reorder RPC · 단건 재조회 2종
+ *      · wb_milestones 직접 쓰기는 20260930_workboard_phase3e 에서 회수됨 — 반드시 RPC
  *  - [2026-09-30 WORKBOARD P3-D] start_on 컬럼 · setWbTaskDates(드래그) · START_AFTER_DUE
  *  - [2026-09-30 WORKBOARD P3-C] 이슈 조회·upsert·전환(wb_convert_issue_to_task)·삭제 + 에러코드 3종
  *  - [2026-09-29 WORKBOARD P3-A] 신규 — 보드·상세 드로어에 필요한 조회 + RPC 래퍼
@@ -81,7 +83,7 @@ export async function loadWbComments(targetType: 'task' | 'issue', targetId: str
   return (data ?? []) as WbComment[]
 }
 
-export async function loadWbActivity(targetType: 'area' | 'task' | 'issue', targetId: string): Promise<WbActivity[]> {
+export async function loadWbActivity(targetType: 'area' | 'task' | 'issue' | 'milestone', targetId: string): Promise<WbActivity[]> {
   const { data, error } = await supabase.from('wb_activity_log').select('*')
     .eq('target_type', targetType).eq('target_id', targetId).order('created_at', { ascending: false })
   if (error) throw new Error(error.message)
@@ -161,6 +163,9 @@ const WB_ERR: Record<string, string> = {
   ISSUE_NOT_FOUND:     '이슈를 찾을 수 없습니다',
   ALREADY_CONVERTED:   '이미 업무로 전환된 이슈입니다',
   INVALID_OWNER_SAME:  '주담당과 부담당은 같은 사람일 수 없습니다',
+  END_BEFORE_START:    '종료일이 시작일보다 빠를 수 없습니다',          // ← [P3-E]
+  HAS_LINKS:           '연결된 업무·이슈가 있어 삭제할 수 없습니다 — 취소 상태로 종료하세요',
+  INVALID_IDS:         '업무영역 순서 정보가 올바르지 않습니다 — 새로고침 후 다시 시도',
 }
 
 export function wbErrorMessage(e: unknown, fallback = '처리에 실패했습니다'): string {
@@ -218,4 +223,67 @@ export async function deleteWbIssue(id: string): Promise<boolean> {
   const { data, error } = await supabase.from('wb_issues').delete().eq('id', id).select('id')
   if (error) throw new Error(error.message)
   return (data ?? []).length > 0
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 마일스톤 · 업무영역 — ← [2026-09-30 WORKBOARD P3-E]
+//   쓰기 전부 RPC(이력 기록). 삭제 규칙: 마일스톤 = 연결 0건만(HAS_LINKS), 업무영역 = 삭제 없음(비활성화)
+// ═══════════════════════════════════════════════════════════════════════════
+import type { WbMilestoneStatus, WbMilestoneUpsertInput, WbWorkAreaUpsertInput } from '../types'
+
+export async function loadWbMilestoneById(id: string): Promise<WbMilestone | null> {
+  const { data, error } = await supabase.from('wb_milestones').select('*').eq('id', id).maybeSingle()
+  if (error) throw new Error(error.message)
+  return (data as WbMilestone) ?? null
+}
+
+export async function loadWbAreaById(id: string): Promise<WbWorkArea | null> {
+  const { data, error } = await supabase.from('wb_work_areas').select('*').eq('id', id).maybeSingle()
+  if (error) throw new Error(error.message)
+  return (data as WbWorkArea) ?? null
+}
+
+export async function upsertWbMilestone(input: WbMilestoneUpsertInput): Promise<string> {
+  const { data, error } = await supabase.rpc('wb_upsert_milestone', {
+    p_id: input.id, p_title: input.title, p_description: input.description, p_start_on: input.start_on, p_end_on: input.end_on,
+  })
+  if (error) throw new Error(error.message)
+  return data as string
+}
+
+export async function setWbMilestoneStatus(id: string, status: WbMilestoneStatus): Promise<WbMilestoneStatus> {
+  const { data, error } = await supabase.rpc('wb_set_milestone_status', { p_id: id, p_status: status })
+  if (error) throw new Error(error.message)
+  return data as WbMilestoneStatus
+}
+
+/** 연결 업무·이슈 0건일 때만 성공 — 아니면 HAS_LINKS throw */
+export async function deleteWbMilestone(id: string): Promise<void> {
+  const { error } = await supabase.rpc('wb_delete_milestone', { p_id: id })
+  if (error) throw new Error(error.message)
+}
+
+export async function upsertWbArea(input: WbWorkAreaUpsertInput): Promise<string> {
+  const { data, error } = await supabase.rpc('wb_upsert_work_area', {
+    p_id: input.id, p_name: input.name, p_description: input.description, p_primary_owner_id: input.primary_owner_id,
+    p_backup_owner_id: input.backup_owner_id, p_sort_order: input.sort_order, p_is_active: input.is_active,
+  })
+  if (error) throw new Error(error.message)
+  return data as string
+}
+
+/** 전체 순서를 한 번에 — ids 순서대로 sort_order 1..n (한 트랜잭션, 바뀐 행만 이력) */
+export async function reorderWbAreas(ids: string[]): Promise<void> {
+  const { error } = await supabase.rpc('wb_reorder_work_areas', { p_ids: ids })
+  if (error) throw new Error(error.message)
+}
+
+/** 분장표 '반복 템플릿' 열 — 영역별 템플릿 수 (Phase 4 전엔 비어 있음) */
+export async function loadWbTemplateCounts(): Promise<Map<string, number>> {
+  const m = new Map<string, number>()
+  if (!isSupabaseEnabled) return m
+  const { data, error } = await supabase.from('wb_task_templates').select('area_id')
+  if (error) throw new Error(error.message)
+  for (const r of (data ?? []) as { area_id: string }[]) m.set(r.area_id, (m.get(r.area_id) ?? 0) + 1)
+  return m
 }

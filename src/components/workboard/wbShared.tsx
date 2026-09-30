@@ -2,6 +2,7 @@
  * wbShared.tsx — Work Space(WORKBOARD) 공용 토큰·판정·룩업
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 WORKBOARD P3-E] 마일스톤 상태 카탈로그·진행률(milestoneProgress)·D-day(milestoneDday) · WB_MS_TOAST / WB_AREA_TOAST
  *  - [2026-09-29 WORKBOARD P3-A] 신규 — 보드 미리보기 승인분(2026-09-29) 토큰 SSOT
  *
  * 이 파일이 SSOT 인 것
@@ -291,3 +292,67 @@ export function daysDiff(a: string, b: string): number {
   const [ay, am, ad] = a.split('-').map(Number), [by, bm, bd] = b.split('-').map(Number)
   return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400_000)
 }
+
+// ─── 마일스톤 · 업무영역 — ← [2026-09-30 WORKBOARD P3-E] ─────────────────────
+import type { WbMilestone, WbMilestoneStatus, WbTask, WbIssue } from '../../types'
+
+/** DB CHECK 값과 id 일치. 목록 정렬 순서 = 이 배열 순서(진행 중 → 예정 → 완료 → 취소) */
+export const WB_MS_STATUSES: { id: WbMilestoneStatus; label: string; bg: string; fg: string; closed: boolean }[] = [
+  { id: 'active',    label: '진행 중', bg: '#EAF2FF', fg: '#1E6FE8', closed: false },
+  { id: 'planned',   label: '예정',    bg: '#F1F5F9', fg: '#64748B', closed: false },
+  { id: 'done',      label: '완료',    bg: '#ECFDF5', fg: '#047857', closed: true },
+  { id: 'cancelled', label: '취소',    bg: '#F3F4F6', fg: '#9CA3AF', closed: true },
+]
+export const wbMsStatusDef = (s: WbMilestoneStatus) => WB_MS_STATUSES.find(x => x.id === s) ?? WB_MS_STATUSES[1]
+export const MS_COLOR = { bg: '#F5F3FF', fg: '#7C3AED' } as const   // 타임라인·칩 공통 (보라)
+
+export interface MilestoneProgress { total: number; done: number; doing: number; hold: number; overdue: number; pct: number; openIssues: number; issues: number }
+/**
+ * 진행률 = 연결 업무 중 완료 / 전체 (보류 포함 — 고지 확정). tasks 는 완료 90일 윈도우라 오래된 완료는 빠질 수 있다(표시 기준 일관).
+ * 지연 = 미완료이면서 due < 오늘(KST)
+ */
+export function milestoneProgress(msId: string, tasks: WbTask[], issues: WbIssue[], today = todayStr()): MilestoneProgress {
+  const mine = tasks.filter(t => t.milestone_id === msId)
+  const done = mine.filter(t => t.status === 'done').length
+  const doing = mine.filter(t => t.status === 'doing').length
+  const hold = mine.filter(t => t.status === 'hold').length
+  const overdue = mine.filter(t => t.status !== 'done' && t.due_at && kstDate(t.due_at) < today).length
+  const mineIssues = issues.filter(i => i.milestone_id === msId)
+  const openIssues = mineIssues.filter(i => i.status === 'open' || i.status === 'in_progress').length
+  return { total: mine.length, done, doing, hold, overdue, pct: mine.length ? Math.round((done / mine.length) * 100) : 0, openIssues, issues: mineIssues.length }
+}
+
+/** 카드 우상단 문구 — 진행 중: end_on 기준 D-day / 예정: start_on 까지 / 완료·취소: 종료일 */
+export function milestoneDday(m: WbMilestone, today = todayStr()): { label: string; tone: 'warn' | 'today' | 'normal' | 'muted' } {
+  if (m.status === 'done' || m.status === 'cancelled') return { label: m.end_on ? `${fmtYmdShort(m.end_on)} 종료` : wbMsStatusDef(m.status).label, tone: 'muted' }
+  if (m.status === 'planned') {
+    if (!m.start_on) return { label: '기간 미정', tone: 'muted' }
+    const d = daysDiff(today, m.start_on)
+    return d > 0 ? { label: `시작까지 D-${d}`, tone: 'muted' } : d === 0 ? { label: '오늘 시작', tone: 'today' } : { label: `시작 ${-d}일 경과 · 미착수`, tone: 'warn' }
+  }
+  if (!m.end_on) return { label: '마감 미정', tone: 'muted' }
+  const d = daysDiff(today, m.end_on)
+  return d > 0 ? { label: `D-${d} · 마감 ${fmtYmdShort(m.end_on)}`, tone: d <= 7 ? 'today' : 'normal' } : d === 0 ? { label: '오늘 마감', tone: 'today' } : { label: `D+${-d} · 마감 초과`, tone: 'warn' }
+}
+
+/** 기간 경과율 (상세 헤더) — 기간이 없으면 null */
+export function milestoneElapsedPct(m: WbMilestone, today = todayStr()): number | null {
+  if (!m.start_on || !m.end_on) return null
+  const total = daysDiff(m.start_on, m.end_on) + 1, passed = daysDiff(m.start_on, today) + 1
+  return Math.max(0, Math.min(100, Math.round((passed / total) * 100)))
+}
+
+export const WB_MS_TOAST = {
+  created:      '마일스톤을 만들었습니다',
+  saved:        '마일스톤을 저장했습니다',
+  statusMoved:  (label: string) => `마일스톤을 '${label}'(으)로 변경했습니다`,
+  deleted:      '마일스톤을 삭제했습니다',
+} as const
+
+export const WB_AREA_TOAST = {
+  created:      (name: string) => `업무영역 '${name}'을(를) 추가했습니다`,
+  saved:        (name: string) => `업무영역 '${name}'을(를) 저장했습니다`,
+  activated:    (name: string) => `'${name}' 활성화`,
+  deactivated:  (name: string) => `'${name}' 비활성화 — 새 업무 선택지에서 숨겨집니다`,
+  reordered:    '순서를 저장했습니다',
+} as const

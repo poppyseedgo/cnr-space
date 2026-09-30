@@ -2,6 +2,11 @@
  * WorkboardPage.tsx — Work Space (WORKBOARD) · MS팀 업무보드
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 WORKBOARD P3-E] '마일스톤' 탭(MilestonesView + MilestoneDrawer) · '분장표' 탭 신설(AreasView) — 마지막 탭, 미리보기 승인분
+ *      · 분장표 = 업무영역 관리를 별도 6번째 탭으로 승격(고지 확정). 삭제 없음·비활성화만. 순서 = wb_reorder_work_areas
+ *      · 마일스톤 쓰기 = wb_upsert_milestone / wb_set_milestone_status / wb_delete_milestone(연결 0건만, HAS_LINKS)
+ *      · 변경 후 단건 재조회(refreshMilestone / refreshArea) — SSOT 원칙 동일. 이력은 뷰가 지연 로드
+ *      · 타임라인 마일스톤 바 클릭 → 마일스톤 탭으로 이동(선택 상태)
  *  - [2026-09-30 WORKBOARD P3-D] '일정' 탭 구현 — 월 그리드(MonthGridView) + 타임라인(TimelineView, 줌 주/월/분기 · 업무영역별/마일스톤별)
  *      · 타임라인 바 드래그 = wb_set_task_dates RPC(20260930 phase3d) → refreshTask. start_on 컬럼 신설
  *      · 툴바(모드·줌·그룹·기간 내비)는 페이지 헤더 아래 카드 상단에 — 회의실 CalendarShell 툴바와 같은 자리
@@ -22,7 +27,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { RotateCw } from 'lucide-react'
-import type { AppUser, WbTask, WbTaskStatus, WbWorkArea, WbMilestone, WbTaskUpsertInput, WbIssue, WbIssueStatus, WbIssueSeverity, WbIssueUpsertInput } from '../types'  // ← [P3-C] 이슈 타입
+import type { AppUser, WbTask, WbTaskStatus, WbWorkArea, WbMilestone, WbTaskUpsertInput, WbIssue, WbIssueStatus, WbIssueSeverity, WbIssueUpsertInput, WbMilestoneStatus, WbMilestoneUpsertInput, WbWorkAreaUpsertInput } from '../types'  // ← [P3-C] 이슈 타입 · [P3-E] 마일스톤·영역
 import { BoardView } from '../components/workboard/BoardView'
 import { TaskDrawer, type DrawerTask } from '../components/workboard/TaskDrawer'
 import { WB, WB_TOAST, DUE_PRESETS, matchesDuePreset, useUserLookup, wbStatusLabel, type DuePreset } from '../components/workboard/wbShared'  // ← [2026-09-29 P3-B] WB_TOAST·wbStatusLabel
@@ -40,13 +45,19 @@ import {
   setWbTaskDates,   // ← [2026-09-30 P3-D]
 } from '../lib/workboardApi'
 import { todayStr } from '../utils/time'  // ← [2026-09-30 P3-C] 빠른 등록 occurred_on
+import { MilestonesView } from '../components/workboard/MilestonesView'   // ← [2026-09-30 P3-E]
+import { MilestoneDrawer } from '../components/workboard/MilestoneDrawer' // ← [2026-09-30 P3-E]
+import { AreasView, type AreaEditor } from '../components/workboard/AreasView'  // ← [2026-09-30 P3-E]
+import { WB_MS_TOAST, WB_AREA_TOAST, wbMsStatusDef } from '../components/workboard/wbShared'  // ← [2026-09-30 P3-E]
+import { loadWbMilestoneById, loadWbAreaById, upsertWbMilestone, setWbMilestoneStatus, deleteWbMilestone, upsertWbArea, reorderWbAreas, loadWbTemplateCounts } from '../lib/workboardApi'  // ← [2026-09-30 P3-E]
 
-type WbTab = 'board' | 'calendar' | 'milestones' | 'issues' | 'mine'
+type WbTab = 'board' | 'calendar' | 'milestones' | 'issues' | 'areas' | 'mine'
 const TABS: { id: WbTab; label: string }[] = [
   { id: 'board',      label: '보드' },
   { id: 'calendar',   label: '일정' },
   { id: 'milestones', label: '마일스톤' },
   { id: 'issues',     label: '이슈보드' },
+  { id: 'areas',      label: '분장표' },     // ← [P3-E] 업무영역 = 업무분장표 (포스트잇 1번 항목 → 별도 탭, 고지 확정)
   { id: 'mine',       label: '내 업무' },
 ]
 
@@ -101,11 +112,20 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
   const [fIssueMs, setFIssueMs] = useState<'all' | string>('all')
   const [fIssueDays, setFIssueDays] = useState<30 | 90 | 365>(30)
 
+  // ── 마일스톤 · 분장표 (← [P3-E]) ──
+  const [msSelected, setMsSelected]   = useState<string | null>(null)
+  const [msShowClosed, setMsShowClosed] = useState(false)
+  const [msDrawer, setMsDrawer]       = useState<{ open: true; milestone: WbMilestone | null } | null>(null)
+  const [areaEditor, setAreaEditor]   = useState<AreaEditor>(null)
+  const [areaShowInactive, setAreaShowInactive] = useState(false)
+  const [templateCounts, setTemplateCounts] = useState<Map<string, number>>(new Map())
+  const [wbBusy, setWbBusy]           = useState(false)   // 마일스톤·영역 RPC 진행 중 (버튼 잠금)
+
   const loadAll = useCallback(async () => {
     setLoading(true); setLoadError(null)
     try {
-      const [a, m, t, i] = await Promise.all([loadWbAreas(), loadWbMilestones(), loadWbTasks(), loadWbIssues(365)])  // ← [P3-C] 이슈는 1년치, 기간 필터는 클라
-      setAreas(a); setMilestones(m); setTasks(t); setIssues(i)
+      const [a, m, t, i, tc] = await Promise.all([loadWbAreas(), loadWbMilestones(), loadWbTasks(), loadWbIssues(365), loadWbTemplateCounts()])  // ← [P3-C] 이슈는 1년치, 기간 필터는 클라 · [P3-E] 템플릿 수
+      setAreas(a); setMilestones(m); setTasks(t); setIssues(i); setTemplateCounts(tc)
     } catch (e) { setLoadError(wbErrorMessage(e, '데이터를 불러오지 못했습니다')) }
     finally { setLoading(false) }
   }, [])
@@ -137,10 +157,10 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
   }, [tasks, lookup])
 
   // ── 핸들러 ──
-  const openNew = (status: WbTaskStatus = 'todo') => {
+  const openNew = (status: WbTaskStatus = 'todo', milestoneId: string | null = null) => {   // ← [P3-E] 마일스톤 미리 선택
     const now = new Date().toISOString()
     setDrawer({
-      id: null, area_id: areas.find(a => a.is_active)?.id ?? '', milestone_id: null, template_id: null, period_key: null,
+      id: null, area_id: areas.find(a => a.is_active)?.id ?? '', milestone_id: milestoneId, template_id: null, period_key: null,
       title: '', description: null, status, priority: 'normal', due_at: null, start_on: null, checklist: [],
       created_by: authUserId, created_at: now, updated_at: now, completed_at: null, completed_by: null, assignee_ids: [],
     })
@@ -273,6 +293,78 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
     setIssues(prev => prev.filter(i => i.id !== id)); setIssueDrawer(null); showToast(WB_ISSUE_TOAST.deleted)
   }
 
+  // ── 마일스톤 핸들러 (← [P3-E]) ──
+  const refreshMilestone = useCallback(async (id: string): Promise<WbMilestone | null> => {
+    const fresh = await loadWbMilestoneById(id)
+    if (!fresh) { setMilestones(prev => prev.filter(m => m.id !== id)); setMsSelected(s => (s === id ? null : s)); return null }
+    setMilestones(prev => prev.some(m => m.id === id) ? prev.map(m => m.id === id ? fresh : m) : [...prev, fresh])
+    return fresh
+  }, [])
+
+  const handleMsSave = async (input: WbMilestoneUpsertInput) => {
+    setSaving(true)
+    try {
+      const id = await upsertWbMilestone(input)
+      await refreshMilestone(id)
+      setMsDrawer(null); setMsSelected(id); setTab('milestones')
+      showToast(input.id === null ? WB_MS_TOAST.created : WB_MS_TOAST.saved)
+    } finally { setSaving(false) }
+  }
+
+  const handleMsStatus = async (id: string, status: WbMilestoneStatus) => {
+    setWbBusy(true)
+    try { await setWbMilestoneStatus(id, status); await refreshMilestone(id); showToast(WB_MS_TOAST.statusMoved(wbMsStatusDef(status).label)) }
+    catch (e) { showToast(wbErrorMessage(e, '상태 변경에 실패했습니다')) }
+    finally { setWbBusy(false) }
+  }
+
+  const handleMsDelete = async (id: string) => {
+    setWbBusy(true)
+    try { await deleteWbMilestone(id); setMilestones(prev => prev.filter(m => m.id !== id)); setMsSelected(null); showToast(WB_MS_TOAST.deleted) }
+    catch (e) { showToast(wbErrorMessage(e, '삭제에 실패했습니다')) }
+    finally { setWbBusy(false) }
+  }
+
+  /** 타임라인 마일스톤 바 → 마일스톤 탭 (선택 상태로) */
+  const openMilestone = (m: WbMilestone) => { setMsSelected(m.id); if (m.status === 'done' || m.status === 'cancelled') setMsShowClosed(true); setTab('milestones') }
+
+  // ── 업무영역(분장표) 핸들러 (← [P3-E]) ──
+  const refreshArea = useCallback(async (id: string): Promise<WbWorkArea | null> => {
+    const fresh = await loadWbAreaById(id)
+    if (!fresh) { setAreas(prev => prev.filter(a => a.id !== id)); return null }
+    // 순서(sort_order)가 바뀌었을 수 있으므로 병합 후 재정렬 — loadWbAreas 와 같은 키(sort_order, name)
+    setAreas(prev => (prev.some(a => a.id === id) ? prev.map(a => a.id === id ? fresh : a) : [...prev, fresh]).sort((x, y) => x.sort_order - y.sort_order || x.name.localeCompare(y.name)))
+    return fresh
+  }, [])
+
+  const handleAreaSave = async (input: WbWorkAreaUpsertInput) => {
+    setWbBusy(true)
+    try {
+      const id = await upsertWbArea(input)
+      await refreshArea(id)
+      setAreaEditor({ mode: 'edit', id })
+      showToast(input.id === null ? WB_AREA_TOAST.created(input.name) : WB_AREA_TOAST.saved(input.name))
+    } finally { setWbBusy(false) }
+  }
+
+  const handleAreaToggle = async (a: WbWorkArea) => {
+    const next = !a.is_active   // 토스트 문구는 호출 시점 값으로 고정 (await 뒤 참조 객체가 바뀌어도 무관)
+    setWbBusy(true)
+    try {
+      await upsertWbArea({ id: a.id, name: a.name, description: a.description, primary_owner_id: a.primary_owner_id, backup_owner_id: a.backup_owner_id, sort_order: a.sort_order, is_active: next })
+      await refreshArea(a.id)
+      showToast(next ? WB_AREA_TOAST.activated(a.name) : WB_AREA_TOAST.deactivated(a.name))
+    } catch (e) { showToast(wbErrorMessage(e, '변경에 실패했습니다')) }
+    finally { setWbBusy(false) }
+  }
+
+  const handleAreaReorder = async (ids: string[]) => {
+    setWbBusy(true)
+    try { await reorderWbAreas(ids); setAreas(await loadWbAreas()); showToast(WB_AREA_TOAST.reordered) }   // 전체 재번호 → 전체 재조회 (색 인덱스도 함께 갱신)
+    catch (e) { showToast(wbErrorMessage(e, '순서 변경에 실패했습니다')) }
+    finally { setWbBusy(false) }
+  }
+
   /** 이슈 드로어 → 업무 열기: 이슈 드로어 닫고 TaskDrawer 로 */
   const openTaskFromIssue = (taskId: string) => {
     const t = tasks.find(x => x.id === taskId)
@@ -325,6 +417,24 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
             </button>
           </div>
         )}
+        {tab === 'milestones' && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn" onClick={() => setMsShowClosed(v => !v)} style={{ ...chipSel, fontWeight: msShowClosed ? 600 : 400, borderColor: msShowClosed ? WB.ink : '#D1D7E1' }}>완료 포함</button>
+            <button className="btn" onClick={() => setMsDrawer({ open: true, milestone: null })} disabled={loading}
+              style={{ background: WB.ink, color: '#fff', border: 'none', borderRadius: 8, padding: '9px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.5 : 1 }}>
+              + 마일스톤 추가
+            </button>
+          </div>
+        )}
+        {tab === 'areas' && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn" onClick={() => setAreaShowInactive(v => !v)} style={{ ...chipSel, fontWeight: areaShowInactive ? 600 : 400, borderColor: areaShowInactive ? WB.ink : '#D1D7E1' }}>비활성 포함</button>
+            <button className="btn" onClick={() => setAreaEditor({ mode: 'new' })} disabled={loading}
+              style={{ background: WB.ink, color: '#fff', border: 'none', borderRadius: 8, padding: '9px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.5 : 1 }}>
+              + 업무영역 추가
+            </button>
+          </div>
+        )}
         {tab === 'mine' && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <button className="btn" onClick={() => setMineShowDone(false)} style={{ ...chipSel, fontWeight: !mineShowDone ? 600 : 400, borderColor: !mineShowDone ? WB.ink : '#D1D7E1' }}>미완료</button>
@@ -370,7 +480,8 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
         <>
           {areas.length === 0 && (
             <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 12.5, color: '#92400E' }}>
-              업무영역이 아직 없습니다 — 업무는 영역에 속해야 만들 수 있습니다. 업무영역 관리는 3-C(마일스톤·분장표 탭)에서 열립니다.
+              업무영역이 아직 없습니다 — 업무는 영역에 속해야 만들 수 있습니다.
+              <button className="btn" onClick={() => { setTab('areas'); setAreaEditor({ mode: 'new' }) }} style={{ marginLeft: 8, border: 'none', background: 'transparent', color: '#92400E', textDecoration: 'underline', cursor: 'pointer', fontSize: 12.5, padding: 0 }}>분장표 탭에서 추가 →</button>
             </div>
           )}
           <BoardView tasks={filtered} areas={areas} milestones={milestones} lookup={lookup}
@@ -412,23 +523,28 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
             <MonthGridView tasks={filtered} areas={areas} month={calStart} lookup={lookup} onOpenTask={t => setDrawer(t)} />
           ) : (
             <TimelineView tasks={filtered} areas={areas} milestones={milestones} lookup={lookup} rangeStart={calStart} zoom={calZoom} groupBy={calGroup}
-              onOpenTask={t => setDrawer(t)} onMoveDates={handleMoveDates} movingId={movingId} />
+              onOpenTask={t => setDrawer(t)} onMoveDates={handleMoveDates} movingId={movingId} onOpenMilestone={openMilestone} />
           )}
         </div>
       ) : tab === 'issues' ? (
         <IssueBoardView issues={filteredIssues} allIssues={issues} tasks={tasks} milestones={milestones} lookup={lookup}
           onOpenIssue={i => setIssueDrawer(i)} onQuickCreate={handleQuickIssue} onMoveStatus={(id, to) => void handleIssueMove(id, to)} movingId={issueMovingId} />
+      ) : tab === 'milestones' ? (
+        <MilestonesView milestones={milestones} tasks={tasks} issues={issues} areas={areas} lookup={lookup} showClosed={msShowClosed}
+          selectedId={msSelected} onSelect={setMsSelected} onSetStatus={handleMsStatus} onEdit={m => setMsDrawer({ open: true, milestone: m })} onDelete={handleMsDelete}
+          onAddTask={msId => openNew('todo', msId)} onOpenTask={t => setDrawer(t)} onOpenIssue={i => setIssueDrawer(i)} busy={wbBusy} />
+      ) : tab === 'areas' ? (
+        <AreasView areas={areas} tasks={tasks} templateCounts={templateCounts} users={users} lookup={lookup} showInactive={areaShowInactive}
+          editor={areaEditor} onEditorChange={setAreaEditor} onSave={handleAreaSave} onToggleActive={handleAreaToggle} onReorder={handleAreaReorder} busy={wbBusy} />
       ) : tab === 'mine' ? (
         <MyTasksView tasks={tasks} areas={areas} milestones={milestones} authUserId={authUserId} lookup={lookup}
           onOpenTask={t => setDrawer(t)} onSetStatus={(id, s) => handleSetStatus(id, s).catch(() => {})} movingId={movingId}
           showDone={mineShowDone} withRecur={mineRecur} />
-      ) : (
-        <div style={{ minHeight: 420, borderRadius: 12, background: WB.pageBg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: WB.muted, fontSize: 13 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: WB.accent, background: WB.accentBg, borderRadius: 999, padding: '3px 10px' }}>준비 중</span>
-          <div>{TABS.find(t => t.id === tab)?.label} 탭은 다음 Phase 에서 열립니다</div>
-        </div>
-      )}
+      ) : null}
 
+      {msDrawer && (
+        <MilestoneDrawer milestone={msDrawer.milestone} saving={saving} onClose={() => setMsDrawer(null)} onSave={handleMsSave} showToast={showToast} />
+      )}
       {issueDrawer && (
         <IssueDrawer issue={issueDrawer} tasks={tasks} areas={areas} milestones={milestones} authUserId={authUserId} lookup={lookup}
           saving={saving} onClose={() => setIssueDrawer(null)} onSave={handleIssueSave} onConvert={handleIssueConvert} onOpenTask={openTaskFromIssue} onDelete={handleIssueDelete} showToast={showToast} />

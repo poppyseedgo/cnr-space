@@ -562,9 +562,9 @@ export interface WbComment {
 
 export interface WbActivity {
   id:          string
-  target_type: 'area' | 'task' | 'issue'
+  target_type: 'area' | 'task' | 'issue' | 'milestone'   // ← [2026-09-30 P3-E] milestone 추가
   target_id:   string
-  action:      string           // created | updated | status | assignees
+  action:      string           // created | updated | status | assignees | dates | converted
   diff:        Record<string, any> | null
   actor_id:    string | null
   created_at:  string
@@ -612,4 +612,25 @@ export interface WbIssueUpsertInput {
   task_id:      string | null
   milestone_id: string | null
   occurred_on:  string | null   // null = KST 오늘 (RPC 기본값)
+}
+
+// ← [2026-09-30 WORKBOARD P3-E] 마일스톤 · 업무영역 RPC 입력 (p_ 접두 제거)
+/** wb_upsert_milestone — 상태는 포함하지 않는다 (wb_set_milestone_status 별도, 상태 이력 분리) */
+export interface WbMilestoneUpsertInput {
+  id:          string | null
+  title:       string
+  description: string | null
+  start_on:    string | null
+  end_on:      string | null
+}
+
+/** wb_upsert_work_area */
+export interface WbWorkAreaUpsertInput {
+  id:               string | null
+  name:             string
+  description:      string | null
+  primary_owner_id: string | null
+  backup_owner_id:  string | null
+  sort_order:       number
+  is_active:        boolean
 }
