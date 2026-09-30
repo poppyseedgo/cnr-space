@@ -31,6 +31,8 @@ export interface AdminRoleDef {
   tab:   AdminTabId | null
   /** ← [2026-09-29] 이 역할이 여는 **일반 뷰**(App.tsx DIRECT_VIEWS 의 view id). 탭 대신 페이지를 여는 역할용 */
   view?: string
+  /** ← [2026-09-30 5-A] true 면 super 자동 통과 없음 — 명시 부여자만 (DB wb_is_member 와 동일) */
+  explicit?: boolean
   desc:  string
   /** 폐기 예정 — 신규 부여 대상에서 제외하되 기존 데이터는 보존 */
   deprecated?: boolean
@@ -48,7 +50,7 @@ export const ADMIN_ROLES: AdminRoleDef[] = [
   { id: 'notice',       label: '공지 배너',  tab: 'notices',       desc: '헤더 공지 내용·색·게시기간 + CANTEEN DP(로비 디스플레이)' }, // ← [2026-09-08] 보조 탭 canteen-dp 포함
   { id: 'kb',           label: 'KB 관리',    tab: 'kb',            desc: 'GA 챗봇 지식베이스 청크 편집' }, // ← [2026-07-27] 20260733 CHECK와 동기화
   { id: 'resource',     label: '자원예약',   tab: 'resources',     desc: '자원 카테고리·개체 등록, 예약·반납 확인·대리예약' }, // ← [2026-08-19] Phase 3 화면 오픈, 탭 1:1 연결
-  { id: 'workboard',    label: 'Work Space', tab: null, view: 'workboard', desc: 'MS팀 업무보드 — 업무분장·일정·이슈보드 (드로어 Work Space)' }, // ← [2026-09-29] 일반 뷰 역할 — profiles.role 재계산 제외(20260929 phase1 [B])
+  { id: 'workboard',    label: 'Work Space', tab: null, view: 'workboard', explicit: true, desc: 'MS팀 업무보드 — 업무분장·일정·이슈보드 (드로어 Work Space)' }, // ← [2026-09-29] 일반 뷰 역할 — profiles.role 재계산 제외(20260929 phase1 [B])
   { id: 'super',        label: '최고 관리자', tab: null,           desc: '모든 메뉴 + 권한 부여·회수' },
   // 폐기: zoom — 사내 ZOOM 사용 종료(2026-07-21). 기존 데이터 보존을 위해 목록에만 남긴다
   { id: 'zoom',         label: '[폐기] ZOOM', tab: null,           desc: '사내 사용 종료', deprecated: true },
@@ -83,6 +85,9 @@ export const TAB_ROLES = NORMAL_ROLES.filter(r => r.tab !== null)
 
 /** ← [2026-09-29] 이 역할 집합으로 해당 일반 뷰를 볼 수 있는가 (드로어 메뉴 노출·딥링크 게이트 공용) */
 export function canSeeView(roles: string[], view: string): boolean {
+  const def = ADMIN_ROLES.find(r => r.view === view)
+  // ← [2026-09-30 5-A] explicit 뷰(Work Space)는 super 도 명시 부여가 있어야 본다 — DB wb_is_member() 와 동일 규칙(사용자 4명 제한, 고지 확정)
+  if (def?.explicit) return roles.includes(def.id)
   if (roles.includes(SUPER_ROLE)) return true
   return ADMIN_ROLES.some(r => r.view === view && roles.includes(r.id))
 }

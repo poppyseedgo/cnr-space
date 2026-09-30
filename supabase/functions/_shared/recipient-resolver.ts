@@ -1,6 +1,7 @@
 // @ts-nocheck
 /**
  * _shared/recipient-resolver.ts
+ * ← [2026-09-30 5-A] 관리자 수신자 해석을 DB RPC(notification_resolve_recipients)로 일원화 — 임베드 4함수 제거, Person 에 채널 플래그
  * C&R Space 알림 시스템 — 수신자 정보 통합 조회 헬퍼
  *
  * ═══════════════════════════════════════════════════════════════════════════
@@ -69,6 +70,9 @@ export interface Person {
   name:       string                 // 이메일 본문 / 인앱 body
   dept:       string                 // 이메일 본문 (예약자 부서)
   avatar_url: string | null          // 이메일 본문 (아바타 이미지)
+  // ← [2026-09-30 5-A] 사용자별 알림 설정(notification_user_prefs) — 관리자 수신자에만 채워진다. undefined = 켜짐
+  email_enabled?: boolean
+  inapp_enabled?: boolean
 }
 
 /** removed_attendees 케이스 전용 — user_id 없이 email만 있을 수 있음 */
@@ -165,179 +169,35 @@ async function fetchBooker(supabase: SupabaseClient, userId: string): Promise<Pe
  * profiles에서 Admin 전원 조회 (role=ADMIN, is_active=true)
  * @param excludeUserId  예약자가 관리자인 경우 중복 알림 방지 (선택)
  */
-async function fetchAdmins(supabase: SupabaseClient, excludeUserId?: string): Promise<Person[]> {
+/**
+ * ← [2026-09-30 5-A] 관리자 수신자 해석 — DB 함수 notification_resolve_recipients(p_type, p_exclude) 가 유일한 경로.
+ *
+ *   이전(fetchAdmins / fetchBookAdmins / fetchResourceAdmins / fetchDesignatedRecipients)은 PostgREST 임베드
+ *   `profiles!inner(...)` 에 의존했는데 운영 스키마에 그 FK 가 없어(notification_recipients FK 없음,
+ *   admin_roles.user_id → auth.users) 항상 실패 → profiles.role='ADMIN' 전원 폴백으로 떨어졌다
+ *   (2026-09-30 실측: 함수 로그 "Could not find a relationship between 'notification_recipients' and 'profiles'").
+ *   규칙(자격 = 명시 모듈 권한 · 지정 ∩ 자격 · 폴백 없음 · 개인 채널 플래그)은 20261003 SQL 이 SSOT.
+ *   조회 실패 시 빈 배열 — "누구에게 갈지 모르면 안 보낸다"(폴백 폐지, 고지 확정). 로그에 no_recipient 로 남는다.
+ */
+async function fetchEntitledAdmins(supabase: SupabaseClient, type?: string, excludeUserId?: string): Promise<Person[]> {
+  if (!type) return []
   try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, email, name, dept, avatar_url')
-      .eq('role', 'ADMIN')
-      .eq('is_active', true)
-
-    if (error) {
-      console.warn('[resolver] admins 조회 실패:', error.message)
-      return []
-    }
-
-    return (data ?? [])
-      .filter((r: any) => !excludeUserId || r.id !== excludeUserId)
-      .map((r: any) => ({
-        user_id:    r.id,
-        email:      r.email   ?? '',
-        name:       r.name    ?? '',
-        dept:       r.dept    ?? '',
-        avatar_url: r.avatar_url ?? null,
+    const { data, error } = await supabase.rpc('notification_resolve_recipients', { p_type: type, p_exclude: excludeUserId ?? null })
+    if (error) { console.warn('[resolver] notification_resolve_recipients 실패:', error.message); return [] }
+    return ((data ?? []) as any[])
+      .map(r => ({
+        user_id: r.user_id, email: r.email ?? '', name: r.name ?? '', dept: r.dept ?? '', avatar_url: r.avatar_url ?? null,
+        email_enabled: r.email_enabled !== false, inapp_enabled: r.inapp_enabled !== false,
       }))
-      .filter((p: Person) => p.email || p.user_id)   // 둘 다 빈 건 제외
+      .filter(p => p.email || p.user_id)
   } catch (e: any) {
-    console.warn('[resolver] admins 조회 예외:', e?.message ?? String(e))
+    console.warn('[resolver] notification_resolve_recipients 예외:', e?.message ?? String(e))
     return []
   }
 }
 
-/**
- * 관리자 수신자 '지정 명단' 조회 (← [2026-07-23])
- *
- * notification_recipients 에 그 타입의 행이 하나라도 있으면 **그 명단만** 수신한다.
- * 없으면 null 을 돌려 호출부가 기존 규칙(profiles ADMIN / 도서 담당)을 타게 한다.
- *
- * ★ 조회 실패 시에도 null 이다 — 설정 테이블 장애가 알림을 멈추게 하면 안 된다.
- *   (미설정 = 켜짐과 같은 fail-open 원칙)
- *
- * ★ 퇴사자는 INNER JOIN + is_active 로 자동 제외된다. 담당자가 퇴사한 채로
- *   남아 있으면 반송 메일만 쌓이고 아무도 그 사실을 모른다.
- */
-async function fetchDesignatedRecipients(
-  supabase: SupabaseClient, type?: string, excludeUserId?: string,
-): Promise<Person[] | null> {
-  if (!type) return null
-  try {
-    const { data, error } = await supabase
-      .from('notification_recipients')
-      .select('user_id, profiles!inner ( id, email, name, dept, avatar_url, is_active )')
-      .eq('type', type)
-
-    if (error) {
-      console.warn('[resolver] 지정 수신자 조회 실패 — 기본 규칙으로 진행:', error.message)
-      return null
-    }
-    if (!data || data.length === 0) return null
-
-    const list: Person[] = []
-    for (const r of data as any[]) {
-      const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles
-      if (!p || p.is_active === false) continue
-      if (excludeUserId && p.id === excludeUserId) continue
-      list.push({
-        user_id:    p.id,
-        email:      p.email ?? '',
-        name:       p.name ?? '',
-        dept:       p.dept ?? '',
-        avatar_url: p.avatar_url ?? null,
-      })
-    }
-    // 지정은 있었는데 전원이 퇴사/제외된 경우: 빈 배열을 그대로 돌려준다.
-    // null 로 되돌리면 "3명만" 이라고 설정해 둔 알림이 갑자기 관리자 전원에게 간다.
-    return list
-  } catch (e: any) {
-    console.warn('[resolver] 지정 수신자 조회 예외 — 기본 규칙으로 진행:', e?.message ?? String(e))
-    return null
-  }
-}
-
-/**
- * 도서 담당 관리자 조회 (← [2026-07-23])
- *
- * ★ 왜 profiles.role='ADMIN' 이 아닌가
- *   이 프로젝트는 관리자 체계가 둘로 나뉜다.
- *     · profiles.role='ADMIN'  → 프론트 화면 진입 권한 (11명)
- *     · admin_roles.role       → 모듈별 담당 권한 ('book','pointer','super' …)
- *   도서 대여는 하루에도 여러 건 발생하므로, 화면 권한자 전원에게 보내면
- *   알림이 곧 소음이 되고 결국 아무도 안 본다. 실제 도서 담당자에게만 보낸다.
- *
- * 폴백: 담당자가 한 명도 없으면 profiles.role='ADMIN' 으로 되돌린다.
- *   "아무에게도 안 갔는데 아무도 모르는" 상태가 가장 나쁘다. 폴백이 발동하면
- *   경고 로그를 남겨 admin_roles 설정 누락을 알 수 있게 한다.
- */
-async function fetchBookAdmins(supabase: SupabaseClient, excludeUserId?: string): Promise<Person[]> {
-  try {
-    const { data, error } = await supabase
-      .from('admin_roles')
-      .select('user_id, role, profiles!inner ( id, email, name, dept, avatar_url, is_active )')
-      .in('role', ['book', 'super'])
-
-    if (error) {
-      console.warn('[resolver] 도서 관리자 조회 실패:', error.message)
-      return await fetchAdmins(supabase, excludeUserId)
-    }
-
-    const seen = new Set<string>()
-    const list: Person[] = []
-    for (const r of (data ?? []) as any[]) {
-      const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles
-      if (!p || p.is_active === false) continue          // 퇴사자 제외
-      if (excludeUserId && p.id === excludeUserId) continue
-      if (seen.has(p.id)) continue                        // book + super 중복 보유
-      seen.add(p.id)
-      list.push({
-        user_id:    p.id,
-        email:      p.email ?? '',
-        name:       p.name ?? '',
-        dept:       p.dept ?? '',
-        avatar_url: p.avatar_url ?? null,
-      })
-    }
-
-    if (list.length === 0) {
-      console.warn('[resolver] 도서 담당 관리자(admin_roles book/super) 0명 — profiles ADMIN 으로 폴백')
-      return await fetchAdmins(supabase, excludeUserId)
-    }
-    return list.filter(p => p.email || p.user_id)
-  } catch (e: any) {
-    console.warn('[resolver] 도서 관리자 조회 예외:', e?.message ?? String(e))
-    return await fetchAdmins(supabase, excludeUserId)
-  }
-}
-
-// ← [2026-08-19 Phase 4] 자원 담당 관리자 (admin_roles 'resource'/'super') — fetchBookAdmins 와 동일 구조
-async function fetchResourceAdmins(supabase: SupabaseClient): Promise<Person[]> {
-  try {
-    const { data, error } = await supabase
-      .from('admin_roles')
-      .select('user_id, role, profiles!inner ( id, email, name, dept, avatar_url, is_active )')
-      .in('role', ['resource', 'super'])
-
-    if (error) {
-      console.warn('[resolver] 자원 관리자 조회 실패:', error.message)
-      return await fetchAdmins(supabase)
-    }
-
-    const seen = new Set<string>()
-    const list: Person[] = []
-    for (const r of (data ?? []) as any[]) {
-      const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles
-      if (!p || p.is_active === false) continue          // 퇴사자 제외
-      if (excludeUserId && p.id === excludeUserId) continue
-      if (seen.has(p.id)) continue                        // book + super 중복 보유
-      seen.add(p.id)
-      list.push({
-        user_id:    p.id,
-        email:      p.email ?? '',
-        name:       p.name ?? '',
-        dept:       p.dept ?? '',
-        avatar_url: p.avatar_url ?? null,
-      })
-    }
-
-    if (list.length === 0) {
-      console.warn('[resolver] 도서 담당 관리자(admin_roles book/super) 0명 — profiles ADMIN 으로 폴백')
-      return await fetchAdmins(supabase)
-    }
-    return list.filter(p => p.email || p.user_id)
-  } catch (e: any) {
-    console.warn('[resolver] 자원 관리자 조회 예외:', e?.message ?? String(e))
-    return await fetchAdmins(supabase)
-  }
-}
+// [2026-09-30 5-A] 제거된 함수 4종 — fetchAdmins / fetchDesignatedRecipients / fetchBookAdmins / fetchResourceAdmins
+//   (지정 명단·도서/자원 담당·ADMIN 폴백 규칙은 전부 DB notification_resolve_recipients 로 이동. 위 fetchEntitledAdmins 주석 참조)
 
 /**
  * booking_attendees + profiles JOIN으로 참석자 전원 조회
@@ -551,11 +411,11 @@ export async function resolveRecipients(
   //   admins 필드에 담는 이유는 book_admins 와 동일(이메일·인앱 렌더 분기 재사용).
   //   지정 명단이 있으면 '관리자 집합만' 대체 — 예약자는 당사자라 항상 수신한다.
   if (rule === 'resource_admins_and_owner') {
-    const [designated, owner] = await Promise.all([
-      fetchDesignatedRecipients(supabase, notificationType, ownerUserId),
+    const [admins, owner] = await Promise.all([
+      fetchEntitledAdmins(supabase, notificationType, ownerUserId),   // ← [5-A] RPC (지정 ∩ 자격 · 예약자 제외)
       fetchBooker(supabase, ownerUserId),
     ])
-    result.admins = designated ?? await fetchResourceAdmins(supabase)
+    result.admins = admins
     result.booker = owner
     result.owner  = owner
     return result
@@ -569,11 +429,11 @@ export async function resolveRecipients(
   //   owner(대여자)는 별도로 해석한다 — 본문의 '대여자' 행과 인앱 본문에 쓰인다.
   if (rule === 'book_admins') {
     // ← [2026-07-23] 지정 명단이 있으면 그것이 우선. 없을 때만 도서 담당 권한으로 해석한다.
-    const [designated, owner] = await Promise.all([
-      fetchDesignatedRecipients(supabase, notificationType, ownerUserId),
+    const [admins, owner] = await Promise.all([
+      fetchEntitledAdmins(supabase, notificationType, ownerUserId),   // ← [5-A] RPC
       fetchBooker(supabase, ownerUserId),
     ])
-    result.admins = designated ?? await fetchBookAdmins(supabase, ownerUserId)
+    result.admins = admins
     result.owner  = owner
     return result
   }
@@ -588,7 +448,7 @@ export async function resolveRecipients(
   //   아니면(admins_only) 별도로 한 번 조회한다.
   const [booker, admins, ownerOnly] = await Promise.all([
     needBooker ? fetchBooker(supabase, bookerUserId ?? '') : Promise.resolve(null),
-    needAdmins ? fetchAdmins(supabase, bookerUserId) : Promise.resolve([]),
+    needAdmins ? fetchEntitledAdmins(supabase, notificationType, bookerUserId) : Promise.resolve([]),   // ← [5-A] RPC
     needBooker ? Promise.resolve(null) : fetchBooker(supabase, ownerUserId),
   ])
 
@@ -599,10 +459,7 @@ export async function resolveRecipients(
   // ← [2026-07-23] 관리자 수신 규칙에 지정 명단이 있으면 대체한다.
   //   admins_only / booker_attendees_admins 둘 다 해당한다. 예약자·참석자 수신은
   //   지정 명단과 무관하게 그대로 유지한다 — 그들은 '당사자'이지 '관리자'가 아니다.
-  if (needAdmins) {
-    const designated = await fetchDesignatedRecipients(supabase, notificationType, bookerUserId)
-    if (designated) result.admins = designated
-  }
+  // ← [5-A] 지정 명단 재적용 블록 제거 — fetchEntitledAdmins 가 이미 지정 ∩ 자격을 반환한다
 
   // 2차: attendees (예약자 이메일 제외)
   if (needAttendees && bookingId) {
