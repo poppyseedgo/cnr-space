@@ -2,6 +2,7 @@
  * AreasView.tsx — Work Space '분장표' 탭 = 업무영역 관리 (미리보기 승인분 2026-09-30)
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 WORKBOARD P3-F] 주/부 담당 select → WbPersonPicker(single ×2, 상호 exclude). 풀 = members
  *  - [2026-09-30 WORKBOARD P3-E] 신규 — 표(순서 ▲▼ · 이름 · 설명 · 주/부 담당 · 열린 업무 · 반복 템플릿 · 활성) + 우측 편집 패널
  *      · 저장 = wb_upsert_work_area(이력 자동) · 순서 = wb_reorder_work_areas(전체 id 배열, 한 트랜잭션)
  *      · 활성 토글은 행에서 즉시 저장(토스트). 삭제 없음 — 비활성화 정책(고지 확정 2026-09-30)
@@ -12,8 +13,9 @@
 
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { ChevronUp, ChevronDown, Pencil } from 'lucide-react'
-import type { WbWorkArea, WbWorkAreaUpsertInput, WbTask, WbActivity, AppUser } from '../../types'
+import type { WbWorkArea, WbWorkAreaUpsertInput, WbTask, WbActivity, WbMember } from '../../types'
 import { UserAvatar } from '../common/UserAvatar'
+import { WbPersonPicker } from './WbPersonPicker'  // ← [P3-F]
 import { loadWbActivity, wbErrorMessage } from '../../lib/workboardApi'
 import { WB, areaColor, kstDate, kstTime, fmtYmdShort, type WbPerson } from './wbShared'
 import { todayStr } from '../../utils/time'
@@ -24,7 +26,8 @@ interface Props {
   areas:          WbWorkArea[]          // sort_order 순 (페이지가 로드한 그대로 — 색 인덱스 SSOT)
   tasks:          WbTask[]
   templateCounts: Map<string, number>
-  users:          AppUser[]
+  members:        WbMember[]   // ← [P3-F] 선택 풀
+  authUserId:     string
   lookup:         (id: string | null | undefined) => WbPerson
   showInactive:   boolean
   editor:         AreaEditor
@@ -38,7 +41,6 @@ interface Props {
 const COLS = '44px 170px minmax(0,1fr) 120px 120px 84px 84px 56px 32px'
 const LABEL: CSSProperties = { display: 'block', fontSize: 11.5, color: WB.muted, marginBottom: 5, fontWeight: 600 }
 const INPUT: CSSProperties = { width: '100%', border: '1px solid #D1D7E1', borderRadius: 8, padding: '9px 11px', fontSize: 13.5, fontFamily: 'inherit', outline: 'none', color: WB.ink, background: '#fff' }
-const SELECT: CSSProperties = { ...INPUT, padding: '8px 10px', fontSize: 13, cursor: 'pointer' }
 
 function Toggle({ on, disabled, onClick, label }: { on: boolean; disabled?: boolean; onClick: () => void; label: string }) {
   return (
@@ -49,7 +51,7 @@ function Toggle({ on, disabled, onClick, label }: { on: boolean; disabled?: bool
   )
 }
 
-export function AreasView({ areas, tasks, templateCounts, users, lookup, showInactive, editor, onEditorChange, onSave, onToggleActive, onReorder, busy }: Props) {
+export function AreasView({ areas, tasks, templateCounts, members, authUserId, lookup, showInactive, editor, onEditorChange, onSave, onToggleActive, onReorder, busy }: Props) {
   const today = todayStr()
   const areaIndex = useMemo(() => new Map(areas.map((a, i) => [a.id, i])), [areas])
   const rows = useMemo(() => areas.filter(a => showInactive || a.is_active), [areas, showInactive])
@@ -114,7 +116,7 @@ export function AreasView({ areas, tasks, templateCounts, users, lookup, showIna
       ) : editor.mode === 'edit' && !editing ? (
         <div style={{ background: '#fff', border: `1px dashed ${WB.cardBorder}`, borderRadius: 16, padding: 40, textAlign: 'center', color: WB.muted, fontSize: 13 }}>업무영역을 찾을 수 없습니다</div>
       ) : (
-        <AreaEditorPanel key={editing?.id ?? '__new'} area={editing} areas={areas} users={users} lookup={lookup} busy={busy}
+        <AreaEditorPanel key={editing?.id ?? '__new'} area={editing} areas={areas} members={members} authUserId={authUserId} lookup={lookup} busy={busy}
           onCancel={() => onEditorChange(null)} onSave={onSave} />
       )}
     </div>
@@ -130,8 +132,8 @@ function Person({ p }: { p: WbPerson | null }) {
   )
 }
 
-function AreaEditorPanel({ area, areas, users, lookup, busy, onCancel, onSave }: {
-  area: WbWorkArea | null; areas: WbWorkArea[]; users: AppUser[]; lookup: (id: string | null | undefined) => WbPerson; busy: boolean
+function AreaEditorPanel({ area, areas, members, authUserId, lookup, busy, onCancel, onSave }: {
+  area: WbWorkArea | null; areas: WbWorkArea[]; members: WbMember[]; authUserId: string; lookup: (id: string | null | undefined) => WbPerson; busy: boolean
   onCancel: () => void; onSave: (input: WbWorkAreaUpsertInput) => Promise<void>
 }) {
   const isNew = area === null
@@ -147,12 +149,9 @@ function AreaEditorPanel({ area, areas, users, lookup, busy, onCancel, onSave }:
     loadWbActivity('area', area.id).then(setActivity).catch(() => setActivity([]))
   }, [area?.id, area?.updated_at])
 
-  const same = !!p1 && p1 === p2
+  const same = !!p1 && p1 === p2   // Picker exclude 로 UI에서 막지만, 방어적으로 유지 (RPC INVALID_OWNER_SAME 이 최종)
   const dirty = isNew || name.trim() !== area!.name || (desc.trim() || null) !== (area!.description ?? null) || (p1 || null) !== area!.primary_owner_id || (p2 || null) !== area!.backup_owner_id || active !== area!.is_active
   const canSave = name.trim().length > 0 && !same && dirty && !busy
-  // 담당 후보: 재직자 + (이미 지정된 퇴사자는 선택 유지용으로 1개 표시)
-  const options = useMemo(() => users.slice().sort((a, b) => a.name.localeCompare(b.name, 'ko')), [users])
-  const extra = (id: string) => id && !users.some(u => u.user_id === id) ? <option value={id}>{lookup(id).name} (퇴사)</option> : null
 
   const submit = async () => {
     if (!canSave) return
@@ -180,17 +179,13 @@ function AreaEditorPanel({ area, areas, users, lookup, busy, onCancel, onSave }:
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
         <div>
           <label style={LABEL}>주 담당</label>
-          <select value={p1} onChange={e => setP1(e.target.value)} style={{ ...SELECT, borderColor: same ? WB.dueWarn : '#D1D7E1' }} aria-label="주 담당">
-            <option value="">없음</option>{extra(p1)}
-            {options.map(u => <option key={u.user_id} value={u.user_id}>{u.name}{u.dept ? ` · ${u.dept}` : ''}</option>)}
-          </select>
+          <WbPersonPicker mode="single" value={p1 || null} onChange={id => setP1(id ?? '')} members={members} lookup={lookup} authUserId={authUserId}
+            exclude={p2 ? [{ id: p2, label: '부 담당' }] : []} placeholder="이름 · 부서 검색" ariaLabel="주 담당" />
         </div>
         <div>
           <label style={LABEL}>부 담당</label>
-          <select value={p2} onChange={e => setP2(e.target.value)} style={{ ...SELECT, borderColor: same ? WB.dueWarn : '#D1D7E1' }} aria-label="부 담당">
-            <option value="">없음</option>{extra(p2)}
-            {options.map(u => <option key={u.user_id} value={u.user_id}>{u.name}{u.dept ? ` · ${u.dept}` : ''}</option>)}
-          </select>
+          <WbPersonPicker mode="single" value={p2 || null} onChange={id => setP2(id ?? '')} members={members} lookup={lookup} authUserId={authUserId}
+            exclude={p1 ? [{ id: p1, label: '주 담당' }] : []} placeholder="이름 · 부서 검색" ariaLabel="부 담당" />
         </div>
       </div>
       <div style={{ fontSize: 11.5, color: same ? '#B91C1C' : '#B45309', background: same ? '#FEF2F2' : '#FFFBEB', border: `1px solid ${same ? '#FECACA' : '#FDE68A'}`, borderRadius: 8, padding: '8px 10px', marginBottom: 12, lineHeight: 1.5 }}>

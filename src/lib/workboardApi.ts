@@ -2,6 +2,7 @@
  * workboardApi.ts — Work Space(WORKBOARD) 데이터 접근
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 WORKBOARD P3-F] loadWbMembers — 사람 선택 풀(wb_list_members RPC). users(전 직원) 는 표시 룩업에만 쓴다
  *  - [2026-09-30 WORKBOARD P3-E] 마일스톤 RPC 3종(upsert·status·delete) · 업무영역 upsert/reorder RPC · 단건 재조회 2종
  *      · wb_milestones 직접 쓰기는 20260930_workboard_phase3e 에서 회수됨 — 반드시 RPC
  *  - [2026-09-30 WORKBOARD P3-D] start_on 컬럼 · setWbTaskDates(드래그) · START_AFTER_DUE
@@ -286,4 +287,17 @@ export async function loadWbTemplateCounts(): Promise<Map<string, number>> {
   if (error) throw new Error(error.message)
   for (const r of (data ?? []) as { area_id: string }[]) m.set(r.area_id, (m.get(r.area_id) ?? 0) + 1)
   return m
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 멤버 풀 — ← [2026-09-30 WORKBOARD P3-F]
+// ═══════════════════════════════════════════════════════════════════════════
+import type { WbMember } from '../types'
+
+/** Work Space 를 쓸 수 있는 사람 = admin_roles workboard·super 보유 재직자. 비멤버 호출은 NOT_WORKBOARD */
+export async function loadWbMembers(): Promise<WbMember[]> {
+  if (!isSupabaseEnabled) return []
+  const { data, error } = await supabase.rpc('wb_list_members')
+  if (error) throw new Error(error.message)
+  return (data ?? []) as WbMember[]
 }

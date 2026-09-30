@@ -2,6 +2,8 @@
  * WorkboardPage.tsx — Work Space (WORKBOARD) · MS팀 업무보드
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 WORKBOARD P3-F] 사람 선택 통일 — members(wb_list_members) 1회 로드 → WbPersonPicker 로 담당자 필터·업무 담당자·주/부 담당.
+ *      users(전 직원) 는 표시 룩업(퇴사·권한 회수자 이름)에만 쓴다. 담당자 필터는 멤버 ∪ 담당 이력자(하단 구분)
  *  - [2026-09-30 WORKBOARD P3-E] '마일스톤' 탭(MilestonesView + MilestoneDrawer) · '분장표' 탭 신설(AreasView) — 마지막 탭, 미리보기 승인분
  *      · 분장표 = 업무영역 관리를 별도 6번째 탭으로 승격(고지 확정). 삭제 없음·비활성화만. 순서 = wb_reorder_work_areas
  *      · 마일스톤 쓰기 = wb_upsert_milestone / wb_set_milestone_status / wb_delete_milestone(연결 0건만, HAS_LINKS)
@@ -27,7 +29,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { RotateCw } from 'lucide-react'
-import type { AppUser, WbTask, WbTaskStatus, WbWorkArea, WbMilestone, WbTaskUpsertInput, WbIssue, WbIssueStatus, WbIssueSeverity, WbIssueUpsertInput, WbMilestoneStatus, WbMilestoneUpsertInput, WbWorkAreaUpsertInput } from '../types'  // ← [P3-C] 이슈 타입 · [P3-E] 마일스톤·영역
+import type { AppUser, WbTask, WbTaskStatus, WbWorkArea, WbMilestone, WbTaskUpsertInput, WbIssue, WbIssueStatus, WbIssueSeverity, WbIssueUpsertInput, WbMilestoneStatus, WbMilestoneUpsertInput, WbWorkAreaUpsertInput, WbMember } from '../types'  // ← [P3-C] 이슈 타입 · [P3-E] 마일스톤·영역
 import { BoardView } from '../components/workboard/BoardView'
 import { TaskDrawer, type DrawerTask } from '../components/workboard/TaskDrawer'
 import { WB, WB_TOAST, DUE_PRESETS, matchesDuePreset, useUserLookup, wbStatusLabel, type DuePreset } from '../components/workboard/wbShared'  // ← [2026-09-29 P3-B] WB_TOAST·wbStatusLabel
@@ -46,10 +48,11 @@ import {
 } from '../lib/workboardApi'
 import { todayStr } from '../utils/time'  // ← [2026-09-30 P3-C] 빠른 등록 occurred_on
 import { MilestonesView } from '../components/workboard/MilestonesView'   // ← [2026-09-30 P3-E]
+import { WbPersonPicker } from '../components/workboard/WbPersonPicker'   // ← [2026-09-30 P3-F]
 import { MilestoneDrawer } from '../components/workboard/MilestoneDrawer' // ← [2026-09-30 P3-E]
 import { AreasView, type AreaEditor } from '../components/workboard/AreasView'  // ← [2026-09-30 P3-E]
 import { WB_MS_TOAST, WB_AREA_TOAST, wbMsStatusDef } from '../components/workboard/wbShared'  // ← [2026-09-30 P3-E]
-import { loadWbMilestoneById, loadWbAreaById, upsertWbMilestone, setWbMilestoneStatus, deleteWbMilestone, upsertWbArea, reorderWbAreas, loadWbTemplateCounts } from '../lib/workboardApi'  // ← [2026-09-30 P3-E]
+import { loadWbMilestoneById, loadWbAreaById, upsertWbMilestone, setWbMilestoneStatus, deleteWbMilestone, upsertWbArea, reorderWbAreas, loadWbTemplateCounts, loadWbMembers } from '../lib/workboardApi'  // ← [2026-09-30 P3-E] · [P3-F] loadWbMembers
 
 type WbTab = 'board' | 'calendar' | 'milestones' | 'issues' | 'areas' | 'mine'
 const TABS: { id: WbTab; label: string }[] = [
@@ -74,7 +77,8 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
   const [tasks, setTasks]           = useState<WbTask[]>([])
   const [loading, setLoading]       = useState(true)
   const [loadError, setLoadError]   = useState<string | null>(null)
-  const lookup = useUserLookup(users)
+  const [members, setMembers]       = useState<WbMember[]>([])   // ← [P3-F] 사람 선택 풀
+  const lookup = useUserLookup(users, members)
 
   // 필터
   const [fAssignee, setFAssignee] = useState<'all' | 'me' | string>('all')
@@ -124,8 +128,8 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
   const loadAll = useCallback(async () => {
     setLoading(true); setLoadError(null)
     try {
-      const [a, m, t, i, tc] = await Promise.all([loadWbAreas(), loadWbMilestones(), loadWbTasks(), loadWbIssues(365), loadWbTemplateCounts()])  // ← [P3-C] 이슈는 1년치, 기간 필터는 클라 · [P3-E] 템플릿 수
-      setAreas(a); setMilestones(m); setTasks(t); setIssues(i); setTemplateCounts(tc)
+      const [a, m, t, i, tc, mem] = await Promise.all([loadWbAreas(), loadWbMilestones(), loadWbTasks(), loadWbIssues(365), loadWbTemplateCounts(), loadWbMembers()])  // ← [P3-C] 이슈는 1년치 · [P3-E] 템플릿 수 · [P3-F] 멤버 풀
+      setAreas(a); setMilestones(m); setTasks(t); setIssues(i); setTemplateCounts(tc); setMembers(mem)
     } catch (e) { setLoadError(wbErrorMessage(e, '데이터를 불러오지 못했습니다')) }
     finally { setLoading(false) }
   }, [])
@@ -150,11 +154,12 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
     return true
   }), [tasks, fAssignee, fArea, fDue, fRecur, authUserId, tab])
 
-  // 담당자 필터 후보 = 업무에 한 번이라도 태깅된 사람 (팀원 목록 대용)
-  const assigneeOptions = useMemo(() => {
-    const ids = new Set<string>(); for (const t of tasks) for (const id of t.assignee_ids) ids.add(id)
-    return [...ids].map(id => ({ id, name: lookup(id).name })).sort((a, b) => a.name.localeCompare(b.name, 'ko'))
-  }, [tasks, lookup])
+  // ← [P3-F] 담당자 필터 = 멤버(Picker 풀) ∪ 담당 이력만 있는 비멤버(하단 구분, 건수 표시)
+  const assigneeExtras = useMemo(() => {
+    const memberIds = new Set(members.map(m => m.user_id)); const cnt = new Map<string, number>()
+    for (const t of tasks) for (const id of t.assignee_ids) if (!memberIds.has(id)) cnt.set(id, (cnt.get(id) ?? 0) + 1)
+    return [...cnt.entries()].map(([id, n]) => ({ id, note: `${n}건` })).sort((a, b) => lookup(a.id).name.localeCompare(lookup(b.id).name, 'ko'))
+  }, [tasks, members, lookup])
 
   // ── 핸들러 ──
   const openNew = (status: WbTaskStatus = 'todo', milestoneId: string | null = null) => {   // ← [P3-E] 마일스톤 미리 선택
@@ -447,11 +452,11 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
         )}
         {(tab === 'board' || tab === 'calendar') && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <select value={fAssignee} onChange={e => setFAssignee(e.target.value)} style={{ ...chipSel, borderColor: fAssignee !== 'all' ? WB.ink : '#D1D7E1' }} aria-label="담당자 필터">
-              <option value="all">담당자 · 전체</option>
-              <option value="me">담당자 · 나</option>
-              {assigneeOptions.filter(o => o.id !== authUserId).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-            </select>
+            <WbPersonPicker mode="single" value={fAssignee === 'all' ? null : fAssignee === 'me' ? authUserId : fAssignee}
+              onChange={id => setFAssignee(id === null ? 'all' : id === authUserId ? 'me' : id)}
+              members={members} lookup={lookup} authUserId={authUserId} extras={assigneeExtras}
+              allowAll={{ label: '전체', note: '필터 해제' }} placeholder="담당자 · 전체" ariaLabel="담당자 필터"
+              style={{ minHeight: 38, width: 200, padding: '4px 10px', borderColor: fAssignee !== 'all' ? WB.ink : '#D1D7E1' }} />
             <select value={fArea} onChange={e => setFArea(e.target.value)} style={{ ...chipSel, borderColor: fArea !== 'all' ? WB.ink : '#D1D7E1' }} aria-label="업무영역 필터">
               <option value="all">업무영역 · 전체</option>
               {areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -534,7 +539,7 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
           selectedId={msSelected} onSelect={setMsSelected} onSetStatus={handleMsStatus} onEdit={m => setMsDrawer({ open: true, milestone: m })} onDelete={handleMsDelete}
           onAddTask={msId => openNew('todo', msId)} onOpenTask={t => setDrawer(t)} onOpenIssue={i => setIssueDrawer(i)} busy={wbBusy} />
       ) : tab === 'areas' ? (
-        <AreasView areas={areas} tasks={tasks} templateCounts={templateCounts} users={users} lookup={lookup} showInactive={areaShowInactive}
+        <AreasView areas={areas} tasks={tasks} templateCounts={templateCounts} members={members} authUserId={authUserId} lookup={lookup} showInactive={areaShowInactive}
           editor={areaEditor} onEditorChange={setAreaEditor} onSave={handleAreaSave} onToggleActive={handleAreaToggle} onReorder={handleAreaReorder} busy={wbBusy} />
       ) : tab === 'mine' ? (
         <MyTasksView tasks={tasks} areas={areas} milestones={milestones} authUserId={authUserId} lookup={lookup}
@@ -550,7 +555,7 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
           saving={saving} onClose={() => setIssueDrawer(null)} onSave={handleIssueSave} onConvert={handleIssueConvert} onOpenTask={openTaskFromIssue} onDelete={handleIssueDelete} showToast={showToast} />
       )}
       {drawer && (
-        <TaskDrawer task={drawer} areas={areas} milestones={milestones} users={users} authUserId={authUserId} lookup={lookup}
+        <TaskDrawer task={drawer} areas={areas} milestones={milestones} users={users} members={members} authUserId={authUserId} lookup={lookup}
           saving={saving} onClose={() => setDrawer(null)} onSave={handleSave} onSetStatus={handleSetStatus} onDelete={handleDelete} showToast={showToast} />
       )}
     </div>

@@ -2,6 +2,7 @@
  * wbShared.tsx — Work Space(WORKBOARD) 공용 토큰·판정·룩업
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 WORKBOARD P3-F] useUserLookup(users, members) — 멤버 풀 우선(is_super 배지), 그다음 users(전 직원, 표시 전용), 마지막 departed_users
  *  - [2026-09-30 WORKBOARD P3-E] 마일스톤 상태 카탈로그·진행률(milestoneProgress)·D-day(milestoneDday) · WB_MS_TOAST / WB_AREA_TOAST
  *  - [2026-09-29 WORKBOARD P3-A] 신규 — 보드 미리보기 승인분(2026-09-29) 토큰 SSOT
  *
@@ -14,7 +15,7 @@
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react'
-import type { AppUser, DepartedUser, WbTaskPriority, WbTaskStatus, WbRrule } from '../../types'
+import type { AppUser, DepartedUser, WbTaskPriority, WbTaskStatus, WbRrule, WbMember } from '../../types'
 import { loadDepartedUsers } from '../../lib/api'
 import { todayStr } from '../../utils/time'
 
@@ -154,20 +155,21 @@ export function checklistProgress(items: { done: boolean }[]): { done: number; t
 export const newChecklistId = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
 
 // ─── 사람 룩업 ──────────────────────────────────────────────────────────────
-export interface WbPerson { id: string; name: string; dept: string; avatar_url: string | null; departed: boolean }
+export interface WbPerson { id: string; name: string; dept: string; avatar_url: string | null; departed: boolean; isSuper?: boolean }
 
 /**
  * users(재직) 우선, 미스 시 departed_users 를 1회 지연 로드해 폴백.
  * 둘 다 없으면 '(알 수 없음)' — uuid 를 그대로 노출하지 않는다.
  */
-export function useUserLookup(users: AppUser[]) {
+export function useUserLookup(users: AppUser[], members: WbMember[] = []) {   // ← [P3-F] members 우선
   const [departed, setDeparted] = useState<DepartedUser[] | null>(null)
   const loadingRef = useRef(false)
   const userMap = useMemo(() => {
     const m = new Map<string, WbPerson>()
     for (const u of users) m.set(u.user_id, { id: u.user_id, name: u.name, dept: u.dept, avatar_url: u.avatar_url ?? null, departed: false })
+    for (const u of members) m.set(u.user_id, { id: u.user_id, name: u.name, dept: u.dept ?? '', avatar_url: u.avatar_url ?? null, departed: false, isSuper: u.is_super })
     return m
-  }, [users])
+  }, [users, members])
   const departedMap = useMemo(() => {
     const m = new Map<string, WbPerson>()
     for (const d of departed ?? []) m.set(d.id, { id: d.id, name: d.name, dept: d.dept, avatar_url: d.avatar_url ?? null, departed: true })

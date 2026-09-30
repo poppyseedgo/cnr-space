@@ -2,6 +2,7 @@
  * TaskDrawer.tsx — Work Space 업무 상세 드로어 (미리보기 승인분 2026-09-29)
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 WORKBOARD P3-F] 담당자 선택 → WbPersonPicker(multi, 풀 = members). users prop 은 표시 룩업용으로만 남김
  *  - [2026-09-30 WORKBOARD P3-D] 시작일(start_on) 필드 — 마감 행 위. 시작 > 마감 은 클라에서도 차단(토스트)
  *  - [2026-09-29 WORKBOARD P3-B] 모든 액션 완료 시 토스트 (WB_TOAST SSOT, 고지 지시) — save(patch, toast) 시그니처
  *  - [2026-09-29 WORKBOARD P3-A] 신규
@@ -18,11 +19,12 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { X, MoreHorizontal, Trash2, Plus } from 'lucide-react'
-import type { AppUser, WbTask, WbTaskStatus, WbTaskPriority, WbWorkArea, WbMilestone, WbChecklistItem, WbComment, WbActivity, WbTaskUpsertInput } from '../../types'
+import type { AppUser, WbTask, WbTaskStatus, WbTaskPriority, WbWorkArea, WbMilestone, WbChecklistItem, WbComment, WbActivity, WbTaskUpsertInput, WbMember } from '../../types'
 import { ModalPortal } from '../common/ModalPortal'
 import { UserAvatar } from '../common/UserAvatar'
 import { DateField } from '../common/DateField'
 import { ConfirmDialog } from '../common/ConfirmDialog'
+import { WbPersonPicker } from './WbPersonPicker'  // ← [2026-09-30 P3-F]
 import { loadWbComments, loadWbActivity, insertWbComment, deleteWbComment, wbErrorMessage } from '../../lib/workboardApi'
 import {
   WB, WB_STATUSES, WB_PRIORITIES, WB_RRULE_LABEL, WB_TOAST, areaColor, checklistProgress, newChecklistId,
@@ -37,6 +39,7 @@ interface Props {
   areas:       WbWorkArea[]
   milestones:  WbMilestone[]
   users:       AppUser[]
+  members:     WbMember[]   // ← [P3-F] 선택 풀
   authUserId:  string
   lookup:      (id: string | null | undefined) => WbPerson
   saving:      boolean
@@ -61,7 +64,7 @@ const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i
 const DEFAULT_TIME = '18:00'
 function toDueAt(ymd: string, hm: string): string { return new Date(`${ymd}T${hm}:00+09:00`).toISOString() }
 
-export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup, saving, onClose, onSave, onSetStatus, onDelete, showToast }: Props) {
+export function TaskDrawer({ task, areas, milestones, users, members, authUserId, lookup, saving, onClose, onSave, onSetStatus, onDelete, showToast }: Props) {
   const isDraft = task.id === null
   // ── 로컬 폼 (existing 은 task 변경마다 재동기화) ──
   const [title, setTitle]       = useState(task.title)
@@ -81,8 +84,6 @@ export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup,
   }, [task.id, task.updated_at])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const [newItem, setNewItem]   = useState('')
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const [pickerQ, setPickerQ]   = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   const [tab, setTab]           = useState<'comments' | 'activity'>('comments')
@@ -90,7 +91,6 @@ export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup,
   const [activity, setActivity] = useState<WbActivity[] | null>(null)
   const [commentBody, setCommentBody] = useState('')
   const [entered, setEntered]   = useState(false)
-  const pickerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { const t = requestAnimationFrame(() => setEntered(true)); return () => cancelAnimationFrame(t) }, [])
   useEffect(() => {
@@ -106,11 +106,6 @@ export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup,
     loadWbComments('task', id).then(setComments).catch(() => setComments([]))
     loadWbActivity('task', id).then(setActivity).catch(() => setActivity([]))
   }, [task.id, task.updated_at])
-  useEffect(() => {
-    if (!pickerOpen) return
-    const h = (e: MouseEvent) => { if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOpen(false) }
-    document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h)
-  }, [pickerOpen])
 
   const area = areas.find(a => a.id === areaId)
   const areaIdx = Math.max(0, areas.findIndex(a => a.id === areaId))
@@ -146,13 +141,11 @@ export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup,
     setChecklist(next); setNewItem(''); void save({ checklist: next }, WB_TOAST.checkAdded)
   }
 
-  // ── 담당자 ──
-  const candidates = useMemo(() => {
-    const q = pickerQ.trim().toLowerCase()
-    return users.filter(u => !assignees.includes(u.user_id) && (!q || u.name.toLowerCase().includes(q) || (u.dept ?? '').toLowerCase().includes(q))).slice(0, 8)
-  }, [users, assignees, pickerQ])
-  const addAssignee = (id: string) => { const next = [...assignees, id]; setAssignees(next); setPickerOpen(false); setPickerQ(''); void save({ assignee_ids: next }, WB_TOAST.assigneeAdded(lookup(id).name)) }
-  const removeAssignee = (id: string) => { const next = assignees.filter(x => x !== id); setAssignees(next); void save({ assignee_ids: next }, WB_TOAST.assigneeRemoved(lookup(id).name)) }
+  // ── 담당자 (← [P3-F] WbPersonPicker 가 검색·키보드·칩 담당) ──
+  const onAssigneesChange = (next: string[], changed: { id: string; added: boolean }) => {
+    setAssignees(next)
+    void save({ assignee_ids: next }, changed.added ? WB_TOAST.assigneeAdded(lookup(changed.id).name) : WB_TOAST.assigneeRemoved(lookup(changed.id).name))
+  }
 
   // ── 댓글 ──
   const submitComment = async () => {
@@ -229,30 +222,7 @@ export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup,
             </div>
 
             <span style={LABEL}>담당자</span>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', position: 'relative' }} ref={pickerRef}>
-              {assignees.map(id => { const p = lookup(id); return (
-                <span key={id} style={{ display: 'inline-flex', gap: 6, alignItems: 'center', border: `1px solid ${WB.cardBorder}`, borderRadius: 999, padding: '3px 8px 3px 4px', opacity: p.departed ? 0.6 : 1 }}>
-                  <UserAvatar name={p.name} avatarUrl={p.avatar_url} size={20} fontSize={9} />
-                  {p.name}{p.departed && <span style={{ fontSize: 10, color: WB.faint }}>퇴사</span>}
-                  <button className="btn" onClick={() => removeAssignee(id)} aria-label="담당 제외" style={{ border: 'none', background: 'transparent', padding: 0, color: WB.faint, cursor: 'pointer', display: 'flex' }}><X size={12} /></button>
-                </span>
-              )})}
-              <button className="btn" onClick={() => setPickerOpen(v => !v)} style={chip(false, { color: WB.faint, fontWeight: 400 })}><Plus size={12} /> 추가</button>
-              {pickerOpen && (
-                <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, width: 280, background: '#fff', border: `1px solid ${WB.cardBorder}`, borderRadius: 10, boxShadow: '0 12px 32px rgba(15,23,42,.14)', padding: 8, zIndex: 3 }}>
-                  <input autoFocus value={pickerQ} onChange={e => setPickerQ(e.target.value)} placeholder="이름·부서 검색"
-                    style={{ width: '100%', border: `1px solid ${WB.cardBorder}`, borderRadius: 8, padding: '7px 10px', fontSize: 12.5, fontFamily: 'inherit', outline: 'none', marginBottom: 6 }} />
-                  {candidates.length === 0 && <div style={{ padding: 8, fontSize: 12, color: WB.faint }}>검색 결과 없음</div>}
-                  {candidates.map(u => (
-                    <button key={u.user_id} className="btn" onClick={() => addAssignee(u.user_id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', border: 'none', background: 'transparent', padding: '6px 8px', borderRadius: 6, fontSize: 12.5, fontWeight: 400, color: WB.ink, cursor: 'pointer', textAlign: 'left' }}>
-                      <UserAvatar name={u.name} avatarUrl={u.avatar_url} size={22} fontSize={9.5} />
-                      <span>{u.name}</span><span style={{ color: WB.faint, fontSize: 11 }}>{u.dept}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <WbPersonPicker mode="multi" value={assignees} onChange={onAssigneesChange} members={members} lookup={lookup} authUserId={authUserId} placeholder="+ 담당자 · 이름·부서 검색" ariaLabel="담당자" />
 
             <span style={LABEL}>시작일</span>{/* ← [P3-D] 기간 업무 — 타임라인 바의 좌측 끝 */}
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>

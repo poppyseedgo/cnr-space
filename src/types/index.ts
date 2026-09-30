@@ -634,3 +634,14 @@ export interface WbWorkAreaUpsertInput {
   sort_order:       number
   is_active:        boolean
 }
+
+// ← [2026-09-30 WORKBOARD P3-F] 사람 선택 풀 — wb_list_members() 반환행 (workboard·super 보유 재직자)
+export interface WbMember {
+  user_id:           string
+  name:              string
+  dept:              string | null
+  email:             string | null
+  avatar_url:        string | null
+  employment_status: EmploymentStatus | null
+  is_super:          boolean
+}
