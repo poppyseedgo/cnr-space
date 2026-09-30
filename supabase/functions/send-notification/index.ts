@@ -7,6 +7,13 @@
  * 변경 이력
  * ═══════════════════════════════════════════════════════════════════════════
  *
+ * [2026-09-30 5-B] Work Space 알림 5종 (wb_task_assigned · wb_comment_added · wb_issue_created · wb_issue_resolved · wb_daily_digest)
+ *   · payload.booking 은 { id:'task-{uuid}'|'issue-{uuid}'|'digest-{date}', wb_target_type, wb_target_id, wb_actor_id, wb_added_ids?, wb_comment_id?, wb_digest? }
+ *     — 제목·영역·마감·담당 등 본문 재료는 프론트가 아니라 DB wb_notification_context 에서 다시 읽는다 (화면 계산 금지, SSOT)
+ *   · 수신자 규칙 wb_recipients → DB wb_notification_recipients (admins 슬롯, role='admin' 렌더 재사용)
+ *   · renderEmail isWorkboard 분기: 역할 배지(담당자/관련자/일일 요약) · AREA/STATUS/DUE/MILESTONE/담당자/작성자 행 · 댓글 인용 박스 · 다이제스트 4섹션
+ *   · 인앱 booking_id = 'task-{uuid}' 등 → 프론트 NotificationBell 이 #workboard-… 딥링크로 연다
+ *
  * [2026-09-30 5-A] 관리자 수신자 = DB RPC notification_resolve_recipients (임베드 폴백 체인 폐지)
  *   · Person.email_enabled / inapp_enabled(사용자별 알림 설정) 를 이메일 아이템·인앱 fan-out 에서 적용
  *   · 발송 로그에 skipped:user_off (개인 OFF) · skipped:no_recipient (자격자 0명, 폴백 없음) 추가
@@ -135,8 +142,31 @@ interface EmailBookingData {
   holder_note?: string   // ← [2026-08-28] resource_hold_conflict — 선행 미반납 대여 건 요약 (서버 완성 문자열)
   // ← [2026-08-10 v2] 노쇼 이용 제재 (20260745) — 서버 완성 KST 문자열, 재변환 금지
   noshow_count?: number; penalty_starts_kst?: string; penalty_ends_kst?: string
+  // ← [2026-09-30 5-B] Work Space — DB wb_notification_context(...) 결과(task/issue) 또는 wb_digest_build(...) 결과(digest). 있으면 wb 렌더 분기
+  wb?: WbContext
 }
 type InAppBookingData = EmailBookingData
+
+/** ← [2026-09-30 5-B] wb_notification_context / wb_digest_build 의 jsonb 형태 (DB 가 완성한 문자열 — 재계산·재변환 금지) */
+interface WbPerson { user_id: string; name: string; dept?: string | null; avatar_url?: string | null; departed?: boolean }
+interface WbContext {
+  target_type?: 'task' | 'issue'
+  id?: string; title?: string; kind_label?: string; area?: string | null
+  status?: string; status_label?: string; priority?: string
+  severity?: string; severity_label?: string; occurred_on?: string; linked_task?: string | null
+  milestone?: string | null; is_recurring?: boolean
+  due_kst?: string | null; dday?: string | null; overdue?: boolean; days?: number | null
+  assignees?: WbPerson[]; creator?: WbPerson | null; resolver?: WbPerson | null; resolved_kst?: string | null
+  comment?: { id: string; body: string; author: WbPerson; created_kst: string } | null
+  /** 이슈 처리 알림 — 프론트가 보낸 새 상태 (resolved|wontfix). ctx.status 와 같지만 명시 */
+  resolved_status?: 'resolved' | 'wontfix'
+  // 다이제스트 (wb_digest_build)
+  date?: string; date_label?: string; date_short?: string; scope?: 'all' | 'mine'; total?: number
+  counts?: { overdue: number; today: number; tomorrow: number; recurring: number }
+  overdue?: WbDigestItem[]; today?: WbDigestItem[]; tomorrow?: WbDigestItem[]; recurring?: WbDigestItem[]
+  recipient_name?: string
+}
+interface WbDigestItem { id: string; title: string; area?: string | null; assignees: string[]; assignee_labels?: string[]; mine: boolean; status: string; is_recurring: boolean; due_kst?: string | null; dday?: string | null; overdue?: boolean }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1-c. KST 포맷 (← [2026-08-10 v2])
@@ -402,9 +432,69 @@ function noticeBanner(tone: 'info' | 'danger', title: string | null, body: strin
   </div>`
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 3-b. Work Space 렌더 조각 (← [2026-09-30 5-B]) — 미리보기 승인분(5B_이메일_3종) 그대로
+//   · 사람 셀은 personHtml 재사용, 인포 행은 infoRow 재사용 — 룩 SSOT 유지
+//   · 댓글 인용 박스: 회색 #F8FAFC + 좌측 검정 3px (파랑 안내 배너와 구분되는 "인용")
+//   · 다이제스트 섹션: 라벨(OVERDUE 빨강) + 항목 줄 "제목 · 영역 · 담당(나) · D+n"
+// ═══════════════════════════════════════════════════════════════════════════
+const INK35 = 'rgba(17,17,17,0.35)'
+
+function wbPersonCell(p?: WbPerson | null): string {
+  if (!p) return '<span style="color:' + INK35 + ';">-</span>'
+  return personHtml(p.name, p.dept ?? undefined, p.avatar_url ?? null)
+}
+function wbPersonList(list?: WbPerson[] | null): string {
+  if (!list || list.length === 0) return `<span style="color:${INK35};">미지정</span>`
+  return list.map(p => wbPersonCell(p)).join('<div style="height:8px;line-height:8px;font-size:0;">&nbsp;</div>')
+}
+/** DUE 행 값 — '2026-10-08 (목) 18:00 · D-8' (지연이면 D+n 빨강) */
+function wbDueHtml(wb: WbContext): string {
+  if (!wb.due_kst) return `<span style="color:${INK35};">미정</span>`
+  const dcolor = wb.overdue ? '#EF4444' : INK35
+  return `${esc(wb.due_kst)} <span style="color:${dcolor};">· ${esc(wb.dday ?? '')}</span>`
+}
+function wbCommentQuote(c: NonNullable<WbContext['comment']>): string {
+  return `<div style="margin-top:16px;padding:16px;border-radius:12px;background:#F8FAFC;border-left:3px solid #111;">
+    <div style="font-size:12px;font-weight:600;color:#111;">댓글 · ${esc(c.created_kst)}</div>
+    <div style="margin-top:4px;font-size:13px;font-weight:500;line-height:1.7;color:#111;white-space:pre-wrap;">${esc(c.body)}</div>
+  </div>`
+}
+/** 다이제스트 섹션 1개 — 항목 0이면 빈 문자열 */
+function wbDigestSection(label: string, items: WbDigestItem[] | undefined, opts: { red?: boolean; recurring?: boolean } = {}): string {
+  if (!items || items.length === 0) return ''
+  const lines = items.map(it => {
+    const labels = it.assignee_labels ?? it.assignees          // DB 가 수신자 본인을 '나' 로 치환해 준 목록 (mine 이면 '나' 가 맨 앞)
+    const whoLabel = labels.length === 0 ? '미지정' : labels.join(', ')
+    const tail = opts.recurring
+      ? `<span style="color:${INK35};"> · ${esc(it.area ?? '')} · ${esc(whoLabel)} · 반복 · ${esc(it.due_kst ? `오늘 ${it.due_kst.slice(-5)}` : '')}</span>`
+      : it.overdue
+        ? `<span style="color:${INK35};"> · ${esc(it.area ?? '')} · ${esc(whoLabel)} · </span><span style="color:#EF4444;">${esc(it.dday ?? '')}</span>`
+        : `<span style="color:${INK35};"> · ${esc(it.area ?? '')} · ${esc(whoLabel)}</span>`
+    return `${esc(it.title)}${tail}`
+  }).join('<br>')
+  return `<tr>
+    <td style="padding:14px 0;font-size:12px;font-weight:700;letter-spacing:1px;color:${opts.red ? '#EF4444' : '#111'};width:100px;vertical-align:top;">${esc(label)}</td>
+    <td style="padding:14px 0;font-size:14px;font-weight:500;color:#111;line-height:1.5;">${lines}</td>
+  </tr>`
+}
+/** 다이제스트 제목/서브라인 — "지연 2 · 오늘 마감 3 · 내일 마감 1 · 오늘 생성된 반복 업무 2" (0인 항목은 생략) */
+function wbDigestSummary(wb: WbContext, short = false): string {
+  const c = wb.counts ?? { overdue: 0, today: 0, tomorrow: 0, recurring: 0 }
+  const parts: string[] = []
+  if (c.overdue)   parts.push(short ? `지연 ${c.overdue}` : `<span style="color:#EF4444;">지연 ${c.overdue}</span>`)
+  if (c.today)     parts.push(short ? `오늘 ${c.today}` : `오늘 마감 ${c.today}`)
+  if (c.tomorrow)  parts.push(short ? `내일 ${c.tomorrow}` : `내일 마감 ${c.tomorrow}`)
+  if (c.recurring) parts.push(short ? `반복 ${c.recurring}` : `오늘 생성된 반복 업무 ${c.recurring}`)
+  return parts.join(' · ')
+}
+
 function renderEmail(input: EmailRenderInput): string {
   const { type, role, booking, creatorInfo, recipientName: _rn, attendeeList, recurBookings, appUrl } = input
   const policy = POLICIES[type]
+  const wb = booking.wb                                        // ← [2026-09-30 5-B]
+  const isWorkboard = !!wb && type.startsWith('wb_')
+  const isDigest = isWorkboard && type === 'wb_daily_digest'
 
   const isBook    = !!(booking.book_title || booking.due_date_kst)
   const isResource = !!booking.resource_label   // ← [2026-08-19 Phase 4]
@@ -412,11 +502,35 @@ function renderEmail(input: EmailRenderInput): string {
   const pText = purposeText(booking.purpose, booking.purpose_detail)
 
   // ── 역할 배지 (원본 "관리자 수신 알림" 패턴) ─────────────────────────
-  const roleBadge = role === 'admin' ? '관리자 수신 알림' : role === 'attendee' ? '참석자 수신 알림' : isBook ? '대여자 수신 알림' : isPenalty ? '대상자 수신 알림' : '예약자 수신 알림'
+  const roleBadge = isWorkboard
+    ? (isDigest ? `일일 요약 · ${_rn ?? ''} 님` : type === 'wb_task_assigned' ? '담당자 수신 알림' : '관련자 수신 알림')   // ← [5-B]
+    : role === 'admin' ? '관리자 수신 알림' : role === 'attendee' ? '참석자 수신 알림' : isBook ? '대여자 수신 알림' : isPenalty ? '대상자 수신 알림' : '예약자 수신 알림'
 
   // ── 인포 행 (원본: 영문 대문자 라벨 / 사람 라벨은 한글) ──────────────
   const rows: string[] = []
-  if (isResource) {   // ← [2026-08-19 Phase 4] 자원 분기 — 사용시간/반납일/연체/사유/예약자
+  if (isDigest && wb) {   // ← [2026-09-30 5-B] 다이제스트 — 4섹션(0건 섹션 생략)
+    rows.push(wbDigestSection('OVERDUE',   wb.overdue,   { red: true }))
+    rows.push(wbDigestSection('TODAY',     wb.today))
+    rows.push(wbDigestSection('TOMORROW',  wb.tomorrow))
+    rows.push(wbDigestSection('RECURRING', wb.recurring, { recurring: true }))
+  } else if (isWorkboard && wb) {   // ← [2026-09-30 5-B] 업무·이슈 — AREA/STATUS/DUE/MILESTONE/담당자/작성자·처리자
+    if (wb.area)      rows.push(infoRow('AREA', esc(wb.area)))
+    if (wb.target_type === 'issue') {
+      rows.push(infoRow('SEVERITY', esc(wb.severity_label ?? wb.severity ?? '')))
+      rows.push(infoRow('STATUS', esc(wb.status_label ?? wb.status ?? '')))
+      if (wb.linked_task) rows.push(infoRow('TASK', esc(wb.linked_task)))
+      if (wb.occurred_on) rows.push(infoRow('OCCURRED', esc(wb.occurred_on)))
+    } else {
+      rows.push(infoRow('STATUS', esc(wb.status_label ?? wb.status ?? '')))
+      rows.push(infoRow('DUE', wbDueHtml(wb)))
+    }
+    if (wb.milestone) rows.push(infoRow('MILESTONE', esc(wb.milestone)))
+    if (wb.target_type === 'task' || (wb.assignees && wb.assignees.length > 0)) rows.push(infoRow('담당자', wbPersonList(wb.assignees)))
+    if (type === 'wb_task_assigned')       rows.push(infoRow('배정자', wbPersonCell(creatorInfo ? { user_id: '', name: creatorInfo.name, dept: creatorInfo.dept, avatar_url: creatorInfo.avatar_url } : null)))
+    else if (type === 'wb_comment_added')  rows.push(infoRow('작성자', wbPersonCell(wb.comment?.author ?? null)))
+    else if (type === 'wb_issue_created')  rows.push(infoRow('등록자', wbPersonCell(wb.creator ?? null)))
+    else if (type === 'wb_issue_resolved') { rows.push(infoRow('등록자', wbPersonCell(wb.creator ?? null))); rows.push(infoRow('처리자', wbPersonCell(wb.resolver ?? null))) }
+  } else if (isResource) {   // ← [2026-08-19 Phase 4] 자원 분기 — 사용시간/반납일/연체/사유/예약자
     if (booking.use_time_kst)    rows.push(infoRow('USE', esc(booking.use_time_kst)))
     if (booking.return_due_kst)  rows.push(infoRow('DUE', esc(booking.return_due_kst)))
     if (typeof booking.days_overdue === 'number' && booking.days_overdue > 0)
@@ -465,6 +579,13 @@ function renderEmail(input: EmailRenderInput): string {
     bannersHtml += noticeBanner('danger', '거절 사유', booking.admin_name ? `${booking.reject_reason} (처리: ${booking.admin_name})` : booking.reject_reason)
   if (type === 'cancelled' && booking.admin_force && booking.cancel_reason)
     bannersHtml += noticeBanner('danger', '취소 사유', booking.cancel_reason)
+  // ← [2026-09-30 5-B] 댓글 인용 · 이슈 보류 안내
+  if (type === 'wb_comment_added' && wb?.comment) bannersHtml += wbCommentQuote(wb.comment)
+  if (type === 'wb_issue_resolved' && wb) {
+    bannersHtml += wb.status === 'wontfix'
+      ? noticeBanner('danger', '보류 처리', `이 이슈는 처리하지 않기로 결정되었습니다${wb.resolved_kst ? ` (${wb.resolved_kst})` : ''}. 다시 열려면 Work Space 에서 상태를 변경하세요.`)
+      : noticeBanner('info', null, `이슈가 해결 처리되었습니다${wb.resolved_kst ? ` (${wb.resolved_kst})` : ''}.`)
+  }
 
   // ── 반복 일정 (원본 근거 없음 — 인포 행 스타일로 최소 표기) ───────────
   const recurHtml = recurBookings.length > 0
@@ -481,14 +602,20 @@ function renderEmail(input: EmailRenderInput): string {
       </td>
     </tr></table>` : ''
 
-  const headerLabel = policy?.headerLabel ?? '예약 알림'
+  const headerLabel = (type === 'wb_issue_resolved' && wb)   // ← [5-B] 해결/보류 구체화
+    ? (wb.status === 'wontfix' ? '이슈가 보류되었습니다' : '이슈가 해결되었습니다')
+    : (policy?.headerLabel ?? '예약 알림')
   // 원본 거절메일(147:177)의 회의명엔 취소선이 없다 — 취소선은 "예약 자체가 취소된"
   // 타입(cancelled/noshow/pending_expired)에만. rejected 는 정책 isCancelledStyle 과
   // 무관하게 원본대로 일반 표기.
   const cancelled   = !!policy?.isCancelledStyle && type !== 'rejected'
   const titleStyle  = cancelled ? 'text-decoration:line-through;color:#99A1AF;' : 'color:#111;'
-  const cardTitle   = isResource ? (booking.resource_label ?? booking.title) : isBook ? (booking.book_title ?? booking.title) : (booking.title || (isPenalty ? '회의실 예약' : '-'))  // ← [Phase 4] 자원 우선
-  const subLine     = isResource ? '자원 예약' : isBook ? '도서 대여' : isPenalty ? (booking.user_name ?? '') : (booking.room_name ?? '')
+  const cardTitle   = isDigest && wb ? (wb.date_label ?? booking.title)
+                    : isWorkboard && wb ? (wb.title ?? booking.title)
+                    : isResource ? (booking.resource_label ?? booking.title) : isBook ? (booking.book_title ?? booking.title) : (booking.title || (isPenalty ? '회의실 예약' : '-'))  // ← [Phase 4] 자원 우선
+  const subLineHtml = isDigest && wb ? wbDigestSummary(wb)                                  // ← [5-B] 다이제스트 서브라인은 HTML(지연 빨강)
+                    : esc(isWorkboard && wb ? `Work Space · ${wb.kind_label ?? ''}`
+                    : isResource ? '자원 예약' : isBook ? '도서 대여' : isPenalty ? (booking.user_name ?? '') : (booking.room_name ?? ''))
 
   return `<!DOCTYPE html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -502,7 +629,7 @@ function renderEmail(input: EmailRenderInput): string {
       </td></tr>
       <tr><td style="border-top:0.5px solid #111;border-bottom:0.5px solid #111;padding:24px 0;">
         <div style="font-size:21px;font-weight:500;line-height:1.5;${titleStyle}">${esc(cardTitle)}</div>
-        ${subLine ? `<div style="padding-top:2px;font-size:14px;color:#111;letter-spacing:0.07px;">${esc(subLine)}</div>` : ''}
+        ${subLineHtml ? `<div style="padding-top:2px;font-size:14px;color:#111;letter-spacing:0.07px;">${subLineHtml}</div>` : ''}
       </td></tr>
       <tr><td style="padding:24px 0 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows.join('')}${recurHtml}</table>
@@ -703,6 +830,23 @@ function buildEmailItems(
 // ═══════════════════════════════════════════════════════════════════════════
 
 function buildInAppBody(type: NotificationType, d: InAppBookingData): string {
+  // ← [2026-09-30 5-B] Work Space — 규칙: {제목} · {영역} · {D-n}  (고지 확정: 이메일 서브라인과 동일 규칙)
+  if (d.wb && type.startsWith('wb_')) {
+    const wb = d.wb
+    if (type === 'wb_daily_digest') return `${wb.date_short ?? wb.date ?? ''} · ${wbDigestSummary(wb, true)}`
+    const parts: string[] = [wb.title ?? d.title]
+    if (wb.area) parts.push(wb.area)
+    if (wb.target_type === 'issue') parts.push(`${wb.severity_label ?? ''}${wb.status_label ? ` · ${wb.status_label}` : ''}`.replace(/^ · /, ''))
+    else if (wb.dday) parts.push(wb.dday)
+    if (type === 'wb_comment_added' && wb.comment) {
+      const body = wb.comment.body.replace(/\s+/g, ' ').trim()
+      parts.push(`${wb.comment.author?.name ?? ''}: ${body.length > 40 ? body.slice(0, 40) + '…' : body}`)
+    }
+    if (type === 'wb_task_assigned' && d.user_name) parts.push(`배정: ${d.user_name}`)
+    if (type === 'wb_issue_created' && wb.creator?.name) parts.push(`등록: ${wb.creator.name}`)
+    if (type === 'wb_issue_resolved' && wb.resolver?.name) parts.push(`${wb.status === 'wontfix' ? '보류' : '해결'}: ${wb.resolver.name}`)
+    return parts.filter(Boolean).join(' · ')
+  }
   // ← [2026-08-10 v2] 노쇼 이용 제재 분기 — *_kst 서버 완성 문자열 그대로 (재변환 금지)
   if (type === 'noshow_penalty_applied')
     return `예약 제한 ~${d.penalty_ends_kst ?? ''} · 노쇼 ${d.noshow_count ?? 3}회`
@@ -751,11 +895,12 @@ async function insertInAppBulk(
   if (ids.length === 0) return 0
   const policy = POLICIES[type]
   if (!policy) return 0
-  const title =
+  let title =
     role === 'booker'   ? policy.inappTitleBooker :
     role === 'attendee' ? policy.inappTitleAttendee :
                           policy.inappTitleAdmin
   if (!title) return 0                               // 빈 문자열 = 이 역할은 인앱 대상 아님
+  if (type === 'wb_issue_resolved' && d.wb) title = d.wb.status === 'wontfix' ? '이슈가 보류되었습니다' : '이슈가 해결되었습니다'   // ← [5-B]
 
   const body = buildInAppBody(type, d)
   const rowsIns = ids.map(uid => ({
@@ -875,7 +1020,34 @@ Deno.serve(async (req: Request) => {
       // ← [2026-07-20] book_borrower 전용 — 도서 대여자 user_id
       //   도서 알림 payload는 booking 슬롯에 도서 정보를 담아 보낸다(booking.user_id = 대여자).
       borrowerUserId: booking.user_id,
+      // ← [2026-09-30 5-B] Work Space — DB wb_notification_recipients 인자
+      wbTargetType: booking.wb_target_type,
+      wbTargetId:   booking.wb_target_id,
+      wbActorId:    booking.wb_actor_id,
+      wbAddedIds:   booking.wb_added_ids,
     })
+
+    // ── [2026-09-30 5-B] Work Space 본문 컨텍스트 — DB 에서 다시 읽는다 (프론트 payload 는 id 만) ──
+    //   digest 는 wb-daily-digest 가 wb_digest_build 결과를 booking.wb_digest 로 넘긴다 (빈 날 판정을 그쪽이 하므로 재계산 안 함)
+    let wbCtx: WbContext | undefined
+    if (type.startsWith('wb_')) {
+      if (type === 'wb_daily_digest') {
+        wbCtx = booking.wb_digest ?? undefined
+      } else if (booking.wb_target_type && booking.wb_target_id) {
+        const { data: ctx, error: ctxErr } = await supabase.rpc('wb_notification_context', {
+          p_target_type: booking.wb_target_type, p_target_id: booking.wb_target_id, p_comment_id: booking.wb_comment_id ?? null,
+        })
+        if (ctxErr || !ctx) {
+          console.warn(`[notify] wb_notification_context 실패/없음 (${booking.wb_target_type}/${booking.wb_target_id}):`, ctxErr?.message ?? 'null')
+          return new Response(JSON.stringify({ error: 'wb 대상 없음', success: false, type, emailSent: 0, emailFailed: 0, inappSent: 0 }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        }
+        wbCtx = ctx as WbContext
+        if (type === 'wb_issue_resolved') wbCtx.resolved_status = wbCtx.status as any
+      }
+      if (!wbCtx) {
+        return new Response(JSON.stringify({ error: 'wb_target_type/wb_target_id 필수' }), { status: 400, headers: corsHeaders })
+      }
+    }
 
     // ── 이메일 본문용 참석자 목록 생성 ────────────────────────────────
     // 참석자/관리자 렌더에도 "참석자 N명"이 보여야 하므로 공통 리스트 구성
@@ -889,7 +1061,9 @@ Deno.serve(async (req: Request) => {
     // 기존 payload의 필드명과 email-templates의 인터페이스 매핑
     const bookingData: EmailBookingData = {
       id:            booking.id,
-      title:         booking.title ?? '',
+      // ← [5-B] wb 는 DB 제목이 SSOT. 다이제스트 제목 = "10/1 (목) 지연 2 · 오늘 3 · 내일 1" (getSubject 가 [C&R SPACE · Work Space] 를 앞에 붙인다)
+      title:         wbCtx ? (type === 'wb_daily_digest' ? `${wbCtx.date_short ?? ''} ${wbDigestSummary(wbCtx, true)}`.trim() : (wbCtx.title ?? booking.title ?? '')) : (booking.title ?? ''),
+      wb:            wbCtx,
       memo:          booking.memo,
       start_at:      booking.start_at,
       end_at:        booking.end_at,
@@ -954,6 +1128,7 @@ Deno.serve(async (req: Request) => {
       due_date_kst: bookingData.due_date_kst,
       days_overdue: bookingData.days_overdue,
       checkout_date_kst: bookingData.checkout_date_kst,   // ← [2026-07-23]
+      wb:           bookingData.wb,                        // ← [2026-09-30 5-B]
     }
     // 인앱 알림은 이메일과 독립적으로 진행 (await하지 않고 Promise.allSettled 안에서)
     const inappSent = channels.inapp
@@ -985,7 +1160,7 @@ Deno.serve(async (req: Request) => {
         if (adm.email_enabled === false) logRows.push({ type, channel: 'email', recipient_id: adm.user_id, recipient_email: adm.email, recipient_name: adm.name, booking_id: booking.id ?? null, status: 'skipped', detail: 'user_off' })
         if (adm.inapp_enabled === false) logRows.push({ type, channel: 'inapp', recipient_id: adm.user_id, recipient_email: adm.email, recipient_name: adm.name, booking_id: booking.id ?? null, status: 'skipped', detail: 'user_off' })
       }
-      const adminRule = ['admins_only', 'booker_attendees_admins', 'book_admins', 'resource_admins_and_owner'].includes(policy.recipients)
+      const adminRule = ['admins_only', 'booker_attendees_admins', 'book_admins', 'resource_admins_and_owner', 'wb_recipients'].includes(policy.recipients)   // ← [5-B] wb_recipients
       if (adminRule && recipients.admins.length === 0) {
         logRows.push({ type, channel: 'email', booking_id: booking.id ?? null, status: 'skipped', detail: 'no_recipient (자격자·지정자 없음 — 폴백 없음)' })
       }

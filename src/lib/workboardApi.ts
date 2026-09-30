@@ -2,6 +2,9 @@
  * workboardApi.ts — Work Space(WORKBOARD) 데이터 접근
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 NOTIFY 5-B] Work Space 알림 발사 — notifyWb(type, target, …): send-notification invoke(fire-and-forget, 실패는 경고만)
+ *      · payload 는 대상 id 와 행위자·추가 담당자·댓글 id 뿐. 제목·영역·마감·수신자는 Edge 가 DB(wb_notification_context / wb_notification_recipients)에서 다시 읽는다
+ *      · insertWbComment 는 성공 직후 wb_comment_added 를 자체 발사 (TaskDrawer·IssueDrawer 양쪽 공용 경로)
  *  - [2026-09-30 WORKBOARD P4] 반복 업무 — 템플릿 조회/upsert(RPC) · 미리보기(wb_template_preview · wb_templates_next, 규칙 SSOT=DB) · 수동 생성 · 실행 로그
  *  - [2026-09-30 WORKBOARD P3-F] loadWbMembers — 사람 선택 풀(wb_list_members RPC). users(전 직원) 는 표시 룩업에만 쓴다
  *  - [2026-09-30 WORKBOARD P3-E] 마일스톤 RPC 3종(upsert·status·delete) · 업무영역 upsert/reorder RPC · 단건 재조회 2종
@@ -137,7 +140,38 @@ export async function insertWbComment(targetType: 'task' | 'issue', targetId: st
   const { data, error } = await supabase.from('wb_comments')
     .insert({ target_type: targetType, target_id: targetId, body }).select('*').single()
   if (error) throw new Error(error.message)
-  return data as WbComment
+  const c = data as WbComment
+  notifyWb('wb_comment_added', targetType, targetId, { actorId: c.author_id, commentId: c.id })   // ← [2026-09-30 5-B]
+  return c
+}
+
+// ─── 알림 발사 (← [2026-09-30 NOTIFY 5-B]) ───────────────────────────────────
+//   RPC 성공 "후"에만 호출. 실패해도 저장을 되돌리지 않는다(도서 extendBookCheckoutWithNotify 와 같은 정책).
+//   booking.id 규칙: 'task-{uuid}' | 'issue-{uuid}' — 인앱 booking_id 로 저장되어 NotificationBell 이 #workboard-… 로 연다.
+
+export type WbNotifyType = 'wb_task_assigned' | 'wb_comment_added' | 'wb_issue_created' | 'wb_issue_resolved'
+
+export function notifyWb(
+  type: WbNotifyType, targetType: 'task' | 'issue', targetId: string,
+  opts: { actorId: string; addedIds?: string[]; commentId?: string },
+): void {
+  if (!isSupabaseEnabled || !targetId) return
+  if (type === 'wb_task_assigned' && (!opts.addedIds || opts.addedIds.length === 0)) return   // 새 담당자 없음 → 발송 없음
+  supabase.functions.invoke('send-notification', {
+    body: {
+      type,
+      booking: {
+        id: `${targetType}-${targetId}`,
+        title: '',                             // Edge 가 DB 제목으로 대체
+        wb_target_type: targetType,
+        wb_target_id:   targetId,
+        wb_actor_id:    opts.actorId,
+        wb_added_ids:   opts.addedIds ?? null,
+        wb_comment_id:  opts.commentId ?? null,
+      },
+    },
+  }).then(({ error }) => { if (error) console.warn(`[workboardApi] 알림 발송 실패 (${type}):`, error.message) })
+    .catch(err => console.warn(`[workboardApi] 알림 발송 예외 (${type}):`, err))
 }
 
 export async function deleteWbComment(id: string): Promise<boolean> {

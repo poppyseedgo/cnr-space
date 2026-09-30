@@ -57,6 +57,12 @@ export const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
   // ← [2026-07-23] 대여 접수 → 도서 담당 관리자. 관리자 액션 계열이라
   //   대여자용 인디고(#4F46E5)와 구분되는 슬레이트 블루를 쓴다.
   book_checkout_created:    "#4338CA",
+  // ── Work Space (← [2026-09-30 NOTIFY 5-B]) ─────────────────────────────
+  wb_task_assigned:         "#4F46E5",  // 배정 — 인디고(지정)
+  wb_comment_added:         "#0891B2",  // 댓글 — 시안(정보)
+  wb_issue_created:         "#D97706",  // 이슈 등록 — 앰버(주의)
+  wb_issue_resolved:        "#16A34A",  // 해결·보류 — 그린(종결)
+  wb_daily_digest:          "#0891B2",  // 일일 요약 — 시안
 
   // ── 대여 신청/승인 (← [2026-07-22]) ────────────────────────────────────
   // ← [2026-07-21] 승인 폐지로 신규 발송 없음. 과거 알림 이력 렌더링용으로 유지.

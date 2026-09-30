@@ -2,6 +2,8 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 NOTIFY 5-B] Work Space 딥링크 — #workboard-task-{id}/#workboard-issue-{id} → view 'workboard' (OAuth 복원 cnr_deeplink 포함),
+ *      알림벨 onOpenWorkboard → wbDeepLink 상태 → WorkboardPage deepLink prop (소비 후 비움)
  *  - [2026-09-29 WORKBOARD P3-A] WorkboardPage 에 users·authUserId·showToast 전달 (보드 구현)
  *  - [2026-09-29 WORKBOARD P2] Work Space(업무보드) 라우팅·권한 게이트
  *      · DIRECT_VIEWS += 'workboard' (#workboard 새로고침·딥링크 유지)
@@ -286,7 +288,7 @@ import { supabase } from './lib/supabase'
 import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } from './types'
 import { HomeView } from './components/room/HomeView'
 import { LibraryPage } from './pages/LibraryPage'  // ← [2026-07-16] 도서관 모듈 추가
-import { WorkboardPage } from './pages/WorkboardPage'  // ← [2026-09-29 WORKBOARD P2] Work Space 임시 페이지 (#workboard)
+import { WorkboardPage, type WbDeepLink } from './pages/WorkboardPage'  // ← [2026-09-29 WORKBOARD P2] Work Space 임시 페이지 (#workboard) · [5-B] WbDeepLink
 import { loadMyAdminRoles } from './lib/api'        // ← [2026-09-29 WORKBOARD P2] 내 admin_roles — 일반 뷰 권한 게이트용
 import { canSeeView } from './data/adminRoles'       // ← [2026-09-29 WORKBOARD P2] 역할 → 일반 뷰 판정 SSOT
 import { ReleaseNotesPage } from './pages/ReleaseNotesPage'  // ← [2026-08-03] Release Note + Hotfix 페이지 추가
@@ -412,11 +414,13 @@ function AppContent() {
     if (hash.startsWith('admin-booking-')) return 'admin'
     if (hash.startsWith('booking-')) return 'home'  // ← [2026-05-12] mypage → home (앱 첫 진입 폴백)
     if (hash === 'myloans') return 'mypage'         // ← [2026-08-11 CTA 전수검사] 도서 CTA #myloans — 마이페이지 진입 (탭 선택은 아래 딥링크 이펙트)
+    if (hash.startsWith('workboard-')) return 'workboard'   // ← [2026-09-30 NOTIFY 5-B] #workboard-task-{id} / #workboard-issue-{id} (드로어 오픈은 WorkboardPage 가 소비)
     // OAuth 리다이렉트 후 해시가 소실된 경우 sessionStorage에서 복원
     const saved = sessionStorage.getItem('cnr_deeplink')
     if (saved?.startsWith('admin-booking-')) return 'admin'
     if (saved?.startsWith('booking-')) return 'home'  // ← [2026-05-12] mypage → home
     if (saved === 'myloans') return 'mypage'          // ← [2026-08-11] OAuth 복원 경로에도 myloans — home 스침 방지
+    if (saved?.startsWith('workboard-')) return 'workboard'   // ← [5-B] OAuth 복원
     return DIRECT_VIEWS.includes(hash) ? hash : 'home'  // ← [2026-08-21] 복붙 배열 → SSOT (resources·announcements 포함)
   }
   const [view, setViewState] = useState<string>(getViewFromHash);
@@ -425,6 +429,8 @@ function AppContent() {
   // ← [2026-09-29 WORKBOARD P2] 내 admin_roles. null = 아직 조회 전(게이트 판정 보류) / [] = 없음
   const [myAdminRoles, setMyAdminRoles] = useState<string[] | null>(null)
   const canWorkboard = myAdminRoles !== null && canSeeView(myAdminRoles, 'workboard')
+  // ← [2026-09-30 NOTIFY 5-B] 알림벨에서 넘어온 Work Space 열기 요청 (WorkboardPage 가 소비 후 비움)
+  const [wbDeepLink, setWbDeepLink] = useState<WbDeepLink | null>(null)
   // ← [2026-07-30] 마이페이지 진입 시 열 세그먼트 탭. 도서관 '나의 도서 대여'
   //   CTA 만 'book' 으로 세팅하고, 마이페이지를 벗어나면 'room' 으로 되돌린다 —
   //   되돌리지 않으면 CTA 를 한 번 쓴 뒤 헤더로 들어간 마이페이지도 계속
@@ -642,7 +648,7 @@ function AppContent() {
   // admin-booking- 딥링크 해시를 sessionStorage에 저장 (OAuth 리다이렉트 시 소실 방지)
   useEffect(() => {
     const hash = window.location.hash.replace('#', '')
-    if (hash.startsWith('admin-booking-') || hash.startsWith('booking-') || hash === 'myloans') {  // ← [2026-08-11] myloans 도 로그인 후 복원 대상
+    if (hash.startsWith('admin-booking-') || hash.startsWith('booking-') || hash === 'myloans' || hash.startsWith('workboard-')) {  // ← [2026-08-11] myloans · [5-B] workboard-* 도 로그인 후 복원 대상
       sessionStorage.setItem('cnr_deeplink', hash)
     }
   }, [])
@@ -1933,6 +1939,12 @@ function AppContent() {
                     .then(row => setLoanDetail({ loan: row, loading: false }))
                     .catch(() => setLoanDetail({ loan: null, loading: false }))
                 }}
+                /* ← [2026-09-30 NOTIFY 5-B] Work Space 알림 — booking_id 'task-{id}' | 'issue-{id}' | 'digest-{date}'.
+                     권한 없는 사람(멤버 해제)은 페이지가 home 폴백하므로 여기선 게이트하지 않는다 */
+                onOpenWorkboard={(target) => {
+                  setWbDeepLink(target)
+                  setView('workboard')
+                }}
               />
 
               {/* ← [2026-05-04] 프로필 + 드롭다운 메뉴 → ProfileDropdown 컴포넌트로 분리 (Phase 1+2 Step 2)
@@ -2017,7 +2029,7 @@ function AppContent() {
       {view==="resources" && <ResourcePage users={users} authUserId={authUser?.user_id ?? ''} showToast={showToast} isMobile={isMobile} onGoMyResources={() => { setMyPageInitialTab('resource'); setView('mypage') }} />}{/* ← [2026-08-19] 자원예약 Phase 2A — 카드+Figma 모달, 2B(타임라인·캘린더) 예정 */}
       {view==="announcements" && <AnnouncementsPage showToast={showToast} />}{/* ← [2026-08-19] 공지사항 — 헤더 배너 이력, RLS 20260749 필요 */}
       {view==="release-notes" && <ReleaseNotesPage />}{/* ← [2026-08-03] Release Note + Hotfix — 데이터 SSOT: src/data/releaseNotes.ts */}
-      {view==="workboard" && canWorkboard && <WorkboardPage users={users} authUserId={authUser?.user_id ?? ''} showToast={showToast} />}{/* ← [2026-09-29 WORKBOARD P3-A] users·authUserId·showToast 전달 (ResourcePage 관례) */}{/* ← [2026-09-29 WORKBOARD P2] 권한 확정 전(null)·비권한은 렌더하지 않음 */}
+      {view==="workboard" && canWorkboard && <WorkboardPage users={users} authUserId={authUser?.user_id ?? ''} showToast={showToast} deepLink={wbDeepLink} onDeepLinkConsumed={() => setWbDeepLink(null)} />}{/* ← [5-B] 알림벨 딥링크 */}{/* ← [2026-09-29 WORKBOARD P3-A] users·authUserId·showToast 전달 (ResourcePage 관례) */}{/* ← [2026-09-29 WORKBOARD P2] 권한 확정 전(null)·비권한은 렌더하지 않음 */}
 
       {/* ── Modals ── */}
       {/* ← [2026-07-21] 도서 대여 상세 — 알림 클릭 진입점.

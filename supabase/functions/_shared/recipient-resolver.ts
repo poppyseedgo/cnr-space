@@ -1,6 +1,7 @@
 // @ts-nocheck
 /**
  * _shared/recipient-resolver.ts
+ * ← [2026-09-30 5-B] 규칙 'wb_recipients' — DB wb_notification_recipients (Work Space 5종, admins 슬롯)
  * ← [2026-09-30 5-A] 관리자 수신자 해석을 DB RPC(notification_resolve_recipients)로 일원화 — 임베드 4함수 제거, Person 에 채널 플래그
  * C&R Space 알림 시스템 — 수신자 정보 통합 조회 헬퍼
  *
@@ -127,6 +128,11 @@ export interface ResolveInput {
    *   조회하는 데 쓴다. 넘기지 않으면 지정 명단을 무시하고 기존 규칙대로 동작한다.
    */
   notificationType?: string
+  /** ← [2026-09-30 5-B] wb_recipients 전용 — DB wb_notification_recipients 인자. actor 는 본인 제외, added 는 task_assigned 의 신규 담당자 */
+  wbTargetType?: 'task' | 'issue' | 'user'
+  wbTargetId?:   string
+  wbActorId?:    string
+  wbAddedIds?:   string[]
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -192,6 +198,35 @@ async function fetchEntitledAdmins(supabase: SupabaseClient, type?: string, excl
       .filter(p => p.email || p.user_id)
   } catch (e: any) {
     console.warn('[resolver] notification_resolve_recipients 예외:', e?.message ?? String(e))
+    return []
+  }
+}
+
+/**
+ * ← [2026-09-30 5-B] Work Space 수신자 — DB wb_notification_recipients(p_type, p_target_type, p_target_id, p_actor, p_added).
+ *   내부적으로 notification_resolve_recipients(자격 workboard ∩ 지정 · 개인 채널 플래그 · 행위자 제외) ∩ 타입별 대상.
+ *   실패 시 빈 배열(fail-closed) — 로그에 no_recipient 로 남는다.
+ */
+async function fetchWbRecipients(supabase: SupabaseClient, input: ResolveInput): Promise<Person[]> {
+  const { notificationType, wbTargetType, wbTargetId, wbActorId, wbAddedIds } = input
+  if (!notificationType || !wbTargetType || !wbTargetId) {
+    console.warn('[resolver] wb_recipients 인자 부족:', { notificationType, wbTargetType, wbTargetId })
+    return []
+  }
+  try {
+    const { data, error } = await supabase.rpc('wb_notification_recipients', {
+      p_type: notificationType, p_target_type: wbTargetType, p_target_id: wbTargetId,
+      p_actor: wbActorId ?? null, p_added: wbAddedIds ?? null,
+    })
+    if (error) { console.warn('[resolver] wb_notification_recipients 실패:', error.message); return [] }
+    return ((data ?? []) as any[])
+      .map(r => ({
+        user_id: r.user_id, email: r.email ?? '', name: r.name ?? '', dept: r.dept ?? '', avatar_url: r.avatar_url ?? null,
+        email_enabled: r.email_enabled !== false, inapp_enabled: r.inapp_enabled !== false,
+      }))
+      .filter(p => p.email || p.user_id)
+  } catch (e: any) {
+    console.warn('[resolver] wb_notification_recipients 예외:', e?.message ?? String(e))
     return []
   }
 }
@@ -365,6 +400,18 @@ export async function resolveRecipients(
   //   도서 알림은 borrowerUserId 가 주체, 회의 알림은 bookerUserId 가 주체다.
   //   (send-notification 은 양쪽에 booking.user_id 를 넣어 보내므로 사실상 동일)
   const ownerUserId = borrowerUserId || bookerUserId || ''
+
+  // ← [2026-09-30 5-B] Work Space — admins 슬롯에 담는다 (book_admins 와 같은 이유: 이메일·인앱 'admin' 렌더 분기 재사용).
+  //   owner 는 행위자(배정자·댓글 작성자·등록자·처리자) — 본문의 사람 행은 wb 컨텍스트가 그리므로 참고용.
+  if (rule === 'wb_recipients') {
+    const [admins, actor] = await Promise.all([
+      fetchWbRecipients(supabase, input),
+      fetchBooker(supabase, input.wbActorId ?? ''),
+    ])
+    result.admins = admins
+    result.owner  = actor
+    return result
+  }
 
   // removed_attendees는 완전 별도 경로
   if (rule === 'removed_attendees') {

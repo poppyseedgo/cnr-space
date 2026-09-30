@@ -2,6 +2,10 @@
  * WorkboardPage.tsx — Work Space (WORKBOARD) · MS팀 업무보드
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 NOTIFY 5-B] 알림 발사 + 딥링크
+ *      · 담당자 추가(handleSave: 저장 전 담당 − 저장 후 담당, 본인 제외) → wb_task_assigned · 이슈 등록(드로어·빠른 등록) → wb_issue_created
+ *        · 이슈 해결/보류 전이(비종결 → resolved|wontfix) → wb_issue_resolved. 댓글은 workboardApi.insertWbComment 가 발사
+ *      · 딥링크 #workboard-task-{id} / #workboard-issue-{id}(이메일 CTA·OAuth 복원 cnr_deeplink) 와 deepLink prop(알림벨) → 해당 드로어 자동 오픈 후 해시를 #workboard 로 정리
  *  - [2026-09-30 WORKBOARD P4] 분장표 탭에 세그먼트 '업무영역 | 반복 업무'(TemplatesView + TemplateDrawer) — 미리보기 승인분
  *      · templates·next(wb_templates_next)·lastRun 진입 시 로드. 저장 = wb_upsert_task_template → refreshTemplate + next 재조회
  *      · '오늘분 지금 생성' = wb_generate_recurring_now → tasks 전체 재조회(생성분 합류) + lastRun 갱신 + 토스트(건수)
@@ -49,6 +53,7 @@ import {
   loadWbAreas, loadWbMilestones, loadWbTasks, loadWbTaskById, upsertWbTask, setWbTaskStatus, deleteWbTask, wbErrorMessage,
   loadWbIssues, loadWbIssueById, upsertWbIssue, convertWbIssueToTask, deleteWbIssue,   // ← [2026-09-30 P3-C]
   setWbTaskDates,   // ← [2026-09-30 P3-D]
+  notifyWb,         // ← [2026-09-30 NOTIFY 5-B]
 } from '../lib/workboardApi'
 import { todayStr } from '../utils/time'  // ← [2026-09-30 P3-C] 빠른 등록 occurred_on
 import { MilestonesView } from '../components/workboard/MilestonesView'   // ← [2026-09-30 P3-E]
@@ -72,13 +77,25 @@ const TABS: { id: WbTab; label: string }[] = [
   { id: 'mine',       label: '내 업무' },
 ]
 
+/** ← [2026-09-30 NOTIFY 5-B] 알림벨·딥링크가 여는 대상 */
+export interface WbDeepLink { type: 'task' | 'issue'; id: string }
+
 interface Props {
   users:      AppUser[]
   authUserId: string
   showToast:  (msg: string) => void
+  /** ← [5-B] 알림벨 클릭 등 앱 내부에서 넘어온 열기 요청. 소비 후 onDeepLinkConsumed 로 비운다 */
+  deepLink?:  WbDeepLink | null
+  onDeepLinkConsumed?: () => void
 }
 
-export function WorkboardPage({ users, authUserId, showToast }: Props) {
+/** 해시 'workboard-task-{id}' | 'workboard-issue-{id}' → WbDeepLink (그 외 null) */
+export function parseWbDeepLink(hash: string): WbDeepLink | null {
+  const m = /^workboard-(task|issue)-([0-9a-f-]{36})$/i.exec(hash.replace(/^#/, ''))
+  return m ? { type: m[1] as 'task' | 'issue', id: m[2] } : null
+}
+
+export function WorkboardPage({ users, authUserId, showToast, deepLink = null, onDeepLinkConsumed }: Props) {
   const [tab, setTab] = useState<WbTab>('board')
   const [areas, setAreas]           = useState<WbWorkArea[]>([])
   const [milestones, setMilestones] = useState<WbMilestone[]>([])
@@ -188,9 +205,13 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
 
   const handleSave = async (input: WbTaskUpsertInput) => {
     setSaving(true)
+    // ← [5-B] 저장 전 담당자 — 새로 담당이 된 사람만 알림 (본인 배정 제외). 기준은 목록의 DB 반영본(tasks), 드래프트는 빈 배열
+    const prevAssignees = input.id ? (tasks.find(t => t.id === input.id)?.assignee_ids ?? []) : []
     try {
       const id = await upsertWbTask(input)
       const wasDraft = input.id === null
+      const added = (input.assignee_ids ?? []).filter(uid => uid !== authUserId && !prevAssignees.includes(uid))
+      notifyWb('wb_task_assigned', 'task', id, { actorId: authUserId, addedIds: added })   // added 0 이면 내부에서 무발송
       let fresh = await refreshTask(id)
       if (wasDraft) {
         // 드래프트에서 만든 경우 시작 열이 todo 가 아니면 상태도 맞춘다 (보드 '+ 업무 추가' 열 기준)
@@ -249,6 +270,46 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
     return fresh
   }, [])
 
+  // ── 딥링크 열기 (← [2026-09-30 NOTIFY 5-B]) ──
+  //   ① 해시 #workboard-task-{id}(이메일 CTA) · OAuth 복원 sessionStorage cnr_deeplink  ② deepLink prop(알림벨)
+  //   대상은 항상 DB 단건 재조회(loadWbTaskById / loadWbIssueById) — 목록에 없어도(오래된 이슈 등) 연다. 없으면 토스트
+  const openTarget = useCallback(async (dl: WbDeepLink) => {
+    try {
+      if (dl.type === 'task') {
+        const t = await loadWbTaskById(dl.id)
+        if (!t) { showToast('업무를 찾을 수 없습니다 (삭제되었을 수 있음)'); return }
+        setTasks(prev => prev.some(x => x.id === t.id) ? prev.map(x => x.id === t.id ? t : x) : [t, ...prev])
+        setIssueDrawer(null); setTab('board'); setDrawer(t)
+      } else {
+        const i = await loadWbIssueById(dl.id)
+        if (!i) { showToast('이슈를 찾을 수 없습니다 (삭제되었을 수 있음)'); return }
+        setIssues(prev => prev.some(x => x.id === i.id) ? prev.map(x => x.id === i.id ? i : x) : [i, ...prev])
+        setDrawer(null); setTab('issues'); setIssueDrawer(i)
+      }
+    } catch (e) { showToast(wbErrorMessage(e, '대상을 열지 못했습니다')) }
+  }, [showToast])
+  useEffect(() => {
+    if (loading) return
+    const consumeHash = () => {
+      const hash  = window.location.hash.replace('#', '')
+      const saved = sessionStorage.getItem('cnr_deeplink') ?? ''
+      const dl = parseWbDeepLink(hash) ?? parseWbDeepLink(saved)
+      if (!dl) return
+      if (saved.startsWith('workboard-')) sessionStorage.removeItem('cnr_deeplink')
+      // 소비 후 해시 정리 — 새로고침 시 같은 드로어가 다시 열리지 않게 (booking- 딥링크와 같은 규칙)
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#workboard`)
+      void openTarget(dl)
+    }
+    consumeHash()
+    window.addEventListener('hashchange', consumeHash)
+    return () => window.removeEventListener('hashchange', consumeHash)
+  }, [loading, openTarget])
+  useEffect(() => {
+    if (loading || !deepLink) return
+    void openTarget(deepLink)
+    onDeepLinkConsumed?.()
+  }, [loading, deepLink, openTarget])  // eslint-disable-line react-hooks/exhaustive-deps
+
   const filteredIssues = useMemo(() => {
     const since = new Date(Date.now() - fIssueDays * 86400_000).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' })
     return issues.filter(i => {
@@ -266,10 +327,14 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
       occurred_on: todayStr(), reporter_id: authUserId, resolved_at: null, resolved_by: null, created_at: now, updated_at: now })
   }
 
+  const isTerminal = (s: WbIssueStatus) => s === 'resolved' || s === 'wontfix'
   const handleIssueSave = async (input: WbIssueUpsertInput) => {
     setSaving(true)
+    const prevStatus = input.id ? issues.find(i => i.id === input.id)?.status : undefined   // ← [5-B] 전이 판정 기준 = DB 반영본
     try {
       const id = await upsertWbIssue(input)
+      if (input.id === null) notifyWb('wb_issue_created', 'issue', id, { actorId: authUserId })                                             // ← [5-B]
+      else if (prevStatus && !isTerminal(prevStatus) && isTerminal(input.status)) notifyWb('wb_issue_resolved', 'issue', id, { actorId: authUserId })   // ← [5-B] 비종결 → 해결/보류
       const fresh = await refreshIssue(id)
       if (input.id === null) { if (fresh) setIssueDrawer(fresh); showToast(WB_ISSUE_TOAST.created) }
     } catch (e) {
@@ -282,6 +347,7 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
   const handleQuickIssue = async (title: string, severity: WbIssueSeverity) => {
     try {
       const id = await upsertWbIssue({ id: null, title, description: null, severity, status: 'open', task_id: null, milestone_id: null, occurred_on: null })
+      notifyWb('wb_issue_created', 'issue', id, { actorId: authUserId })   // ← [5-B] 빠른 등록도 전원 알림 (고지 확정)
       await refreshIssue(id)
       showToast(WB_ISSUE_TOAST.quickCreated(title))
     } catch (e) { showToast(wbErrorMessage(e, '이슈 등록에 실패했습니다')) }
@@ -292,6 +358,7 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
     setIssueMovingId(id)
     try {
       await upsertWbIssue({ id, title: cur.title, description: cur.description, severity: cur.severity, status, task_id: cur.task_id, milestone_id: cur.milestone_id, occurred_on: cur.occurred_on })
+      if (!isTerminal(cur.status) && isTerminal(status)) notifyWb('wb_issue_resolved', 'issue', id, { actorId: authUserId })   // ← [5-B] 보드 이동으로 해결/보류
       await refreshIssue(id)
       showToast(status === 'resolved' ? WB_ISSUE_TOAST.resolved : WB_ISSUE_TOAST.statusMoved(wbIssueStatusLabel(status)))
     } catch (e) { showToast(wbErrorMessage(e, '상태 변경에 실패했습니다')) }
