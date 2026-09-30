@@ -581,3 +581,33 @@ export interface WbTaskUpsertInput {
   checklist:    WbChecklistItem[]
   assignee_ids: string[]
 }
+
+// ← [2026-09-30 WORKBOARD P3-C] 이슈
+export interface WbIssue {
+  id:                string
+  task_id:           string | null
+  milestone_id:      string | null
+  converted_task_id: string | null
+  title:             string
+  description:       string | null
+  severity:          WbIssueSeverity
+  status:            WbIssueStatus
+  occurred_on:       string          // 'YYYY-MM-DD' (KST date)
+  reporter_id:       string | null
+  resolved_at:       string | null
+  resolved_by:       string | null
+  created_at:        string
+  updated_at:        string
+}
+
+/** wb_upsert_issue RPC 인자 (p_ 접두 제거) */
+export interface WbIssueUpsertInput {
+  id:           string | null
+  title:        string
+  description:  string | null
+  severity:     WbIssueSeverity
+  status:       WbIssueStatus
+  task_id:      string | null
+  milestone_id: string | null
+  occurred_on:  string | null   // null = KST 오늘 (RPC 기본값)
+}

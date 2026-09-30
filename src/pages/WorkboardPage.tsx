@@ -2,6 +2,10 @@
  * WorkboardPage.tsx — Work Space (WORKBOARD) · MS팀 업무보드
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 WORKBOARD P3-C] '이슈보드' 탭 구현 (IssueBoardView + IssueDrawer, 미리보기 승인분)
+ *      · issues 상태 신설(진입 시 tasks 와 함께 1회 로드, 최근 30일 + 미해결 전부). 상태 이동·필드 저장 = wb_upsert_issue
+ *      · 업무로 전환 = wb_convert_issue_to_task RPC(20260930 phase3c) → 생성된 업무 refreshTask 로 tasks 에 합류
+ *      · 빠른 등록 기본 심각도 medium(고지 확정). 전환·이슈 드로어에서 '업무 열기' → TaskDrawer 로 스위치
  *  - [2026-09-29 WORKBOARD P3-B] '내 업무' 탭 구현 (MyTasksView, 미리보기 승인분) + 상태 변경·삭제 성공 토스트(WB_TOAST)
  *  - [2026-09-29 WORKBOARD P3-A] 보드(칸반) + 상세 드로어 구현 (미리보기 승인분).
  *      · 탭 셸: 보드 / 일정 / 마일스톤 / 이슈보드 / 내 업무 — 보드만 구현, 나머지는 '준비 중' 패널(3-B~E 에서 순차 교체)
@@ -15,14 +19,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { RotateCw } from 'lucide-react'
-import type { AppUser, WbTask, WbTaskStatus, WbWorkArea, WbMilestone, WbTaskUpsertInput } from '../types'
+import type { AppUser, WbTask, WbTaskStatus, WbWorkArea, WbMilestone, WbTaskUpsertInput, WbIssue, WbIssueStatus, WbIssueSeverity, WbIssueUpsertInput } from '../types'  // ← [P3-C] 이슈 타입
 import { BoardView } from '../components/workboard/BoardView'
 import { TaskDrawer, type DrawerTask } from '../components/workboard/TaskDrawer'
 import { WB, WB_TOAST, DUE_PRESETS, matchesDuePreset, useUserLookup, wbStatusLabel, type DuePreset } from '../components/workboard/wbShared'  // ← [2026-09-29 P3-B] WB_TOAST·wbStatusLabel
 import { MyTasksView } from '../components/workboard/MyTasksView'  // ← [2026-09-29 P3-B] 내 업무
+import { IssueBoardView } from '../components/workboard/IssueBoardView'  // ← [2026-09-30 P3-C] 이슈보드
+import { IssueDrawer, type DrawerIssue } from '../components/workboard/IssueDrawer'  // ← [2026-09-30 P3-C]
+import { WB_ISSUE_TOAST, WB_SEVERITIES, wbIssueStatusLabel } from '../components/workboard/wbShared'  // ← [2026-09-30 P3-C]
 import {
   loadWbAreas, loadWbMilestones, loadWbTasks, loadWbTaskById, upsertWbTask, setWbTaskStatus, deleteWbTask, wbErrorMessage,
+  loadWbIssues, loadWbIssueById, upsertWbIssue, convertWbIssueToTask, deleteWbIssue,   // ← [2026-09-30 P3-C]
 } from '../lib/workboardApi'
+import { todayStr } from '../utils/time'  // ← [2026-09-30 P3-C] 빠른 등록 occurred_on
 
 type WbTab = 'board' | 'calendar' | 'milestones' | 'issues' | 'mine'
 const TABS: { id: WbTab; label: string }[] = [
@@ -63,11 +72,19 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
   const [saving, setSaving]   = useState(false)
   const [movingId, setMovingId] = useState<string | null>(null)
 
+  // ── 이슈 (← [P3-C]) ──
+  const [issues, setIssues]           = useState<WbIssue[]>([])
+  const [issueDrawer, setIssueDrawer] = useState<DrawerIssue | null>(null)
+  const [issueMovingId, setIssueMovingId] = useState<string | null>(null)
+  const [fSev, setFSev]   = useState<'all' | WbIssueSeverity>('all')
+  const [fIssueMs, setFIssueMs] = useState<'all' | string>('all')
+  const [fIssueDays, setFIssueDays] = useState<30 | 90 | 365>(30)
+
   const loadAll = useCallback(async () => {
     setLoading(true); setLoadError(null)
     try {
-      const [a, m, t] = await Promise.all([loadWbAreas(), loadWbMilestones(), loadWbTasks()])
-      setAreas(a); setMilestones(m); setTasks(t)
+      const [a, m, t, i] = await Promise.all([loadWbAreas(), loadWbMilestones(), loadWbTasks(), loadWbIssues(365)])  // ← [P3-C] 이슈는 1년치, 기간 필터는 클라
+      setAreas(a); setMilestones(m); setTasks(t); setIssues(i)
     } catch (e) { setLoadError(wbErrorMessage(e, '데이터를 불러오지 못했습니다')) }
     finally { setLoading(false) }
   }, [])
@@ -148,6 +165,86 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
     setTasks(prev => prev.filter(t => t.id !== id)); setDrawer(null); showToast(WB_TOAST.deleted)
   }
 
+  // ── 이슈 핸들러 (← [P3-C]) ──
+  const refreshIssue = useCallback(async (id: string): Promise<WbIssue | null> => {
+    const fresh = await loadWbIssueById(id)
+    if (!fresh) { setIssues(prev => prev.filter(i => i.id !== id)); setIssueDrawer(d => (d?.id === id ? null : d)); return null }
+    setIssues(prev => prev.some(i => i.id === id) ? prev.map(i => i.id === id ? fresh : i) : [fresh, ...prev])
+    setIssueDrawer(d => (d?.id === id ? fresh : d))
+    return fresh
+  }, [])
+
+  const filteredIssues = useMemo(() => {
+    const since = new Date(Date.now() - fIssueDays * 86400_000).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' })
+    return issues.filter(i => {
+      if (fSev !== 'all' && i.severity !== fSev) return false
+      if (fIssueMs !== 'all' && i.milestone_id !== fIssueMs) return false
+      // 미해결은 기간 무관, 해결·보류만 기간 안
+      if ((i.status === 'resolved' || i.status === 'wontfix') && i.occurred_on < since) return false
+      return true
+    })
+  }, [issues, fSev, fIssueMs, fIssueDays])
+
+  const openNewIssue = () => {
+    const now = new Date().toISOString()
+    setIssueDrawer({ id: null, task_id: null, milestone_id: null, converted_task_id: null, title: '', description: null, severity: 'medium', status: 'open',
+      occurred_on: todayStr(), reporter_id: authUserId, resolved_at: null, resolved_by: null, created_at: now, updated_at: now })
+  }
+
+  const handleIssueSave = async (input: WbIssueUpsertInput) => {
+    setSaving(true)
+    try {
+      const id = await upsertWbIssue(input)
+      const fresh = await refreshIssue(id)
+      if (input.id === null) { if (fresh) setIssueDrawer(fresh); showToast(WB_ISSUE_TOAST.created) }
+    } catch (e) {
+      if (input.id) await refreshIssue(input.id).catch(() => {})
+      throw e
+    } finally { setSaving(false) }
+  }
+
+  /** 빠른 등록 — 제목·심각도만, 나머지 RPC 기본값(open · KST 오늘 · reporter=auth.uid) */
+  const handleQuickIssue = async (title: string, severity: WbIssueSeverity) => {
+    try {
+      const id = await upsertWbIssue({ id: null, title, description: null, severity, status: 'open', task_id: null, milestone_id: null, occurred_on: null })
+      await refreshIssue(id)
+      showToast(WB_ISSUE_TOAST.quickCreated(title))
+    } catch (e) { showToast(wbErrorMessage(e, '이슈 등록에 실패했습니다')) }
+  }
+
+  const handleIssueMove = async (id: string, status: WbIssueStatus) => {
+    const cur = issues.find(i => i.id === id); if (!cur) return
+    setIssueMovingId(id)
+    try {
+      await upsertWbIssue({ id, title: cur.title, description: cur.description, severity: cur.severity, status, task_id: cur.task_id, milestone_id: cur.milestone_id, occurred_on: cur.occurred_on })
+      await refreshIssue(id)
+      showToast(status === 'resolved' ? WB_ISSUE_TOAST.resolved : WB_ISSUE_TOAST.statusMoved(wbIssueStatusLabel(status)))
+    } catch (e) { showToast(wbErrorMessage(e, '상태 변경에 실패했습니다')) }
+    finally { setIssueMovingId(null) }
+  }
+
+  const handleIssueConvert = async (issueId: string, areaId: string) => {
+    setSaving(true)
+    try {
+      const { taskId } = await convertWbIssueToTask(issueId, areaId)
+      await Promise.all([refreshIssue(issueId), refreshTask(taskId)])
+      showToast(WB_ISSUE_TOAST.converted)
+    } finally { setSaving(false) }
+  }
+
+  const handleIssueDelete = async (id: string) => {
+    const ok = await deleteWbIssue(id)
+    if (!ok) { showToast("'열림' 상태의 이슈만 삭제할 수 있습니다"); return }
+    setIssues(prev => prev.filter(i => i.id !== id)); setIssueDrawer(null); showToast(WB_ISSUE_TOAST.deleted)
+  }
+
+  /** 이슈 드로어 → 업무 열기: 이슈 드로어 닫고 TaskDrawer 로 */
+  const openTaskFromIssue = (taskId: string) => {
+    const t = tasks.find(x => x.id === taskId)
+    if (!t) { showToast('업무를 찾을 수 없습니다 (완료 90일 경과분은 보드에 없습니다)'); return }
+    setIssueDrawer(null); setDrawer(t)
+  }
+
   // ── 스타일 ──
   const chipSel: React.CSSProperties = {
     border: '1px solid #D1D7E1', background: '#fff', borderRadius: 8, padding: '8px 10px', fontSize: 13, color: WB.ink,
@@ -172,6 +269,27 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
           </div>
         </div>
 
+        {tab === 'issues' && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select value={fSev} onChange={e => setFSev(e.target.value as any)} style={{ ...chipSel, borderColor: fSev !== 'all' ? WB.ink : '#D1D7E1' }} aria-label="심각도 필터">
+              <option value="all">심각도 · 전체</option>
+              {WB_SEVERITIES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select>
+            <select value={fIssueMs} onChange={e => setFIssueMs(e.target.value)} style={{ ...chipSel, borderColor: fIssueMs !== 'all' ? WB.ink : '#D1D7E1' }} aria-label="마일스톤 필터">
+              <option value="all">마일스톤 · 전체</option>
+              {milestones.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
+            </select>
+            <select value={fIssueDays} onChange={e => setFIssueDays(Number(e.target.value) as 30 | 90 | 365)} style={chipSel} aria-label="기간 필터">
+              <option value={30}>기간 · 최근 30일</option>
+              <option value={90}>기간 · 최근 90일</option>
+              <option value={365}>기간 · 1년</option>
+            </select>
+            <button className="btn" onClick={openNewIssue} disabled={loading}
+              style={{ background: WB.dueWarn, color: '#fff', border: 'none', borderRadius: 8, padding: '9px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.5 : 1 }}>
+              + 이슈 등록
+            </button>
+          </div>
+        )}
         {tab === 'mine' && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <button className="btn" onClick={() => setMineShowDone(false)} style={{ ...chipSel, fontWeight: !mineShowDone ? 600 : 400, borderColor: !mineShowDone ? WB.ink : '#D1D7E1' }}>미완료</button>
@@ -223,6 +341,9 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
           <BoardView tasks={filtered} areas={areas} milestones={milestones} lookup={lookup}
             onOpenTask={t => setDrawer(t)} onNewTask={openNew} onMoveStatus={(id, to) => void handleSetStatus(id, to).catch(() => {})} movingId={movingId} />
         </>
+      ) : tab === 'issues' ? (
+        <IssueBoardView issues={filteredIssues} allIssues={issues} tasks={tasks} milestones={milestones} lookup={lookup}
+          onOpenIssue={i => setIssueDrawer(i)} onQuickCreate={handleQuickIssue} onMoveStatus={(id, to) => void handleIssueMove(id, to)} movingId={issueMovingId} />
       ) : tab === 'mine' ? (
         <MyTasksView tasks={tasks} areas={areas} milestones={milestones} authUserId={authUserId} lookup={lookup}
           onOpenTask={t => setDrawer(t)} onSetStatus={(id, s) => handleSetStatus(id, s).catch(() => {})} movingId={movingId}
@@ -234,6 +355,10 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
         </div>
       )}
 
+      {issueDrawer && (
+        <IssueDrawer issue={issueDrawer} tasks={tasks} areas={areas} milestones={milestones} authUserId={authUserId} lookup={lookup}
+          saving={saving} onClose={() => setIssueDrawer(null)} onSave={handleIssueSave} onConvert={handleIssueConvert} onOpenTask={openTaskFromIssue} onDelete={handleIssueDelete} showToast={showToast} />
+      )}
       {drawer && (
         <TaskDrawer task={drawer} areas={areas} milestones={milestones} users={users} authUserId={authUserId} lookup={lookup}
           saving={saving} onClose={() => setDrawer(null)} onSave={handleSave} onSetStatus={handleSetStatus} onDelete={handleDelete} showToast={showToast} />

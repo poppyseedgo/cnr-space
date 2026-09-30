@@ -2,6 +2,7 @@
  * workboardApi.ts — Work Space(WORKBOARD) 데이터 접근
  *
  * ✅ 변경 이력
+ *  - [2026-09-30 WORKBOARD P3-C] 이슈 조회·upsert·전환(wb_convert_issue_to_task)·삭제 + 에러코드 3종
  *  - [2026-09-29 WORKBOARD P3-A] 신규 — 보드·상세 드로어에 필요한 조회 + RPC 래퍼
  *
  * 원칙
@@ -147,6 +148,9 @@ const WB_ERR: Record<string, string> = {
   INVALID_STATUS:      '상태 값이 올바르지 않습니다',
   INVALID_CHECKLIST:   '체크리스트 형식이 올바르지 않습니다',
   INVALID_NAME:        '이름을 입력해 주세요',
+  INVALID_SEVERITY:    '심각도 값이 올바르지 않습니다',
+  ISSUE_NOT_FOUND:     '이슈를 찾을 수 없습니다',
+  ALREADY_CONVERTED:   '이미 업무로 전환된 이슈입니다',
   INVALID_OWNER_SAME:  '주담당과 부담당은 같은 사람일 수 없습니다',
 }
 
@@ -155,4 +159,54 @@ export function wbErrorMessage(e: unknown, fallback = '처리에 실패했습니
   for (const code of Object.keys(WB_ERR)) if (msg.includes(code)) return WB_ERR[code]
   if (msg.includes('row-level security') || msg.includes('permission denied')) return WB_ERR.NOT_WORKBOARD
   return fallback
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 이슈 — ← [2026-09-30 WORKBOARD P3-C]
+// ═══════════════════════════════════════════════════════════════════════════
+import type { WbIssue, WbIssueUpsertInput } from '../types'
+
+/** 최근 N일(occurred_on 기준) + 미해결 전부. 해결·보류는 기간 안만 */
+export async function loadWbIssues(days = 30): Promise<WbIssue[]> {
+  if (!isSupabaseEnabled) return []
+  const since = new Date(Date.now() - days * 86400_000).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' })
+  const { data, error } = await supabase.from('wb_issues').select('*')
+    .or(`status.in.(open,in_progress),occurred_on.gte.${since}`)
+    .order('occurred_on', { ascending: false }).order('created_at', { ascending: false })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as WbIssue[]
+}
+
+export async function loadWbIssueById(id: string): Promise<WbIssue | null> {
+  const { data, error } = await supabase.from('wb_issues').select('*').eq('id', id).maybeSingle()
+  if (error) throw new Error(error.message)
+  return (data as WbIssue) ?? null
+}
+
+export async function upsertWbIssue(input: WbIssueUpsertInput): Promise<string> {
+  const { data, error } = await supabase.rpc('wb_upsert_issue', {
+    p_id: input.id, p_title: input.title, p_description: input.description, p_severity: input.severity,
+    p_status: input.status, p_task_id: input.task_id, p_milestone_id: input.milestone_id, p_occurred_on: input.occurred_on,
+  })
+  if (error) throw new Error(error.message)
+  return data as string
+}
+
+/**
+ * 이슈 → 업무 전환. Phase 1 RPC 에는 converted_task_id 를 쓰는 함수가 없어 2단계:
+ *   ① wb_upsert_task 로 업무 생성 ② wb_issues.converted_task_id 직접 UPDATE
+ * ⚠ ②는 wb_issues UPDATE 권한이 없어 실패한다 (Phase 1 [F]: authenticated 는 SELECT·DELETE 만).
+ *   → 20260930_workboard_phase3c.sql 의 wb_convert_issue_to_task RPC 로 대체. 이 함수는 그 RPC 래퍼.
+ */
+export async function convertWbIssueToTask(issueId: string, areaId: string): Promise<{ taskId: string }> {
+  const { data, error } = await supabase.rpc('wb_convert_issue_to_task', { p_issue_id: issueId, p_area_id: areaId })
+  if (error) throw new Error(error.message)
+  return { taskId: data as string }
+}
+
+/** RLS: status='open' 만 지워진다 */
+export async function deleteWbIssue(id: string): Promise<boolean> {
+  const { data, error } = await supabase.from('wb_issues').delete().eq('id', id).select('id')
+  if (error) throw new Error(error.message)
+  return (data ?? []).length > 0
 }

@@ -217,3 +217,40 @@ export const WB_TOAST = {
   commentAdded:   '댓글을 등록했습니다',
   commentRemoved: '댓글을 삭제했습니다',
 } as const
+
+// ─── 이슈 — ← [2026-09-30 WORKBOARD P3-C] ───────────────────────────────────
+import type { WbIssueStatus, WbIssueSeverity } from '../../types'
+
+export const WB_ISSUE_STATUSES: { id: WbIssueStatus; label: string }[] = [
+  { id: 'open',        label: '열림' },
+  { id: 'in_progress', label: '진행 중' },
+  { id: 'resolved',    label: '해결' },
+  { id: 'wontfix',     label: '보류' },
+]
+export const wbIssueStatusLabel = (s: WbIssueStatus) => WB_ISSUE_STATUSES.find(x => x.id === s)?.label ?? s
+
+/** 심각도 — 카드 좌측 띠(bar) · 칩(bg/fg) · 빠른등록 점(dot) */
+export const WB_SEVERITIES: { id: WbIssueSeverity; label: string; bar: string; bg: string; fg: string }[] = [
+  { id: 'low',      label: '낮음', bar: '#CBD5E1', bg: '#F1F5F9', fg: '#64748B' },
+  { id: 'medium',   label: '보통', bar: '#3B82F6', bg: '#DBEAFE', fg: '#1D4ED8' },
+  { id: 'high',     label: '높음', bar: '#F59E0B', bg: '#FEF3C7', fg: '#B45309' },
+  { id: 'critical', label: '긴급', bar: '#DC2626', bg: '#FEE2E2', fg: '#B91C1C' },
+]
+export const wbSeverityDef = (s: WbIssueSeverity) => WB_SEVERITIES.find(x => x.id === s) ?? WB_SEVERITIES[1]
+/** 빠른 등록 기본 심각도 (고지 확정 2026-09-30) */
+export const WB_QUICK_ISSUE_SEVERITY: WbIssueSeverity = 'medium'
+
+export const WB_ISSUE_TOAST = {
+  created:        '이슈를 등록했습니다',
+  quickCreated:   (title: string) => `이슈 등록 — ${title.length > 24 ? title.slice(0, 24) + '…' : title}`,
+  deleted:        '이슈를 삭제했습니다',
+  statusMoved:    (label: string) => `'${label}'(으)로 이동했습니다`,
+  resolved:       '해결로 처리했습니다',
+  severitySaved:  (label: string) => `심각도 '${label}'`,
+  occurredSaved:  (label: string) => `발생일을 ${label}(으)로 변경했습니다`,
+  taskLinked:     (title: string | null) => title ? `업무 '${title}' 연결` : '업무 연결을 해제했습니다',
+  converted:      '업무로 전환했습니다 — 보드에서 확인',
+  titleSaved:     '제목을 저장했습니다',
+  descSaved:      '설명을 저장했습니다',
+  msSaved:        (title: string | null) => title ? `마일스톤 '${title}' 연결` : '마일스톤 연결을 해제했습니다',
+} as const
