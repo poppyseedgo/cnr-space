@@ -520,12 +520,34 @@ export interface WbTaskTemplate {
   description:          string | null
   checklist:            { id: string; text: string }[]
   rrule:                WbRrule
+  weekday:              number | null     // weekly: 0=일 … 6=토
+  month_day:            number | null     // monthly: 1~31 (31 = 말일 clamp)
+  skip_non_workdays:    boolean
+  default_assignee_ids: string[]
+  is_active:            boolean
+  created_by:           string | null     // ← [2026-09-30 P4]
+  created_at:           string
+  updated_at:           string
+}
+
+// ← [2026-09-30 WORKBOARD P4] 반복 업무
+/** wb_upsert_task_template 입력 */
+export interface WbTemplateUpsertInput {
+  id:                   string | null
+  area_id:              string
+  title:                string
+  description:          string | null
+  checklist:            { id: string; text: string }[]
+  rrule:                WbRrule
   weekday:              number | null
   month_day:            number | null
   skip_non_workdays:    boolean
   default_assignee_ids: string[]
   is_active:            boolean
 }
+/** wb_template_preview / wb_templates_next 반환행 — shifted: 'next'(다음 영업일) | 'prev'(이전 영업일·주기 넘김 방지) | null */
+export interface WbTemplateDue { due_on: string; period_key: string; shifted: 'next' | 'prev' | null }
+export interface WbRecurringRun { id: string; run_on: string; ran_at: string; created_count: number; skipped_count: number; triggered_by: string | null }
 
 export interface WbTask {
   id:            string
@@ -562,7 +584,7 @@ export interface WbComment {
 
 export interface WbActivity {
   id:          string
-  target_type: 'area' | 'task' | 'issue' | 'milestone'   // ← [2026-09-30 P3-E] milestone 추가
+  target_type: 'area' | 'task' | 'issue' | 'milestone' | 'template'   // ← [P3-E] milestone · [P4] template
   target_id:   string
   action:      string           // created | updated | status | assignees | dates | converted
   diff:        Record<string, any> | null

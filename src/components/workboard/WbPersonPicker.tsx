@@ -103,7 +103,7 @@ export function WbPersonPicker(props: Props) {
     else (props as SingleProps).onChange(null)
   }
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Escape') { e.preventDefault(); close(); inputRef.current?.blur(); return }
+    if (e.key === 'Escape') { e.preventDefault(); if (open) e.stopPropagation(); close(); inputRef.current?.blur(); return }   // 리스트가 열려 있을 때의 Esc 는 리스트만 닫는다 (드로어의 window Esc 로 전파 금지)
     if (!open && (e.key === 'ArrowDown' || e.key === 'Enter')) { setOpen(true); return }
     if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => Math.min(rows.length - 1, h + 1)) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => Math.max(0, h - 1)) }
