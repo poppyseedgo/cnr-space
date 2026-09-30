@@ -2,6 +2,7 @@
  * TaskDrawer.tsx — Work Space 업무 상세 드로어 (미리보기 승인분 2026-09-29)
  *
  * ✅ 변경 이력
+ *  - [2026-09-29 WORKBOARD P3-B] 모든 액션 완료 시 토스트 (WB_TOAST SSOT, 고지 지시) — save(patch, toast) 시그니처
  *  - [2026-09-29 WORKBOARD P3-A] 신규
  *
  * 두 모드
@@ -23,9 +24,9 @@ import { DateField } from '../common/DateField'
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import { loadWbComments, loadWbActivity, insertWbComment, deleteWbComment, wbErrorMessage } from '../../lib/workboardApi'
 import {
-  WB, WB_STATUSES, WB_PRIORITIES, WB_RRULE_LABEL, areaColor, checklistProgress, newChecklistId,
+  WB, WB_STATUSES, WB_PRIORITIES, WB_RRULE_LABEL, WB_TOAST, areaColor, checklistProgress, newChecklistId,
   dueInfo, dueColor, kstDate, kstTime, fmtYmdShort, wbStatusLabel, wbPriorityDef, type WbPerson,
-} from './wbShared'
+} from './wbShared'  // ← [2026-09-29 P3-B] WB_TOAST — 액션별 완료 토스트
 
 /** draft 는 id 만 null 인 WbTask 형태로 부모가 만들어 넘긴다 */
 export type DrawerTask = Omit<WbTask, 'id'> & { id: string | null }
@@ -120,9 +121,9 @@ export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup,
     id: task.id, area_id: areaId, title: title.trim(), description: desc.trim() || null, priority,
     due_at: dueYmd ? toDueAt(dueYmd, dueHm) : null, milestone_id: msId, checklist, assignee_ids: assignees, ...patch,
   })
-  const save = async (patch: Partial<WbTaskUpsertInput> = {}) => {
+  const save = async (patch: Partial<WbTaskUpsertInput> = {}, toast?: string) => {
     if (isDraft) return                    // draft 는 [만들기] 로만
-    try { await onSave(buildInput(patch)) } catch (e) { showToast(wbErrorMessage(e)) }
+    try { await onSave(buildInput(patch)); if (toast) showToast(toast) } catch (e) { showToast(wbErrorMessage(e)) }
   }
   const create = async () => {
     if (!title.trim()) { showToast('제목을 입력해 주세요'); return }
@@ -131,12 +132,16 @@ export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup,
   }
 
   // ── 체크리스트 ──
-  const toggleItem = (id: string) => { const next = checklist.map(i => i.id === id ? { ...i, done: !i.done } : i); setChecklist(next); void save({ checklist: next }) }
-  const removeItem = (id: string) => { const next = checklist.filter(i => i.id !== id); setChecklist(next); void save({ checklist: next }) }
+  const toggleItem = (id: string) => {
+    const cur = checklist.find(i => i.id === id); if (!cur) return
+    const next = checklist.map(i => i.id === id ? { ...i, done: !i.done } : i); setChecklist(next)
+    void save({ checklist: next }, cur.done ? WB_TOAST.checkUndone(cur.text) : WB_TOAST.checkDone(cur.text))
+  }
+  const removeItem = (id: string) => { const next = checklist.filter(i => i.id !== id); setChecklist(next); void save({ checklist: next }, WB_TOAST.checkRemoved) }
   const addItem = () => {
     const text = newItem.trim(); if (!text) return
     const next = [...checklist, { id: newChecklistId(), text, done: false }]
-    setChecklist(next); setNewItem(''); void save({ checklist: next })
+    setChecklist(next); setNewItem(''); void save({ checklist: next }, WB_TOAST.checkAdded)
   }
 
   // ── 담당자 ──
@@ -144,19 +149,19 @@ export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup,
     const q = pickerQ.trim().toLowerCase()
     return users.filter(u => !assignees.includes(u.user_id) && (!q || u.name.toLowerCase().includes(q) || (u.dept ?? '').toLowerCase().includes(q))).slice(0, 8)
   }, [users, assignees, pickerQ])
-  const addAssignee = (id: string) => { const next = [...assignees, id]; setAssignees(next); setPickerOpen(false); setPickerQ(''); void save({ assignee_ids: next }) }
-  const removeAssignee = (id: string) => { const next = assignees.filter(x => x !== id); setAssignees(next); void save({ assignee_ids: next }) }
+  const addAssignee = (id: string) => { const next = [...assignees, id]; setAssignees(next); setPickerOpen(false); setPickerQ(''); void save({ assignee_ids: next }, WB_TOAST.assigneeAdded(lookup(id).name)) }
+  const removeAssignee = (id: string) => { const next = assignees.filter(x => x !== id); setAssignees(next); void save({ assignee_ids: next }, WB_TOAST.assigneeRemoved(lookup(id).name)) }
 
   // ── 댓글 ──
   const submitComment = async () => {
     const body = commentBody.trim(); if (!body || !task.id) return
     try {
       const c = await insertWbComment('task', task.id, body)
-      setComments(prev => [...(prev ?? []), c]); setCommentBody('')
+      setComments(prev => [...(prev ?? []), c]); setCommentBody(''); showToast(WB_TOAST.commentAdded)
     } catch (e) { showToast(wbErrorMessage(e, '댓글 등록에 실패했습니다')) }
   }
   const removeComment = async (id: string) => {
-    try { const ok = await deleteWbComment(id); if (ok) setComments(prev => (prev ?? []).filter(c => c.id !== id)); else showToast('본인 댓글만 삭제할 수 있습니다') }
+    try { const ok = await deleteWbComment(id); if (ok) { setComments(prev => (prev ?? []).filter(c => c.id !== id)); showToast(WB_TOAST.commentRemoved) } else showToast('본인 댓글만 삭제할 수 있습니다') }
     catch (e) { showToast(wbErrorMessage(e, '댓글 삭제에 실패했습니다')) }
   }
 
@@ -205,7 +210,7 @@ export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup,
           </div>
 
           {/* 제목 */}
-          <textarea value={title} onChange={e => setTitle(e.target.value)} onBlur={() => { if (!isDraft && title.trim() && title !== task.title) void save({ title: title.trim() }); else if (!isDraft) setTitle(task.title) }}
+          <textarea value={title} onChange={e => setTitle(e.target.value)} onBlur={() => { if (!isDraft && title.trim() && title !== task.title) void save({ title: title.trim() }, WB_TOAST.titleSaved); else if (!isDraft) setTitle(task.title) }}
             placeholder="업무 제목" rows={2} autoFocus={isDraft}
             style={{ width: '100%', fontSize: 19, fontWeight: 700, lineHeight: 1.35, border: 'none', outline: 'none', resize: 'none', fontFamily: 'inherit', color: WB.ink, padding: 0, marginBottom: 14, background: 'transparent' }} />
 
@@ -249,16 +254,16 @@ export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup,
 
             <span style={LABEL}>마감</span>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-              <DateField value={dueYmd} onChange={d => { setDueYmd(d); void save({ due_at: d ? toDueAt(d, dueHm) : null }) }} placeholder="날짜 선택"
+              <DateField value={dueYmd} onChange={d => { setDueYmd(d); void save({ due_at: d ? toDueAt(d, dueHm) : null }, d ? WB_TOAST.dueSaved(`${fmtYmdShort(d)} ${dueHm}`) : WB_TOAST.dueCleared) }} placeholder="날짜 선택"
                 style={{ border: `1px solid ${WB.cardBorder}`, borderRadius: 8, padding: '5px 10px', fontSize: 12.5, background: '#fff', fontFamily: 'inherit' }} />
               {dueYmd && (
                 <>
-                  <select value={dueHm} onChange={e => { setDueHm(e.target.value); void save({ due_at: toDueAt(dueYmd, e.target.value) }) }}
+                  <select value={dueHm} onChange={e => { setDueHm(e.target.value); void save({ due_at: toDueAt(dueYmd, e.target.value) }, WB_TOAST.dueSaved(`${fmtYmdShort(dueYmd)} ${e.target.value}`)) }}
                     style={{ border: `1px solid ${WB.cardBorder}`, borderRadius: 8, padding: '5px 8px', fontSize: 12.5, fontFamily: 'inherit', background: '#fff' }}>
                     {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                   <span style={{ color: dueColor(due.tone), fontWeight: due.tone === 'normal' ? 400 : 600, fontSize: 12.5 }}>{due.label}</span>
-                  <button className="btn" onClick={() => { setDueYmd(''); void save({ due_at: null }) }} aria-label="마감 해제" style={{ border: 'none', background: 'transparent', color: WB.faint, cursor: 'pointer', display: 'flex', padding: 2 }}><X size={12} /></button>
+                  <button className="btn" onClick={() => { setDueYmd(''); void save({ due_at: null }, WB_TOAST.dueCleared) }} aria-label="마감 해제" style={{ border: 'none', background: 'transparent', color: WB.faint, cursor: 'pointer', display: 'flex', padding: 2 }}><X size={12} /></button>
                 </>
               )}
             </div>
@@ -266,7 +271,7 @@ export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup,
             <span style={LABEL}>우선순위</span>
             <div style={{ display: 'flex', gap: 6 }}>
               {WB_PRIORITIES.map(p => (
-                <button key={p.id} className="btn" onClick={() => { setPriority(p.id); void save({ priority: p.id }) }} style={chip(priority === p.id)}>
+                <button key={p.id} className="btn" onClick={() => { setPriority(p.id); void save({ priority: p.id }, WB_TOAST.prioritySaved(p.label)) }} style={chip(priority === p.id)}>
                   {priority === p.id && <span style={{ width: 8, height: 8, borderRadius: '50%', background: wbPriorityDef(p.id).dot, display: 'inline-block' }} />}{p.label}
                 </button>
               ))}
@@ -274,7 +279,7 @@ export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup,
 
             <span style={LABEL}>업무영역</span>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <select value={areaId} onChange={e => { setAreaId(e.target.value); void save({ area_id: e.target.value }) }}
+              <select value={areaId} onChange={e => { setAreaId(e.target.value); void save({ area_id: e.target.value }, WB_TOAST.areaSaved(areas.find(a => a.id === e.target.value)?.name ?? '')) }}
                 style={{ border: `1px solid ${WB.cardBorder}`, borderRadius: 8, padding: '5px 8px', fontSize: 12.5, fontFamily: 'inherit', background: '#fff', minWidth: 140 }}>
                 {!areaId && <option value="">영역 선택</option>}
                 {areas.filter(a => a.is_active || a.id === areaId).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -288,7 +293,7 @@ export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup,
 
             <span style={LABEL}>마일스톤</span>
             <div>
-              <select value={msId ?? ''} onChange={e => { const v = e.target.value || null; setMsId(v); void save({ milestone_id: v }) }}
+              <select value={msId ?? ''} onChange={e => { const v = e.target.value || null; setMsId(v); void save({ milestone_id: v }, WB_TOAST.msSaved(v ? milestones.find(m => m.id === v)?.title ?? null : null)) }}
                 style={{ border: `1px solid ${WB.cardBorder}`, borderRadius: 8, padding: '5px 8px', fontSize: 12.5, fontFamily: 'inherit', background: '#fff', minWidth: 140 }}>
                 <option value="">없음</option>
                 {milestones.filter(m => m.status !== 'cancelled' && (m.status !== 'done' || m.id === msId)).map(m => (
@@ -331,7 +336,7 @@ export function TaskDrawer({ task, areas, milestones, users, authUserId, lookup,
           {/* 설명 */}
           <div style={{ borderTop: `1px solid ${WB.line}`, paddingTop: 14, marginBottom: 14 }}>
             <b>설명</b>
-            <textarea value={desc} onChange={e => setDesc(e.target.value)} onBlur={() => { if (!isDraft && (desc.trim() || null) !== (task.description ?? null)) void save({ description: desc.trim() || null }) }}
+            <textarea value={desc} onChange={e => setDesc(e.target.value)} onBlur={() => { if (!isDraft && (desc.trim() || null) !== (task.description ?? null)) void save({ description: desc.trim() || null }, WB_TOAST.descSaved) }}
               placeholder="메모·맥락·거래처 등" rows={3}
               style={{ width: '100%', marginTop: 6, border: 'none', outline: 'none', resize: 'vertical', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.6, color: WB.body, padding: 0, background: 'transparent' }} />
           </div>

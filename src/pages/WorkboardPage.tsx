@@ -2,6 +2,7 @@
  * WorkboardPage.tsx — Work Space (WORKBOARD) · MS팀 업무보드
  *
  * ✅ 변경 이력
+ *  - [2026-09-29 WORKBOARD P3-B] '내 업무' 탭 구현 (MyTasksView, 미리보기 승인분) + 상태 변경·삭제 성공 토스트(WB_TOAST)
  *  - [2026-09-29 WORKBOARD P3-A] 보드(칸반) + 상세 드로어 구현 (미리보기 승인분).
  *      · 탭 셸: 보드 / 일정 / 마일스톤 / 이슈보드 / 내 업무 — 보드만 구현, 나머지는 '준비 중' 패널(3-B~E 에서 순차 교체)
  *      · 데이터: 진입 시 areas·milestones·tasks 1회 로드(마스터 원칙). Realtime 없음 — 변경 후 단건 재조회(loadWbTaskById)
@@ -17,7 +18,8 @@ import { RotateCw } from 'lucide-react'
 import type { AppUser, WbTask, WbTaskStatus, WbWorkArea, WbMilestone, WbTaskUpsertInput } from '../types'
 import { BoardView } from '../components/workboard/BoardView'
 import { TaskDrawer, type DrawerTask } from '../components/workboard/TaskDrawer'
-import { WB, DUE_PRESETS, matchesDuePreset, useUserLookup, type DuePreset } from '../components/workboard/wbShared'
+import { WB, WB_TOAST, DUE_PRESETS, matchesDuePreset, useUserLookup, wbStatusLabel, type DuePreset } from '../components/workboard/wbShared'  // ← [2026-09-29 P3-B] WB_TOAST·wbStatusLabel
+import { MyTasksView } from '../components/workboard/MyTasksView'  // ← [2026-09-29 P3-B] 내 업무
 import {
   loadWbAreas, loadWbMilestones, loadWbTasks, loadWbTaskById, upsertWbTask, setWbTaskStatus, deleteWbTask, wbErrorMessage,
 } from '../lib/workboardApi'
@@ -51,6 +53,10 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
   const [fArea, setFArea]         = useState<'all' | string>('all')
   const [fDue, setFDue]           = useState<DuePreset>('all')
   const [fRecur, setFRecur]       = useState(true)
+
+  // 내 업무 토글 (← [P3-B] 헤더 우측에 렌더하므로 페이지가 소유)
+  const [mineShowDone, setMineShowDone] = useState(false)
+  const [mineRecur, setMineRecur]       = useState(true)
 
   // 드로어
   const [drawer, setDrawer]   = useState<DrawerTask | null>(null)
@@ -114,7 +120,7 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
         if (startStatus && startStatus !== 'todo') { await setWbTaskStatus(id, startStatus); fresh = await refreshTask(id) }
         // 드로어를 draft(id null) → 생성된 업무(existing 모드)로 교체 — refreshTask 의 id 매칭은 draft 를 못 잡는다
         if (fresh) setDrawer(fresh)
-        showToast('업무를 만들었습니다')
+        showToast(WB_TOAST.created)
       }
     } catch (e) {
       if (input.id) await refreshTask(input.id).catch(() => {})   // 실패 → DB 상태로 폼 복구
@@ -128,6 +134,7 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
     try {
       await setWbTaskStatus(id, status)
       await refreshTask(id)
+      showToast(status === 'done' ? WB_TOAST.completed : WB_TOAST.statusMoved(wbStatusLabel(status)))  // ← [P3-B] 완료 시점 토스트
     } catch (e) {
       showToast(wbErrorMessage(e, '상태 변경에 실패했습니다'))
       if (prev) setTasks(ts => ts.map(t => t.id === id ? { ...t, status: prev } : t))
@@ -138,7 +145,7 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
   const handleDelete = async (id: string) => {
     const ok = await deleteWbTask(id)
     if (!ok) { showToast('할 일 상태의 업무만 삭제할 수 있습니다'); return }
-    setTasks(prev => prev.filter(t => t.id !== id)); setDrawer(null); showToast('삭제했습니다')
+    setTasks(prev => prev.filter(t => t.id !== id)); setDrawer(null); showToast(WB_TOAST.deleted)
   }
 
   // ── 스타일 ──
@@ -165,6 +172,16 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
           </div>
         </div>
 
+        {tab === 'mine' && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn" onClick={() => setMineShowDone(false)} style={{ ...chipSel, fontWeight: !mineShowDone ? 600 : 400, borderColor: !mineShowDone ? WB.ink : '#D1D7E1' }}>미완료</button>
+            <button className="btn" onClick={() => setMineShowDone(true)}  style={{ ...chipSel, fontWeight: mineShowDone ? 600 : 400, borderColor: mineShowDone ? WB.ink : '#D1D7E1' }}>완료 포함</button>
+            <button className="btn" onClick={() => setMineRecur(v => !v)} title="반복 업무 포함/제외"
+              style={{ ...chipSel, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 400, borderColor: mineRecur ? '#D1D7E1' : WB.ink, color: mineRecur ? WB.ink : WB.muted }}>
+              <RotateCw size={13} /> 반복 {mineRecur ? '포함' : '제외'}
+            </button>
+          </div>
+        )}
         {tab === 'board' && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <select value={fAssignee} onChange={e => setFAssignee(e.target.value)} style={{ ...chipSel, borderColor: fAssignee !== 'all' ? WB.ink : '#D1D7E1' }} aria-label="담당자 필터">
@@ -206,6 +223,10 @@ export function WorkboardPage({ users, authUserId, showToast }: Props) {
           <BoardView tasks={filtered} areas={areas} milestones={milestones} lookup={lookup}
             onOpenTask={t => setDrawer(t)} onNewTask={openNew} onMoveStatus={(id, to) => void handleSetStatus(id, to).catch(() => {})} movingId={movingId} />
         </>
+      ) : tab === 'mine' ? (
+        <MyTasksView tasks={tasks} areas={areas} milestones={milestones} authUserId={authUserId} lookup={lookup}
+          onOpenTask={t => setDrawer(t)} onSetStatus={(id, s) => handleSetStatus(id, s).catch(() => {})} movingId={movingId}
+          showDone={mineShowDone} withRecur={mineRecur} />
       ) : (
         <div style={{ minHeight: 420, borderRadius: 12, background: WB.pageBg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: WB.muted, fontSize: 13 }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: WB.accent, background: WB.accentBg, borderRadius: 999, padding: '3px 10px' }}>준비 중</span>

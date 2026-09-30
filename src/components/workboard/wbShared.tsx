@@ -192,3 +192,28 @@ export function useUserLookup(users: AppUser[]) {
 
 /** 이름 첫 글자 (아바타 폴백) — UserAvatar 가 내부에서 처리하지만 칩 등 직접 렌더용 */
 export const initial = (name: string) => (name || '?').trim().charAt(0)
+
+// ─── 토스트 문구 SSOT ─────────────────────────────────────────────────────────
+// ← [2026-09-29 WORKBOARD P3-B, 고지 지시] 모든 액션은 완료 시점에 토스트를 낸다 (확인 다이얼로그는 파괴적 액션만).
+//   문구를 한 곳에 두어 보드·드로어·내 업무가 같은 말을 쓴다.
+export const WB_TOAST = {
+  created:        '업무를 만들었습니다',
+  deleted:        '업무를 삭제했습니다',
+  statusMoved:    (label: string) => `'${label}'(으)로 이동했습니다`,
+  completed:      '완료했습니다',
+  titleSaved:     '제목을 저장했습니다',
+  descSaved:      '설명을 저장했습니다',
+  assigneeAdded:  (name: string) => `${name} 님을 담당자로 추가했습니다`,
+  assigneeRemoved:(name: string) => `${name} 님을 담당에서 제외했습니다`,
+  dueSaved:       (label: string) => `마감을 ${label}(으)로 설정했습니다`,
+  dueCleared:     '마감을 해제했습니다',
+  prioritySaved:  (label: string) => `우선순위 '${label}'`,
+  areaSaved:      (name: string) => `업무영역을 '${name}'(으)로 변경했습니다`,
+  msSaved:        (title: string | null) => title ? `마일스톤 '${title}' 연결` : '마일스톤 연결을 해제했습니다',
+  checkDone:      (text: string) => `☑ ${text}`,
+  checkUndone:    (text: string) => `☐ ${text}`,
+  checkAdded:     '체크리스트 항목을 추가했습니다',
+  checkRemoved:   '체크리스트 항목을 삭제했습니다',
+  commentAdded:   '댓글을 등록했습니다',
+  commentRemoved: '댓글을 삭제했습니다',
+} as const
