@@ -43,13 +43,14 @@ export type NotifAudience =
   | 'book_admins'
   | 'resource_owner'            // ← [2026-08-19 Phase 4]
   | 'resource_admins_and_owner' // ← [2026-08-19 Phase 4]
+  | 'wb_recipients'             // ← [2026-09-30 5-B] Work Space — DB wb_notification_recipients 가 규칙별로 계산
 
 export interface NotifCatalogItem {
   /** notification_settings.type / POLICIES 키 */
   type:      string
   label:     string
   /** 화면 그룹 */
-  group:     '회의실 예약' | '체크인·노쇼' | '노쇼 제재' | '도서관' | '연체 제재' | '자원예약'  // ← [2026-08-19 Phase 4]
+  group:     '회의실 예약' | '체크인·노쇼' | '노쇼 제재' | '도서관' | '연체 제재' | '자원예약' | 'Work Space'  // ← [2026-08-19 Phase 4] · [2026-09-30 5-B]
   /** 언제 나가는가 (사람이 읽는 문장) */
   trigger:   string
   audience:  NotifAudience
@@ -148,7 +149,7 @@ export const NOTIFICATION_CATALOG: NotifCatalogItem[] = [
   { type: 'resource_overdue', label: '연체 발생', group: '자원예약',
     trigger: '반납일 경과 09:00 KST 매일 반복 (resource-due-reminder)', audience: 'resource_admins_and_owner',
     channels: ['email','inapp'], toAdmins: true,
-    note: '★ 예약자 + 자원 담당(admin_roles resource/super). 수신자 지정 시 관리자 집합만 대체 — 예약자는 항상 수신.' },
+    note: '★ 예약자 + 자원 담당(admin_roles resource — 2026-09-30 부터 super 자동 포함 없음). 수신자 지정 시 관리자 집합만 대체 — 예약자는 항상 수신.' },
   { type: 'resource_hold_conflict', label: '미반납 자원 예약 도래', group: '자원예약',   // ← [2026-08-28] 홀드 게이트 잔여 케이스
     trigger: '예약 시작일 09:00 KST — 선행 대여 건이 미반납이면 1회 (resource-due-reminder)', audience: 'resource_admins_and_owner',
     channels: ['email','inapp'], toAdmins: true,
@@ -156,7 +157,7 @@ export const NOTIFICATION_CATALOG: NotifCatalogItem[] = [
   { type: 'book_checkout_created', label: '대여 접수(관리자)', group: '도서관',
     trigger: '대여·예약이 생성된 즉시',              audience: 'book_admins',
     channels: ['email','inapp'], toAdmins: true,
-    note: '★ 관리자용. 도서·대여자·대여일·반납기한을 담는다. 수신자 미지정 시 도서 담당(admin_roles book/super) 전원.' },
+    note: '★ 관리자용. 도서·대여자·대여일·반납기한을 담는다. 수신자 미지정 시 도서 담당(admin_roles book — 2026-09-30 부터 super 자동 포함 없음) 전원.' },
   { type: 'book_borrowed',      label: '대여 확정',        group: '도서관',
     trigger: '대여가 시작된 즉시 (예약은 제외)',     audience: 'book_borrower',
     channels: ['email','inapp'], toAdmins: false },
@@ -194,6 +195,23 @@ export const NOTIFICATION_CATALOG: NotifCatalogItem[] = [
   { type: 'book_request_rejected', label: '[폐지] 대여 거절',     group: '도서관',
     trigger: '승인 플로우 폐지 — 신규 발송 없음',    audience: 'book_borrower',
     channels: ['email','inapp'], toAdmins: false, retired: true },
+  // ── Work Space (← [2026-09-30 5-B]) ───────────────────────────────────────
+  //   수신자는 DB wb_notification_recipients 가 규칙별로 계산(행위자 본인 제외 · workboard 멤버만). 수신자 지정은 쓰지 않는다.
+  { type: 'wb_task_assigned',  label: '업무 담당 배정',   group: 'Work Space',
+    trigger: '업무 담당자로 새로 추가된 즉시',        audience: 'wb_recipients',
+    channels: ['email','inapp'], toAdmins: true, note: '새로 추가된 담당자에게만. 본인이 본인을 배정하면 없음.' },
+  { type: 'wb_comment_added',  label: '업무·이슈 댓글',   group: 'Work Space',
+    trigger: '댓글(답변 포함)이 등록된 즉시',          audience: 'wb_recipients',
+    channels: ['email','inapp'], toAdmins: true, note: '스레드 참여자 = 담당자/보고자 ∪ 생성자 ∪ 이전 댓글 작성자 − 작성자.' },
+  { type: 'wb_issue_created',  label: '이슈 등록',        group: 'Work Space',
+    trigger: '이슈가 등록된 즉시 (빠른 등록 포함)',     audience: 'wb_recipients',
+    channels: ['email','inapp'], toAdmins: true, note: 'Work Space 멤버 전원 (등록자 제외).' },
+  { type: 'wb_issue_resolved', label: '이슈 해결·보류',   group: 'Work Space',
+    trigger: '이슈가 해결/보류로 바뀐 즉시',           audience: 'wb_recipients',
+    channels: ['email','inapp'], toAdmins: true, note: '보고자 ∪ 스레드 참여자 (처리자 제외).' },
+  { type: 'wb_daily_digest',   label: '오늘의 업무 (다이제스트)', group: 'Work Space',
+    trigger: '매일 09:00 KST (wb-daily-digest)',        audience: 'wb_recipients',
+    channels: ['email','inapp'], toAdmins: true, note: '멤버 각자 1통 — 지연 · 오늘 마감 · 내일 마감 · 오늘 자동 생성된 내 반복 업무. 항목이 없으면 안 보냄.' },
 ]
 
 /** 화면 그룹 표시 순서 */
@@ -211,7 +229,8 @@ export const AUDIENCE_LABEL: Record<NotifAudience, string> = {
   book_borrower:           '대여자 본인',
   book_admins:             '도서 담당 관리자',
   resource_owner:            '자원 예약자 본인',                              // ← [2026-08-19 Phase 4]
-  resource_admins_and_owner: '예약자 + 자원 담당 관리자 (resource/super)',    // ← [2026-08-19 Phase 4]
+  resource_admins_and_owner: '예약자 + 자원 담당 관리자 (resource)',          // ← [2026-08-19 Phase 4] · [2026-09-30] super 자동 포함 폐지
+  wb_recipients:             'Work Space 멤버 (규칙별 · 행위자 제외)',        // ← [2026-09-30 5-B]
 }
 
 export const CHANNEL_LABEL: Record<NotifChannel, string> = {

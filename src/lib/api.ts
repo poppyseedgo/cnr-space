@@ -2918,6 +2918,27 @@ export async function setNotificationChannel(
   return { ok: false, message: `저장 실패: ${m}` }
 }
 
+// ← [2026-09-30 5-A] 사용자별 알림 설정 — 사용자 상세 모달 '알림 수신' 섹션
+//   list 는 그 사용자가 **자격 있는 타입만** 돌려준다(DB notification_recipient_entitled). 없는 타입 = 토글 자체가 없음
+export interface UserNotificationPref { type: string; email_enabled: boolean; inapp_enabled: boolean }
+export async function loadUserNotificationPrefs(userId: string): Promise<UserNotificationPref[]> {
+  const { data, error } = await supabase.rpc('admin_list_user_notification_prefs', { p_user: userId })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as UserNotificationPref[]
+}
+export async function setUserNotificationPref(
+  userId: string, type: string, channel: 'email' | 'inapp', enabled: boolean,
+): Promise<{ ok: boolean; message?: string }> {
+  const { error } = await supabase.rpc('admin_set_user_notification_pref', { p_user: userId, p_type: type, p_channel: channel, p_enabled: enabled })
+  if (!error) return { ok: true }
+  const m = error.message ?? ''
+  if (m.includes('NOT_ADMIN'))      return { ok: false, message: '알림 설정 권한이 없습니다 (사용자 관리 또는 알림 설정 권한 필요)' }
+  if (m.includes('NOT_ENTITLED'))   return { ok: false, message: '이 사용자는 해당 알림의 자격(권한)이 없습니다 — 권한을 먼저 저장하세요' }
+  if (m.includes('INVALID_CHANNEL'))return { ok: false, message: '알 수 없는 채널입니다' }
+  if (m.includes('USER_NOT_FOUND')) return { ok: false, message: '사용자를 찾을 수 없습니다' }
+  return { ok: false, message: `저장 실패: ${m}` }
+}
+
 /** 지정 수신자 전량 조회 (타입 무관 — 화면에서 그룹핑) */
 export async function loadNotificationRecipients(): Promise<NotificationRecipientRow[]> {
   const { data, error } = await supabase.rpc('admin_list_notification_recipients')

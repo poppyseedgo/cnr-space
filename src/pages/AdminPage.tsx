@@ -62,6 +62,7 @@ import { LobbyNoticePanel } from '../components/common/LobbyNoticePanel'   // �
 import { KBAdminPanel } from '../components/common/KBAdminPanel'
 // ← [2026-07-24 Phase 4] 역할 정리용 매트릭스 (사용자 × 역할)
 import { AdminRoleMatrix } from '../components/common/AdminRoleMatrix'
+import { UserNotificationPrefs } from '../components/common/UserNotificationPrefs'  // ← [2026-09-30 NOTIFY 5-A] 사용자별 알림 수신 설정
 // ← [2026-07-24] 관리자 권한 Phase 1 — 역할 카탈로그 + 부여 API
 import { ADMIN_ROLES, GRANTABLE_ROLES, NORMAL_ROLES, SUPER_ROLE, TAB_ROLES,
          visibleTabs, roleSummary } from '../data/adminRoles'  // ← [2026-09-29 WORKBOARD P2] TAB_ROLES — '전 역할' 판정 분모
@@ -3700,6 +3701,7 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
   const [roleDraft, setRoleDraft] = useState<string[]>([])
   const [roleSaving, setRoleSaving] = useState(false)
   const [roleLog,   setRoleLog]   = useState<RoleGrantLog[]>([])   // ← [2026-07-24 P2] 권한 변경 이력
+  const [prefsKey,  setPrefsKey]  = useState(0)                     // ← [2026-09-30 NOTIFY 5-A] 권한 저장 후 알림 자격 목록 재조회 키
   // ← [2026-07-24 P4] 목록 ↔ 권한 매트릭스 전환.
   //   별도 탭을 만들지 않은 이유: 권한은 '사용자'에 붙는 속성이라 같은 탭 안에서
   //   보는 방식만 바꾸는 게 맞고, 탭이 늘면 역할 게이트 대상도 같이 늘어난다.
@@ -3894,6 +3896,7 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
     if (!res.ok) { showToast(res.message ?? '권한 저장 실패', 'error'); return false }
     await loadRoles()
     loadRoleGrantLog(editUser.user_id).then(setRoleLog).catch(() => {})
+    setPrefsKey(k => k + 1)   // ← [2026-09-30 NOTIFY 5-A] 자격 = 저장된 권한 → 알림 수신 목록 재조회
     // profiles.role 이 RPC 안에서 함께 바뀌므로 목록도 갱신한다
     // ← [2026-07-30] 함수형 업데이트 — 직후 프로필 낙관 갱신과 연속 호출되므로 stale 클로저 금지
     setUsers(prev => prev.map(u => u.user_id === editUser.user_id
@@ -4563,6 +4566,11 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
                       </span>
                     )}
                   </div>
+
+                  {/* ── 알림 수신 (개인 설정) (← [2026-09-30 NOTIFY 5-A]) ─────────────
+                        그 사용자가 자격 있는 관리자 알림만(저장된 권한 기준 · DB 판정) 나열, 채널별 개인 토글.
+                        즉시 저장(RPC) — 하단 '저장'과 무관. 권한 저장 후 prefsKey 로 재조회. */}
+                  <UserNotificationPrefs userId={editUser.user_id} refreshKey={prefsKey} showToast={showToast} />
 
                   {/* ── 권한 변경 이력 (← [2026-07-24 Phase 2]) ─────────────────
                         granted_by 만으로는 **회수 이력이 남지 않는다**(행이 사라지므로).

@@ -7,6 +7,10 @@
  * 변경 이력
  * ═══════════════════════════════════════════════════════════════════════════
  *
+ * [2026-09-30 5-A] 관리자 수신자 = DB RPC notification_resolve_recipients (임베드 폴백 체인 폐지)
+ *   · Person.email_enabled / inapp_enabled(사용자별 알림 설정) 를 이메일 아이템·인앱 fan-out 에서 적용
+ *   · 발송 로그에 skipped:user_off (개인 OFF) · skipped:no_recipient (자격자 0명, 폴백 없음) 추가
+ *
  * [2026-08-10 v2 재구성] 유실 모듈 통합 + 8/5 사양 + 노쇼 제재 2타입
  *   · 배경: 로컬 유일본이던 email-templates.ts / notification-inapp.ts 유실
  *     (0810PM12 zip 부재) — 이 구버전 index.ts(2026-07-27 세대, 라이브 배포본)를
@@ -618,6 +622,7 @@ function buildEmailItems(
   // ── 관리자 ──────────────────────────────────────────────────────
   for (const adm of recipients.admins) {
     if (!adm.email) continue
+    if (adm.email_enabled === false) continue        // ← [2026-09-30 5-A] 사용자별 이메일 OFF (로그는 메인 핸들러가 user_off 로 기록)
     const role = 'admin' as const
     const html = renderEmail({
       ...baseInput,
@@ -780,7 +785,7 @@ async function sendInAppForAllRoles(
 ): Promise<number> {   // ← [2026-08-10 v2] 삽입 건수 반환
   const bookerId      = recipients.booker?.user_id ? [recipients.booker.user_id] : []
   const attendeeIds   = recipients.attendees.map(p => p.user_id).filter(Boolean)
-  const adminIds      = recipients.admins.map(p => p.user_id).filter(Boolean)
+  const adminIds      = recipients.admins.filter(p => p.inapp_enabled !== false).map(p => p.user_id).filter(Boolean)   // ← [5-A] 사용자별 인앱 OFF 제외
   const removedIds    = recipients.removedAttendees.map(p => p.user_id).filter(Boolean)
   // ← [2026-06-12] former_booker 인앱 수신자 (원래 예약자 1명)
   const formerBookerId = recipients.formerBooker?.user_id ? [recipients.formerBooker.user_id] : []
@@ -975,6 +980,15 @@ Deno.serve(async (req: Request) => {
                 : r?.error ? String(r.error) : null,
         }
       })
+      // ← [2026-09-30 5-A] 사용자별 OFF 로 빠진 관리자 · 자격자 0명 — "안 왔다" 추적을 위해 건너뜀도 기록
+      for (const adm of recipients.admins) {
+        if (adm.email_enabled === false) logRows.push({ type, channel: 'email', recipient_id: adm.user_id, recipient_email: adm.email, recipient_name: adm.name, booking_id: booking.id ?? null, status: 'skipped', detail: 'user_off' })
+        if (adm.inapp_enabled === false) logRows.push({ type, channel: 'inapp', recipient_id: adm.user_id, recipient_email: adm.email, recipient_name: adm.name, booking_id: booking.id ?? null, status: 'skipped', detail: 'user_off' })
+      }
+      const adminRule = ['admins_only', 'booker_attendees_admins', 'book_admins', 'resource_admins_and_owner'].includes(policy.recipients)
+      if (adminRule && recipients.admins.length === 0) {
+        logRows.push({ type, channel: 'email', booking_id: booking.id ?? null, status: 'skipped', detail: 'no_recipient (자격자·지정자 없음 — 폴백 없음)' })
+      }
       logRows.push({
         type, channel: 'inapp',
         booking_id: booking.id ?? null,
