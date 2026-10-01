@@ -264,3 +264,18 @@ export async function loadOrgActivationDiffs(fileId: string): Promise<OrgDiffRow
   if (error) throw new Error(error.message)
   return (data ?? []) as OrgDiffRow[]
 }
+
+// ─── [2026-10-01 ORG Phase 4-A] 반납 템플릿 · 입사예정자 수정 ───────────────
+export interface OrgOffboardingTemplate { id: string; label: string; is_conditional: boolean; is_critical: boolean; sort_order: number; is_active: boolean }
+export async function loadOffboardingTemplates(): Promise<OrgOffboardingTemplate[]> {
+  if (!isSupabaseEnabled) return []
+  const { data, error } = await supabase.from('org_offboarding_templates').select('*').eq('is_active', true).order('sort_order')
+  if (error) throw new Error(error.message)
+  return (data ?? []) as OrgOffboardingTemplate[]
+}
+export async function updateOrgPerson(id: string, patch: { name?: string; email?: string | null; planned_start_on?: string | null }): Promise<OrgPerson> {
+  const body = { ...patch, ...(patch.email !== undefined ? { email: patch.email ? patch.email.trim().toLowerCase() : null } : {}) }
+  const { data, error } = await supabase.from('org_persons').update(body).eq('id', id).select('id, name, email, planned_start_on, linked_profile_id').single()
+  if (error) throw new Error(error.message)
+  return data as OrgPerson
+}

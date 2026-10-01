@@ -20,12 +20,14 @@ interface Props {
   onRenameUnit: (u: OrgUnit) => void
   onDeleteUnit: (u: OrgUnit) => void
   onMoveUnit:   (u: OrgUnit, dir: -1 | 1) => void
+  onAddVacancy?: (unitId: string) => void   // ← [Phase 4-A]
+  onAddPerson?:  (unitId: string) => void   // ← [Phase 4-A]
   unassigned:   AppUser[]
   mismatchByUnit: Map<string, number>
   ghostByUnit:    Map<string, number>
 }
 
-export function OrgUnitPanel({ roots, cardsByUnit, expanded, editable, focusUnit, onFocusUnit, onAddUnit, onRenameUnit, onDeleteUnit, onMoveUnit, unassigned, mismatchByUnit, ghostByUnit }: Props) {
+export function OrgUnitPanel({ roots, cardsByUnit, expanded, editable, focusUnit, onFocusUnit, onAddUnit, onRenameUnit, onDeleteUnit, onMoveUnit, onAddVacancy, onAddPerson, unassigned, mismatchByUnit, ghostByUnit }: Props) {
   const [tab, setTab] = useState<'tree' | 'unassigned'>('tree')
   const [q, setQ] = useState('')
   const filtered = useMemo(() => {
@@ -53,6 +55,8 @@ export function OrgUnitPanel({ roots, cardsByUnit, expanded, editable, focusUnit
             <MiniBtn onClick={() => onRenameUnit(u)}>이름·약칭</MiniBtn>
             <MiniBtn onClick={() => onMoveUnit(u, -1)} disabled={idx === 0}>↑</MiniBtn>
             <MiniBtn onClick={() => onMoveUnit(u, 1)} disabled={idx === siblings.length - 1}>↓</MiniBtn>
+            {onAddVacancy && <MiniBtn onClick={() => onAddVacancy(u.id)}>+ 공석</MiniBtn>}
+            {onAddPerson && <MiniBtn onClick={() => onAddPerson(u.id)}>+ 입사예정</MiniBtn>}
             <MiniBtn onClick={() => onDeleteUnit(u)} danger disabled={n.children.length > 0 || (cardsByUnit.get(u.id)?.length ?? 0) > 0} title={n.children.length > 0 ? '하위 단위가 있어 삭제 불가' : (cardsByUnit.get(u.id)?.length ?? 0) > 0 ? '카드가 있어 삭제 불가' : ''}>삭제</MiniBtn>
           </div>
         )}

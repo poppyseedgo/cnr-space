@@ -25,6 +25,7 @@ export interface CanvasActions extends TreeDropHandlers {
   onDeleteUnit:  (u: OrgUnit) => void
   onMoveUnit:    (u: OrgUnit, dir: -1 | 1) => void
   onAddVacancy:  (unitId: string) => void
+  onAddPerson?:  (unitId: string) => void   // ← [Phase 4-A] 입사 예정자 카드
 }
 interface Props extends CanvasActions {
   file:         OrgFile
@@ -130,7 +131,7 @@ export function OrgCanvas(p: Props) {
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <OrgUnitPanel roots={roots} cardsByUnit={cardsByUnit} expanded={expanded} editable={editable} focusUnit={focusUnit} onFocusUnit={focusOn}
-                      onAddUnit={p.onAddUnit} onRenameUnit={p.onRenameUnit} onDeleteUnit={p.onDeleteUnit} onMoveUnit={p.onMoveUnit}
+                      onAddUnit={p.onAddUnit} onRenameUnit={p.onRenameUnit} onDeleteUnit={p.onDeleteUnit} onMoveUnit={p.onMoveUnit} onAddVacancy={p.onAddVacancy} onAddPerson={p.onAddPerson}
                       unassigned={unassigned} mismatchByUnit={mismatchByUnit} ghostByUnit={ghostByUnit} />
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
           {/* 필터 바 */}
@@ -158,7 +159,7 @@ export function OrgCanvas(p: Props) {
               ? <OrgTree roots={roots} units={units} cardsByUnit={cardsByUnit} ctx={ctx} editable={editable} expanded={expanded} onToggle={toggle}
                          selectedCard={selectedCard} onCardClick={p.onCardClick} onUnitClick={u => editable && p.onRenameUnit(u)}
                          drop={{ onDropCard: p.onDropCard, onDropUnit: p.onDropUnit, onDropProfile: p.onDropProfile }} zoom={zoom} highlightUnit={focusUnit} />
-              : <ListView roots={roots} cardsByUnit={cardsByUnit} ctx={ctx} selectedCard={selectedCard} onCardClick={p.onCardClick} editable={editable} onAddVacancy={p.onAddVacancy} />}
+              : <ListView roots={roots} cardsByUnit={cardsByUnit} ctx={ctx} selectedCard={selectedCard} onCardClick={p.onCardClick} editable={editable} onAddVacancy={p.onAddVacancy} onAddPerson={p.onAddPerson} />}
           </div>
           {view === 'tree' && (
             <div style={{ position: 'absolute', right: 20, bottom: 20, display: 'flex', border: `1px solid ${OG.line}`, borderRadius: 6, background: '#fff', overflow: 'hidden', fontSize: 12 }}>
@@ -175,7 +176,7 @@ export function OrgCanvas(p: Props) {
 function badgeBg(cat: OrgStatusCategory) { return cat === 'hire_planned' ? '#CCFBF1' : cat === 'departing' ? '#FEF3C7' : cat === 'return_planned' ? '#E0E7FF' : '#EDE9FE' }
 
 /** 단위별 리스트(보조 뷰) — 단위 섹션 세로 나열, 직급/직무 level 행 */
-function ListView({ roots, cardsByUnit, ctx, selectedCard, onCardClick, editable, onAddVacancy }: { roots: OrgUnitNode[]; cardsByUnit: Map<string, OrgCard[]>; ctx: any; selectedCard: string | null; onCardClick: (c: OrgCard) => void; editable: boolean; onAddVacancy: (unitId: string) => void }) {
+function ListView({ roots, cardsByUnit, ctx, selectedCard, onCardClick, editable, onAddVacancy, onAddPerson }: { roots: OrgUnitNode[]; cardsByUnit: Map<string, OrgCard[]>; ctx: any; selectedCard: string | null; onCardClick: (c: OrgCard) => void; editable: boolean; onAddVacancy: (unitId: string) => void; onAddPerson?: (unitId: string) => void }) {
   const flat: OrgUnitNode[] = []
   const walk = (n: OrgUnitNode) => { flat.push(n); n.children.forEach(walk) }
   roots.forEach(walk)
@@ -190,6 +191,7 @@ function ListView({ roots, cardsByUnit, ctx, selectedCard, onCardClick, editable
             <h4 style={{ fontSize: 13.5, margin: '0 0 10px', display: 'flex', gap: 8, alignItems: 'center' }}>{n.unit.name} <small style={{ color: OG.quiet, fontWeight: 400 }}>{cards.filter(c => !c.is_vacancy).length}명</small>
               {head && <span style={{ marginLeft: 'auto', fontSize: 11, color: OG.quiet }}>단위장: {ctx.person(head).name}</span>}
               {editable && <button style={{ ...btn, fontSize: 10.5, padding: '2px 6px', marginLeft: head ? 8 : 'auto' }} onClick={() => onAddVacancy(n.unit.id)}>+ 공석</button>}
+              {editable && onAddPerson && <button style={{ ...btn, fontSize: 10.5, padding: '2px 6px' }} onClick={() => onAddPerson(n.unit.id)}>+ 입사예정자</button>}
             </h4>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(212px, 1fr))', gap: 10 }}>
               {cards.map(c => {

@@ -1,6 +1,7 @@
 /**
  * OrgAdminPanel.tsx — 어드민 '조직도' 탭 루트: 데이터 소유 + 갤러리(A) ↔ 캔버스(B) 전환 + 모든 저장 경로
- *  - [2026-10-01 ORG Phase 3] 신규 — 설계서 §6. 카드 드로어(C)·히스토리(D)는 Phase 4
+ *  - [2026-10-01 ORG Phase 4-A] 카드 드로어(C) · 히스토리/diff 드로어(D) · 입사예정자 카드 추가 · 카드 제거 연결
+ *  - [2026-10-01 ORG Phase 3] 신규 — 설계서 §6
  *
  *  딥링크: #admin-org-{fileId} = 캔버스, #admin-tab-org = 갤러리 (AdminPage getTabFromHash 가 admin-org- 접두어를 org 탭으로 해석)
  *  저장: 구조 편집은 즉시 저장(초안) → 단건 재조회로 상태 반영(낙관적 갱신 금지). 실패는 orgErrorMessage 토스트
@@ -12,14 +13,17 @@ import { loadDepartedUsers } from '../../lib/api'
 import {
   loadOrgCodes, loadOrgFiles, loadOrgFileBundle, loadActiveOrgStatuses, createOrgFile, updateOrgFileMeta, deleteOrgFile,
   copyOrgFile, activateOrgFile, acquireOrgLock, releaseOrgLock, rosterCheck,
-  insertOrgUnit, updateOrgUnit, deleteOrgUnit, reorderOrgUnits, insertOrgCard, updateOrgCard, loadOrgCardById, loadOrgUnitById,
-  type OrgCodes, type OrgFileBundle,
+  insertOrgUnit, updateOrgUnit, deleteOrgUnit, reorderOrgUnits, insertOrgCard, updateOrgCard, deleteOrgCard, setOrgCardJobs, loadOrgCardById, loadOrgUnitById,
+  loadOffboardingTemplates, insertOrgPerson, setOrgPersonStatus,
+  type OrgCodes, type OrgFileBundle, type OrgOffboardingTemplate,
 } from '../../lib/orgApi'
 import { orgErrorMessage, orgPersonView, orgStatusBadge } from '../../utils/orgStatus'
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import { OrgGallery } from './OrgGallery'
 import { OrgCanvas } from './OrgCanvas'
 import { OrgPromptModal, type PromptField } from './OrgPromptModal'
+import { OrgCardDrawer, type CardPatch } from './OrgCardDrawer'   // ← [Phase 4-A]
+import { OrgHistoryDrawer } from './OrgHistoryDrawer'            // ← [Phase 4-A]
 import { OG } from './orgShared'
 
 interface Props {
@@ -48,7 +52,9 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   const [savedAt, setSavedAt]   = useState<string | null>(null)
   const [selectedCard, setSelectedCard] = useState<string | null>(null)
   const [busy, setBusy]         = useState(false)
-  const [modal, setModal]       = useState<null | { kind: 'new' } | { kind: 'copy'; src: OrgFileSummary | { id: string; name: string } } | { kind: 'meta' } | { kind: 'unit-new'; parentId: string | null } | { kind: 'unit-rename'; unit: OrgUnit } | { kind: 'vacancy'; unitId: string }>(null)
+  const [templates, setTemplates] = useState<OrgOffboardingTemplate[]>([])   // ← [Phase 4-A] 반납 템플릿
+  const [history, setHistory]   = useState<null | { file: OrgFileBundle['file'] | null; tab: 'log' | 'diff' }>(null)   // ← [Phase 4-A] 드로어 D
+  const [modal, setModal]       = useState<null | { kind: 'new' } | { kind: 'copy'; src: OrgFileSummary | { id: string; name: string } } | { kind: 'meta' } | { kind: 'unit-new'; parentId: string | null } | { kind: 'unit-rename'; unit: OrgUnit } | { kind: 'vacancy'; unitId: string } | { kind: 'person-new'; unitId: string }>(null)
   const [confirm, setConfirm]   = useState<null | { title: string; message: React.ReactNode; variant: 'danger' | 'warn' | 'neutral'; label: string; run: () => Promise<void> }>(null)
 
   const ranks = useMemo(() => new Map(codes.ranks.map(r => [r.id, r])), [codes.ranks])
@@ -77,9 +83,9 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
     let dead = false
     ;(async () => {
       try {
-        const [c, s, d] = await Promise.all([loadOrgCodes(), loadActiveOrgStatuses(), loadDepartedUsers()])
+        const [c, s, d, t] = await Promise.all([loadOrgCodes(), loadActiveOrgStatuses(), loadDepartedUsers(), loadOffboardingTemplates().catch(() => [])])
         if (dead) return
-        setCodes(c); setStatuses(s); setDeparted(d)
+        setCodes(c); setStatuses(s); setDeparted(d); setTemplates(t)
         await reloadFiles()
       } catch (e) { fail(e, '조직도 데이터를 불러오지 못했습니다.') }
       finally { if (!dead) setLoading(false) }
@@ -133,6 +139,13 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   const mergeCard = async (id: string) => { const c = await loadOrgCardById(id); setBundle(b => b ? { ...b, cards: c ? b.cards.map(x => x.id === id ? c : x).concat(b.cards.some(x => x.id === id) ? [] : [c]) : b.cards.filter(x => x.id !== id) } : b); touch() }
   const mergeUnit = async (id: string) => { const u = await loadOrgUnitById(id); setBundle(b => b ? { ...b, units: u ? (b.units.some(x => x.id === id) ? b.units.map(x => x.id === id ? u : x) : [...b.units, u]) : b.units.filter(x => x.id !== id) } : b); touch() }
   const refreshRoster = () => { if (fileId) rosterCheck(fileId).then(setRoster).catch(() => {}) }
+  // ← [Phase 4-A] 카드 드로어 저장 경로 — 직접 쓰기 → 단건 재조회. 상태 변경은 RPC 후 활성 상태 전체 재로드(사람 소속)
+  const selected = bundle?.cards.find(c => c.id === selectedCard) ?? null
+  const onCardPatch = async (patch: CardPatch) => { if (!selected) return; await updateOrgCard(selected.id, patch); await mergeCard(selected.id); if (patch.unit_id) refreshRoster() }
+  const onCardJobs = async (jobIds: string[]) => { if (!selected) return; await setOrgCardJobs(selected.id, jobIds); await mergeCard(selected.id) }
+  const onStatusChanged = async () => { setStatuses(await loadActiveOrgStatuses()); refreshRoster() }
+  const onCardDelete = () => { if (!selected) return; const nm = person(selected).name; setConfirm({ title: '카드 제거', message: <>'{nm}' 카드를 이 조직도에서 제거합니다. 사람 상태·이력은 남고, 미배치 패널로 돌아갑니다.</>, variant: 'danger', label: '제거',
+    run: async () => { await deleteOrgCard(selected.id); setBundle(b => b ? { ...b, cards: b.cards.filter(c => c.id !== selected.id) } : b); setSelectedCard(null); touch(); refreshRoster() } }) }
 
   // ── 드래그 저장 ──
   const onDropCard = async (cardId: string, unitId: string) => { try { await updateOrgCard(cardId, { unit_id: unitId }); await mergeCard(cardId); refreshRoster() } catch (e) { fail(e) } }
@@ -196,6 +209,13 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
       } else if (modal.kind === 'vacancy' && bundle) {
         const c = await insertOrgCard({ file_id: bundle.file.id, unit_id: modal.unitId, is_vacancy: true, display_name: v.name.trim() || '공석' }, v.job ? [v.job] : [])
         await mergeCard(c.id); setModal(null)
+      } else if (modal.kind === 'person-new' && bundle) {   // ← [Phase 4-A] 입사예정자 = org_persons + 카드 + hire_planned 상태
+        const pr = await insertOrgPerson({ name: v.name.trim(), email: v.email.trim() || null, planned_start_on: v.start_on || null, created_by: currentUserId })
+        const c = await insertOrgCard({ file_id: bundle.file.id, unit_id: modal.unitId, person_id: pr.id }, v.job ? [v.job] : [])
+        setBundle(b => b ? { ...b, persons: [...b.persons, pr] } : b)
+        await mergeCard(c.id)
+        if (v.start_on) { await setOrgPersonStatus(null, pr.id, 'hire_planned', { start_on: v.start_on }); await onStatusChanged() }
+        setModal(null); setSelectedCard(c.id)
       }
     } catch (e) { fail(e) } finally { setBusy(false) }
   }
@@ -231,6 +251,7 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
     if (modal.kind === 'unit-new') return <OrgPromptModal title={modal.parentId ? '하위 단위 추가' : '최상위 단위 추가'} fields={[{ key: 'name', label: '단위 이름', required: true }, { key: 'code', label: '약칭(code)', placeholder: '예: CO1-1 · 파일 안에서 유일' }]} confirmLabel="추가" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
     if (modal.kind === 'unit-rename') return <OrgPromptModal title="단위 편집" fields={[{ key: 'name', label: '단위 이름', required: true }, { key: 'code', label: '약칭(code)' }, { key: 'azure_division', label: 'Azure Division 매핑', help: '교차검증용 — profiles.dept 와 비교할 값 (예: CO). 하위 단위는 가장 가까운 상위 값을 상속' }]} initial={{ name: modal.unit.name, code: modal.unit.code ?? '', azure_division: modal.unit.azure_division ?? '' }} loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
     if (modal.kind === 'vacancy') return <OrgPromptModal title="공석(TO) 추가" fields={[{ key: 'name', label: '표기', placeholder: '예: 공석 · CRA' }, { key: 'job', label: '직무', type: 'select', options: jobOptions }]} confirmLabel="추가" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
+    if (modal.kind === 'person-new') return <OrgPromptModal title="입사 예정자 추가" fields={[{ key: 'name', label: '이름', required: true }, { key: 'email', label: '회사 이메일', placeholder: 'sync 시 이 이메일로 프로필을 자동 연결', help: '입사 후 Azure 계정이 생기면 sync-all-users 가 같은 이메일의 profile 과 자동 연결합니다' }, { key: 'start_on', label: '입사일', type: 'date', help: '입력하면 입사예정 상태가 함께 등록됩니다' }, { key: 'job', label: '직무', type: 'select', options: jobOptions }]} confirmLabel="추가" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
     return null
   })()
 
@@ -242,7 +263,8 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
                    selectedCard={selectedCard} unassigned={unassigned}
                    onBack={goGallery} onCopy={() => setModal({ kind: 'copy', src: bundle.file })} onActivate={() => onActivate(bundle.file)} onRoster={() => showRoster(roster)}
                    onEditMeta={() => editable || bundle.file.status === 'active' ? setModal({ kind: 'meta' }) : showToast('지난 조직도는 수정할 수 없습니다.')}
-                   onCardClick={c => { setSelectedCard(c.id); showToast(`${person(c).name} — 카드 드로어(직급·직무·상태 편집)는 Phase 4 에서 열립니다.`) }}
+                   onCardClick={c => setSelectedCard(c.id)}
+                   onHistory={() => setHistory({ file: bundle.file, tab: 'log' })} onAddPerson={unitId => setModal({ kind: 'person-new', unitId })}
                    onAddUnit={parentId => setModal({ kind: 'unit-new', parentId })} onRenameUnit={u => setModal({ kind: 'unit-rename', unit: u })} onDeleteUnit={onDeleteUnit} onMoveUnit={onMoveUnit}
                    onAddVacancy={unitId => setModal({ kind: 'vacancy', unitId })}
                    onDropCard={onDropCard} onDropUnit={onDropUnit} onDropProfile={onDropProfile} />
@@ -250,9 +272,20 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
         <div style={{ padding: 40, color: OG.quiet, fontFamily: OG.font }}>불러오는 중…</div>
       ) : (
         <OrgGallery files={files} users={users} isSuper={isSuper} activeBundle={activeBundle} statuses={statuses} statusTypes={codes.statusTypes} roster={activeRoster} onRoster={() => showRoster(activeRoster)} loading={loading}
-                    onOpen={f => openFile(f.id)} onCopy={f => setModal({ kind: 'copy', src: f })} onActivate={f => onActivate(f)} onDelete={onDelete} onNew={() => setModal({ kind: 'new' })} />
+                    onOpen={f => openFile(f.id)} onCopy={f => setModal({ kind: 'copy', src: f })} onActivate={f => onActivate(f)} onDelete={onDelete} onNew={() => setModal({ kind: 'new' })}
+                    onHistory={() => setHistory({ file: null, tab: 'log' })} onDiff={f => setHistory({ file: f, tab: 'diff' })} />
       )}
       {modalEl}
+      {selected && bundle && (
+        <OrgCardDrawer card={selected} person={person(selected)} units={bundle.units} cards={bundle.cards} users={users} ranks={codes.ranks} jobs={codes.jobs} statusTypes={codes.statusTypes}
+                       templates={templates} status={statusOf(selected)} editable={editable} currentUserId={currentUserId} personName={c => person(c).name}
+                       onPatch={onCardPatch} onSetJobs={onCardJobs} onDelete={onCardDelete} onStatusChanged={onStatusChanged} onClose={() => setSelectedCard(null)} showToast={showToast} />
+      )}
+      {history && (
+        <OrgHistoryDrawer file={history.file} files={files} units={bundle?.units ?? activeBundle?.units ?? []} users={users} ranks={codes.ranks} jobs={codes.jobs} statusTypes={codes.statusTypes}
+                          cardName={id => { const c = bundle?.cards.find(x => x.id === id) ?? activeBundle?.cards.find(x => x.id === id); return c ? person(c).name : '(제거된 카드)' }}
+                          initialTab={history.tab} onClose={() => setHistory(null)} />
+      )}
       {confirm && <ConfirmDialog title={confirm.title} message={confirm.message} confirmLabel={confirm.label} variant={confirm.variant} loading={busy} onConfirm={runConfirm} onClose={() => !busy && setConfirm(null)} />}
     </>
   )
