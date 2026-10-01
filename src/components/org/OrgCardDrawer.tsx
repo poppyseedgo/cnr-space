@@ -1,6 +1,7 @@
 /**
  * OrgCardDrawer.tsx — 드로어 C: 인사 카드 편집 (설계서 §6.3)
  *  - [2026-10-01 ORG Phase 4-A] 신규
+ *  - [2026-10-01 ORG Phase 5-B] ②-b '이 사람의 카드' 섹션: 본/겸직 카드 목록 · 겸직 카드 추가(단위 선택) · 승격 · 숨김/해제 (퇴사일 경과 라벨)
  *  - [2026-10-01 ORG Phase 5] 헤더에 '조직도 표기 이름' 편집(사람 단위 · 파일 무관 · org 역할) — Azure 이름은 보조 표기
  *  - [2026-10-01 ORG Phase 4-B] ④ 반납 체크리스트 아래 "시스템 잔여"(도서·자원·어드민 권한·회의실) — org_offboarding_system_check RPC
  *
@@ -23,7 +24,7 @@ import {
   offboardingSystemCheck,   // ← [Phase 4-B]
   type OrgOffboardingTemplate, type OrgStatusPayload, type OrgChangeLogRow, type OrgSystemCheck,
 } from '../../lib/orgApi'
-import { ORG_EMPLOYMENT_TYPE_LABEL, orgErrorMessage, orgStatusBadge, type OrgPersonView } from '../../utils/orgStatus'
+import { ORG_EMPLOYMENT_TYPE_LABEL, ORG_DEPARTED_HIDE_DAYS, cardPersonKey, orgErrorMessage, orgStatusBadge, type OrgDepartedInfo, type OrgPersonView } from '../../utils/orgStatus'
 import { OG, Tag, btn, btnPri, btnDanger, btnDisabled, fmtWhen } from './orgShared'
 
 export interface CardPatch {
@@ -50,6 +51,12 @@ interface Props {
   onStatusChanged: () => Promise<void>
   /** [Phase 5] 조직도 표기 이름 저장('' = Azure 이름으로 복귀). 부모가 org_display_names 재조회 */
   onDisplayName?: (profileId: string, name: string) => Promise<void>
+  /** [Phase 5-B] */
+  departedInfo?:   OrgDepartedInfo
+  onAddConcurrent?: (unitId: string) => Promise<void>
+  onSwapPrimary?:   (cardId: string) => Promise<void>
+  onToggleHidden?:  () => Promise<void>
+  onSelectCard?:    (cardId: string) => void
   onClose:      () => void
   showToast:    (msg: string) => void
 }
@@ -79,6 +86,13 @@ export function OrgCardDrawer(p: Props) {
       .forEach(u => { out.push({ id: u.id, label: `${'  '.repeat(depth)}${u.name}${u.code && u.code !== 'ROOT' && u.code !== u.name ? ` (${u.code})` : ''}` }); walk(u.id, depth + 1) })
     walk(null, 0); return out
   }, [units])
+  // [Phase 5-B] 이 사람의 카드(본 + 겸직), 겸직 추가 대상 단위
+  const myKey = cardPersonKey(card)
+  const myCards = useMemo(() => myKey ? cards.filter(c => cardPersonKey(c) === myKey).sort((a, b) => Number(b.is_primary !== false) - Number(a.is_primary !== false)) : [card], [cards, myKey, card])
+  const unitLabel = (id: string) => unitOptions.find(o => o.id === id)?.label.trim() ?? '?'
+  const [ccUnit, setCcUnit] = useState<string>('')
+  const [ccBusy, setCcBusy] = useState(false)
+  const addConcurrent = async () => { if (!ccUnit || !p.onAddConcurrent) return; setCcBusy(true); try { await p.onAddConcurrent(ccUnit); setCcUnit('') } finally { setCcBusy(false) } }
   const cardJobIds = useMemo(() => [...card.jobs].sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.sort_order - b.sort_order).map(j => j.job_id), [card.jobs])
   const [jobPick, setJobPick] = useState('')
   const addJob = async (id: string) => { if (!id || cardJobIds.includes(id)) return; setSaving(true); try { await p.onSetJobs([...cardJobIds, id]) } catch (e) { p.showToast(orgErrorMessage(e)) } finally { setSaving(false); setJobPick('') } }
@@ -312,6 +326,42 @@ export function OrgCardDrawer(p: Props) {
               )}
               <div style={{ fontSize: 11, color: OG.faint, marginTop: 4 }}>퇴사 실행 시 도서·자원·회의실 예약은 자동 해제되고 어드민 권한은 회수됩니다. 가능하면 사전에 정리하세요.</div>
             </div>
+          </>}
+
+          {/* ②-b [Phase 5-B] 이 사람의 카드 — 본/겸직 · 숨김 */}
+          {!card.is_vacancy && <>
+            {sec(`이 사람의 카드 ${myCards.length}장`)}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12.5 }}>
+              {myCards.map(c => (
+                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, border: `1px solid ${c.id === card.id ? OG.ink : OG.line}`, background: c.hidden_at ? '#F9FAFB' : '#fff', opacity: c.hidden_at ? .6 : 1 }}>
+                  <Tag style={c.is_primary !== false ? { background: OG.ink, color: '#fff', borderColor: OG.ink } : { background: '#EEF2FF', color: '#3730A3', borderColor: '#C7D2FE' }}>{c.is_primary !== false ? '본 카드' : '겸직'}</Tag>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: c.id !== card.id && p.onSelectCard ? 'pointer' : 'default', textDecoration: c.id !== card.id && p.onSelectCard ? 'underline dotted' : 'none' }} onClick={() => c.id !== card.id && p.onSelectCard?.(c.id)}>{unitLabel(c.unit_id)}{c.is_unit_head ? ' · 단위장' : ''}</span>
+                  {c.hidden_at && <small style={{ color: OG.quiet }}>숨김</small>}
+                  {editable && c.is_primary === false && p.onSwapPrimary && <button style={{ ...btn, fontSize: 10.5, padding: '2px 6px' }} onClick={() => p.onSwapPrimary!(c.id)}>본 카드로</button>}
+                </div>
+              ))}
+              {editable && p.onAddConcurrent && (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <select value={ccUnit} onChange={e => setCcUnit(e.target.value)} style={{ ...inp, flex: 1 }}>
+                    <option value="">+ 다른 단위에 겸직 카드 추가…</option>
+                    {unitOptions.filter(o => !myCards.some(c => c.unit_id === o.id)).map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                  </select>
+                  <button style={{ ...btnPri, ...(ccUnit ? {} : btnDisabled) }} disabled={!ccUnit || ccBusy} onClick={addConcurrent}>추가</button>
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: OG.faint }}>겸직 카드는 그 단위에서의 직무를 따로 가집니다. 헤드카운트·Active diff 는 본 카드 기준. 본 카드를 제거하려면 먼저 겸직 카드 하나를 '본 카드로' 바꾸세요.</div>
+            </div>
+
+            {/* 숨김 — 어떤 파일(Active 포함)에서도 가능 */}
+            {p.onToggleHidden && (
+              <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 8, border: `1px solid ${OG.line}`, background: card.hidden_at ? '#F9FAFB' : '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: 1, fontSize: 12 }}>
+                  <div style={{ fontWeight: 600 }}>{card.hidden_at ? `숨김 중 (${fmtWhen(card.hidden_at)})` : p.departedInfo?.autoHidden ? `자동 숨김 — 퇴사일 ${p.departedInfo.since} + ${ORG_DEPARTED_HIDE_DAYS}일 경과` : p.departedInfo?.departed ? `퇴사일 ${p.departedInfo.since} 경과 — ${ORG_DEPARTED_HIDE_DAYS}일 후 자동 숨김` : '카드 숨김'}</div>
+                  <div style={{ fontSize: 11, color: OG.faint }}>숨김 카드는 캔버스·CSV·인원수에서 빠지고 Active 전환 시 자동 제거됩니다. 데이터·이력은 남습니다.</div>
+                </div>
+                {!p.departedInfo?.autoHidden && <button style={btn} onClick={p.onToggleHidden}>{card.hidden_at ? '숨김 해제' : '즉시 숨김'}</button>}
+              </div>
+            )}
           </>}
 
           {/* ⑤ 메모 */}

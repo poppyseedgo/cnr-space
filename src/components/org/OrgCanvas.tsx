@@ -1,10 +1,11 @@
 /**
  * OrgCanvas.tsx — 화면 B: 파일 상세(헤더 + 좌측 패널 + 조직 트리/단위별 리스트 + 줌)
+ *  - [2026-10-01 ORG Phase 5-B] 숨김 카드(수동/자동 7일) 기본 제외 + '숨김 n 보기' 토글 · 겸직 카드 태그(본 소속) · 헤드카운트 = 사람 수
  *  - [2026-10-01 ORG Phase 3] 신규 — 설계서 §6.2. 표시·인터랙션만, 데이터·저장은 OrgAdminPanel
  */
 import { useEffect, useMemo, useState } from 'react'
 import type { AppUser, OrgCard, OrgFile, OrgJob, OrgRank, OrgRosterCheck, OrgStatusCategory, OrgStatusType, OrgUnit } from '../../types'
-import { buildUnitTree, primaryJob, sortCards, type OrgBadgeSpec, type OrgPersonView, type OrgUnitNode } from '../../utils/orgStatus'
+import { buildUnitTree, cardPersonKey, primaryJob, sortCards, type OrgBadgeSpec, type OrgDepartedInfo, type OrgPersonView, type OrgUnitNode } from '../../utils/orgStatus'
 import { OrgTree, type TreeDropHandlers } from './OrgTree'
 import { OrgUnitPanel } from './OrgUnitPanel'
 import { OrgCardView } from './OrgCardView'
@@ -45,12 +46,26 @@ interface Props extends CanvasActions {
   savedAt:      string | null
   selectedCard: string | null
   unassigned:   AppUser[]
+  /** [Phase 5-B] 퇴사 판정(자동 숨김 포함) — OrgAdminPanel 소유 */
+  departedOf:   (c: OrgCard) => OrgDepartedInfo
+  isHidden:     (c: OrgCard) => boolean
 }
 
 export function OrgCanvas(p: Props) {
-  const { file, units, cards, ranks, jobs, statusTypes, person, badge, categoryOf, roster, editable, isSuper, lockHolder, savedAt, selectedCard, unassigned } = p
+  const { file, units, cards, ranks, jobs, statusTypes, person, badge, categoryOf, roster, editable, isSuper, lockHolder, savedAt, selectedCard, unassigned, departedOf, isHidden } = p
   const roots = useMemo(() => buildUnitTree(units), [units])
-  const cardsByUnit = useMemo(() => { const m = new Map<string, OrgCard[]>(); for (const c of cards) { if (!m.has(c.unit_id)) m.set(c.unit_id, []); m.get(c.unit_id)!.push(c) } return m }, [cards])
+  // [Phase 5-B] 숨김 카드는 기본 제외, 토글로 표시
+  const [showHidden, setShowHidden] = useState(false)
+  const hiddenCount = useMemo(() => cards.filter(isHidden).length, [cards, isHidden])
+  const visibleCards = useMemo(() => showHidden ? cards : cards.filter(c => !isHidden(c)), [cards, showHidden, isHidden])
+  const cardsByUnit = useMemo(() => { const m = new Map<string, OrgCard[]>(); for (const c of visibleCards) { if (!m.has(c.unit_id)) m.set(c.unit_id, []); m.get(c.unit_id)!.push(c) } return m }, [visibleCards])
+  // [Phase 5-B] 겸직: 사람 키 → 본 카드 단위명 / 겸직 카드 수
+  const concurrentOf = useMemo(() => {
+    const unitName = new Map(units.map(u => [u.id, u.name]))
+    const home = new Map<string, string>(); const n = new Map<string, number>()
+    for (const c of cards) { const k = cardPersonKey(c); if (!k) continue; if (c.is_primary !== false) home.set(k, unitName.get(c.unit_id) ?? ''); else n.set(k, (n.get(k) ?? 0) + 1) }
+    return (c: OrgCard) => { const k = cardPersonKey(c); if (!k || c.is_vacancy) return null; return c.is_primary === false ? { kind: 'secondary' as const, homeUnit: home.get(k) ?? '?' } : { kind: 'primary' as const, n: n.get(k) ?? 0 } }
+  }, [cards, units])
   const mismatchSet = useMemo(() => new Set((roster?.division_mismatch ?? []).map(x => x.card_id)), [roster])
   const ghostSet    = useMemo(() => new Set((roster?.ghosts ?? []).map(x => x.card_id)), [roster])
   const perUnit = (set: Set<string>) => { const m = new Map<string, number>(); for (const c of cards) if (set.has(c.id)) m.set(c.unit_id, (m.get(c.unit_id) ?? 0) + 1); return m }
@@ -85,13 +100,16 @@ export function OrgCanvas(p: Props) {
     person, badge, ranks, jobs,
     mismatch: (c: OrgCard) => mismatchSet.has(c.id),
     dim: (c: OrgCard) => !matches(c),
-  }), [person, badge, ranks, jobs, mismatchSet, filter, q])  // eslint-disable-line react-hooks/exhaustive-deps
+    concurrent: concurrentOf,
+    departedSince: (c: OrgCard) => { const d = departedOf(c); return d.departed && !person(c).departed ? d.since : null },
+    hidden: isHidden,
+  }), [person, badge, ranks, jobs, mismatchSet, filter, q, concurrentOf, departedOf, isHidden])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const counts = useMemo(() => {
-    const m: Record<string, number> = { vacancy: cards.filter(c => c.is_vacancy).length }
-    for (const c of cards) { const k = categoryOf(c); if (k) m[k] = (m[k] ?? 0) + 1 }
+    const m: Record<string, number> = { vacancy: visibleCards.filter(c => c.is_vacancy).length }
+    for (const c of visibleCards) { if (c.is_primary === false) continue; const k = categoryOf(c); if (k) m[k] = (m[k] ?? 0) + 1 }
     return m
-  }, [cards, categoryOf])
+  }, [visibleCards, categoryOf])
   const catChips: { id: OrgFilter; label: string }[] = [
     { id: 'all', label: '전체' },
     ...(['hire_planned', 'departing', 'leave_planned', 'leave', 'return_planned'] as OrgStatusCategory[])
@@ -132,12 +150,13 @@ export function OrgCanvas(p: Props) {
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <OrgUnitPanel roots={roots} cardsByUnit={cardsByUnit} expanded={expanded} editable={editable} focusUnit={focusUnit} onFocusUnit={focusOn}
                       onAddUnit={p.onAddUnit} onRenameUnit={p.onRenameUnit} onDeleteUnit={p.onDeleteUnit} onMoveUnit={p.onMoveUnit} onAddVacancy={p.onAddVacancy} onAddPerson={p.onAddPerson}
-                      unassigned={unassigned} mismatchByUnit={mismatchByUnit} ghostByUnit={ghostByUnit} />
+                      unassigned={unassigned} mismatchByUnit={mismatchByUnit} ghostByUnit={ghostByUnit} isHidden={isHidden} />
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
           {/* 필터 바 */}
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 16px', background: '#fff', borderBottom: `1px solid ${OG.line}`, flexWrap: 'wrap', flexShrink: 0 }}>
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="이름·직무 검색" style={{ width: 200, padding: '6px 9px', border: `1px solid ${OG.line}`, borderRadius: 6, fontSize: 12.5, fontFamily: OG.font }} />
             {catChips.map(c => <span key={c.id} style={chip(filter === c.id)} onClick={() => setFilter(c.id)}>{c.label}{c.id !== 'all' && counts[c.id] ? ` ${counts[c.id]}` : ''}</span>)}
+            {hiddenCount > 0 && <span style={chip(showHidden)} onClick={() => setShowHidden(v => !v)} title="퇴사일+7일 경과 또는 수동 숨김 카드">숨김 {hiddenCount}{showHidden ? ' 표시 중' : ''}</span>}
             <select value={depthPreset} onChange={e => setDepthPreset(Number(e.target.value) as 2 | 4 | 99)} style={{ fontSize: 11.5, padding: '5px 8px', border: `1px solid ${OG.line}`, borderRadius: 6, background: '#fff', color: OG.quiet, fontFamily: OG.font }}>
               <option value={2}>펼침 깊이: 본부</option><option value={4}>펼침 깊이: Division</option><option value={99}>펼침 깊이: 전체</option>
             </select>
@@ -149,6 +168,8 @@ export function OrgCanvas(p: Props) {
           <div style={{ display: 'flex', gap: 14, fontSize: 11, color: OG.quiet, padding: '8px 16px 0', flexWrap: 'wrap' }}>
             {statusTypes.filter(t => t.is_system).map(t => <span key={t.code}><i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, marginRight: 4, verticalAlign: -1, background: badgeBg(t.category) }} />{t.label}</span>)}
             <span><i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, marginRight: 4, verticalAlign: -1, background: '#FEE2E2' }} />퇴사 완료</span>
+            <span><i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, marginRight: 4, verticalAlign: -1, background: '#E5E7EB' }} />퇴사일 경과(+7일 후 자동 숨김)</span>
+            <span><i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, marginRight: 4, verticalAlign: -1, background: '#EEF2FF', border: '1px solid #C7D2FE' }} />겸직 카드</span>
             <span><i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, marginRight: 4, verticalAlign: -1, border: `1px dashed ${OG.faint}` }} />공석(TO)</span>
             <span><i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', marginRight: 4, verticalAlign: -1, background: OG.amber }} />Azure Division 불일치</span>
             {editable && <span style={{ marginLeft: 'auto' }}>노드 헤더 드래그 = 단위 이동 · 카드 드래그 = 소속 변경 · 헤더 클릭 = 접기/펼침 · 더블클릭 = 이름</span>}
@@ -188,7 +209,7 @@ function ListView({ roots, cardsByUnit, ctx, selectedCard, onCardClick, editable
         const head = cards.find(c => c.is_unit_head)
         return (
           <div key={n.unit.id} style={{ background: '#fff', border: `1px solid ${OG.line}`, borderRadius: 10, padding: '14px 16px', marginBottom: 14, marginLeft: n.depth * 16 }}>
-            <h4 style={{ fontSize: 13.5, margin: '0 0 10px', display: 'flex', gap: 8, alignItems: 'center' }}>{n.unit.name} <small style={{ color: OG.quiet, fontWeight: 400 }}>{cards.filter(c => !c.is_vacancy).length}명</small>
+            <h4 style={{ fontSize: 13.5, margin: '0 0 10px', display: 'flex', gap: 8, alignItems: 'center' }}>{n.unit.name} <small style={{ color: OG.quiet, fontWeight: 400 }}>{cards.filter(c => !c.is_vacancy && c.is_primary !== false && !ctx.hidden(c)).length}명{cards.some(c => c.is_primary === false) ? ` (+겸직 ${cards.filter(c => c.is_primary === false).length})` : ''}</small>
               {head && <span style={{ marginLeft: 'auto', fontSize: 11, color: OG.quiet }}>단위장: {ctx.person(head).name}</span>}
               {editable && <button style={{ ...btn, fontSize: 10.5, padding: '2px 6px', marginLeft: head ? 8 : 'auto' }} onClick={() => onAddVacancy(n.unit.id)}>+ 공석</button>}
               {editable && onAddPerson && <button style={{ ...btn, fontSize: 10.5, padding: '2px 6px' }} onClick={() => onAddPerson(n.unit.id)}>+ 입사예정자</button>}
@@ -198,7 +219,7 @@ function ListView({ roots, cardsByUnit, ctx, selectedCard, onCardClick, editable
                 const r = c.rank_id ? ctx.ranks.get(c.rank_id) ?? null : null
                 const pj = primaryJob(c, ctx.jobs)
                 const jl = [pj, ...c.jobs.filter(j => !j.is_primary).map(j => ctx.jobs.get(j.job_id))].filter(Boolean) as OrgJob[]
-                return <OrgCardView key={c.id} card={c} person={ctx.person(c)} rank={r} jobs={jl} badge={ctx.badge(c)} mismatch={ctx.mismatch(c)} dim={ctx.dim(c)} selected={selectedCard === c.id} onClick={onCardClick} />
+                return <OrgCardView key={c.id} card={c} person={ctx.person(c)} rank={r} jobs={jl} badge={ctx.badge(c)} mismatch={ctx.mismatch(c)} dim={ctx.dim(c)} concurrent={ctx.concurrent(c)} departedSince={ctx.departedSince(c)} hidden={ctx.hidden(c)} selected={selectedCard === c.id} onClick={onCardClick} />
               })}
               {cards.length === 0 && <span style={{ color: OG.faint, fontSize: 12 }}>카드 없음 — 미배치 패널에서 드래그하거나 공석을 추가하세요</span>}
             </div>

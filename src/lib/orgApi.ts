@@ -168,6 +168,7 @@ export interface OrgCardInput {
   file_id: string; unit_id: string; profile_id?: string | null; person_id?: string | null; display_name?: string | null
   rank_id?: string | null; reports_to_card_id?: string | null; is_unit_head?: boolean; is_vacancy?: boolean
   employment_type?: OrgCard['employment_type']; work_location?: string | null; fte?: number; memo?: string | null; sort_order?: number
+  is_primary?: boolean   // ← [Phase 5-B] false = 겸직 카드 (같은 파일에 본 카드 필요)
 }
 export async function insertOrgCard(c: OrgCardInput, jobIds: string[] = []): Promise<OrgCard> {
   const { data, error } = await supabase.from('org_cards').insert(c).select('id').single()
@@ -358,5 +359,17 @@ export async function setOrgDisplayName(profileId: string, displayName: string, 
     if (error) throw new Error(error.message); return
   }
   const { error } = await supabase.from('org_display_names').upsert({ profile_id: profileId, display_name: v, note, updated_by: actor }, { onConflict: 'profile_id' })
+  if (error) throw new Error(error.message)
+}
+
+// ─── [2026-10-01 ORG Phase 5-B] 겸직 카드 · 숨김 ────────────────────────────
+/** 어떤 status 의 파일에서도 동작(RPC 가 lifecycle GUC 로 가드 통과). 공석은 거부 */
+export async function setOrgCardHidden(cardId: string, hidden: boolean): Promise<void> {
+  const { error } = await supabase.rpc('org_set_card_hidden', { p_card_id: cardId, p_hidden: hidden })
+  if (error) throw new Error(error.message)
+}
+/** 겸직 카드 → 본 카드 승격 (기존 본 카드는 겸직으로). 초안만 */
+export async function swapOrgPrimaryCard(cardId: string): Promise<void> {
+  const { error } = await supabase.rpc('org_swap_primary_card', { p_card_id: cardId })
   if (error) throw new Error(error.message)
 }

@@ -8,6 +8,7 @@
  *      · 카드 정렬: 단위장 → 직급 level ↓ → 대표 직무 level ↓ → 이름
  *      · 트리 빌드: org_units.parent_unit_id 기준, sort_order → name
  *      · 퇴사 판정: profile_id 있는데 users 에 없음 (departed_users 존재 여부는 표시 보조)
+ *  - [2026-10-01 ORG Phase 5-B] orgDepartedInfo(퇴사 판정 2종 + 7일 자동 숨김) · isCardHidden · 겸직(is_primary) 헤드카운트/CSV 반영
  *  - [2026-10-01 ORG Phase 5] orgPersonView displayNames(조직도 표기 이름) 우선 · CSV 'Azure 이름' 열
  *  - [2026-10-01 ORG Phase 4-B] orgExportRows — 파일 단위 카드 CSV 행 빌더(utils/csv.exportCSV 와 결합)
  */
@@ -126,11 +127,45 @@ export function buildUnitTree(units: OrgUnit[]): OrgUnitNode[] {
     })
   return build(null, 0, new Set())
 }
-/** 단위 + 하위 전체 인원(공석 제외) */
-export function subtreeHeadcount(node: OrgUnitNode, cardsByUnit: Map<string, OrgCard[]>): number {
-  const own = (cardsByUnit.get(node.unit.id) ?? []).filter(c => !c.is_vacancy).length
-  return own + node.children.reduce((s, ch) => s + subtreeHeadcount(ch, cardsByUnit), 0)
+/** 단위 + 하위 전체 인원 — 공석·겸직 카드·숨김 카드 제외 (= 사람 수). isHidden 은 [Phase 5-B] 자동/수동 숨김 판정 */
+export function subtreeHeadcount(node: OrgUnitNode, cardsByUnit: Map<string, OrgCard[]>, isHidden?: (c: OrgCard) => boolean): number {
+  const own = (cardsByUnit.get(node.unit.id) ?? []).filter(c => !c.is_vacancy && c.is_primary !== false && !(isHidden && isHidden(c))).length
+  return own + node.children.reduce((s, ch) => s + subtreeHeadcount(ch, cardsByUnit, isHidden), 0)
 }
+
+// ─── [Phase 5-B] 퇴사 판정 · 숨김 ──────────────────────────────────────────
+/** 퇴사일(또는 profiles 삭제일) + 이 일수가 지나면 캔버스에서 자동 숨김 (설계서 §12.2). 프론트 계산 — cron 없음 */
+export const ORG_DEPARTED_HIDE_DAYS = 7
+export interface OrgDepartedInfo {
+  /** ① profiles 부재(유령) ② 활성 상태 category=departing 이고 퇴사일 경과 */
+  departed:   boolean
+  /** 기준일(YYYY-MM-DD): departed_users.departed_at 또는 상태 end_on */
+  since:      string | null
+  /** since + ORG_DEPARTED_HIDE_DAYS 경과 → 자동 숨김 */
+  autoHidden: boolean
+  /** 퇴사예정 상태이지만 아직 퇴사일 전 */
+  departing:  boolean
+}
+export function orgDepartedInfo(card: OrgCard, person: OrgPersonView, status: OrgPersonStatus | null, types: Map<string, OrgStatusType>, departedAt: string | null | undefined, today = todayKST()): OrgDepartedInfo {
+  const none: OrgDepartedInfo = { departed: false, since: null, autoHidden: false, departing: false }
+  if (card.is_vacancy) return none
+  if (person.departed) {
+    const since = departedAt ? departedAt.slice(0, 10) : null
+    return { departed: true, since, autoHidden: since ? addDays(since, ORG_DEPARTED_HIDE_DAYS) <= today : false, departing: false }
+  }
+  const cat = status ? types.get(status.status_code)?.category : null
+  if (cat === 'departing' && status?.end_on) {
+    if (status.end_on <= today) return { departed: true, since: status.end_on, autoHidden: addDays(status.end_on, ORG_DEPARTED_HIDE_DAYS) <= today, departing: false }
+    return { ...none, departing: true }
+  }
+  return none
+}
+/** 숨김 = 수동(hidden_at) 또는 자동(퇴사 + 7일) */
+export function isCardHidden(card: OrgCard, info: OrgDepartedInfo): boolean { return !!card.hidden_at || info.autoHidden }
+export function todayKST(): string { return new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10) }
+function addDays(ymd: string, n: number): string { const d = new Date(ymd + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
+/** 사람 키 — 겸직 카드 묶음용 */
+export function cardPersonKey(c: OrgCard): string | null { return c.profile_id ?? (c.person_id ? 'p:' + c.person_id : null) }
 /** 하위 단위 id 집합 (드래그 순환 방지용 — 자기 하위로는 드롭 불가) */
 export function descendantIds(unitId: string, units: OrgUnit[]): Set<string> {
   const out = new Set<string>()
@@ -146,10 +181,13 @@ export function descendantIds(unitId: string, units: OrgUnit[]): Set<string> {
  */
 export function orgExportRows(
   units: OrgUnit[], cards: OrgCard[], ranks: Map<string, OrgRank>, jobs: Map<string, OrgJob>, types: Map<string, OrgStatusType>,
-  person: (c: OrgCard) => OrgPersonView, statusOf: (c: OrgCard) => OrgPersonStatus | null,
+  person: (c: OrgCard) => OrgPersonView, statusOf: (c: OrgCard) => OrgPersonStatus | null, isHidden?: (c: OrgCard) => boolean,
 ): Record<string, string>[] {
   const byUnit = new Map<string, OrgCard[]>()
-  for (const c of cards) { if (!byUnit.has(c.unit_id)) byUnit.set(c.unit_id, []); byUnit.get(c.unit_id)!.push(c) }
+  for (const c of cards) { if (isHidden && isHidden(c)) continue; if (!byUnit.has(c.unit_id)) byUnit.set(c.unit_id, []); byUnit.get(c.unit_id)!.push(c) }
+  const unitNameById = new Map(units.map(u => [u.id, u.name]))
+  const primaryUnitByPerson = new Map<string, string>()   // [Phase 5-B] 겸직 카드의 '본 소속'
+  for (const c of cards) { const k = cardPersonKey(c); if (k && c.is_primary !== false) primaryUnitByPerson.set(k, unitNameById.get(c.unit_id) ?? '') }
   const cardById = new Map(cards.map(c => [c.id, c]))
   const unitById = new Map(units.map(u => [u.id, u]))
   const pathOf = (u: OrgUnit): string => { const p = u.parent_unit_id ? unitById.get(u.parent_unit_id) : null; return p ? `${pathOf(p)} > ${u.name}` : u.name }
@@ -167,7 +205,8 @@ export function orgExportRows(
         '단위 약칭':   n.unit.code ?? '',
         '이름':        c.is_vacancy ? (c.display_name || '공석') : pv.name,
         'Azure 이름':  pv.azureName ?? '',
-        '구분':        c.is_vacancy ? '공석' : pv.departed ? '퇴사' : c.profile_id ? '재직' : '입사예정',
+        '구분':        c.is_vacancy ? '공석' : c.is_primary === false ? '겸직' : pv.departed ? '퇴사' : c.profile_id ? '재직' : '입사예정',
+        '본 소속':     c.is_primary === false ? (primaryUnitByPerson.get(cardPersonKey(c) ?? '') ?? '') : '',
         '이메일':      c.is_vacancy ? '' : pv.email,
         '사번':        pv.user?.employee_id ?? '',
         '직급':        c.rank_id ? (ranks.get(c.rank_id)?.label ?? '') : '',

@@ -30,7 +30,7 @@ const ACTION_LABEL: Record<string, { label: string; bg: string; color: string }>
   insert: { label: '생성', bg: '#DCFCE7', color: '#166534' }, update: { label: '변경', bg: '#EEF2FF', color: '#3730A3' }, delete: { label: '삭제', bg: '#FEE2E2', color: '#991B1B' },
 }
 const TARGET_LABEL: Record<string, string> = { org_files: '파일', org_units: '단위', org_cards: '카드', org_card_jobs: '직무', org_person_status: '상태', org_offboarding_items: '반납', org_persons: '입사예정자', org_status_types: '상태코드', org_ranks: '직급', org_jobs: '직무코드', org_offboarding_templates: '반납템플릿' }
-const KIND_LABEL: Record<string, string> = { hired: '입사·신규 배치', departed: '제외·퇴사', moved: '소속 이동', promoted: '직급 변경', job_changed: '직무 변경', head_changed: '단위장 변경', unit_created: '단위 신설', unit_removed: '단위 폐지', unit_renamed: '단위 이름', unit_moved: '단위 이동', reassigned: '재배치' }
+const KIND_LABEL: Record<string, string> = { hired: '입사·신규 배치', departed: '제외·퇴사', moved: '소속 이동', promoted: '직급 변경', job_changed: '직무 변경', head_changed: '단위장 변경', unit_created: '단위 신설', unit_removed: '단위 폐지', unit_renamed: '단위 이름', unit_moved: '단위 이동', reassigned: '재배치', concurrent_added: '겸직 추가', concurrent_removed: '겸직 해제' }
 
 export function OrgHistoryDrawer({ file, files, units, users, ranks, jobs, statusTypes, cardName, initialTab = 'log', onClose }: Props) {
   const [entered, setEntered] = useState(false)

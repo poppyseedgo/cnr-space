@@ -725,6 +725,10 @@ export interface OrgCard {
   fte:                number
   memo:               string | null
   sort_order:         number
+  /** [Phase 5-B] 본 카드(true, 사람당 파일 내 1장) / 겸직 카드(false) */
+  is_primary:         boolean
+  /** [Phase 5-B] 수동 숨김 시각 — 퇴사 카드 즉시 숨김. 화면·CSV·헤드카운트 제외, Active 전환 시 자동 제거 */
+  hidden_at:          string | null
   /** org_card_jobs 조인 */
   jobs:               { job_id: string; is_primary: boolean; sort_order: number }[]
 }

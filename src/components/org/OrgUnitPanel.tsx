@@ -25,9 +25,10 @@ interface Props {
   unassigned:   AppUser[]
   mismatchByUnit: Map<string, number>
   ghostByUnit:    Map<string, number>
+  isHidden?:    (c: OrgCard) => boolean   // ← [Phase 5-B] 헤드카운트에서 숨김 제외
 }
 
-export function OrgUnitPanel({ roots, cardsByUnit, expanded, editable, focusUnit, onFocusUnit, onAddUnit, onRenameUnit, onDeleteUnit, onMoveUnit, onAddVacancy, onAddPerson, unassigned, mismatchByUnit, ghostByUnit }: Props) {
+export function OrgUnitPanel({ roots, cardsByUnit, expanded, editable, focusUnit, onFocusUnit, onAddUnit, onRenameUnit, onDeleteUnit, onMoveUnit, onAddVacancy, onAddPerson, unassigned, mismatchByUnit, ghostByUnit, isHidden }: Props) {
   const [tab, setTab] = useState<'tree' | 'unassigned'>('tree')
   const [q, setQ] = useState('')
   const filtered = useMemo(() => {
@@ -47,7 +48,7 @@ export function OrgUnitPanel({ roots, cardsByUnit, expanded, editable, focusUnit
           <span style={{ width: 10, color: OG.quiet, fontSize: 10 }}>{n.children.length > 0 ? (open ? '▾' : '▸') : ''}</span>
           <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name}</span>
           {(mm > 0 || gh > 0) && <small style={{ color: OG.red, fontSize: 10.5 }}>{gh > 0 ? `유령 ${gh}` : ''}{gh > 0 && mm > 0 ? ' · ' : ''}{mm > 0 ? `불일치 ${mm}` : ''}</small>}
-          <small style={{ color: OG.quiet }}>{subtreeHeadcount(n, cardsByUnit)}</small>
+          <small style={{ color: OG.quiet }}>{subtreeHeadcount(n, cardsByUnit, isHidden)}</small>
         </div>
         {isFocus && editable && (
           <div style={{ display: 'flex', gap: 4, padding: `2px 6px 6px ${8 + n.depth * 14}px`, flexWrap: 'wrap' }}>
@@ -84,7 +85,7 @@ export function OrgUnitPanel({ roots, cardsByUnit, expanded, editable, focusUnit
         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
           <div style={{ padding: 10, borderBottom: `1px solid ${OG.line}` }}>
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="이름·부서 검색" style={{ width: '100%', padding: '6px 9px', border: `1px solid ${OG.line}`, borderRadius: 6, fontSize: 12, fontFamily: OG.font, boxSizing: 'border-box' }} />
-            <div style={{ fontSize: 11, color: OG.quiet, marginTop: 6 }}>profiles 에 있는데 이 조직도에 카드가 없는 사람. {editable ? '단위 노드로 드래그해 배치' : '초안에서만 배치 가능'}</div>
+            <div style={{ fontSize: 11, color: OG.quiet, marginTop: 6 }}>profiles 에 있는데 이 조직도에 카드가 없는 사람(퇴사일 경과자 제외). {editable ? '단위 노드로 드래그해 배치' : '초안에서만 배치 가능'}</div>
           </div>
           <div style={{ overflow: 'auto', flex: 1, padding: 8 }}>
             {filtered.length === 0 && <div style={{ color: OG.faint, fontSize: 12, padding: 12, textAlign: 'center' }}>미배치 인원 없음</div>}

@@ -7,6 +7,7 @@
  *    · 미배치 패널의 사람 → 단위 노드 = 카드 생성
  *    · 접힌 노드 위에 600ms 머물면 자동 펼침
  *  표시 전용: 데이터·액션은 OrgCanvas/OrgAdminPanel 이 소유
+ *  - [2026-10-01 ORG Phase 5-B] ctx.concurrent/departedSince/hidden 전달 · 헤드카운트 = 본 카드·비숨김
  */
 import { useCallback, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import type { OrgCard, OrgJob, OrgRank, OrgUnit } from '../../types'
@@ -25,6 +26,10 @@ export interface TreeCardCtx {
   dim:      (c: OrgCard) => boolean
   ranks:    Map<string, OrgRank>
   jobs:     Map<string, OrgJob>
+  /** [Phase 5-B] */
+  concurrent: (c: OrgCard) => { kind: 'secondary'; homeUnit: string } | { kind: 'primary'; n: number } | null
+  departedSince: (c: OrgCard) => string | null
+  hidden:   (c: OrgCard) => boolean
 }
 export interface TreeDropHandlers {
   onDropCard:    (cardId: string, unitId: string) => void
@@ -99,7 +104,7 @@ export function OrgTree({ roots, units, cardsByUnit, ctx, editable, expanded, on
     const u = node.unit
     const isOpen = expanded.has(u.id)
     const cards = sortCards(cardsByUnit.get(u.id) ?? [], ctx.ranks, ctx.jobs, c => ctx.person(c).name)
-    const total = subtreeHeadcount(node, cardsByUnit)
+    const total = subtreeHeadcount(node, cardsByUnit, ctx.hidden)
     const over = overUnit === u.id && (dragging ? canDropOn(u.id) : false)
     const hasKids = node.children.length > 0 && isOpen
     const visible = cards.length > MAX_VISIBLE ? cards.slice(0, MAX_VISIBLE) : cards
@@ -131,6 +136,7 @@ export function OrgTree({ roots, units, cardsByUnit, ctx, editable, expanded, on
                   <div key={c.id}>
                     {(sep || (!!prevC && prevC.is_unit_head && !c.is_unit_head)) && <div style={{ fontSize: 10, color: OG.quiet, padding: '4px 0 6px 2px', borderTop: `1px dashed ${OG.line}`, marginTop: 2 }}>{tier}</div>}
                     <OrgCardView card={c} person={ctx.person(c)} rank={r} jobs={jobs} badge={ctx.badge(c)} mismatch={ctx.mismatch(c)} dim={ctx.dim(c)}
+                                 concurrent={ctx.concurrent(c)} departedSince={ctx.departedSince(c)} hidden={ctx.hidden(c)}
                                  selected={selectedCard === c.id} draggable={editable} onClick={onCardClick} onDragStart={onCardDragStart} onDragEnd={endDrag} />
                   </div>
                 )

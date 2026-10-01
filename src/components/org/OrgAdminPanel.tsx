@@ -1,5 +1,6 @@
 /**
  * OrgAdminPanel.tsx — 어드민 '조직도' 탭 루트: 데이터 소유 + 갤러리(A) ↔ 캔버스(B) 전환 + 모든 저장 경로
+ *  - [2026-10-01 ORG Phase 5-B] 퇴사 판정·숨김(departedOf/isHidden) · 미배치에서 퇴사일 경과자 제외 · 겸직 카드 추가/승격 · 숨김 토글 · Excel 내보내기
  *  - [2026-10-01 ORG Phase 5] 조직도 표기 이름(org_display_names) 로드 · 드로어 편집 연결 · CSV Azure 이름 열
  *  - [2026-10-01 ORG Phase 4-B] 코드 관리 패널(E) · Active 전환 알림(send-notification org_activated) · 카드 CSV 내보내기
  *  - [2026-10-01 ORG Phase 4-A] 카드 드로어(C) · 히스토리/diff 드로어(D) · 입사예정자 카드 추가 · 카드 제거 연결
@@ -19,10 +20,11 @@ import {
   loadOffboardingTemplates, insertOrgPerson, setOrgPersonStatus,
   notifyOrgActivated,   // ← [Phase 4-B]
   loadOrgDisplayNames, setOrgDisplayName,   // ← [Phase 5]
+  setOrgCardHidden, swapOrgPrimaryCard,     // ← [Phase 5-B]
   type OrgCodes, type OrgFileBundle, type OrgOffboardingTemplate,
 } from '../../lib/orgApi'
-import { orgErrorMessage, orgPersonView, orgStatusBadge, orgExportRows } from '../../utils/orgStatus'
-import { exportCSV } from '../../utils/csv'
+import { orgErrorMessage, orgPersonView, orgStatusBadge, orgExportRows, orgDepartedInfo, isCardHidden, todayKST, type OrgDepartedInfo } from '../../utils/orgStatus'
+import { exportOrgExcel } from '../../utils/orgExcel'
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import { OrgGallery } from './OrgGallery'
 import { OrgCanvas } from './OrgCanvas'
@@ -76,6 +78,10 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   const person     = useCallback((c: OrgCard) => orgPersonView(c, users, personsMap, departedMap, displayNames), [users, personsMap, departedMap, displayNames])
   const badge      = useCallback((c: OrgCard) => orgStatusBadge(statusOf(c), statusTypeMap), [statusOf, statusTypeMap])
   const categoryOf = useCallback((c: OrgCard): OrgStatusCategory | null => { const s = statusOf(c); return s ? (statusTypeMap.get(s.status_code)?.category ?? null) : null }, [statusOf, statusTypeMap])
+  // [Phase 5-B] 퇴사 판정 + 숨김 — 설계서 §12.2
+  const departedAtMap = useMemo(() => new Map(departed.map(d => [d.id, d.departed_at])), [departed])
+  const departedOf = useCallback((c: OrgCard): OrgDepartedInfo => orgDepartedInfo(c, person(c), statusOf(c), statusTypeMap, c.profile_id ? departedAtMap.get(c.profile_id) : null, todayKST()), [person, statusOf, statusTypeMap, departedAtMap])
+  const isHidden   = useCallback((c: OrgCard) => isCardHidden(c, departedOf(c)), [departedOf])
 
   const fail = (e: unknown, fb?: string) => { console.error('[org]', e); showToast(orgErrorMessage(e, fb)) }
 
@@ -156,6 +162,19 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   const onCardDelete = () => { if (!selected) return; const nm = person(selected).name; setConfirm({ title: '카드 제거', message: <>'{nm}' 카드를 이 조직도에서 제거합니다. 사람 상태·이력은 남고, 미배치 패널로 돌아갑니다.</>, variant: 'danger', label: '제거',
     run: async () => { await deleteOrgCard(selected.id); setBundle(b => b ? { ...b, cards: b.cards.filter(c => c.id !== selected.id) } : b); setSelectedCard(null); touch(); refreshRoster() } }) }
 
+  // ── [Phase 5-B] 겸직 카드 · 숨김 ──
+  const onAddConcurrent = async (unitId: string) => {
+    if (!selected || !bundle) return
+    try { const c = await insertOrgCard({ file_id: bundle.file.id, unit_id: unitId, profile_id: selected.profile_id, person_id: selected.person_id, is_primary: false }); await mergeCard(c.id); showToast('겸직 카드를 추가했습니다.') } catch (e) { fail(e) }
+  }
+  const onSwapPrimary = async (cardId: string) => {
+    if (!bundle) return
+    try { await swapOrgPrimaryCard(cardId); const b = await loadOrgFileBundle(bundle.file.id); setBundle(b); touch(); showToast('본 카드를 바꿨습니다.') } catch (e) { fail(e) }
+  }
+  const onToggleHidden = async (c: OrgCard) => {
+    try { await setOrgCardHidden(c.id, !c.hidden_at); await mergeCard(c.id); refreshRoster(); showToast(c.hidden_at ? '카드 숨김을 해제했습니다.' : '카드를 숨겼습니다 — Active 전환 시 자동 제거됩니다.') } catch (e) { fail(e) }
+  }
+
   // ── 드래그 저장 ──
   const onDropCard = async (cardId: string, unitId: string) => { try { await updateOrgCard(cardId, { unit_id: unitId }); await mergeCard(cardId); refreshRoster() } catch (e) { fail(e) } }
   const onDropUnit = async (unitId: string, parentId: string) => { try { await updateOrgUnit(unitId, { parent_unit_id: parentId }); await mergeUnit(unitId) } catch (e) { fail(e) } }
@@ -196,17 +215,18 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
 
   const runConfirm = async () => { if (!confirm) return; setBusy(true); try { await confirm.run(); setConfirm(null) } catch (e) { fail(e) } finally { setBusy(false) } }
 
-  // ── [Phase 4-B] CSV 내보내기 (파일 단위, 트리 순서) ──
-  const onExport = async (f: { id: string; name: string }) => {
+  // ── [Phase 5-B] Excel 내보내기 (파일 단위) — 시트1 '조직도'(엑셀 원본과 같은 박스 레이아웃) · 시트2 '명단' ──
+  const onExport = async (f: { id: string; name: string; effective_on?: string | null }) => {
     try {
       const b = (bundle && bundle.file.id === f.id) ? bundle : await loadOrgFileBundle(f.id)
       if (!b) { showToast('조직도 파일을 찾을 수 없습니다.'); return }
       const pm = new Map(b.persons.map(p => [p.id, { name: p.name, email: p.email }]))
-      const rows = orgExportRows(b.units, b.cards, ranks, jobs, statusTypeMap, c => orgPersonView(c, users, pm, departedMap, displayNames), statusOf)
-      if (!rows.length) { showToast('내보낼 카드가 없습니다.'); return }
-      exportCSV(rows, `조직도_${f.name.replace(/[\\/:*?"<>|]/g, '_')}`)
-      showToast(`CSV 내보내기 — ${rows.length}행`)
-    } catch (e) { fail(e, 'CSV 내보내기에 실패했습니다.') }
+      const pv = (c: OrgCard) => orgPersonView(c, users, pm, departedMap, displayNames)
+      const hid = (c: OrgCard) => isCardHidden(c, orgDepartedInfo(c, pv(c), statusOf(c), statusTypeMap, c.profile_id ? departedAtMap.get(c.profile_id) : null))
+      const rows = orgExportRows(b.units, b.cards, ranks, jobs, statusTypeMap, pv, statusOf, hid)
+      const n = await exportOrgExcel({ file: b.file, units: b.units, cards: b.cards.filter(c => !hid(c)), ranks, jobs, person: pv, rows })
+      showToast(`Excel 내보내기 — 조직도 시트 단위 ${n.units} · 명단 ${rows.length}행`)
+    } catch (e) { fail(e, 'Excel 내보내기에 실패했습니다.') }
   }
   // ── [Phase 5] 조직도 표기 이름 저장 → 재조회 (사람 단위라 모든 파일에 즉시 반영)
   const onDisplayName = async (profileId: string, name: string) => { await setOrgDisplayName(profileId, name, currentUserId); setDisplayNames(await loadOrgDisplayNames()) }
@@ -251,7 +271,14 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   const unassigned = useMemo(() => {
     if (!bundle) return []
     const placed = new Set(bundle.cards.map(c => c.profile_id).filter(Boolean))
-    return users.filter(u => u.employee_id && !placed.has(u.user_id)).sort((a, b) => (a.dept ?? '').localeCompare(b.dept ?? '') || a.name.localeCompare(b.name, 'ko'))
+    const today = todayKST()
+    // [Phase 5-B] 퇴사 예정일이 지난 사람은 미배치가 아니라 퇴사자 (org_roster_check 와 동일 규칙)
+    const gone = (u: AppUser) => {
+      if (u.employment_status === 'departing' && u.departure_scheduled_on && u.departure_scheduled_on <= today) return true
+      const st = statusBySubject.get(u.user_id); const cat = st ? statusTypeMap.get(st.status_code)?.category : null
+      return cat === 'departing' && !!st?.end_on && st.end_on <= today
+    }
+    return users.filter(u => u.employee_id && !placed.has(u.user_id) && !gone(u)).sort((a, b) => (a.dept ?? '').localeCompare(b.dept ?? '') || a.name.localeCompare(b.name, 'ko'))
   }, [bundle, users])
 
   const showRoster = (r: OrgRosterCheck | null) => {
@@ -287,7 +314,7 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
       {fileId && bundle ? (
         <OrgCanvas file={bundle.file} units={bundle.units} cards={bundle.cards} users={users} ranks={ranks} jobs={jobs} statusTypes={codes.statusTypes}
                    person={person} badge={badge} categoryOf={categoryOf} roster={roster} editable={editable} isSuper={isSuper} lockHolder={lockHolder} savedAt={savedAt}
-                   selectedCard={selectedCard} unassigned={unassigned}
+                   selectedCard={selectedCard} unassigned={unassigned} departedOf={departedOf} isHidden={isHidden}
                    onBack={goGallery} onCopy={() => setModal({ kind: 'copy', src: bundle.file })} onActivate={() => onActivate(bundle.file)} onRoster={() => showRoster(roster)} onExport={() => onExport(bundle.file)}
                    onEditMeta={() => editable || bundle.file.status === 'active' ? setModal({ kind: 'meta' }) : showToast('지난 조직도는 수정할 수 없습니다.')}
                    onCardClick={c => setSelectedCard(c.id)}
@@ -307,7 +334,9 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
       {selected && bundle && (
         <OrgCardDrawer card={selected} person={person(selected)} units={bundle.units} cards={bundle.cards} users={users} ranks={codes.ranks} jobs={codes.jobs} statusTypes={codes.statusTypes}
                        templates={templates} status={statusOf(selected)} editable={editable} currentUserId={currentUserId} personName={c => person(c).name}
-                       onPatch={onCardPatch} onSetJobs={onCardJobs} onDelete={onCardDelete} onStatusChanged={onStatusChanged} onDisplayName={onDisplayName} onClose={() => setSelectedCard(null)} showToast={showToast} />
+                       onPatch={onCardPatch} onSetJobs={onCardJobs} onDelete={onCardDelete} onStatusChanged={onStatusChanged} onDisplayName={onDisplayName}
+                       departedInfo={departedOf(selected)} onAddConcurrent={onAddConcurrent} onSwapPrimary={onSwapPrimary} onToggleHidden={() => onToggleHidden(selected)} onSelectCard={id => setSelectedCard(id)}
+                       onClose={() => setSelectedCard(null)} showToast={showToast} />
       )}
       {history && (
         <OrgHistoryDrawer file={history.file} files={files} units={bundle?.units ?? activeBundle?.units ?? []} users={users} ranks={codes.ranks} jobs={codes.jobs} statusTypes={codes.statusTypes}

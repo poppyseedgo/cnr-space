@@ -156,7 +156,7 @@ interface OrgActivatedCtx {
   file_name: string; effective_on?: string | null; prev_file_name?: string | null
   diff_count: number; diff?: Record<string, number>; actor_name?: string; units?: number; cards?: number
 }
-const ORG_DIFF_LABEL: Record<string, string> = { hired: '입사·신규', departed: '제외', moved: '이동', promoted: '직급', job_changed: '직무', head_changed: '단위장', unit_created: '단위 신설', unit_removed: '단위 폐지' }
+const ORG_DIFF_LABEL: Record<string, string> = { hired: '입사·신규', departed: '제외', moved: '이동', promoted: '직급', job_changed: '직무', head_changed: '단위장', unit_created: '단위 신설', unit_removed: '단위 폐지', concurrent_added: '겸직 추가', concurrent_removed: '겸직 해제', hidden_removed: '숨김 제거' }
 function orgDiffSummary(d?: Record<string, number>): string {
   if (!d) return ''
   return Object.entries(d).filter(([, n]) => n > 0).map(([k, n]) => `${ORG_DIFF_LABEL[k] ?? k} ${n}`).join(' · ')
