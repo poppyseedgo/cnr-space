@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>조직도 — 파일 갤러리(화면 A)</title>
+<style>
+:root{--ink:#1a1a1a;--quiet:#6b7280;--line:#d9dce3;--bg:#f6f6f6;--green:#16a34a;--amber:#d97706;--teal:#0d9488;--purple:#7c3aed;--red:#dc2626}
+*{box-sizing:border-box}body{margin:0;font:13px/1.45 -apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;color:var(--ink);background:var(--bg)}
+.wrap{max-width:1180px;margin:0 auto;padding:28px 24px 60px}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:18px}.top h1{font-size:18px;margin:0}.sp{flex:1}
+.btn{font-size:12.5px;padding:7px 12px;border:1px solid var(--line);border-radius:6px;background:#fff}.btn.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+.banner{display:flex;gap:16px;align-items:center;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:20px;font-size:12.5px;color:#92400e}
+.banner b{font-weight:600}.banner a{margin-left:auto;color:#92400e}
+.hero{display:grid;grid-template-columns:1.25fr 1fr;gap:0;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:28px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.thumb{background:#fafafa;border-right:1px solid var(--line);padding:24px;display:flex;align-items:center;justify-content:center;min-height:300px}
+.thumb.small{min-height:120px;padding:12px;border-right:0;border-bottom:1px solid var(--line)}
+.info{padding:26px 28px;display:flex;flex-direction:column;gap:12px}
+.tag{font-size:11px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);color:var(--quiet);display:inline-block}
+.tag.active{background:#dcfce7;border-color:#86efac;color:#166534;font-weight:600}.tag.draft{background:#eef2ff;border-color:#c7d2fe;color:#3730a3}
+.info h2{margin:0;font-size:20px}.meta{color:var(--quiet);font-size:12.5px;display:flex;gap:14px;flex-wrap:wrap}
+.stats{display:flex;gap:10px;flex-wrap:wrap}.stat{border:1px solid var(--line);border-radius:8px;padding:8px 12px;min-width:92px}.stat b{display:block;font-size:17px}.stat span{font-size:11px;color:var(--quiet)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}.chip{font-size:11px;padding:3px 8px;border-radius:4px}
+.chip.teal{background:#ccfbf1;color:#115e59}.chip.amber{background:#fef3c7;color:#92400e}.chip.purple{background:#ede9fe;color:#5b21b6}.chip.gray{background:#f3f4f6;color:#4b5563}
+.actions{display:flex;gap:8px;margin-top:auto}
+h3{font-size:13.5px;margin:0 0 12px;color:var(--quiet);font-weight:600;display:flex;align-items:center;gap:8px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;position:relative;cursor:pointer}
+.card:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);border-color:#b8bec9}
+.card .body{padding:12px 14px}.card .nm{font-weight:600;font-size:13px;display:flex;gap:6px;align-items:center}
+.card .meta{font-size:11.5px;margin-top:4px}
+.lock{font-size:10.5px;color:var(--amber)}
+.new{border-style:dashed;background:transparent;display:flex;align-items:center;justify-content:center;color:var(--quiet);min-height:190px;font-size:12.5px;flex-direction:column;gap:6px}
+.new b{font-size:22px;font-weight:300}
+.arch{background:#fff;border:1px solid var(--line);border-radius:12px}
+.arch summary{padding:12px 16px;cursor:pointer;color:var(--quiet);font-size:12.5px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}th,td{padding:9px 16px;border-top:1px solid var(--line);text-align:left}th{color:var(--quiet);font-weight:500;font-size:11.5px}
+.hover{position:absolute;right:10px;top:10px;display:flex;gap:4px}.hover span{font-size:10.5px;background:#fff;border:1px solid var(--line);border-radius:4px;padding:2px 6px}
+</style></head><body><div class="wrap">
+<div class="top"><h1>조직도</h1><span class="tag">org</span><span class="sp"></span><button class="btn">코드 관리 (직급·직무·상태)</button><button class="btn">히스토리</button><button class="btn pri">+ 새 조직도</button></div>
+<div class="banner"><b>검증</b> Active 기준 로스터 누락 <b>2</b> · 유령 카드 <b>0</b> · Division 불일치 <b>5</b><a href="#">리포트 보기 →</a></div>
+
+<!-- Active hero -->
+<div class="hero">
+ <div class="thumb">
+  <svg width="420" height="230" viewBox="0 0 420 230" font-family="inherit" font-size="9">
+   <defs><style>.n{fill:#fff;stroke:#c7cdd8;rx:4}.t{fill:#1a1a1a}.q{fill:#6b7280}.l{stroke:#9ca3af;stroke-width:1}</style></defs>
+   <rect class="n" x="160" y="8" width="100" height="30" rx="5"/><text class="t" x="210" y="22" text-anchor="middle" font-weight="600">C&amp;R Research</text><text class="q" x="210" y="33" text-anchor="middle">CEO · 509</text>
+   <line class="l" x1="210" y1="38" x2="210" y2="56"/><line class="l" x1="90" y1="56" x2="330" y2="56"/>
+   <g transform="translate(40,60)"><line class="l" x1="50" y1="-4" x2="50" y2="0"/><rect class="n" width="100" height="28" rx="4"/><text class="t" x="50" y="12" text-anchor="middle" font-weight="600">경영총괄본부</text><text class="q" x="50" y="22" text-anchor="middle">51</text></g>
+   <g transform="translate(280,60)"><line class="l" x1="50" y1="-4" x2="50" y2="0"/><rect class="n" width="100" height="28" rx="4"/><text class="t" x="50" y="12" text-anchor="middle" font-weight="600">운영총괄본부</text><text class="q" x="50" y="22" text-anchor="middle">422</text></g>
+   <line class="l" x1="90" y1="88" x2="90" y2="104"/><line class="l" x1="20" y1="104" x2="160" y2="104"/>
+   <g transform="translate(-8,108)"><rect class="n" width="56" height="24" rx="3"/><text class="t" x="28" y="15" text-anchor="middle">MS 12</text></g>
+   <g transform="translate(60,108)"><rect class="n" width="56" height="24" rx="3"/><text class="t" x="28" y="15" text-anchor="middle">CDSA 24</text></g>
+   <g transform="translate(128,108)"><rect class="n" width="64" height="24" rx="3"/><text class="t" x="32" y="15" text-anchor="middle">경영관리 15</text></g>
+   <line class="l" x1="330" y1="88" x2="330" y2="104"/><line class="l" x1="236" y1="104" x2="412" y2="104"/>
+   <g transform="translate(208,108)"><rect class="n" width="60" height="24" rx="3"/><text class="t" x="30" y="15" text-anchor="middle">사업개발 31</text></g>
+   <g transform="translate(276,108)"><rect class="n" width="64" height="24" rx="3"/><text class="t" x="32" y="15" text-anchor="middle">프로젝트 173</text></g>
+   <g transform="translate(348,108)"><rect class="n" width="72" height="24" rx="3"/><text class="t" x="36" y="15" text-anchor="middle">데이터솔루션 235</text></g>
+   <g opacity=".45"><line class="l" x1="308" y1="132" x2="308" y2="146"/><line class="l" x1="250" y1="146" x2="366" y2="146"/>
+   <rect class="n" x="236" y="150" width="34" height="18" rx="3"/><rect class="n" x="276" y="150" width="34" height="18" rx="3"/><rect class="n" x="316" y="150" width="34" height="18" rx="3"/><rect class="n" x="356" y="150" width="34" height="18" rx="3"/>
+   <line class="l" x1="384" y1="132" x2="384" y2="146"/><line class="l" x1="340" y1="178" x2="420" y2="178"/>
+   <rect class="n" x="236" y="186" width="30" height="14" rx="2"/><rect class="n" x="272" y="186" width="30" height="14" rx="2"/><rect class="n" x="308" y="186" width="30" height="14" rx="2"/><rect class="n" x="344" y="186" width="30" height="14" rx="2"/><rect class="n" x="380" y="186" width="30" height="14" rx="2"/>
+   <text class="q" x="210" y="222" text-anchor="middle" font-size="8">썸네일은 단위 트리 데이터로 클라이언트가 그린 SVG — 이미지 저장 없음</text></g>
+  </svg>
+ </div>
+ <div class="info">
+  <div><span class="tag active">● ACTIVE</span> <span class="tag">적용일 2026-10-01</span></div>
+  <h2>2026-10-01 조직도</h2>
+  <div class="meta"><span>단위 100 · 인원 509</span><span>마지막 변경 10/01 09:12 · 고현정</span><span>원본: 2026-09 조직도(엑셀 이관)</span></div>
+  <div class="stats"><div class="stat"><b>509</b><span>재직 카드</span></div><div class="stat"><b>8</b><span>퇴사예정</span></div><div class="stat"><b>0</b><span>입사예정</span></div><div class="stat"><b>0</b><span>휴직</span></div><div class="stat"><b>1</b><span>공석</span></div></div>
+  <div class="chips"><span class="chip amber">퇴사예정 8 · 체크리스트 12/40</span><span class="chip gray">계약 1 · 인턴 12</span></div>
+  <div class="actions"><button class="btn pri">열기</button><button class="btn">복사해서 편집</button><button class="btn">Active diff</button><button class="btn">내보내기 ▾</button></div>
+ </div>
+</div>
+
+<h3>초안 <span class="tag">2</span></h3>
+<div class="grid">
+ <div class="card"><div class="thumb small"><svg width="200" height="90" viewBox="0 0 200 90" font-size="7"><rect x="70" y="4" width="60" height="18" rx="3" fill="#fff" stroke="#c7cdd8"/><line x1="100" y1="22" x2="100" y2="32" stroke="#9ca3af"/><line x1="30" y1="32" x2="170" y2="32" stroke="#9ca3af"/><g fill="#fff" stroke="#c7cdd8"><rect x="6" y="36" width="44" height="16" rx="2"/><rect x="56" y="36" width="44" height="16" rx="2"/><rect x="106" y="36" width="44" height="16" rx="2"/><rect x="156" y="36" width="40" height="16" rx="2"/></g><g fill="#fff" stroke="#e5e7eb"><rect x="106" y="62" width="20" height="12" rx="2"/><rect x="130" y="62" width="20" height="12" rx="2"/><rect x="154" y="62" width="20" height="12" rx="2"/><rect x="178" y="62" width="18" height="12" rx="2" stroke="#2563eb"/></g></svg></div>
+  <div class="hover"><span>복사</span><span>Active 지정</span><span>삭제</span></div>
+  <div class="body"><div class="nm">2026-11 조직개편(안) <span class="tag draft">초안</span></div><div class="meta">적용일 2026-11-01 · 단위 102 · 인원 511</div><div class="meta">10/01 13:40 · 고현정 <span class="lock">● 편집 중</span></div></div></div>
+ <div class="card"><div class="thumb small"><svg width="200" height="90" viewBox="0 0 200 90"><rect x="70" y="4" width="60" height="18" rx="3" fill="#fff" stroke="#c7cdd8"/><line x1="100" y1="22" x2="100" y2="32" stroke="#9ca3af"/><line x1="50" y1="32" x2="150" y2="32" stroke="#9ca3af"/><g fill="#fff" stroke="#c7cdd8"><rect x="28" y="36" width="44" height="16" rx="2"/><rect x="78" y="36" width="44" height="16" rx="2"/><rect x="128" y="36" width="44" height="16" rx="2"/></g></svg></div>
+  <div class="hover"><span>복사</span><span>Active 지정</span><span>삭제</span></div>
+  <div class="body"><div class="nm">BS Division 분리 시나리오 <span class="tag draft">초안</span></div><div class="meta">적용일 미정 · 단위 104 · 인원 509</div><div class="meta">09/30 17:02 · 송보람</div></div></div>
+ <div class="card new"><b>+</b>새 조직도<span style="font-size:11px">빈 파일 또는 Active 복사</span></div>
+</div>
+
+<details class="arch"><summary>지난 조직도 <b>3</b>개 (Archived · 삭제 불가)</summary>
+<table><tr><th>이름</th><th>적용 기간</th><th>인원</th><th>Active 해제</th><th></th></tr>
+<tr><td>2026-09 조직도(엑셀 이관)</td><td>2026-09-01 ~ 2026-09-30</td><td>507</td><td>10/01 09:12 · 고현정</td><td><button class="btn">열기</button> <button class="btn">복사</button> <button class="btn">diff</button></td></tr>
+<tr><td>2026-07 조직도</td><td>2026-07-01 ~ 2026-08-31</td><td>498</td><td>09/01 · 고현정</td><td><button class="btn">열기</button> <button class="btn">복사</button> <button class="btn">diff</button></td></tr>
+<tr><td>2026-04 조직도</td><td>2026-04-01 ~ 2026-06-30</td><td>491</td><td>07/01 · 고현정</td><td><button class="btn">열기</button> <button class="btn">복사</button> <button class="btn">diff</button></td></tr>
+</table></details>
+</div></body></html>

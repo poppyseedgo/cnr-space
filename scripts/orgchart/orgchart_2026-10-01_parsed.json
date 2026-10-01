@@ -1,0 +1,3994 @@
+{
+ "boxes": [
+  {
+   "id": "GM3",
+   "name": "C&R Research\nCEO",
+   "head": null,
+   "r1": 3,
+   "c1": 195,
+   "r2": 4,
+   "c2": 200,
+   "person_box": false,
+   "parent": null
+  },
+  {
+   "id": "BO7",
+   "name": "경영총괄본부",
+   "head": "윤병인(사장)",
+   "r1": 7,
+   "c1": 67,
+   "r2": 8,
+   "c2": 70,
+   "person_box": false,
+   "parent": "GM3"
+  },
+  {
+   "id": "GN7",
+   "name": "운영총괄본부",
+   "head": "안병진(사장)",
+   "r1": 7,
+   "c1": 196,
+   "r2": 8,
+   "c2": 199,
+   "person_box": false,
+   "parent": "GM3"
+  },
+  {
+   "id": "AI11",
+   "name": "CDSA 본부",
+   "head": "CCO 박병관(전무)",
+   "r1": 11,
+   "c1": 35,
+   "r2": 12,
+   "c2": 38,
+   "person_box": false,
+   "parent": "GM3"
+  },
+  {
+   "id": "BO11",
+   "name": "경영관리실",
+   "head": "FNM 문규선(실장)",
+   "r1": 11,
+   "c1": 67,
+   "r2": 12,
+   "c2": 70,
+   "person_box": false,
+   "parent": "BO7"
+  },
+  {
+   "id": "CN11",
+   "name": "사업개발실",
+   "head": "김진학(상무)",
+   "r1": 11,
+   "c1": 92,
+   "r2": 12,
+   "c2": 95,
+   "person_box": false,
+   "parent": "BO7"
+  },
+  {
+   "id": "FC11",
+   "name": "프로젝트본부",
+   "head": "CPO 현미숙(부사장)",
+   "r1": 11,
+   "c1": 159,
+   "r2": 12,
+   "c2": 162,
+   "person_box": false,
+   "parent": "GN7"
+  },
+  {
+   "id": "JR11",
+   "name": "데이터솔루션본부",
+   "head": "CDO 조숙정(부사장)",
+   "r1": 11,
+   "c1": 278,
+   "r2": 12,
+   "c2": 281,
+   "person_box": false,
+   "parent": "GN7"
+  },
+  {
+   "id": "K15",
+   "name": "Management Support",
+   "head": "MSM 황진희(상무)",
+   "r1": 15,
+   "c1": 11,
+   "r2": 16,
+   "c2": 14,
+   "person_box": false,
+   "parent": "GM3"
+  },
+  {
+   "id": "Z15",
+   "name": "CDI",
+   "head": "CDIM 이은혜(이사)",
+   "r1": 15,
+   "c1": 26,
+   "r2": 16,
+   "c2": 29,
+   "person_box": false,
+   "parent": "AI11"
+  },
+  {
+   "id": "AL15",
+   "name": "DX 전략",
+   "head": "DXM 이영기(상무)",
+   "r1": 15,
+   "c1": 38,
+   "r2": 16,
+   "c2": 41,
+   "person_box": false,
+   "parent": "AI11"
+  },
+  {
+   "id": "BA15",
+   "name": "브랜드실",
+   "head": "HBO 김수웅(전무)",
+   "r1": 15,
+   "c1": 53,
+   "r2": 16,
+   "c2": 56,
+   "person_box": false,
+   "parent": "BO7"
+  },
+  {
+   "id": "CF15",
+   "name": "BD Division",
+   "head": "HBO 김윤호(상무)",
+   "r1": 15,
+   "c1": 84,
+   "r2": 16,
+   "c2": 87,
+   "person_box": false,
+   "parent": "CN11"
+  },
+  {
+   "id": "EC15",
+   "name": "CTM Division",
+   "head": "HCTM 이주영B(상무)",
+   "r1": 15,
+   "c1": 133,
+   "r2": 16,
+   "c2": 136,
+   "person_box": false,
+   "parent": "FC11"
+  },
+  {
+   "id": "GE15",
+   "name": "CO Division",
+   "head": "HCO 임진숙(이사)",
+   "r1": 15,
+   "c1": 187,
+   "r2": 16,
+   "c2": 190,
+   "person_box": false,
+   "parent": "FC11"
+  },
+  {
+   "id": "HU15",
+   "name": "RWO Division",
+   "head": null,
+   "r1": 15,
+   "c1": 229,
+   "r2": 15,
+   "c2": 232,
+   "person_box": false,
+   "parent": "JR11"
+  },
+  {
+   "id": "JR15",
+   "name": "Medical Operation Division",
+   "head": "Mgr 오은숙(이사)",
+   "r1": 15,
+   "c1": 278,
+   "r2": 16,
+   "c2": 281,
+   "person_box": false,
+   "parent": "JR11"
+  },
+  {
+   "id": "LM15",
+   "name": "Medical Operation Division",
+   "head": "CPO 조숙정(겸)",
+   "r1": 15,
+   "c1": 325,
+   "r2": 16,
+   "c2": 328,
+   "person_box": false,
+   "parent": "JR11"
+  },
+  {
+   "id": "NK15",
+   "name": "BS Division",
+   "head": "HBS 김덕현(이사)",
+   "r1": 15,
+   "c1": 375,
+   "r2": 16,
+   "c2": 378,
+   "person_box": false,
+   "parent": "JR11"
+  },
+  {
+   "id": "BJ17",
+   "name": "Finance",
+   "head": "FNM 김항진",
+   "r1": 17,
+   "c1": 62,
+   "r2": 18,
+   "c2": 65,
+   "person_box": false,
+   "parent": "BO11"
+  },
+  {
+   "id": "CV17",
+   "name": "RA",
+   "head": "RAM 서현지",
+   "r1": 17,
+   "c1": 100,
+   "r2": 18,
+   "c2": 103,
+   "person_box": false,
+   "parent": "CN11"
+  },
+  {
+   "id": "AL18",
+   "name": "SQA 김한나B",
+   "head": null,
+   "r1": 18,
+   "c1": 38,
+   "r2": 18,
+   "c2": 41,
+   "person_box": true,
+   "parent": "AL15"
+  },
+  {
+   "id": "FM18",
+   "name": "CO1",
+   "head": "CRM 방수진",
+   "r1": 18,
+   "c1": 169,
+   "r2": 19,
+   "c2": 172,
+   "person_box": false,
+   "parent": "GE15"
+  },
+  {
+   "id": "GE18",
+   "name": "CO2",
+   "head": "CRM 임혜민",
+   "r1": 18,
+   "c1": 187,
+   "r2": 19,
+   "c2": 190,
+   "person_box": false,
+   "parent": "GE15"
+  },
+  {
+   "id": "GT18",
+   "name": "CO3",
+   "head": "CRM 곽수현",
+   "r1": 18,
+   "c1": 202,
+   "r2": 19,
+   "c2": 205,
+   "person_box": false,
+   "parent": "GE15"
+  },
+  {
+   "id": "HF18",
+   "name": "RWO1",
+   "head": "COM 배혜인",
+   "r1": 18,
+   "c1": 214,
+   "r2": 19,
+   "c2": 217,
+   "person_box": false,
+   "parent": "HU15"
+  },
+  {
+   "id": "HU18",
+   "name": "RWO2",
+   "head": "COM 정명애",
+   "r1": 18,
+   "c1": 229,
+   "r2": 19,
+   "c2": 232,
+   "person_box": false,
+   "parent": "HU15"
+  },
+  {
+   "id": "IM18",
+   "name": "RWO3",
+   "head": "COM 문창호",
+   "r1": 18,
+   "c1": 247,
+   "r2": 19,
+   "c2": 250,
+   "person_box": false,
+   "parent": "HU15"
+  },
+  {
+   "id": "JB18",
+   "name": "Medical1",
+   "head": "MM 이정현",
+   "r1": 18,
+   "c1": 262,
+   "r2": 19,
+   "c2": 265,
+   "person_box": false,
+   "parent": "JR15"
+  },
+  {
+   "id": "JN18",
+   "name": "Medica2",
+   "head": "MM 안영환",
+   "r1": 18,
+   "c1": 274,
+   "r2": 19,
+   "c2": 277,
+   "person_box": false,
+   "parent": "JR15"
+  },
+  {
+   "id": "JW18",
+   "name": "Medica3",
+   "head": "MM 전재은",
+   "r1": 18,
+   "c1": 283,
+   "r2": 19,
+   "c2": 286,
+   "person_box": false,
+   "parent": "JR15"
+  },
+  {
+   "id": "KF18",
+   "name": "PV",
+   "head": "PVM 이현아",
+   "r1": 18,
+   "c1": 292,
+   "r2": 19,
+   "c2": 295,
+   "person_box": false,
+   "parent": "JR15"
+  },
+  {
+   "id": "KU18",
+   "name": "DM1",
+   "head": "DMTM 하헌철",
+   "r1": 18,
+   "c1": 307,
+   "r2": 19,
+   "c2": 310,
+   "person_box": false,
+   "parent": "LM15"
+  },
+  {
+   "id": "LM18",
+   "name": "DM2",
+   "head": "DMTM 김성진",
+   "r1": 18,
+   "c1": 325,
+   "r2": 19,
+   "c2": 328,
+   "person_box": false,
+   "parent": "LM15"
+  },
+  {
+   "id": "ME18",
+   "name": "DM3",
+   "head": "DMTM 김진석",
+   "r1": 18,
+   "c1": 343,
+   "r2": 19,
+   "c2": 346,
+   "person_box": false,
+   "parent": "LM15"
+  },
+  {
+   "id": "MT18",
+   "name": "Biostat1",
+   "head": "BSM 장지혜",
+   "r1": 18,
+   "c1": 358,
+   "r2": 19,
+   "c2": 361,
+   "person_box": false,
+   "parent": "NK15"
+  },
+  {
+   "id": "NF18",
+   "name": "Biostat2",
+   "head": "BSDH김덕현(겸)",
+   "r1": 18,
+   "c1": 370,
+   "r2": 19,
+   "c2": 373,
+   "person_box": false,
+   "parent": "NK15"
+  },
+  {
+   "id": "NO18",
+   "name": "BS Advisor",
+   "head": null,
+   "r1": 18,
+   "c1": 379,
+   "r2": 18,
+   "c2": 382,
+   "person_box": false,
+   "parent": "NK15"
+  },
+  {
+   "id": "OA18",
+   "name": "STAT Programming",
+   "head": "SPM 이상기",
+   "r1": 18,
+   "c1": 391,
+   "r2": 19,
+   "c2": 394,
+   "person_box": false,
+   "parent": "NK15"
+  },
+  {
+   "id": "E21",
+   "name": "HR",
+   "head": "PMgr 임지영",
+   "r1": 21,
+   "c1": 5,
+   "r2": 22,
+   "c2": 8,
+   "person_box": false,
+   "parent": "K15"
+  },
+  {
+   "id": "K21",
+   "name": "GA",
+   "head": "PMgr 김기남",
+   "r1": 21,
+   "c1": 11,
+   "r2": 22,
+   "c2": 14,
+   "person_box": false,
+   "parent": "K15"
+  },
+  {
+   "id": "W21",
+   "name": "Data Sciences",
+   "head": "DSPM 신아름",
+   "r1": 21,
+   "c1": 23,
+   "r2": 22,
+   "c2": 26,
+   "person_box": false,
+   "parent": "Z15"
+  },
+  {
+   "id": "AC21",
+   "name": "Analytics",
+   "head": "SAPM 주우현",
+   "r1": 21,
+   "c1": 29,
+   "r2": 22,
+   "c2": 32,
+   "person_box": false,
+   "parent": "Z15"
+  },
+  {
+   "id": "AI21",
+   "name": "AX",
+   "head": "ISS 박대우",
+   "r1": 21,
+   "c1": 35,
+   "r2": 22,
+   "c2": 38,
+   "person_box": false,
+   "parent": "AL18"
+  },
+  {
+   "id": "AO21",
+   "name": "EA",
+   "head": "DXM 이영기(겸)",
+   "r1": 21,
+   "c1": 41,
+   "r2": 22,
+   "c2": 44,
+   "person_box": false,
+   "parent": "AL18"
+  },
+  {
+   "id": "AU21",
+   "name": "기업부설연구소",
+   "head": "DXM 이영기(겸)",
+   "r1": 21,
+   "c1": 47,
+   "r2": 22,
+   "c2": 50,
+   "person_box": false,
+   "parent": "AI11"
+  },
+  {
+   "id": "BG21",
+   "name": "Finance1",
+   "head": "FNM 김항진(겸)",
+   "r1": 21,
+   "c1": 59,
+   "r2": 22,
+   "c2": 62,
+   "person_box": false,
+   "parent": "BJ17"
+  },
+  {
+   "id": "BM21",
+   "name": "Finance2",
+   "head": "PMgr 박광현",
+   "r1": 21,
+   "c1": 65,
+   "r2": 22,
+   "c2": 68,
+   "person_box": false,
+   "parent": "BJ17"
+  },
+  {
+   "id": "BT21",
+   "name": "경영관리팀",
+   "head": "FNM 문규선(겸)",
+   "r1": 21,
+   "c1": 72,
+   "r2": 22,
+   "c2": 75,
+   "person_box": false,
+   "parent": "BO11"
+  },
+  {
+   "id": "BZ21",
+   "name": "BD1",
+   "head": "BDM 윤단비",
+   "r1": 21,
+   "c1": 78,
+   "r2": 22,
+   "c2": 81,
+   "person_box": false,
+   "parent": "CF15"
+  },
+  {
+   "id": "CF21",
+   "name": "BD2",
+   "head": "BDM 이승하",
+   "r1": 21,
+   "c1": 84,
+   "r2": 22,
+   "c2": 87,
+   "person_box": false,
+   "parent": "CF15"
+  },
+  {
+   "id": "CL21",
+   "name": "BD3",
+   "head": "HBO 김윤호(겸)",
+   "r1": 21,
+   "c1": 90,
+   "r2": 22,
+   "c2": 93,
+   "person_box": false,
+   "parent": "CF15"
+  },
+  {
+   "id": "CS21",
+   "name": "RA1",
+   "head": "PMgr 정재은",
+   "r1": 21,
+   "c1": 97,
+   "r2": 22,
+   "c2": 100,
+   "person_box": false,
+   "parent": "CV17"
+  },
+  {
+   "id": "CY21",
+   "name": "RA2",
+   "head": "RAM 서현지(겸)",
+   "r1": 21,
+   "c1": 103,
+   "r2": 22,
+   "c2": 106,
+   "person_box": false,
+   "parent": "CV17"
+  },
+  {
+   "id": "DE21",
+   "name": "QM",
+   "head": "QMM 최윤정(상무)",
+   "r1": 21,
+   "c1": 109,
+   "r2": 22,
+   "c2": 112,
+   "person_box": false,
+   "parent": "GN7"
+  },
+  {
+   "id": "DK21",
+   "name": "Medical Device",
+   "head": "MDM 이은주",
+   "r1": 21,
+   "c1": 115,
+   "r2": 22,
+   "c2": 118,
+   "person_box": false,
+   "parent": "GN7"
+  },
+  {
+   "id": "DQ21",
+   "name": "CTM1",
+   "head": "CTMM 오지은",
+   "r1": 21,
+   "c1": 121,
+   "r2": 22,
+   "c2": 124,
+   "person_box": false,
+   "parent": "EC15"
+  },
+  {
+   "id": "DW21",
+   "name": "CTM2",
+   "head": "CTMM 정주희",
+   "r1": 21,
+   "c1": 127,
+   "r2": 22,
+   "c2": 130,
+   "person_box": false,
+   "parent": "EC15"
+  },
+  {
+   "id": "EC21",
+   "name": "CTM3",
+   "head": "CTMM 유원정",
+   "r1": 21,
+   "c1": 133,
+   "r2": 22,
+   "c2": 136,
+   "person_box": false,
+   "parent": "EC15"
+  },
+  {
+   "id": "EI21",
+   "name": "CTM4",
+   "head": "CTMM 이보람이",
+   "r1": 21,
+   "c1": 139,
+   "r2": 22,
+   "c2": 142,
+   "person_box": false,
+   "parent": "EC15"
+  },
+  {
+   "id": "EO21",
+   "name": "CTM5",
+   "head": "CTMM 이윤영",
+   "r1": 21,
+   "c1": 145,
+   "r2": 22,
+   "c2": 148,
+   "person_box": false,
+   "parent": "EC15"
+  },
+  {
+   "id": "EU21",
+   "name": "CSS",
+   "head": "CSS Mgr 홍은하",
+   "r1": 21,
+   "c1": 151,
+   "r2": 22,
+   "c2": 154,
+   "person_box": false,
+   "parent": "EC15"
+  },
+  {
+   "id": "FA21",
+   "name": "SSU",
+   "head": "SSUM 이윤미",
+   "r1": 21,
+   "c1": 157,
+   "r2": 22,
+   "c2": 160,
+   "person_box": false,
+   "parent": "EC15"
+  },
+  {
+   "id": "FG21",
+   "name": "CO1-1",
+   "head": "CRM 김빛아름",
+   "r1": 21,
+   "c1": 163,
+   "r2": 22,
+   "c2": 166,
+   "person_box": false,
+   "parent": "FM18"
+  },
+  {
+   "id": "FM21",
+   "name": "CO1-2",
+   "head": "CRM 이진",
+   "r1": 21,
+   "c1": 169,
+   "r2": 22,
+   "c2": 172,
+   "person_box": false,
+   "parent": "FM18"
+  },
+  {
+   "id": "FS21",
+   "name": "CO1-3",
+   "head": "CRM 유민정",
+   "r1": 21,
+   "c1": 175,
+   "r2": 22,
+   "c2": 178,
+   "person_box": false,
+   "parent": "FM18"
+  },
+  {
+   "id": "FY21",
+   "name": "CO2-1",
+   "head": "CRM 장은혜",
+   "r1": 21,
+   "c1": 181,
+   "r2": 22,
+   "c2": 184,
+   "person_box": false,
+   "parent": "GE18"
+  },
+  {
+   "id": "GE21",
+   "name": "CO2-2",
+   "head": "CRM 유하나",
+   "r1": 21,
+   "c1": 187,
+   "r2": 22,
+   "c2": 190,
+   "person_box": false,
+   "parent": "GE18"
+  },
+  {
+   "id": "GK21",
+   "name": "CO2-3",
+   "head": "CRM 양고운",
+   "r1": 21,
+   "c1": 193,
+   "r2": 22,
+   "c2": 196,
+   "person_box": false,
+   "parent": "GE18"
+  },
+  {
+   "id": "GQ21",
+   "name": "CO3-1",
+   "head": "CRM 유슬기",
+   "r1": 21,
+   "c1": 199,
+   "r2": 22,
+   "c2": 202,
+   "person_box": false,
+   "parent": "GT18"
+  },
+  {
+   "id": "GW21",
+   "name": "CO3-2",
+   "head": "CRM 박은석",
+   "r1": 21,
+   "c1": 205,
+   "r2": 22,
+   "c2": 208,
+   "person_box": false,
+   "parent": "GT18"
+  },
+  {
+   "id": "HC21",
+   "name": "Core1",
+   "head": "CDMM 강지영",
+   "r1": 21,
+   "c1": 211,
+   "r2": 22,
+   "c2": 214,
+   "person_box": false,
+   "parent": "HF18"
+  },
+  {
+   "id": "HI21",
+   "name": "Core2",
+   "head": "SSUM 조아라",
+   "r1": 21,
+   "c1": 217,
+   "r2": 22,
+   "c2": 220,
+   "person_box": false,
+   "parent": "HF18"
+  },
+  {
+   "id": "HO21",
+   "name": "RWL1",
+   "head": "COM 정명애(겸)",
+   "r1": 21,
+   "c1": 223,
+   "r2": 22,
+   "c2": 226,
+   "person_box": false,
+   "parent": "HU18"
+  },
+  {
+   "id": "HU21",
+   "name": "RWL2",
+   "head": "CRM 박수경",
+   "r1": 21,
+   "c1": 229,
+   "r2": 22,
+   "c2": 232,
+   "person_box": false,
+   "parent": "HU18"
+  },
+  {
+   "id": "IA21",
+   "name": "RWL3",
+   "head": "CRM 강소정",
+   "r1": 21,
+   "c1": 235,
+   "r2": 22,
+   "c2": 238,
+   "person_box": false,
+   "parent": "HU18"
+  },
+  {
+   "id": "IG21",
+   "name": "RWM1",
+   "head": "CRM 박희려",
+   "r1": 21,
+   "c1": 241,
+   "r2": 22,
+   "c2": 244,
+   "person_box": false,
+   "parent": "IM18"
+  },
+  {
+   "id": "IM21",
+   "name": "RWM2",
+   "head": "CRM 양영주",
+   "r1": 21,
+   "c1": 247,
+   "r2": 22,
+   "c2": 250,
+   "person_box": false,
+   "parent": "IM18"
+  },
+  {
+   "id": "IS21",
+   "name": "RWM3",
+   "head": "CRM 김민희",
+   "r1": 21,
+   "c1": 253,
+   "r2": 22,
+   "c2": 256,
+   "person_box": false,
+   "parent": "IM18"
+  },
+  {
+   "id": "IY21",
+   "name": "Medical1-1",
+   "head": "MPM 권순호",
+   "r1": 21,
+   "c1": 259,
+   "r2": 22,
+   "c2": 262,
+   "person_box": false,
+   "parent": "JB18"
+  },
+  {
+   "id": "JE21",
+   "name": "Medical1-2",
+   "head": "MPM 류지온",
+   "r1": 21,
+   "c1": 265,
+   "r2": 22,
+   "c2": 268,
+   "person_box": false,
+   "parent": "JB18"
+  },
+  {
+   "id": "JK21",
+   "name": "Medical2-1",
+   "head": "MPM 장건희",
+   "r1": 21,
+   "c1": 271,
+   "r2": 22,
+   "c2": 274,
+   "person_box": false,
+   "parent": "JN18"
+  },
+  {
+   "id": "JQ21",
+   "name": "Medical2-2",
+   "head": "Mgr 안영환(겸)",
+   "r1": 21,
+   "c1": 277,
+   "r2": 22,
+   "c2": 280,
+   "person_box": false,
+   "parent": "JN18"
+  },
+  {
+   "id": "KC21",
+   "name": "PV1",
+   "head": "PVPM 김성경",
+   "r1": 21,
+   "c1": 289,
+   "r2": 22,
+   "c2": 292,
+   "person_box": false,
+   "parent": "KF18"
+  },
+  {
+   "id": "KI21",
+   "name": "PV2",
+   "head": "Mgr 이현아(겸)",
+   "r1": 21,
+   "c1": 295,
+   "r2": 22,
+   "c2": 298,
+   "person_box": false,
+   "parent": "KF18"
+  },
+  {
+   "id": "KO21",
+   "name": "DM1-1",
+   "head": "DMPM 김민애",
+   "r1": 21,
+   "c1": 301,
+   "r2": 22,
+   "c2": 304,
+   "person_box": false,
+   "parent": "KU18"
+  },
+  {
+   "id": "KU21",
+   "name": "DM1-2",
+   "head": "DMPM 김민정B",
+   "r1": 21,
+   "c1": 307,
+   "r2": 22,
+   "c2": 310,
+   "person_box": false,
+   "parent": "KU18"
+  },
+  {
+   "id": "LA21",
+   "name": "DM1-3",
+   "head": "CDMM 구명연",
+   "r1": 21,
+   "c1": 313,
+   "r2": 22,
+   "c2": 316,
+   "person_box": false,
+   "parent": "KU18"
+  },
+  {
+   "id": "LG21",
+   "name": "DM2-1",
+   "head": "DMPM 안현준",
+   "r1": 21,
+   "c1": 319,
+   "r2": 22,
+   "c2": 322,
+   "person_box": false,
+   "parent": "LM18"
+  },
+  {
+   "id": "LM21",
+   "name": "DM2-2",
+   "head": "DMPM 이인채",
+   "r1": 21,
+   "c1": 325,
+   "r2": 22,
+   "c2": 328,
+   "person_box": false,
+   "parent": "LM18"
+  },
+  {
+   "id": "LS21",
+   "name": "DM2-3",
+   "head": "CDMM 장윤지",
+   "r1": 21,
+   "c1": 331,
+   "r2": 22,
+   "c2": 334,
+   "person_box": false,
+   "parent": "LM18"
+  },
+  {
+   "id": "LY21",
+   "name": "DM3-1",
+   "head": "DMPM 윤미리",
+   "r1": 21,
+   "c1": 337,
+   "r2": 22,
+   "c2": 340,
+   "person_box": false,
+   "parent": "ME18"
+  },
+  {
+   "id": "ME21",
+   "name": "DM3-2",
+   "head": "DMPM 김종민",
+   "r1": 21,
+   "c1": 343,
+   "r2": 22,
+   "c2": 346,
+   "person_box": false,
+   "parent": "ME18"
+  },
+  {
+   "id": "MK21",
+   "name": "DM3-3",
+   "head": "CDMM 강소영",
+   "r1": 21,
+   "c1": 349,
+   "r2": 22,
+   "c2": 352,
+   "person_box": false,
+   "parent": "ME18"
+  },
+  {
+   "id": "MQ21",
+   "name": "Biostat1-1",
+   "head": "Mgr 장지혜(겸)",
+   "r1": 21,
+   "c1": 355,
+   "r2": 22,
+   "c2": 358,
+   "person_box": false,
+   "parent": "MT18"
+  },
+  {
+   "id": "MW21",
+   "name": "Biostat1-2",
+   "head": "Mgr 장지혜(겸)",
+   "r1": 21,
+   "c1": 361,
+   "r2": 22,
+   "c2": 364,
+   "person_box": false,
+   "parent": "MT18"
+  },
+  {
+   "id": "NC21",
+   "name": "Biostat2-1",
+   "head": "BSPM 윤지영",
+   "r1": 21,
+   "c1": 367,
+   "r2": 22,
+   "c2": 370,
+   "person_box": false,
+   "parent": "NF18"
+  },
+  {
+   "id": "NI21",
+   "name": "Biostat2-2",
+   "head": "BSPM 박좋은",
+   "r1": 21,
+   "c1": 373,
+   "r2": 22,
+   "c2": 376,
+   "person_box": false,
+   "parent": "NF18"
+  },
+  {
+   "id": "NU21",
+   "name": "SP1",
+   "head": "SPPM 최한규",
+   "r1": 21,
+   "c1": 385,
+   "r2": 22,
+   "c2": 388,
+   "person_box": false,
+   "parent": "OA18"
+  },
+  {
+   "id": "OA21",
+   "name": "SP2",
+   "head": "SPPM 최두리",
+   "r1": 21,
+   "c1": 391,
+   "r2": 22,
+   "c2": 394,
+   "person_box": false,
+   "parent": "OA18"
+  },
+  {
+   "id": "OG21",
+   "name": "SP3",
+   "head": "Mgr 이상기(겸)",
+   "r1": 21,
+   "c1": 397,
+   "r2": 22,
+   "c2": 400,
+   "person_box": false,
+   "parent": "OA18"
+  }
+ ],
+ "members": [
+  {
+   "row": 25,
+   "col": "E",
+   "raw": "HRA 김수빈",
+   "unit": "E21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "K",
+   "raw": "GAA 송보람",
+   "unit": "K21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "Q",
+   "raw": "MSA 고현정",
+   "unit": "K21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "W",
+   "raw": "DSS 신원영",
+   "unit": "W21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "AC",
+   "raw": "Sr.SA 박규리",
+   "unit": "AC21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "AI",
+   "raw": "AXE 염지훈",
+   "unit": "AI21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "AO",
+   "raw": "SE 남재욱",
+   "unit": "AO21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "AU",
+   "raw": "Sr.SE 서지명",
+   "unit": "AU21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "BA",
+   "raw": "BMS 안정수",
+   "unit": "BA15",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "BG",
+   "raw": "FNA 전찬웅",
+   "unit": "BG21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "BM",
+   "raw": "FNA 전시온",
+   "unit": "BM21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "BT",
+   "raw": "MAA 이지원",
+   "unit": "BT21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "BZ",
+   "raw": "Sr.BDA 허민지",
+   "unit": "BZ21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "CF",
+   "raw": "Sr.BDA 장지윤",
+   "unit": "CF21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "CL",
+   "raw": "Sr.BDA 김한나",
+   "unit": "CL21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "CS",
+   "raw": "RAS 이진주",
+   "unit": "CS21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "CY",
+   "raw": "RAA 류희윤",
+   "unit": "CY21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "DE",
+   "raw": "Sr.QML 한혜진",
+   "unit": "DE21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "DK",
+   "raw": "RAA 윤아연",
+   "unit": "DK21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "DQ",
+   "raw": "PL 정민경",
+   "unit": "DQ21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "DW",
+   "raw": "PL 유동원",
+   "unit": "DW21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "EC",
+   "raw": "APD 양미진",
+   "unit": "EC21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "EI",
+   "raw": "APD 김지영B",
+   "unit": "EI21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "EO",
+   "raw": "PL 이혜진",
+   "unit": "EO21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "EU",
+   "raw": "Sr. CSS 정서진",
+   "unit": "EU21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "FA",
+   "raw": "SIS 오세현",
+   "unit": "FA21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "FG",
+   "raw": "Sr.CRA 박슬기",
+   "unit": "FG21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "FM",
+   "raw": "PCRA 김선영",
+   "unit": "FM21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "FS",
+   "raw": "Sr.CRA 김나루",
+   "unit": "FS21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "FY",
+   "raw": "Sr.CRA 홍웅기",
+   "unit": "FY21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "GE",
+   "raw": "PCRA 황유나",
+   "unit": "GE21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "GK",
+   "raw": "PCRA 김민서",
+   "unit": "GK21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "GQ",
+   "raw": "PCRA 정운영",
+   "unit": "GQ21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "GW",
+   "raw": "PCRA 전민하",
+   "unit": "GW21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "HC",
+   "raw": "Remote PL이나영",
+   "unit": "HC21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "HI",
+   "raw": "PCRA 이정석",
+   "unit": "HI21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "HO",
+   "raw": "Sr.PL 백종운",
+   "unit": "HO21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "HU",
+   "raw": "PLⅡ한송이",
+   "unit": "HU21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "IA",
+   "raw": "PLⅡ 최동은",
+   "unit": "IA21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "IG",
+   "raw": "PCRA 서아영",
+   "unit": "IG21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "IM",
+   "raw": "PCRA 윤재민",
+   "unit": "IM21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "IS",
+   "raw": "PCRA 석윤아",
+   "unit": "IS21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "IY",
+   "raw": "Sr.MW 정나희",
+   "unit": "IY21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "JE",
+   "raw": "Sr.MW 김신애(0.75)",
+   "unit": "JE21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "JK",
+   "raw": "Sr.MW 최은별",
+   "unit": "JK21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "JQ",
+   "raw": "CMS 우세영",
+   "unit": "JQ21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "JW",
+   "raw": "MA 임은수",
+   "unit": "JW18",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "KC",
+   "raw": "PVS 황은비",
+   "unit": "KC21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "KI",
+   "raw": "PVS 견소영",
+   "unit": "KI21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "KO",
+   "raw": "Sr.DMAⅡ 장나영",
+   "unit": "KO21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "KU",
+   "raw": "Sr.DMA 선유림",
+   "unit": "KU21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "LA",
+   "raw": "Sr.CDMAⅡ 임소희",
+   "unit": "LA21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "LG",
+   "raw": "Sr.DMAⅡ 이주연B",
+   "unit": "LG21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "LM",
+   "raw": "Sr.DMA 이지원B",
+   "unit": "LM21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "LS",
+   "raw": "Sr.CDMA 유상현",
+   "unit": "LS21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "LY",
+   "raw": "Sr.DMA 손현주",
+   "unit": "LY21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "ME",
+   "raw": "Sr.DMA 이다은",
+   "unit": "ME21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "MK",
+   "raw": "Sr.CDMA 박하영",
+   "unit": "MK21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "MQ",
+   "raw": "Sr.BSⅠ 김현아B",
+   "unit": "MQ21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "MW",
+   "raw": "Sr.BSⅠ 문희정",
+   "unit": "MW21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "NC",
+   "raw": "Sr.BS 황주원",
+   "unit": "NC21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "NI",
+   "raw": "Sr.BSⅠ김수진C",
+   "unit": "NI21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "NO",
+   "raw": "BS Advisor 김제석",
+   "unit": "NO18",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "NU",
+   "raw": "Sr.SP 최주원",
+   "unit": "NU21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "OA",
+   "raw": "Sr.SP 전보배",
+   "unit": "OA21",
+   "flag": null
+  },
+  {
+   "row": 25,
+   "col": "OG",
+   "raw": "Sr.SP 송주현",
+   "unit": "OG21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "E",
+   "raw": "HRA 송지나",
+   "unit": "E21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "K",
+   "raw": "GAA 박찬희",
+   "unit": "K21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "Q",
+   "raw": "MSA 신대섭",
+   "unit": "K21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "W",
+   "raw": "DSS 정유진",
+   "unit": "W21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "AI",
+   "raw": "AXE 유일환",
+   "unit": "AI21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "AO",
+   "raw": "SE 박태우",
+   "unit": "AO21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "AU",
+   "raw": "SE 백도형",
+   "unit": "AU21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "BA",
+   "raw": "BMS 명지성",
+   "unit": "BA15",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "BG",
+   "raw": "FNA 김철규",
+   "unit": "BG21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "BM",
+   "raw": "FNA 차예인",
+   "unit": "BM21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "BT",
+   "raw": "MMA 원세연",
+   "unit": "BT21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "BZ",
+   "raw": "BDAII 조민정",
+   "unit": "BZ21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "CF",
+   "raw": "BDAII 박지혜",
+   "unit": "CF21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "CL",
+   "raw": "BDAII 최슬기",
+   "unit": "CL21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "CS",
+   "raw": "RAA 오사랑",
+   "unit": "CS21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "CY",
+   "raw": "RAA 박재현",
+   "unit": "CY21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "DE",
+   "raw": "Sr.QMA 최은심",
+   "unit": "DE21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "DK",
+   "raw": "CRA 김주희B",
+   "unit": "DK21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "DQ",
+   "raw": "PL 노상희",
+   "unit": "DQ21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "DW",
+   "raw": "PL 황지언",
+   "unit": "DW21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "EC",
+   "raw": "Sr.PL 홍지혜",
+   "unit": "EC21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "EI",
+   "raw": "APD 이민지",
+   "unit": "EI21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "EO",
+   "raw": "PL 진한나",
+   "unit": "EO21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "EU",
+   "raw": "CSS 박소은",
+   "unit": "EU21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "FA",
+   "raw": "SIS 김진실",
+   "unit": "FA21",
+   "flag": "퇴사예정"
+  },
+  {
+   "row": 26,
+   "col": "FG",
+   "raw": "CRAII 여혜빈",
+   "unit": "FG21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "FM",
+   "raw": "Sr.CRA 윤희수",
+   "unit": "FM21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "FS",
+   "raw": "Sr.CRA 김나영B",
+   "unit": "FS21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "FY",
+   "raw": "PCRA 백수지",
+   "unit": "FY21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "GE",
+   "raw": "Sr.CRA 김지선",
+   "unit": "GE21",
+   "flag": "퇴사예정"
+  },
+  {
+   "row": 26,
+   "col": "GK",
+   "raw": "Sr.CRA 고혁준",
+   "unit": "GK21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "GQ",
+   "raw": "Principal CRA 유은비",
+   "unit": "GQ21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "GW",
+   "raw": "Sr.CRA 박유진",
+   "unit": "GW21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "HC",
+   "raw": "Remote PL 박나현",
+   "unit": "HC21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "HI",
+   "raw": "Sr.SIS 정홍주",
+   "unit": "HI21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "HO",
+   "raw": "PLⅡ 신지연",
+   "unit": "HO21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "HU",
+   "raw": "PLⅠ박정민",
+   "unit": "HU21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "IA",
+   "raw": "PLⅡ 안예은",
+   "unit": "IA21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "IG",
+   "raw": "Sr.CRA 안수지",
+   "unit": "IG21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "IM",
+   "raw": "PCRA 김은미",
+   "unit": "IM21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "IS",
+   "raw": "PCRA 이소리",
+   "unit": "IS21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "IY",
+   "raw": "Sr.MW 고은이",
+   "unit": "IY21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "JE",
+   "raw": "Sr.MW 천현지",
+   "unit": "JE21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "JK",
+   "raw": "Sr.MW 장상필",
+   "unit": "JK21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "JQ",
+   "raw": "CMS 김영빈",
+   "unit": "JQ21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "JW",
+   "raw": "Sr.MW 박재민",
+   "unit": "JW18",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "KC",
+   "raw": "PVA 강도현",
+   "unit": "KC21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "KI",
+   "raw": "PVA 한기범",
+   "unit": "KI21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "KO",
+   "raw": "Sr.DMA 이나현",
+   "unit": "KO21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "KU",
+   "raw": "DMA 이현준",
+   "unit": "KU21",
+   "flag": "퇴사예정"
+  },
+  {
+   "row": 26,
+   "col": "LA",
+   "raw": "CDMA 장민주",
+   "unit": "LA21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "LG",
+   "raw": "Sr.DMA 임남균",
+   "unit": "LG21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "LM",
+   "raw": "Sr.DMA 정현우",
+   "unit": "LM21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "LS",
+   "raw": "Sr.CDMA 정수민",
+   "unit": "LS21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "LY",
+   "raw": "DMA 황선익",
+   "unit": "LY21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "ME",
+   "raw": "Sr.DMA 권화진",
+   "unit": "ME21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "MK",
+   "raw": "Sr.CDMA 김민정",
+   "unit": "MK21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "MQ",
+   "raw": "Sr.BS1 이화선",
+   "unit": "MQ21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "MW",
+   "raw": "Sr.BSⅠ 박지나",
+   "unit": "MW21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "NC",
+   "raw": "Sr.BSⅠ허수성",
+   "unit": "NC21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "NI",
+   "raw": "Sr.BS1 박지은B",
+   "unit": "NI21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "NO",
+   "raw": "BS Advisor 유아미",
+   "unit": "NO18",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "NU",
+   "raw": "Sr.SP 장인송",
+   "unit": "NU21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "OA",
+   "raw": "Sr.SP 강유진",
+   "unit": "OA21",
+   "flag": null
+  },
+  {
+   "row": 26,
+   "col": "OG",
+   "raw": "Sr.SP 이주은",
+   "unit": "OG21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "E",
+   "raw": "HRA 임지원",
+   "unit": "E21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "Q",
+   "raw": "MSA 박주현",
+   "unit": "K21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "AO",
+   "raw": "SE 한인규",
+   "unit": "AO21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "AU",
+   "raw": "SE 이광은",
+   "unit": "AU21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "BA",
+   "raw": "BMS 조윤아",
+   "unit": "BA15",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "BG",
+   "raw": "FNA 김병희",
+   "unit": "BG21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "BT",
+   "raw": "MMA 김양현",
+   "unit": "BT21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "BZ",
+   "raw": "BDAII 허난형",
+   "unit": "BZ21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "CF",
+   "raw": "BDAI 오주은",
+   "unit": "CF21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "CL",
+   "raw": "BDAI 김채윤",
+   "unit": "CL21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "CS",
+   "raw": "RAA 염영선",
+   "unit": "CS21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "CY",
+   "raw": "RAA 정선하",
+   "unit": "CY21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "DE",
+   "raw": "QMA 박소윤",
+   "unit": "DE21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "DK",
+   "raw": "PL 서혜림",
+   "unit": "DK21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "DQ",
+   "raw": "PL 정혜임(부산)",
+   "unit": "DQ21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "DW",
+   "raw": "PL 심지연",
+   "unit": "DW21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "EC",
+   "raw": "Sr.PL 오은임",
+   "unit": "EC21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "EI",
+   "raw": "PL 임미애",
+   "unit": "EI21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "EO",
+   "raw": "PL 손신지",
+   "unit": "EO21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "EU",
+   "raw": "CSS 이희진",
+   "unit": "EU21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "FA",
+   "raw": "SR.SIS 조혜원",
+   "unit": "FA21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "FG",
+   "raw": "PCRA 최혜진",
+   "unit": "FG21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "FM",
+   "raw": "Sr.CRA 이민지B",
+   "unit": "FM21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "FS",
+   "raw": "Sr.CRA 박진영",
+   "unit": "FS21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "FY",
+   "raw": "CRAII 김희원",
+   "unit": "FY21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "GE",
+   "raw": "CRAII 김선재",
+   "unit": "GE21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "GK",
+   "raw": "CRAII 송현지",
+   "unit": "GK21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "GQ",
+   "raw": "Sr.CRA 박유경",
+   "unit": "GQ21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "GW",
+   "raw": "Sr.CRA 김민희B",
+   "unit": "GW21",
+   "flag": "퇴사예정"
+  },
+  {
+   "row": 27,
+   "col": "HC",
+   "raw": "Sr.CDMA 양호승",
+   "unit": "HC21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "HI",
+   "raw": "SR.SIS 김문경",
+   "unit": "HI21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "HO",
+   "raw": "Sr.PL 조윤진",
+   "unit": "HO21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "HU",
+   "raw": "PLⅡ 최주연",
+   "unit": "HU21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "IA",
+   "raw": "PLⅡ김두진",
+   "unit": "IA21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "IG",
+   "raw": "Sr.CRA 오예림",
+   "unit": "IG21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "IM",
+   "raw": "PCRA 문시아",
+   "unit": "IM21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "IS",
+   "raw": "PCRA 이승은",
+   "unit": "IS21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "IY",
+   "raw": "Sr.MW  김덕훈",
+   "unit": "IY21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "JE",
+   "raw": "MW  신재영",
+   "unit": "JE21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "JK",
+   "raw": "Sr.MW 서보미",
+   "unit": "JK21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "JQ",
+   "raw": "CMS 이지희 (0.5)",
+   "unit": "JQ21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "JW",
+   "raw": "Sr.MW 이현진",
+   "unit": "JW18",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "KC",
+   "raw": "PVS 이승은",
+   "unit": "KC21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "KI",
+   "raw": "PVA 이은별",
+   "unit": "KI21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "KO",
+   "raw": "DMA 이희정",
+   "unit": "KO21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "KU",
+   "raw": "Sr.DMA 김나영",
+   "unit": "KU21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "LA",
+   "raw": "Sr.CDMA 이정주",
+   "unit": "LA21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "LG",
+   "raw": "Sr.DMA 김나현",
+   "unit": "LG21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "LM",
+   "raw": "DMA 진윤정",
+   "unit": "LM21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "LS",
+   "raw": "Sr.CDMA 김세윤",
+   "unit": "LS21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "LY",
+   "raw": "Sr.DMA 최희원",
+   "unit": "LY21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "ME",
+   "raw": "Sr.DMAII 김환욱",
+   "unit": "ME21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "MK",
+   "raw": "Sr.CDMA 김지아",
+   "unit": "MK21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "MQ",
+   "raw": "Sr.BSⅠ 김민선",
+   "unit": "MQ21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "MW",
+   "raw": "Sr.BSⅠ 박지은",
+   "unit": "MW21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "NC",
+   "raw": "Sr.BS1 김지민",
+   "unit": "NC21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "NI",
+   "raw": "Sr.BSⅠ 권도희",
+   "unit": "NI21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "NO",
+   "raw": "BS Advisor 정지원",
+   "unit": "NO18",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "NU",
+   "raw": "SP 이승미",
+   "unit": "NU21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "OA",
+   "raw": "SP 이혜림",
+   "unit": "OA21",
+   "flag": null
+  },
+  {
+   "row": 27,
+   "col": "OG",
+   "raw": "SP 김민지B",
+   "unit": "OG21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "AU",
+   "raw": "SE 김동혁",
+   "unit": "AU21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "BT",
+   "raw": "MMA 김동규",
+   "unit": "BT21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "BZ",
+   "raw": "BDAI 문지우",
+   "unit": "BZ21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "CF",
+   "raw": "BDAI 이경채",
+   "unit": "CF21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "CL",
+   "raw": "BDAI 박슬기B",
+   "unit": "CL21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "CY",
+   "raw": "RAA 허소라",
+   "unit": "CY21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "DE",
+   "raw": "QMA 한다운",
+   "unit": "DE21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "DK",
+   "raw": "MW 김윤경",
+   "unit": "DK21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "DQ",
+   "raw": "PL 최희주(부산)",
+   "unit": "DQ21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "DW",
+   "raw": "PL 남기은",
+   "unit": "DW21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "EC",
+   "raw": "APD 이호진",
+   "unit": "EC21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "EI",
+   "raw": "PL 이영선(부산)",
+   "unit": "EI21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "EO",
+   "raw": "PL 임현진",
+   "unit": "EO21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "EU",
+   "raw": "CSS 이가람",
+   "unit": "EU21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "FA",
+   "raw": "SIS 양예은",
+   "unit": "FA21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "FG",
+   "raw": "Sr.CRA 이지현",
+   "unit": "FG21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "FM",
+   "raw": "Sr.CRA 김은지",
+   "unit": "FM21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "FS",
+   "raw": "CRAII 최성호",
+   "unit": "FS21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "FY",
+   "raw": "CRA 김하영",
+   "unit": "FY21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "GE",
+   "raw": "Sr.CRA 이새봄",
+   "unit": "GE21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "GK",
+   "raw": "CRA 김진경",
+   "unit": "GK21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "GQ",
+   "raw": "CRA 서유나",
+   "unit": "GQ21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "GW",
+   "raw": "CRAII 남준영",
+   "unit": "GW21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "HC",
+   "raw": "Remote PL 오유진",
+   "unit": "HC21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "HI",
+   "raw": "SR.SIS 신지윤",
+   "unit": "HI21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "HO",
+   "raw": "PLⅡ 허수진",
+   "unit": "HO21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "HU",
+   "raw": "Sr.PL 손모아",
+   "unit": "HU21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "IA",
+   "raw": "PLⅠ김유진",
+   "unit": "IA21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "IG",
+   "raw": "PCRA 이세리",
+   "unit": "IG21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "IM",
+   "raw": "Sr.CRA 김지현B",
+   "unit": "IM21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "IS",
+   "raw": "Sr.CRA민희원",
+   "unit": "IS21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "IY",
+   "raw": "MW 김가람",
+   "unit": "IY21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "JE",
+   "raw": "MW 오정아",
+   "unit": "JE21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "JK",
+   "raw": "Sr.MW  이화진",
+   "unit": "JK21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "JQ",
+   "raw": "CMS 박정미 (0.5)",
+   "unit": "JQ21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "JW",
+   "raw": "Sr.MW 최혜림",
+   "unit": "JW18",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "KC",
+   "raw": "PVA 최영은",
+   "unit": "KC21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "KI",
+   "raw": "PVS 김민지",
+   "unit": "KI21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "KO",
+   "raw": "Sr.DMA 박한나",
+   "unit": "KO21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "KU",
+   "raw": "DMA 안준혁",
+   "unit": "KU21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "LA",
+   "raw": "Sr.CDMA 이채연",
+   "unit": "LA21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "LG",
+   "raw": "Sr.DMA 모예린",
+   "unit": "LG21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "LS",
+   "raw": "Sr.CDMA 임채린",
+   "unit": "LS21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "LY",
+   "raw": "DMA 구영아",
+   "unit": "LY21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "ME",
+   "raw": "Sr.DMA 이혜련",
+   "unit": "ME21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "MK",
+   "raw": "Sr.CDMA 이단비",
+   "unit": "MK21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "MQ",
+   "raw": "Sr.BSⅢ 박현주B",
+   "unit": "MQ21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "MW",
+   "raw": "Sr.BSⅠ임재균",
+   "unit": "MW21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "NC",
+   "raw": "Sr.BSⅠ 이민주",
+   "unit": "NC21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "NI",
+   "raw": "Sr.BS1 손동희",
+   "unit": "NI21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "NU",
+   "raw": "SP 허은정",
+   "unit": "NU21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "OA",
+   "raw": "SP 안수민",
+   "unit": "OA21",
+   "flag": null
+  },
+  {
+   "row": 28,
+   "col": "OG",
+   "raw": "SP 조혜진",
+   "unit": "OG21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "AU",
+   "raw": "SE 민은영",
+   "unit": "AU21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "BT",
+   "raw": "MMA 성주광",
+   "unit": "BT21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "BZ",
+   "raw": "BDA 민세희",
+   "unit": "BZ21",
+   "flag": "퇴사예정"
+  },
+  {
+   "row": 29,
+   "col": "CY",
+   "raw": "RAA 박인경",
+   "unit": "CY21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "DE",
+   "raw": "QML 장정임",
+   "unit": "DE21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "DK",
+   "raw": "RAS 이호성",
+   "unit": "DK21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "DQ",
+   "raw": "PL 박현진",
+   "unit": "DQ21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "DW",
+   "raw": "Sr.PL 김서련",
+   "unit": "DW21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "EC",
+   "raw": "APD 정선아",
+   "unit": "EC21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "EI",
+   "raw": "PL 임수영",
+   "unit": "EI21",
+   "flag": "퇴사예정"
+  },
+  {
+   "row": 29,
+   "col": "EO",
+   "raw": "PL 한아름",
+   "unit": "EO21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "EU",
+   "raw": "CSS 김지안",
+   "unit": "EU21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "FA",
+   "raw": "Principal SIS 남선우",
+   "unit": "FA21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "FG",
+   "raw": "CRAII 서혜지",
+   "unit": "FG21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "FM",
+   "raw": "CRAII 현다영B",
+   "unit": "FM21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "FS",
+   "raw": "CRAII 김수홍",
+   "unit": "FS21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "FY",
+   "raw": "CRA II 윤다은",
+   "unit": "FY21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "GE",
+   "raw": "CRA 김아현",
+   "unit": "GE21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "GK",
+   "raw": "CRAII 이상윤",
+   "unit": "GK21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "GQ",
+   "raw": "CRA Intern 김우림",
+   "unit": "GQ21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "GW",
+   "raw": "CRA 박예진",
+   "unit": "GW21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "HC",
+   "raw": "CDMA 장두라",
+   "unit": "HC21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "HU",
+   "raw": "PLⅠ 이은주B",
+   "unit": "HU21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "IA",
+   "raw": "Sr.PL 김소미",
+   "unit": "IA21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "IG",
+   "raw": "PCRA 강민지",
+   "unit": "IG21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "IM",
+   "raw": "CRA 안나영",
+   "unit": "IM21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "IS",
+   "raw": "PCRA 이유림",
+   "unit": "IS21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "IY",
+   "raw": "MW  이시현",
+   "unit": "IY21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "JK",
+   "raw": "Sr.MW 최향기",
+   "unit": "JK21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "JW",
+   "raw": "Sr.MW  이정민",
+   "unit": "JW18",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "KC",
+   "raw": "PVA 안소연",
+   "unit": "KC21",
+   "flag": "퇴사예정"
+  },
+  {
+   "row": 29,
+   "col": "KI",
+   "raw": "PVA 전우석",
+   "unit": "KI21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "KO",
+   "raw": "Sr.DMA 이주홍",
+   "unit": "KO21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "LA",
+   "raw": "CDMA 변근영",
+   "unit": "LA21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "LG",
+   "raw": "DMA 최진영",
+   "unit": "LG21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "LS",
+   "raw": "Sr.CDMAⅡ 이주영",
+   "unit": "LS21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "LY",
+   "raw": "Sr.DMA 김영수",
+   "unit": "LY21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "ME",
+   "raw": "DMA 장우정",
+   "unit": "ME21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "MK",
+   "raw": "Sr.CDMA 박설희",
+   "unit": "MK21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "MW",
+   "raw": "Sr.BS 서수민",
+   "unit": "MW21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "NC",
+   "raw": "Sr.BS1 정재훈",
+   "unit": "NC21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "NI",
+   "raw": "Biostat 문채현",
+   "unit": "NI21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "NU",
+   "raw": "SPPM 박시진",
+   "unit": "NU21",
+   "flag": null
+  },
+  {
+   "row": 29,
+   "col": "OA",
+   "raw": "SP 김소진",
+   "unit": "OA21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "AU",
+   "raw": "SE 이달영",
+   "unit": "AU21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "BZ",
+   "raw": "BDA 신유나",
+   "unit": "BZ21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "CY",
+   "raw": "RAA 김하은",
+   "unit": "CY21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "DK",
+   "raw": "PL 김상숙 (부산)",
+   "unit": "DK21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "DQ",
+   "raw": "PL 박경석",
+   "unit": "DQ21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "DW",
+   "raw": "PL 이혜영",
+   "unit": "DW21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "EC",
+   "raw": "APD 조혜선",
+   "unit": "EC21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "EI",
+   "raw": "Sr.PL 최진희",
+   "unit": "EI21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "EO",
+   "raw": "PL 김민정C",
+   "unit": "EO21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "EU",
+   "raw": "CSS 최예지",
+   "unit": "EU21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "FA",
+   "raw": "Principal SIS 김희영",
+   "unit": "FA21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "FG",
+   "raw": "CRA 이채은",
+   "unit": "FG21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "FM",
+   "raw": "CRAII  김솔",
+   "unit": "FM21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "FS",
+   "raw": "CRA 김현지",
+   "unit": "FS21",
+   "flag": "퇴사예정"
+  },
+  {
+   "row": 30,
+   "col": "FY",
+   "raw": "Sr.CRA 최혜원",
+   "unit": "FY21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "GE",
+   "raw": "CRA 김유진B",
+   "unit": "GE21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "GK",
+   "raw": "Sr.CRA 장세민",
+   "unit": "GK21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "GW",
+   "raw": "CRA 박상언",
+   "unit": "GW21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "HC",
+   "raw": "Sr.CDMA 김효원",
+   "unit": "HC21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "HU",
+   "raw": "PLⅡ 이은경",
+   "unit": "HU21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "IA",
+   "raw": "PLⅠ 김영미",
+   "unit": "IA21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "IG",
+   "raw": "Sr.CRA 현예진",
+   "unit": "IG21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "IM",
+   "raw": "Sr.CRA 민병문",
+   "unit": "IM21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "IS",
+   "raw": "Sr.CRA 손민경",
+   "unit": "IS21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "KC",
+   "raw": "PV Intern 이예인",
+   "unit": "KC21",
+   "flag": "계약"
+  },
+  {
+   "row": 30,
+   "col": "KI",
+   "raw": "PVS 강수진",
+   "unit": "KI21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "KO",
+   "raw": "Sr.DMA 정우선",
+   "unit": "KO21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "LA",
+   "raw": "Sr.CDMA 한경우",
+   "unit": "LA21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "LG",
+   "raw": "Sr.DMA 임원영",
+   "unit": "LG21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "LY",
+   "raw": "Sr.DMAⅡ 박주연B",
+   "unit": "LY21",
+   "flag": null
+  },
+  {
+   "row": 30,
+   "col": "NC",
+   "raw": "Sr.BSⅡ 황영은",
+   "unit": "NC21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "AU",
+   "raw": "SE 이정현B",
+   "unit": "AU21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "DQ",
+   "raw": "PL 김설미",
+   "unit": "DQ21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "DW",
+   "raw": "PL 김나윤",
+   "unit": "DW21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "EC",
+   "raw": "PL 조정현",
+   "unit": "EC21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "EI",
+   "raw": "PL 이선진(부산)",
+   "unit": "EI21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "EO",
+   "raw": "PL 정유진B",
+   "unit": "EO21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "EU",
+   "raw": "CSS 이선호",
+   "unit": "EU21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "FA",
+   "raw": "SR.SIS 박경희",
+   "unit": "FA21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "FG",
+   "raw": "CRA II 김지훈",
+   "unit": "FG21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "FM",
+   "raw": "Sr.CRA 이영아",
+   "unit": "FM21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "FS",
+   "raw": "CRA 황은지",
+   "unit": "FS21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "FY",
+   "raw": "CRA 박성윤",
+   "unit": "FY21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "GE",
+   "raw": "CRA 최서현",
+   "unit": "GE21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "GK",
+   "raw": "인턴 김서희",
+   "unit": "GK21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "GW",
+   "raw": "Sr.CRA 박유리",
+   "unit": "GW21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "HC",
+   "raw": "CDMA 이예나",
+   "unit": "HC21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "IG",
+   "raw": "Sr.CRA 유애린",
+   "unit": "IG21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "IM",
+   "raw": "PCRA 배은비",
+   "unit": "IM21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "IS",
+   "raw": "CRAII 김경언",
+   "unit": "IS21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "KC",
+   "raw": "PVA 박석준",
+   "unit": "KC21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "KI",
+   "raw": "PVA 김민서B",
+   "unit": "KI21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "KO",
+   "raw": "DMA 이지은",
+   "unit": "KO21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "LA",
+   "raw": "Sr.CDMA 권유영",
+   "unit": "LA21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "LG",
+   "raw": "Sr.DMA 지성인",
+   "unit": "LG21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "LY",
+   "raw": "DMA 김수아",
+   "unit": "LY21",
+   "flag": null
+  },
+  {
+   "row": 31,
+   "col": "NC",
+   "raw": "Sr.BSⅠ 김은혜",
+   "unit": "NC21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "DQ",
+   "raw": "PL 조서희",
+   "unit": "DQ21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "DW",
+   "raw": "PL 김현선",
+   "unit": "DW21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "EC",
+   "raw": "PL 유희범",
+   "unit": "EC21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "EI",
+   "raw": "PL 김위리",
+   "unit": "EI21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "EO",
+   "raw": "PL 배수호",
+   "unit": "EO21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "EU",
+   "raw": "CSS 오수연",
+   "unit": "EU21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "FA",
+   "raw": "Principal SIS 안세진",
+   "unit": "FA21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "FG",
+   "raw": "CRA 이재관",
+   "unit": "FG21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "FM",
+   "raw": "CRAII 김준영",
+   "unit": "FM21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "FS",
+   "raw": "Sr.CRA 한지민",
+   "unit": "FS21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "FY",
+   "raw": "인턴 박윤주",
+   "unit": "FY21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "GE",
+   "raw": "인턴 임연서",
+   "unit": "GE21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "GK",
+   "raw": "인턴 박소혜",
+   "unit": "GK21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "GW",
+   "raw": "CRA 이나경B",
+   "unit": "GW21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "HC",
+   "raw": "Sr.CDMA 이은형",
+   "unit": "HC21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "IG",
+   "raw": "Sr.CRA 이나경",
+   "unit": "IG21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "IM",
+   "raw": "PCRA 박민서",
+   "unit": "IM21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "IS",
+   "raw": "CRAII 박현주",
+   "unit": "IS21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "LA",
+   "raw": "Sr.CDMAⅡ 강부옥",
+   "unit": "LA21",
+   "flag": null
+  },
+  {
+   "row": 32,
+   "col": "NC",
+   "raw": "BSPM 권예은",
+   "unit": "NC21",
+   "flag": null
+  },
+  {
+   "row": 33,
+   "col": "DQ",
+   "raw": "PL 원희주",
+   "unit": "DQ21",
+   "flag": null
+  },
+  {
+   "row": 33,
+   "col": "DW",
+   "raw": "PL 윤해미",
+   "unit": "DW21",
+   "flag": null
+  },
+  {
+   "row": 33,
+   "col": "EC",
+   "raw": "PL 변윤선",
+   "unit": "EC21",
+   "flag": null
+  },
+  {
+   "row": 33,
+   "col": "EI",
+   "raw": "PL 오아라",
+   "unit": "EI21",
+   "flag": null
+  },
+  {
+   "row": 33,
+   "col": "EO",
+   "raw": "PL 최신영",
+   "unit": "EO21",
+   "flag": null
+  },
+  {
+   "row": 33,
+   "col": "EU",
+   "raw": "CSS 김진희",
+   "unit": "EU21",
+   "flag": null
+  },
+  {
+   "row": 33,
+   "col": "FA",
+   "raw": "Principal SIS 권지윤",
+   "unit": "FA21",
+   "flag": null
+  },
+  {
+   "row": 33,
+   "col": "FG",
+   "raw": "인턴 맹유진",
+   "unit": "FG21",
+   "flag": null
+  },
+  {
+   "row": 33,
+   "col": "FM",
+   "raw": "CRAII 백승원",
+   "unit": "FM21",
+   "flag": null
+  },
+  {
+   "row": 33,
+   "col": "FS",
+   "raw": "인턴 이현준B",
+   "unit": "FS21",
+   "flag": null
+  },
+  {
+   "row": 33,
+   "col": "FY",
+   "raw": "인턴 조아라B",
+   "unit": "FY21",
+   "flag": null
+  },
+  {
+   "row": 33,
+   "col": "GW",
+   "raw": "CRA 권선정",
+   "unit": "GW21",
+   "flag": null
+  },
+  {
+   "row": 33,
+   "col": "HC",
+   "raw": "Sr.CDMA 박인선",
+   "unit": "HC21",
+   "flag": null
+  },
+  {
+   "row": 33,
+   "col": "IG",
+   "raw": "CRA 강예림",
+   "unit": "IG21",
+   "flag": null
+  },
+  {
+   "row": 33,
+   "col": "IM",
+   "raw": "CRA 변은민",
+   "unit": "IM21",
+   "flag": null
+  },
+  {
+   "row": 33,
+   "col": "IS",
+   "raw": "CRA 서예지",
+   "unit": "IS21",
+   "flag": null
+  },
+  {
+   "row": 33,
+   "col": "NC",
+   "raw": "Biostat 천승환",
+   "unit": "NC21",
+   "flag": null
+  },
+  {
+   "row": 34,
+   "col": "DQ",
+   "raw": "PL 김은애(부산)",
+   "unit": "DQ21",
+   "flag": null
+  },
+  {
+   "row": 34,
+   "col": "DW",
+   "raw": "PL 조미림(부산)",
+   "unit": "DW21",
+   "flag": null
+  },
+  {
+   "row": 34,
+   "col": "EC",
+   "raw": "PL 이라영",
+   "unit": "EC21",
+   "flag": null
+  },
+  {
+   "row": 34,
+   "col": "EI",
+   "raw": "APD 백선우",
+   "unit": "EI21",
+   "flag": null
+  },
+  {
+   "row": 34,
+   "col": "EO",
+   "raw": "PL 이시유",
+   "unit": "EO21",
+   "flag": null
+  },
+  {
+   "row": 34,
+   "col": "EU",
+   "raw": "CSS 김현경",
+   "unit": "EU21",
+   "flag": null
+  },
+  {
+   "row": 34,
+   "col": "FA",
+   "raw": "Principal SIS 권미연",
+   "unit": "FA21",
+   "flag": null
+  },
+  {
+   "row": 34,
+   "col": "FM",
+   "raw": "Sr.CRA 최유정",
+   "unit": "FM21",
+   "flag": null
+  },
+  {
+   "row": 34,
+   "col": "FS",
+   "raw": "CRA 한큰산",
+   "unit": "FS21",
+   "flag": null
+  },
+  {
+   "row": 34,
+   "col": "GW",
+   "raw": "인턴 김민식",
+   "unit": "GW21",
+   "flag": null
+  },
+  {
+   "row": 34,
+   "col": "HC",
+   "raw": "CDMA 주수연",
+   "unit": "HC21",
+   "flag": null
+  },
+  {
+   "row": 34,
+   "col": "IG",
+   "raw": "CRAⅡ 한수진",
+   "unit": "IG21",
+   "flag": null
+  },
+  {
+   "row": 34,
+   "col": "IS",
+   "raw": "PCRA 김성주",
+   "unit": "IS21",
+   "flag": null
+  },
+  {
+   "row": 34,
+   "col": "NC",
+   "raw": "Sr.BSⅡ 장수정",
+   "unit": "NC21",
+   "flag": null
+  },
+  {
+   "row": 35,
+   "col": "DQ",
+   "raw": "PL 김정선",
+   "unit": "DQ21",
+   "flag": null
+  },
+  {
+   "row": 35,
+   "col": "DW",
+   "raw": "PL 전선미",
+   "unit": "DW21",
+   "flag": null
+  },
+  {
+   "row": 35,
+   "col": "EC",
+   "raw": "PL 양혜림",
+   "unit": "EC21",
+   "flag": null
+  },
+  {
+   "row": 35,
+   "col": "EI",
+   "raw": "Sr.PL 이혜린",
+   "unit": "EI21",
+   "flag": null
+  },
+  {
+   "row": 35,
+   "col": "EO",
+   "raw": "PL 이스라",
+   "unit": "EO21",
+   "flag": null
+  },
+  {
+   "row": 35,
+   "col": "FA",
+   "raw": "SIS 신희지",
+   "unit": "FA21",
+   "flag": null
+  },
+  {
+   "row": 35,
+   "col": "FM",
+   "raw": "CRA 유지호",
+   "unit": "FM21",
+   "flag": null
+  },
+  {
+   "row": 35,
+   "col": "GW",
+   "raw": "인턴 김지수",
+   "unit": "GW21",
+   "flag": null
+  },
+  {
+   "row": 36,
+   "col": "DQ",
+   "raw": "PL 윤예림",
+   "unit": "DQ21",
+   "flag": null
+  },
+  {
+   "row": 36,
+   "col": "EC",
+   "raw": "PL 김선경",
+   "unit": "EC21",
+   "flag": null
+  },
+  {
+   "row": 36,
+   "col": "EO",
+   "raw": "Sr.PL 정세연",
+   "unit": "EO21",
+   "flag": null
+  },
+  {
+   "row": 36,
+   "col": "FM",
+   "raw": "인턴 이태영",
+   "unit": "FM21",
+   "flag": null
+  },
+  {
+   "row": 37,
+   "col": "DQ",
+   "raw": "PL 박승혜",
+   "unit": "DQ21",
+   "flag": null
+  },
+  {
+   "row": 191,
+   "col": "C",
+   "raw": "Human Resources Associate",
+   "unit": "E21",
+   "flag": null
+  }
+ ]
+}

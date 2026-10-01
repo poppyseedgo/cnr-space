@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>조직도 캔버스 — 조직 트리 뷰(기본)</title>
+<style>
+:root{--ink:#1a1a1a;--quiet:#6b7280;--line:#d9dce3;--bg:#f6f6f6;--card:#fff;--teal:#0d9488;--amber:#d97706;--purple:#7c3aed;--gray:#9ca3af;--red:#dc2626;--drop:#2563eb}
+*{box-sizing:border-box}body{margin:0;font:13px/1.45 -apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;color:var(--ink);background:var(--bg)}
+.app{display:grid;grid-template-rows:56px 1fr;height:100vh;min-height:760px}
+.hdr{display:flex;align-items:center;gap:12px;padding:0 20px;background:#fff;border-bottom:1px solid var(--line)}
+.hdr h1{font-size:15px;margin:0}.tag{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--quiet)}
+.tag.draft{background:#eef2ff;border-color:#c7d2fe;color:#3730a3}
+.lock{font-size:11.5px;color:var(--amber);margin-left:8px}.sp{flex:1}.saved{font-size:11.5px;color:var(--quiet)}
+.btn{font-size:12px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:#fff}.btn.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+.body{display:grid;grid-template-columns:280px 1fr;overflow:hidden}
+.side{background:#fff;border-right:1px solid var(--line)}
+.tabs{display:flex;border-bottom:1px solid var(--line)}.tabs div{flex:1;text-align:center;padding:10px 0;font-size:12.5px;color:var(--quiet)}.tabs .on{color:var(--ink);font-weight:600;box-shadow:inset 0 -2px var(--ink)}
+.stree{padding:12px 14px;font-size:12.5px}.stree div{padding:5px 0 5px var(--d,0);display:flex;justify-content:space-between}.stree small{color:var(--quiet)}.stree .cur{font-weight:600}
+.main{position:relative;overflow:hidden;display:flex;flex-direction:column}
+.filters{display:flex;gap:8px;align-items:center;padding:12px 20px;background:#fff;border-bottom:1px solid var(--line)}.filters input{flex:0 0 220px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;font-size:12.5px}
+.chip{font-size:11.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--quiet)}.chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.sel{font-size:11.5px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--quiet)}
+.seg{margin-left:auto;display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}.seg div{padding:6px 10px;font-size:12px;color:var(--quiet);background:#fff}.seg .on{background:var(--ink);color:#fff}
+.canvas{flex:1;overflow:auto;padding:28px 40px 60px}
+.legend{display:flex;gap:14px;font-size:11px;color:var(--quiet);margin:0 0 16px}.legend b{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+/* tree */
+.tree ul{display:flex;justify-content:center;padding:0;margin:0;position:relative}
+.tree li{list-style:none;position:relative;padding:28px 10px 0;display:flex;flex-direction:column;align-items:center}
+.tree li::before,.tree li::after{content:"";position:absolute;top:0;right:50%;width:50%;height:28px;border-top:1.5px solid var(--gray)}
+.tree li::after{right:auto;left:50%;border-left:1.5px solid var(--gray)}
+.tree li:first-child::before{border:0}.tree li:last-child::after{border-top:0}
+.tree li:only-child::after{border-top:0}.tree li:only-child{padding-top:28px}
+.tree > ul > li{padding-top:0}.tree > ul > li::before,.tree > ul > li::after{display:none}
+.tree li > ul{padding-top:0}.tree li > ul::before{content:"";position:absolute;top:0;left:50%;height:0;border-left:0}
+.node-wrap{position:relative;display:flex;flex-direction:column;align-items:center}
+.node-wrap.has-kids::after{content:"";width:0;height:28px;border-left:1.5px solid var(--gray);display:block}
+.node{width:212px;border:1px solid var(--line);border-radius:10px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.node.root{width:232px}.node.div{border-color:#c7cdd8}.node.drop{outline:2px solid var(--drop);outline-offset:2px}
+.nh{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--line);font-weight:600;font-size:12.5px;cursor:grab}
+.nh small{color:var(--quiet);font-weight:400;margin-left:auto}.nh .tg{font-size:10px;color:var(--quiet);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.nh .warn{width:8px;height:8px;border-radius:50%;background:var(--amber)}
+.stack{padding:8px;display:flex;flex-direction:column;gap:6px}
+.card{border:1px solid var(--line);border-radius:7px;background:var(--card);padding:7px 8px;display:grid;grid-template-columns:28px 1fr;column-gap:8px;align-items:center;position:relative}
+.card.lead{border-color:var(--ink);background:#fafafa}.card.vac{border-style:dashed;background:transparent}.card.dim{opacity:.35}
+.av{width:28px;height:28px;border-radius:50%;background:#e5e7eb;position:relative}.av i{position:absolute;left:-3px;top:-3px;width:10px;height:10px;border-radius:50%;border:2px solid #fff}
+.nm{font-weight:600;font-size:12.5px;display:flex;gap:6px;align-items:center}.nm s{color:var(--gray);font-weight:400}.nm .h{font-size:9.5px;border:1px solid var(--ink);border-radius:3px;padding:0 3px;font-weight:500}
+.jt{font-size:11px;color:var(--quiet)}
+.lb{grid-column:1/-1;font-size:10px;padding:1px 6px;border-radius:4px;width:fit-content;margin-top:2px;display:inline-flex;gap:6px}
+.lb.teal{background:#ccfbf1;color:#115e59}.lb.amber{background:#fef3c7;color:#92400e}.lb.purple{background:#ede9fe;color:#5b21b6}.lb.gray{background:#f3f4f6;color:#4b5563}.lb.red{background:#fee2e2;color:#991b1b}
+.rank{font-size:10px;color:var(--quiet);padding:4px 0 0 2px;border-top:1px dashed var(--line);margin-top:2px}
+.more{font-size:11px;color:var(--quiet);text-align:center;padding:4px;border:1px dashed var(--line);border-radius:6px}
+.collapsed .stack{display:none}.collapsed .nh{border-bottom:0}
+.ghost{position:absolute;left:150px;top:520px;width:196px;transform:rotate(-2deg);box-shadow:0 8px 24px rgba(0,0,0,.18);opacity:.95;pointer-events:none}
+.tip{position:absolute;left:360px;top:500px;font-size:11px;background:var(--ink);color:#fff;padding:4px 8px;border-radius:4px}
+.zoom{position:absolute;right:20px;bottom:20px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.zoom .z{display:flex;border:1px solid var(--line);border-radius:6px;background:#fff;overflow:hidden}.zoom .z div{padding:5px 10px;font-size:12px;border-left:1px solid var(--line)}.zoom .z div:first-child{border:0}
+.mini{width:180px;height:100px;background:#fff;border:1px solid var(--line);border-radius:6px;position:relative;overflow:hidden}
+.mini::before{content:"";position:absolute;inset:14px 24px;background:repeating-linear-gradient(90deg,#e5e7eb 0 22px,transparent 22px 30px)}
+.mini .vp{position:absolute;left:40px;top:20px;width:70px;height:56px;border:1.5px solid var(--drop);background:rgba(37,99,235,.08)}
+</style></head><body><div class="app">
+<div class="hdr"><h1>2026-10 조직개편(안)</h1><span class="tag draft">초안</span><span class="tag">적용일 2026-10-01</span><span class="lock">● 고지 편집 중</span><span class="sp"></span><span class="saved">자동 저장됨 14:05</span><button class="btn">검증 (3)</button><button class="btn">히스토리</button><button class="btn">내보내기</button><button class="btn">복사</button><button class="btn pri">Active 지정</button></div>
+<div class="body">
+<div class="side"><div class="tabs"><div class="on">단위 트리</div><div>미배치 <span style="color:var(--red)">2</span></div></div>
+<div class="stree">
+<div><span>▾ C&amp;R Research</span><small>524</small></div>
+<div style="--d:14px"><span class="cur">▾ CO</span><small>79</small></div>
+<div style="--d:28px"><span class="cur">▾ CO1</span><small>24</small></div>
+<div style="--d:42px"><span class="cur">CO1-1</span><small>11</small></div>
+<div style="--d:42px"><span>CO1-2</span><small>13</small></div>
+<div style="--d:28px"><span>▸ CO2</span><small>26</small></div>
+<div style="--d:28px"><span>▸ CO3</span><small>29</small></div>
+<div style="--d:14px"><span>▸ RWO</span><small>69</small></div>
+<div style="--d:14px"><span>▸ DM</span><small>58</small></div>
+<div style="--d:14px"><span>▸ CTM</span><small>47</small></div>
+<div style="--d:14px"><span>▸ Biostatistics</span><small style="color:var(--red)">27 · 불일치 5</small></div>
+<div style="--d:14px"><span>▸ Medical</span><small>27</small></div>
+<div style="--d:14px"><span>▸ MS</span><small>12</small></div>
+<div style="padding-top:14px;color:var(--quiet);font-size:11.5px">패널 클릭 = 캔버스 해당 노드로 스크롤·펼침</div>
+</div></div>
+
+<div class="main">
+<div class="filters"><input placeholder="이름·직무 검색"><span class="chip on">전체</span><span class="chip">입사예정 1</span><span class="chip">퇴사예정 1</span><span class="chip">휴직 1</span><span class="chip">휴가 1</span><span class="chip">공석 1</span><span class="sel">펼침 깊이: 팀 ▾</span><div class="seg"><div class="on">조직 트리</div><div>단위별 리스트</div></div></div>
+<div class="canvas">
+<div class="legend"><span><b style="background:#ccfbf1"></b>입사 예정</span><span><b style="background:#fef3c7"></b>퇴사 예정</span><span><b style="background:#ede9fe"></b>휴직</span><span><b style="background:#f3f4f6"></b>휴가</span><span><b style="background:#fee2e2"></b>퇴사 완료</span><span><b style="border:1px dashed var(--gray);background:transparent"></b>공석(TO)</span><span><b style="background:var(--amber);border-radius:50%"></b>Azure Division 불일치</span><span style="margin-left:auto">노드 헤더 드래그 = 단위 이동 · 카드 드래그 = 소속 변경 · 헤더 클릭 = 접기/펼침</span></div>
+
+<div class="tree"><ul><li>
+ <div class="node-wrap has-kids"><div class="node root"><div class="nh">C&amp;R Research <small>524명</small></div><div class="stack"><div class="card lead"><div class="av"></div><div><div class="nm">대표OO <span class="h">CEO</span></div><div class="jt">대표이사</div></div></div><div class="card"><div class="av"></div><div><div class="nm">임원OO</div><div class="jt">COO</div></div></div></div></div></div>
+ <ul>
+  <li><div class="node-wrap"><div class="node div collapsed"><div class="nh">▸ RWO <small>69</small></div></div></div></li>
+  <li><div class="node-wrap"><div class="node div collapsed"><div class="nh">▸ DM <small>58</small></div></div></div></li>
+  <li>
+   <div class="node-wrap has-kids"><div class="node div"><div class="nh">▾ CO <span class="tg">Division</span><small>79</small></div><div class="stack"><div class="card lead"><div class="av"></div><div><div class="nm">본부장OO <span class="h">단위장</span></div><div class="jt">상무 · Head of CO</div></div></div></div></div></div>
+   <ul>
+    <li>
+     <div class="node-wrap has-kids"><div class="node"><div class="nh">▾ CO1 <small>24</small></div><div class="stack"><div class="card lead"><div class="av"></div><div><div class="nm">팀장OO <span class="h">단위장</span></div><div class="jt">이사 · CO1 Lead</div></div></div></div></div></div>
+     <ul>
+      <li><div class="node-wrap"><div class="node drop"><div class="nh">▾ CO1-1 <small>11</small></div><div class="stack">
+        <div class="card lead"><div class="av"></div><div><div class="nm">김OO <span class="h">단위장</span></div><div class="jt">이사 · Clinical Ops Lead</div></div></div>
+        <div class="rank">부장</div>
+        <div class="card"><div class="av"><i style="background:var(--amber)"></i></div><div><div class="nm">이OO</div><div class="jt">부장 · Sr. CRA Manager</div></div><span class="lb amber">퇴사 예정 10/31 <span>체크리스트 3/8</span></span></div>
+        <div class="card"><div class="av"></div><div><div class="nm">박OO</div><div class="jt">부장 · CRA Manager</div></div><span class="nh warn" style="position:absolute;right:8px;top:8px;padding:0;border:0" title="Azure dept: CO 2"></span></div>
+        <div class="rank">과장</div>
+        <div class="card"><div class="av"><i style="background:var(--purple)"></i></div><div><div class="nm">최OO</div><div class="jt">과장 · Sr. CRA</div></div><span class="lb purple">휴직·육아 <span>복귀 2027-03-02</span></span></div>
+        <div class="card"><div class="av"></div><div><div class="nm">정OO</div><div class="jt">과장 · Sr. CRA</div></div><span class="lb gray">휴가 10/06 ~ 10/10</span></div>
+        <div class="card"><div class="av"></div><div><div class="nm">강OO</div><div class="jt">과장 · CRA</div></div></div>
+        <div class="rank">대리·사원</div>
+        <div class="card"><div class="av"></div><div><div class="nm">한OO</div><div class="jt">대리 · CRA</div></div></div>
+        <div class="card"><div class="av"><i style="background:var(--teal)"></i></div><div><div class="nm">신OO</div><div class="jt">사원 · CRA</div></div><span class="lb teal">입사 예정 2026-10-13</span></div>
+        <div class="card vac"><div class="av" style="background:transparent;border:1px dashed var(--gray)"></div><div><div class="nm" style="color:var(--quiet)">공석</div><div class="jt">사원 · CTA</div></div><span class="lb gray">TO · 채용 진행</span></div>
+        <div class="card"><div class="av"></div><div><div class="nm"><s>오OO</s></div><div class="jt">사원 · CTA</div></div><span class="lb red">퇴사 완료 09/30</span></div>
+      </div></div></div></li>
+      <li><div class="node-wrap"><div class="node"><div class="nh">▾ CO1-2 <small>13</small></div><div class="stack">
+        <div class="card lead"><div class="av"></div><div><div class="nm">윤OO <span class="h">단위장</span></div><div class="jt">부장 · CRA Manager</div></div></div>
+        <div class="rank">과장</div>
+        <div class="card"><div class="av"></div><div><div class="nm">서OO</div><div class="jt">과장 · Sr. CRA</div></div></div>
+        <div class="card"><div class="av"></div><div><div class="nm">장OO</div><div class="jt">과장 · Sr. CRA</div></div></div>
+        <div class="more">외 10명 더보기</div>
+      </div></div></div></li>
+     </ul>
+    </li>
+    <li><div class="node-wrap"><div class="node collapsed"><div class="nh">▸ CO2 <small>26</small></div></div></div></li>
+    <li><div class="node-wrap"><div class="node collapsed"><div class="nh">▸ CO3 <small>29</small></div></div></div></li>
+   </ul>
+  </li>
+  <li><div class="node-wrap"><div class="node div collapsed"><div class="nh">▸ CTM <small>47</small></div></div></div></li>
+  <li><div class="node-wrap"><div class="node div collapsed"><div class="nh">▸ Biostatistics <span class="warn"></span><small>27</small></div></div></div></li>
+  <li><div class="node-wrap"><div class="node div collapsed"><div class="nh">▸ Medical <small>27</small></div></div></div></li>
+  <li><div class="node-wrap"><div class="node div collapsed"><div class="nh">▸ MS <small>12</small></div></div></div></li>
+ </ul>
+</li></ul></div>
+
+<div class="ghost card"><div class="av"></div><div><div class="nm">한OO</div><div class="jt">대리 · CRA</div></div></div>
+<div class="tip">드롭 → CO1-1 로 소속 변경</div>
+</div>
+<div class="zoom"><div class="z"><div>−</div><div>80%</div><div>+</div><div>맞춤</div></div><div class="mini"><div class="vp"></div></div></div>
+</div></div></div></body></html>
