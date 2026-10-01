@@ -1,9 +1,13 @@
 // @ts-nocheck
 /**
- * sync-all-users Edge Function v8
+ * sync-all-users Edge Function v9
  * Microsoft Graph API User.Read.All (Application 권한)
  *
  * ✅ 변경 이력
+ *  - v9 [2026-10-01] 조직도 입사예정자 연결 후크 (20261006_org_phase2 짝 배포)
+ *      · 신규 profiles INSERT 직후, 삽입된 이메일마다 RPC org_link_planned_person(p_email) 1회 호출
+ *        → 조직도 입사예정자(org_persons)와 이메일이 일치하면 전 파일 카드 profile_id 백필 + 입사예정 상태 종료
+ *      · 실패해도 sync 는 계속한다(조직도는 보조 시스템 — console.error 만). 반환값에 orgLinked 수 추가
  *  - v8 [2026-07-30] 퇴사 파이프라인 일원화 + 휴직 상태 연동 (20260735 짝 배포)
  *      · 변경 1: processDeparted/cancelFutureBookings 제거 →
  *               _shared/departure.ts executeDeparture (process_departure RPC 경유)
@@ -179,7 +183,7 @@ async function syncProfiles(
   existingEmails: Set<string>,
   authEmailMap: Map<string, string>,
   recentDeparted: Set<string>, // ← [v8] 최근 14일 퇴사자 — 재부활 가드
-): Promise<{ inserted: number; updated: number; skipped: number }> {
+): Promise<{ inserted: number; updated: number; skipped: number; orgLinked: number }> { // ← [v9] orgLinked
 
   const rows = azUsers
     .map(u => ({
@@ -218,6 +222,23 @@ async function syncProfiles(
     if (!res.ok) throw new Error(`profiles INSERT 실패 (${res.status}): ${await res.text()}`)
   }
 
+  // ← [v9 2026-10-01] 조직도 입사예정자 연결 — 삽입된 이메일마다 RPC 1회 (실패해도 sync 중단 없음)
+  let orgLinked = 0
+  for (const r of toInsert) {
+    try {
+      const rpc = await fetch(`${SUPABASE_URL}/rest/v1/rpc/org_link_planned_person`, {
+        method:  'POST',
+        headers: { ...sbHeaders, 'Prefer': 'return=representation' },
+        body:    JSON.stringify({ p_email: r.email }),
+      })
+      if (!rpc.ok) { console.error(`[sync][org] 연결 RPC 실패 (${r.email}):`, await rpc.text()); continue }
+      const out = await rpc.json()
+      if (out?.linked) { orgLinked++; console.log(`[sync][org] 입사예정자 연결 (${r.email})`, JSON.stringify(out)) }
+    } catch (e) {
+      console.error(`[sync][org] 연결 RPC 예외 (${r.email}):`, e)
+    }
+  }
+
   // 기존 PATCH — name, employee_id, dept(있을 때만)
   const toUpdate = rows.filter(r => existingEmails.has(r.email))
   for (const row of toUpdate) {
@@ -241,7 +262,7 @@ async function syncProfiles(
     if (!res.ok) console.error(`[sync] PATCH 실패 (${row.email}):`, await res.text())
   }
 
-  return { inserted: toInsert.length, updated: toUpdate.length, skipped: azUsers.length - rows.length }
+  return { inserted: toInsert.length, updated: toUpdate.length, skipped: azUsers.length - rows.length, orgLinked } // ← [v9] orgLinked
 }
 
 // ── 프로필 사진 동기화 ───────────────────────────────────────────────────────
@@ -414,7 +435,7 @@ Deno.serve(async (req) => {
 
     // 6. 신규/기존 직원 처리 (← [v8] 재부활 가드 전달)
     const recentDeparted = await fetchRecentDepartedEmails()
-    const { inserted, updated, skipped } = await syncProfiles(azUsers, existingEmails, authEmailMap, recentDeparted)
+    const { inserted, updated, skipped, orgLinked } = await syncProfiles(azUsers, existingEmails, authEmailMap, recentDeparted) // ← [v9] orgLinked
 
     // 7. 프로필 사진 동기화 (avatar_url 없는 계정만, 최대 50명)
     const avatarResult = await syncAvatars(azUsers, profiles, token)
@@ -423,6 +444,7 @@ Deno.serve(async (req) => {
       success: true,
       total:   azUsers.length,
       inserted, updated, skipped,
+      orgLinked,                                   // ← [v9 2026-10-01] 조직도 입사예정자 연결 수
       departed:          departed.length,
       cancelledBookings: cancelledCount,
       avatar:            avatarResult,
