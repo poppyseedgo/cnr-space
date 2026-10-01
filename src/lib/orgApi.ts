@@ -423,3 +423,18 @@ export async function undoOrgPeek(fileId: string): Promise<OrgUndoPeek> {
   if (error) throw new Error(error.message)
   return data as OrgUndoPeek
 }
+
+// ─── [Phase 7] 노드 캔버스 배치 (org_unit_layout · 20261013) ───
+export async function loadOrgLayout(fileId: string): Promise<Map<string, { x: number; y: number }>> {
+  if (!isSupabaseEnabled) return new Map()
+  const { data, error } = await supabase.from('org_unit_layout').select('unit_id, x, y').eq('file_id', fileId)
+  if (error) throw new Error(error.message)
+  return new Map((data ?? []).map((r: any) => [r.unit_id as string, { x: Number(r.x), y: Number(r.y) }]))
+}
+/** 묶음 upsert — 초안만. 로그 없음(되돌리기 대상 아님) */
+export async function saveOrgLayout(fileId: string, items: { unit_id: string; x: number; y: number }[]): Promise<number> {
+  if (!items.length) return 0
+  const { data, error } = await supabase.rpc('org_save_layout', { p_file_id: fileId, p_items: items })
+  if (error) throw new Error(error.message)
+  return data as number
+}

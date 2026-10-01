@@ -24,6 +24,7 @@ import {
   loadOrgDisplayNames, setOrgDisplayName,   // ← [Phase 5]
   setOrgCardHidden, swapOrgPrimaryCard,     // ← [Phase 5-B]
   ensureOrgBench, moveOrgCards, splitOrgUnit, mergeOrgUnit, undoOrgLast, undoOrgPeek, type OrgUndoPeek,   // ← [Phase 6]
+  loadOrgLayout, saveOrgLayout,   // ← [Phase 7]
   type OrgCodes, type OrgFileBundle, type OrgOffboardingTemplate,
 } from '../../lib/orgApi'
 import { orgErrorMessage, orgPersonView, orgStatusBadge, orgExportRows, orgDepartedInfo, isCardHidden, todayKST, descendantIds, splitBench, type OrgDepartedInfo } from '../../utils/orgStatus'
@@ -69,6 +70,8 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   const [codesOpen, setCodesOpen] = useState(false)   // ← [Phase 4-B] 패널 E
   const [displayNames, setDisplayNames] = useState<Map<string, OrgDisplayName>>(new Map())   // ← [Phase 5]
   const [undo, setUndo] = useState<OrgUndoPeek | null>(null)   // ← [Phase 6] 되돌리기 가능 여부
+  const [layout, setLayout] = useState<Map<string, { x: number; y: number }>>(new Map())   // ← [Phase 7] 노드 캔버스 배치
+  const layoutQueue = useRef<Map<string, { x: number; y: number }>>(new Map()); const layoutTimer = useRef<number | null>(null)
   const myName = useMemo(() => users.find(u => u.user_id === currentUserId)?.name ?? '관리자', [users, currentUserId])
   const [modal, setModal]       = useState<null | { kind: 'new' } | { kind: 'copy'; src: OrgFileSummary | { id: string; name: string } } | { kind: 'meta' } | { kind: 'unit-new'; parentId: string | null } | { kind: 'unit-rename'; unit: OrgUnit } | { kind: 'unit-move'; unit: OrgUnit } | { kind: 'vacancy'; unitId: string } | { kind: 'person-new'; unitId: string }
     | { kind: 'cards-move'; cardIds: string[] } | { kind: 'split'; cardIds: string[] } | { kind: 'unit-merge'; unit: OrgUnit }>(null)   // ← [Phase 6]
@@ -137,6 +140,7 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
         if (dead) return
         if (!b) { showToast('조직도 파일을 찾을 수 없습니다.'); goGallery(); return }
         setBundle(b); setSelectedCard(null)
+        loadOrgLayout(fileId).then(l => !dead && setLayout(l)).catch(() => setLayout(new Map()))   // [Phase 7]
         rosterCheck(fileId).then(r => !dead && setRoster(r)).catch(() => {})
         if (b.file.status === 'draft') {
           try {
@@ -205,6 +209,18 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   const onToBench = async (cardIds: string[]) => { try { await onDropCards(cardIds, await benchId()) } catch (e) { fail(e) } }
   const onDetachUnit = async (u: OrgUnit) => {
     try { const bid = await benchId(); await updateOrgUnit(u.id, { parent_unit_id: bid, sort_order: bundle!.units.filter(x => x.parent_unit_id === bid).length }); await mergeUnit(u.id); refreshRoster(); showToast(`'${u.name}' 을(를) 작업대로 떼어냈습니다 — 되돌리기 가능`) } catch (e) { fail(e) }
+  }
+  // [Phase 7] 배치 저장 — 300ms 디바운스로 묶어 RPC 1회. 로컬 맵은 즉시 갱신(재진입 시 동일 배치)
+  const onSaveLayout = (items: { unit_id: string; x: number; y: number }[]) => {
+    if (!bundle || !editable) return
+    for (const it of items) layoutQueue.current.set(it.unit_id, { x: it.x, y: it.y })
+    setLayout(prev => { const n = new Map(prev); for (const it of items) n.set(it.unit_id, { x: it.x, y: it.y }); return n })
+    if (layoutTimer.current) window.clearTimeout(layoutTimer.current)
+    const fid = bundle.file.id
+    layoutTimer.current = window.setTimeout(async () => {
+      const batch = [...layoutQueue.current].map(([unit_id, v]) => ({ unit_id, ...v })); layoutQueue.current.clear()
+      try { await saveOrgLayout(fid, batch) } catch (e) { fail(e, '배치 저장에 실패했습니다.') }
+    }, 300)
   }
   const onUndo = async () => {
     if (!bundle) return
@@ -424,7 +440,8 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
                    onAddVacancy={unitId => setModal({ kind: 'vacancy', unitId })} onOutdentUnit={onOutdentUnit} onIndentUnit={onIndentUnit} onMoveUnitTo={onMoveUnitTo}
                    onDropCard={onDropCard} onDropUnit={onDropUnit} onDropProfile={onDropProfile}
                    onDropCards={onDropCards} onToBench={onToBench} onMoveCardsTo={ids => setModal({ kind: 'cards-move', cardIds: ids })} onSplitCards={ids => setModal({ kind: 'split', cardIds: ids })}
-                   onDetachUnit={onDetachUnit} onMergeUnit={u => setModal({ kind: 'unit-merge', unit: u })} onUndo={onUndo} undo={undo} />
+                   onDetachUnit={onDetachUnit} onMergeUnit={u => setModal({ kind: 'unit-merge', unit: u })} onUndo={onUndo} undo={undo}
+                   layout={layout} onSaveLayout={onSaveLayout} />
       ) : fileId ? (
         <div style={{ padding: 40, color: OG.quiet, fontFamily: OG.font }}>불러오는 중…</div>
       ) : (

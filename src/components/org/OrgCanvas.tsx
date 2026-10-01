@@ -1,5 +1,6 @@
 /**
  * OrgCanvas.tsx — 화면 B: 파일 상세(헤더 + 좌측 패널 + 조직 트리/단위별 리스트 + 줌)
+ *  - [2026-10-01 ORG Phase 7-C] 뷰 3종: 조직 트리(고정·자동 레이아웃) / 노드 캔버스(OrgFlowCanvas, 자유 배치·org_unit_layout) / 단위별 리스트. 패널 클릭·검색은 뷰에 맞게 이동
  *  - [2026-10-01 ORG Phase 6-b] 작업대 = 캔버스 우상단 플로팅 트레이(반투명·접기/펼치기·드롭 대상). 트리 끝 루트가 아니라 어디서든 끌어다 놓고 꺼내 붙인다
  *  - [2026-10-01 ORG] 줌: 트랙패드 핀치 / Ctrl·⌘ + 휠 = 확대·축소(30%~200%, 비passive 리스너로 브라우저 페이지 줌 차단) · 일반 휠 = 스크롤
  *  - [2026-10-01 ORG Phase 6] 다중 선택(선택 모드 토글 · Ctrl/⌘ 클릭 토글 · Shift 클릭 범위) + 하단 액션 바(작업대로 · 이동… · 새 단위로 분리… · 해제) · 되돌리기 버튼 · 작업대 노드 (설계서 §13)
@@ -12,6 +13,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent }
 import type { AppUser, OrgCard, OrgFile, OrgJob, OrgRank, OrgRosterCheck, OrgStatusCategory, OrgStatusType, OrgUnit } from '../../types'
 import { buildUnitTree, cardPersonKey, descendantIds, primaryJob, sortCards, type OrgBadgeSpec, type OrgDepartedInfo, type OrgPersonView, type OrgUnitNode } from '../../utils/orgStatus'
 import { OrgTree, DND, type TreeDropHandlers } from './OrgTree'
+import { OrgFlowCanvas, type OrgLayoutItem } from './OrgFlowCanvas'
 import type { OrgUndoPeek } from '../../lib/orgApi'
 import { OrgUnitPanel } from './OrgUnitPanel'
 import { OrgCardView } from './OrgCardView'
@@ -68,6 +70,9 @@ interface Props extends CanvasActions {
   isHidden:     (c: OrgCard) => boolean
   /** [Phase 6] 되돌리기 가능 여부(org_undo_peek) — OrgAdminPanel 이 변경마다 갱신 */
   undo?:        OrgUndoPeek | null
+  /** [Phase 7] 노드 캔버스 배치(org_unit_layout) + 저장 */
+  layout?:      Map<string, { x: number; y: number }>
+  onSaveLayout?: (items: OrgLayoutItem[]) => void
 }
 
 export function OrgCanvas(p: Props) {
@@ -117,7 +122,8 @@ export function OrgCanvas(p: Props) {
   }, [full])
   useEffect(() => { document.body.style.overflow = full ? 'hidden' : ''; return () => { document.body.style.overflow = '' } }, [full])
   const [roHint, setRoHint] = useState(false)   // 읽기 전용에서 더블클릭 시 헤더 안내 강조
-  const [view, setView] = useState<'tree' | 'list'>('tree')
+  const [view, setView] = useState<'tree' | 'flow' | 'list'>(editable ? 'flow' : 'tree')   // 초안 = 노드 캔버스, 읽기 전용 = 고정 트리
+  const [focusTick, setFocusTick] = useState(0)
   const [filter, setFilter] = useState<OrgFilter>('all')
   const [q, setQ] = useState('')
   const [zoom, setZoom] = useState(1)
@@ -127,6 +133,7 @@ export function OrgCanvas(p: Props) {
   useEffect(() => {
     const el = bodyRef.current; if (!el) return
     const onWheel = (e: WheelEvent) => {
+      if (view !== 'tree') return   // 노드 캔버스는 React Flow 가 줌 처리
       if (!(e.ctrlKey || e.metaKey)) return
       e.preventDefault()
       const factor = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.04 : 0.0015))   // 핀치/휠 모두 비례 배율
@@ -152,14 +159,16 @@ export function OrgCanvas(p: Props) {
     const path: string[] = []; let cur = units.find(u => u.id === c.unit_id)
     while (cur) { path.push(cur.id); cur = cur.parent_unit_id ? units.find(u => u.id === cur!.parent_unit_id) : undefined }
     setExpanded(prev => new Set([...prev, ...path]))
-    setView('tree'); if (benchIds.has(c.unit_id)) setBenchOpen(true)
+    if (view === 'list') setView('tree')
+    if (benchIds.has(c.unit_id)) setBenchOpen(true)
+    if (view === 'flow' && !benchIds.has(c.unit_id)) { setFocusUnit(c.unit_id); setFocusTick(t => t + 1) }   // 노드 캔버스: 노드 가운데로(React Flow setCenter)
     let tries = 0
     const scroll = () => {
       const el = rootRef.current?.querySelector<HTMLElement>(`[data-card-id="${c.id}"]`)
-      if (el) { el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' }); el.animate([{ boxShadow: `0 0 0 4px ${OG.amber}` }, { boxShadow: '0 0 0 0 transparent' }], { duration: 1200 }) }
+      if (el) { if (view !== 'flow' || benchIds.has(c.unit_id)) el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' }); el.animate([{ boxShadow: `0 0 0 4px ${OG.amber}` }, { boxShadow: '0 0 0 0 transparent' }], { duration: 1200 }) }
       else if (tries++ < 10) requestAnimationFrame(scroll)
     }
-    requestAnimationFrame(scroll)
+    window.setTimeout(() => requestAnimationFrame(scroll), view === 'flow' ? 450 : 0)
   }
   useEffect(() => { if (!q.trim()) { setHitIdx(0); return } const t = window.setTimeout(() => goHit(0), 300); return () => window.clearTimeout(t) }, [q, hits.length])  // eslint-disable-line react-hooks/exhaustive-deps
   const [panelOpen, setPanelOpen] = useState(true)   // [5-C] 좌측 패널 접기 — 캔버스 폭 확보
@@ -233,11 +242,12 @@ export function OrgCanvas(p: Props) {
 
   // 패널 클릭 → 해당 노드 펼치고 스크롤 ([5-C] 실제 스크롤 — data-unit-id 로 노드를 찾아 가운데로)
   const focusOn = (id: string) => {
-    setFocusUnit(id); setView('tree')
+    setFocusUnit(id); setFocusTick(t => t + 1); if (view === 'list') setView('tree')
     const path: string[] = []; let cur = units.find(u => u.id === id)
     while (cur?.parent_unit_id) { path.push(cur.parent_unit_id); cur = units.find(u => u.id === cur!.parent_unit_id) }
     setExpanded(prev => new Set([...prev, ...path, id]))
     if (benchIds.has(id)) setBenchOpen(true)
+    if (view === 'flow' && !benchIds.has(id)) return   // 노드 캔버스가 focusUnit/focusTick 으로 가운데 이동
     let tries = 0
     const scroll = () => {
       const el = rootRef.current?.querySelector<HTMLElement>(`[data-unit-id="${id}"]`)
@@ -311,7 +321,7 @@ export function OrgCanvas(p: Props) {
               <option value={2}>펼침 깊이: 본부</option><option value={4}>펼침 깊이: Division</option><option value={99}>펼침 깊이: 전체</option>
             </select>
             <div style={{ marginLeft: 'auto', display: 'flex', border: `1px solid ${OG.line}`, borderRadius: 6, overflow: 'hidden' }}>
-              {(['tree', 'list'] as const).map(v => <div key={v} onClick={() => setView(v)} style={{ padding: '6px 10px', fontSize: 12, cursor: 'pointer', background: view === v ? OG.ink : '#fff', color: view === v ? '#fff' : OG.quiet }}>{v === 'tree' ? '조직 트리' : '단위별 리스트'}</div>)}
+              {(['flow', 'tree', 'list'] as const).map(v => <div key={v} onClick={() => setView(v)} title={v === 'flow' ? '자유 배치 — 개편 작업용 (배치 저장)' : v === 'tree' ? '고정 트리 — 자동 레이아웃, 보기·검토용' : ''} style={{ padding: '6px 10px', fontSize: 12, cursor: 'pointer', background: view === v ? OG.ink : '#fff', color: view === v ? '#fff' : OG.quiet, borderLeft: v !== 'flow' ? `1px solid ${OG.line}` : 'none' }}>{v === 'flow' ? '노드 캔버스' : v === 'tree' ? '조직 트리' : '단위별 리스트'}</div>)}
             </div>
           </div>
           {/* 범례 */}
@@ -322,11 +332,19 @@ export function OrgCanvas(p: Props) {
             <span><i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, marginRight: 4, verticalAlign: -1, background: '#EEF2FF', border: '1px solid #C7D2FE' }} />겸직 카드</span>
             <span><i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, marginRight: 4, verticalAlign: -1, border: `1px dashed ${OG.faint}` }} />공석(TO)</span>
             <span><i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', marginRight: 4, verticalAlign: -1, background: OG.amber }} />Azure Division 불일치</span>
-            {editable && <span style={{ marginLeft: 'auto' }}>노드 헤더 드래그 = 단위 이동 · 카드 드래그 = 소속 변경(선택 묶음은 함께) · 헤더 클릭 = 접기/펼침 · 더블클릭 = 이름 · 🧰 우상단 작업대로 끌어다 떼어 두고, 다시 끌어 붙이기</span>}
+            {editable && <span style={{ marginLeft: 'auto' }}>{view === 'flow' ? '헤더 드래그 = 노드 배치(저장) · 카드 드래그 = 소속 변경(선택 묶음 함께) · 휠/핀치 = 줌 · 배경 드래그 = 이동 · Shift+드래그 = 영역 선택 · 더블클릭 = 이름' : '노드 헤더 드래그 = 단위 이동 · 카드 드래그 = 소속 변경(선택 묶음은 함께) · 헤더 클릭 = 접기/펼침 · 더블클릭 = 이름'} · 🧰 우상단 작업대로 끌어다 떼어 두고, 다시 끌어 붙이기</span>}
           </div>
           {/* 본체 — 스크롤 영역 + [Phase 6-b] 우상단 플로팅 작업대 트레이 */}
           <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-          <div ref={bodyRef} style={{ position: 'absolute', inset: 0, overflow: 'auto', padding: '20px 40px 80px' }}>
+          {view === 'flow' && (
+            <div style={{ position: 'absolute', inset: 0 }}>
+              <OrgFlowCanvas ctx={ctx} units={units} cardsByUnit={cardsByUnit} editable={editable} expanded={expanded} onToggle={toggle} selectedCard={selectedCard} selectedIds={sel}
+                             onCardClick={onCardClickX} onUnitClick={u => { if (editable) p.onRenameUnit(u); else { setRoHint(true); window.setTimeout(() => setRoHint(false), 1600) } }}
+                             drop={{ onDropCard: p.onDropCard, onDropUnit: p.onDropUnit, onDropProfile: p.onDropProfile, onDropCards: p.onDropCards }}
+                             layout={p.layout ?? new Map()} onSaveLayout={p.onSaveLayout ?? (() => {})} focusUnit={focusUnit} focusTick={focusTick} highlightUnit={focusUnit} />
+            </div>
+          )}
+          <div ref={bodyRef} style={{ position: 'absolute', inset: 0, overflow: 'auto', padding: '20px 40px 80px', display: view === 'flow' ? 'none' : 'block' }}>
             {view === 'tree'
               ? <OrgTree roots={roots} units={units} cardsByUnit={cardsByUnit} ctx={ctx} editable={editable} expanded={expanded} onToggle={toggle}
                          selectedCard={selectedCard} onCardClick={onCardClickX} onUnitClick={u => { if (editable) p.onRenameUnit(u); else { setRoHint(true); window.setTimeout(() => setRoHint(false), 1600) } }}

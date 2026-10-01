@@ -1,0 +1,11 @@
+=== [7] 배치 저장 · 복사 ===
+✅  7-1 Active 파일(F1) 저장 → ORG_FILE_NOT_EDITABLE 
+✅  7-2 초안 저장 2건 + 다른 파일 단위는 무시 
+✅  7-3 upsert 갱신 
+✅  7-4 읽기: org 역할 SELECT OK 
+✅  7-5 직접 INSERT 는 RLS 거부 
+✅  7-6 복사 시 배치 함께 복사(2건, 새 unit id 로) 
+✅  7-7 단위 삭제 시 배치 CASCADE 
+✅  7-8 배치 저장은 변경 로그에 없음 → undo 대상 아님 
+✅  7-9 일반 직원 → FORBIDDEN 
+✅  7-10 일반 직원 SELECT 0행 
