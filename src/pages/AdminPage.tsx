@@ -70,6 +70,7 @@ import { loadMyAdminRoles, loadAllUserRoles, setUserAdminRoles, loadRoleGrantLog
 // ← [2026-08-05] 노쇼 관리 패널 — bookings 탭 하위 뷰 (기간 프리셋 + 해제/영구삭제)
 import { NoshowAdminPanel } from '../components/admin/NoshowAdminPanel'
 import { ResourceAdminPanel } from '../components/admin/ResourceAdminPanel'  // ← [2026-08-19] 자원 관리 (Phase 3)
+import { OrgAdminPanel } from '../components/org/OrgAdminPanel'  // ← [2026-10-01 ORG Phase 3] 조직도
 // ← [2026-05-06 Admin Phase C] 승인 관리 테이블 컴포넌트 신설 (Figma node 451:3534, Phase B 공통 컴포넌트 사용)
 import { AdminApprovalTable } from '../components/common/AdminApprovalTable'
 import { VisitorLogPanel } from '../components/common/VisitorLogPanel'  // ← [2026-07-10] 방문로그 관리 패널
@@ -797,11 +798,12 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
 
   // 로딩 중에는 기존 전체 탭을 유지한다. 빈 배열로 시작하면 진입 직후 한 프레임 동안
   // 메뉴가 통째로 사라졌다가 다시 나타나 깜빡인다.
-  const ALL_TABS = ['dashboard','bookings','approvals','rooms','users','visitors','books','notifications','notices','canteen-dp','kb','resources']  // ← [2026-09-08] canteen-dp(CANTEEN DP) 추가  // ← [2026-08-19] resources(자원 관리) 추가
+  const ALL_TABS = ['dashboard','bookings','approvals','rooms','users','visitors','books','notifications','notices','canteen-dp','kb','resources','org']  // ← [2026-10-01] org(조직도) 추가  // ← [2026-09-08] canteen-dp(CANTEEN DP) 추가  // ← [2026-08-19] resources(자원 관리) 추가
   const TABS = myRoles === null ? ALL_TABS : (visibleTabs(myRoles) as string[])  // ← [2026-07-10] visitors / [2026-07-23] books(도서 관리) + notifications(알림 설정) 추가
   const getTabFromHash = () => {
     const hash = window.location.hash.replace('#', '')
     if (hash.startsWith('admin-booking-')) return 'approvals'  // 딥링크: 승인 관리 탭으로
+    if (hash.startsWith('admin-org-')) return TABS.includes('org') ? 'org' : 'dashboard'  // ← [2026-10-01 ORG Phase 3] 딥링크 #admin-org-{fileId} = 조직도 캔버스
     const t = hash.replace('admin-tab-','')
     return TABS.includes(t) ? t : 'dashboard'
   }
@@ -1044,6 +1046,8 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
             시드는 DB 가 아닌 이 화면에서 등록한다 (설계서 §10). 반납확인 admin 전용은
             트리거가 최종 방어, 화면은 접근성만 담당. */}
       {activeTab==='resources' && <ResourceAdminPanel users={users} currentUserId={currentUserId} showToast={showToast} isMobile={isMobile}/>}
+      {/* ← [2026-10-01 ORG Phase 3] 조직도 — 갤러리(파일) ↔ 캔버스(조직 트리). isSuper = Active 지정 게이트(DB org_assert_super 와 동일 판정) */}
+      {activeTab==='org' && <OrgAdminPanel users={users} currentUserId={currentUserId} isSuper={!!myRoles?.includes('super')} showToast={showToast} isMobile={isMobile}/>}
         </div>
       </div>
     </>

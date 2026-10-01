@@ -667,3 +667,119 @@ export interface WbMember {
   employment_status: EmploymentStatus | null
   is_super:          boolean
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ← [2026-10-01 ORG Phase 3] 조직도 — 20261005_org_phase1 / 20261006_org_phase2 짝
+//   · 카드의 profile_id 는 FK 없는 uuid — 표시는 users(live) → departed_users 폴백
+//   · 상태(OrgPersonStatus)는 파일 밖 '사람 소속' 데이터
+// ═══════════════════════════════════════════════════════════════════════════
+export type OrgFileStatus = 'draft' | 'active' | 'archived'
+export type OrgStatusCategory = 'hire_planned' | 'departing' | 'leave_planned' | 'leave' | 'return_planned'
+export type OrgEmploymentType = 'regular' | 'contract' | 'parttime' | 'intern'
+
+export interface OrgFile {
+  id:             string
+  name:           string
+  status:         OrgFileStatus
+  effective_on:   string | null
+  parent_file_id: string | null
+  memo:           string | null
+  lock_by:        string | null
+  lock_at:        string | null
+  created_by:     string | null
+  created_at:     string
+  updated_by:     string | null
+  updated_at:     string
+  activated_at:   string | null
+  activated_by:   string | null
+  archived_at:    string | null
+}
+/** 갤러리용 — 파일 + 집계 (단위·카드 수) */
+export interface OrgFileSummary extends OrgFile {
+  unit_count: number
+  card_count: number
+}
+export interface OrgUnit {
+  id:             string
+  file_id:        string
+  parent_unit_id: string | null
+  name:           string
+  code:           string | null
+  azure_division: string | null
+  head_card_id:   string | null
+  sort_order:     number
+}
+export interface OrgCard {
+  id:                 string
+  file_id:            string
+  unit_id:            string
+  profile_id:         string | null
+  person_id:          string | null
+  display_name:       string | null
+  rank_id:            string | null
+  reports_to_card_id: string | null
+  is_unit_head:       boolean
+  is_vacancy:         boolean
+  employment_type:    OrgEmploymentType
+  work_location:      string | null
+  fte:                number
+  memo:               string | null
+  sort_order:         number
+  /** org_card_jobs 조인 */
+  jobs:               { job_id: string; is_primary: boolean; sort_order: number }[]
+}
+export interface OrgPerson {
+  id:                string
+  name:              string
+  email:             string | null
+  planned_start_on:  string | null
+  linked_profile_id: string | null
+}
+export interface OrgRank  { id: string; code: string; label: string; level: number; sort_order: number; is_active: boolean }
+export interface OrgJob   { id: string; code: string; label: string; level: number; aliases: string[]; sort_order: number; is_active: boolean }
+export interface OrgStatusType {
+  code:       string
+  label:      string
+  category:   OrgStatusCategory
+  color:      string
+  sort_order: number
+  is_system:  boolean
+  is_active:  boolean
+}
+export interface OrgPersonStatus {
+  id:                  string
+  profile_id:          string | null
+  person_id:           string | null
+  status_code:         string
+  planned_status_code: string | null
+  start_on:            string | null
+  end_on:              string | null
+  return_on:           string | null
+  note:                string | null
+  created_by:          string | null
+  created_at:          string
+  ended_at:            string | null
+  ended_reason:        string | null
+}
+export interface OrgOffboardingItem {
+  id:          string
+  status_id:   string
+  template_id: string | null
+  label:       string
+  is_critical: boolean
+  applicable:  boolean
+  checked:     boolean
+  checked_by:  string | null
+  checked_at:  string | null
+  sort_order:  number
+}
+/** org_roster_check RPC 반환 */
+export interface OrgRosterCheck {
+  file_id:                 string
+  missing:                 { profile_id: string; name: string; dept: string; email: string }[]
+  missing_count:           number
+  ghosts:                  { card_id: string; profile_id: string; unit_id: string; departed_name: string | null; departed_at: string | null }[]
+  ghost_count:             number
+  division_mismatch:       { card_id: string; profile_id: string; name: string; unit_division: string; azure_dept: string }[]
+  division_mismatch_count: number
+}

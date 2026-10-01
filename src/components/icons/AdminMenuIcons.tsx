@@ -87,6 +87,18 @@ export function DualScreenIcon({ size = 24 }: IconProps) {
   )
 }
 
+// ─── org chart (조직도) ← [2026-10-01 ORG Phase 3] Material 'account_tree' 윤곽 ──────
+export function OrgChartIcon({ size = 24 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path
+        d="M14 21v-3h-4v3H3v-7h7v3h1v-6H6V4h12v7h-5v6h1v-3h7v7h-7ZM7 10h10V5H7v5Zm-3 10h5v-5H4v5Zm11 0h5v-5h-5v5Z"
+        fill="currentColor"
+      />
+    </svg>
+  )
+}
+
 // ─── 6. asterisk (자원 관리 — 비활성/준비중) ─────────────────────────────────
 export function AsteriskIcon({ size = 24 }: IconProps) {
   return (
