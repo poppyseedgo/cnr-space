@@ -290,7 +290,7 @@ import { HomeView } from './components/room/HomeView'
 import { LibraryPage } from './pages/LibraryPage'  // ← [2026-07-16] 도서관 모듈 추가
 import { WorkboardPage, type WbDeepLink } from './pages/WorkboardPage'  // ← [2026-09-29 WORKBOARD P2] Work Space 임시 페이지 (#workboard) · [5-B] WbDeepLink
 import { loadMyAdminRoles } from './lib/api'        // ← [2026-09-29 WORKBOARD P2] 내 admin_roles — 일반 뷰 권한 게이트용
-import { canSeeView } from './data/adminRoles'       // ← [2026-09-29 WORKBOARD P2] 역할 → 일반 뷰 판정 SSOT
+import { canSeeView, canSeeTab } from './data/adminRoles'       // ← [2026-09-29 WORKBOARD P2] 역할 → 일반 뷰 판정 SSOT  // ← [2026-10-01 ORG] canSeeTab — 드로어 '조직도' 진입 게이트
 import { ReleaseNotesPage } from './pages/ReleaseNotesPage'  // ← [2026-08-03] Release Note + Hotfix 페이지 추가
 import HrInterviewPage from './pages/HrInterviewPage'  // ← [2026-09-03] 근태 APP 내재화 HR 1차 인터뷰 임시 단독 페이지 (#hr-interview)
 import { RoomDetailModal } from './components/room/RoomDetailModal'
@@ -429,6 +429,7 @@ function AppContent() {
   // ← [2026-09-29 WORKBOARD P2] 내 admin_roles. null = 아직 조회 전(게이트 판정 보류) / [] = 없음
   const [myAdminRoles, setMyAdminRoles] = useState<string[] | null>(null)
   const canWorkboard = myAdminRoles !== null && canSeeView(myAdminRoles, 'workboard')
+  const canOrg = myAdminRoles !== null && canSeeTab(myAdminRoles, 'org')   // ← [2026-10-01 ORG Phase 4-A] org 역할(또는 super) — 드로어 '조직도' 항목 노출. 어드민 탭 게이트(visibleTabs)와 동일 판정
   // ← [2026-09-30 NOTIFY 5-B] 알림벨에서 넘어온 Work Space 열기 요청 (WorkboardPage 가 소비 후 비움)
   const [wbDeepLink, setWbDeepLink] = useState<WbDeepLink | null>(null)
   // ← [2026-07-30] 마이페이지 진입 시 열 세그먼트 탭. 도서관 '나의 도서 대여'
@@ -2199,6 +2200,7 @@ function AppContent() {
         view={view}
         isAdmin={isAdmin}
         canWorkboard={canWorkboard}
+        canOrg={canOrg}   // ← [2026-10-01 ORG]
         isMobile={isMobile}
         onSetView={setView}
         onClose={() => setDrawerOpen(false)}

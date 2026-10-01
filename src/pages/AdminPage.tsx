@@ -812,6 +812,17 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
     setActiveTab(t)
     window.location.hash = `admin-tab-${t}`
   }
+  // ← [2026-10-01 ORG Phase 4-A] 이미 어드민에 있을 때 드로어가 해시를 바꾸면(admin-tab-org / admin-org-{id}) 탭을 따라간다.
+  //   기존에는 마운트 시 1회만 읽어 드로어 '조직도' 클릭이 같은 뷰 안에서는 반영되지 않았다
+  useEffect(() => {
+    const onHash = () => {
+      const hash = window.location.hash.replace('#', '')
+      const t = hash.startsWith('admin-org-') ? 'org' : hash.startsWith('admin-tab-') ? hash.replace('admin-tab-', '') : null
+      if (t && TABS.includes(t)) setActiveTab(prev => prev === t ? prev : t)
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [TABS])   // eslint-disable-line react-hooks/exhaustive-deps
 
   // ← [2026-07-24] 권한 없는 탭에 있으면 내가 가진 첫 탭으로 이동.
   //   기본 탭이 'dashboard' 인데 dashboard 역할이 없으면 빈 화면을 보게 된다.
