@@ -1,5 +1,6 @@
 /**
  * OrgCanvas.tsx — 화면 B: 파일 상세(헤더 + 좌측 패널 + 조직 트리/단위별 리스트 + 줌)
+ *  - [2026-10-01 ORG 5-C] 검색: 입력 즉시 첫 일치 카드로 스크롤(펼침 포함), Enter = 다음 일치, 'n/m' 표시
  *  - [2026-10-01 ORG 5-C] 전체화면(고정 오버레이 + 브라우저 fullscreen) · 기본 펼침 = 전체 · 패널 클릭 → 노드 스크롤 · 읽기 전용 더블클릭 피드백 · 단위 이동(상위로/하위로/이동…)
  *  - [2026-10-01 ORG Phase 5-B] 숨김 카드(수동/자동 7일) 기본 제외 + '숨김 n 보기' 토글 · 겸직 카드 태그(본 소속) · 헤드카운트 = 사람 수
  *  - [2026-10-01 ORG Phase 3] 신규 — 설계서 §6.2. 표시·인터랙션만, 데이터·저장은 OrgAdminPanel
@@ -82,6 +83,7 @@ export function OrgCanvas(p: Props) {
   // [5-C] 전체화면: 고정 오버레이(앱 레이아웃 폭 제한 해제) + 가능하면 브라우저 fullscreen
   const [full, setFull] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
   const toggleFull = () => {
     const next = !full; setFull(next)
     try { if (next) rootRef.current?.requestFullscreen?.().catch(() => {}); else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}) } catch { /* 미지원 브라우저 */ }
@@ -94,6 +96,37 @@ export function OrgCanvas(p: Props) {
   }, [full])
   useEffect(() => { document.body.style.overflow = full ? 'hidden' : ''; return () => { document.body.style.overflow = '' } }, [full])
   const [roHint, setRoHint] = useState(false)   // 읽기 전용에서 더블클릭 시 헤더 안내 강조
+  const [view, setView] = useState<'tree' | 'list'>('tree')
+  const [filter, setFilter] = useState<OrgFilter>('all')
+  const [q, setQ] = useState('')
+  const [zoom, setZoom] = useState(1)
+  const [focusUnit, setFocusUnit] = useState<string | null>(null)
+
+  // [5-C] 검색 → 일치 카드 목록(트리 순서) + 현재 인덱스. 입력 300ms 후 첫 일치로 스크롤, Enter 로 순환
+  const [hitIdx, setHitIdx] = useState(0)
+  const hits = useMemo(() => {
+    const s = q.trim().toLowerCase(); if (!s) return [] as OrgCard[]
+    const order: OrgCard[] = []
+    const walk = (n: OrgUnitNode) => { order.push(...(cardsByUnit.get(n.unit.id) ?? [])); n.children.forEach(walk) }
+    roots.forEach(walk)
+    return order.filter(c => { const pv = person(c); const jt = c.jobs.map(j => jobs.get(j.job_id)?.code ?? '').join(' ').toLowerCase(); return pv.name.toLowerCase().includes(s) || (pv.azureName ?? '').toLowerCase().includes(s) || jt.includes(s) })
+  }, [q, roots, cardsByUnit, person, jobs])
+  const goHit = (i: number) => {
+    const c = hits[i]; if (!c) return
+    setHitIdx(i)
+    const path: string[] = []; let cur = units.find(u => u.id === c.unit_id)
+    while (cur) { path.push(cur.id); cur = cur.parent_unit_id ? units.find(u => u.id === cur!.parent_unit_id) : undefined }
+    setExpanded(prev => new Set([...prev, ...path]))
+    setView('tree')
+    let tries = 0
+    const scroll = () => {
+      const el = bodyRef.current?.querySelector<HTMLElement>(`[data-card-id="${c.id}"]`)
+      if (el) { el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' }); el.animate([{ boxShadow: `0 0 0 4px ${OG.amber}` }, { boxShadow: '0 0 0 0 transparent' }], { duration: 1200 }) }
+      else if (tries++ < 10) requestAnimationFrame(scroll)
+    }
+    requestAnimationFrame(scroll)
+  }
+  useEffect(() => { if (!q.trim()) { setHitIdx(0); return } const t = window.setTimeout(() => goHit(0), 300); return () => window.clearTimeout(t) }, [q, hits.length])  // eslint-disable-line react-hooks/exhaustive-deps
   const [panelOpen, setPanelOpen] = useState(true)   // [5-C] 좌측 패널 접기 — 캔버스 폭 확보
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   useEffect(() => {
@@ -104,11 +137,6 @@ export function OrgCanvas(p: Props) {
   }, [roots, depthPreset])
   const toggle = (id: string) => setExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
 
-  const [view, setView] = useState<'tree' | 'list'>('tree')
-  const [filter, setFilter] = useState<OrgFilter>('all')
-  const [q, setQ] = useState('')
-  const [zoom, setZoom] = useState(1)
-  const [focusUnit, setFocusUnit] = useState<string | null>(null)
 
   const matches = (c: OrgCard) => {
     const s = q.trim().toLowerCase()
@@ -139,7 +167,6 @@ export function OrgCanvas(p: Props) {
   ]
 
   // 패널 클릭 → 해당 노드 펼치고 스크롤 ([5-C] 실제 스크롤 — data-unit-id 로 노드를 찾아 가운데로)
-  const bodyRef = useRef<HTMLDivElement>(null)
   const focusOn = (id: string) => {
     setFocusUnit(id); setView('tree')
     const path: string[] = []; let cur = units.find(u => u.id === id)
@@ -188,7 +215,11 @@ export function OrgCanvas(p: Props) {
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
           {/* 필터 바 */}
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 16px', background: '#fff', borderBottom: `1px solid ${OG.line}`, flexWrap: 'wrap', flexShrink: 0 }}>
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="이름·직무 검색" style={{ width: 200, padding: '6px 9px', border: `1px solid ${OG.line}`, borderRadius: 6, fontSize: 12.5, fontFamily: OG.font }} />
+            <div style={{ position: 'relative' }}>
+              <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && hits.length) goHit(e.shiftKey ? (hitIdx - 1 + hits.length) % hits.length : (hitIdx + 1) % hits.length); if (e.key === 'Escape') setQ('') }}
+                     placeholder="이름·직무 검색 (Enter = 다음)" style={{ width: 220, padding: '6px 52px 6px 9px', border: `1px solid ${OG.line}`, borderRadius: 6, fontSize: 12.5, fontFamily: OG.font }} />
+              {q.trim() && <span style={{ position: 'absolute', right: 8, top: 7, fontSize: 11, color: hits.length ? OG.quiet : OG.red }}>{hits.length ? `${hitIdx + 1}/${hits.length}` : '0건'}</span>}
+            </div>
             {catChips.map(c => <span key={c.id} style={chip(filter === c.id)} onClick={() => setFilter(c.id)}>{c.label}{c.id !== 'all' && counts[c.id] ? ` ${counts[c.id]}` : ''}</span>)}
             {hiddenCount > 0 && <span style={chip(showHidden)} onClick={() => setShowHidden(v => !v)} title="퇴사일+7일 경과 또는 수동 숨김 카드">숨김 {hiddenCount}{showHidden ? ' 표시 중' : ''}</span>}
             <select value={depthPreset} onChange={e => setDepthPreset(Number(e.target.value) as 2 | 4 | 99)} style={{ fontSize: 11.5, padding: '5px 8px', border: `1px solid ${OG.line}`, borderRadius: 6, background: '#fff', color: OG.quiet, fontFamily: OG.font }}>

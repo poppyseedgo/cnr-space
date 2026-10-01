@@ -49,7 +49,7 @@ export function OrgCardView({ card, person, rank, jobs, badge, mismatch, dim, se
     : card.is_vacancy ? { label: 'TO · 공석', ...ORG_VACANCY_STYLE } : badge
 
   return (
-    <div style={style} draggable={draggable} onClick={onClick ? () => onClick(card) : undefined}
+    <div data-card-id={card.id} style={style} draggable={draggable} onClick={onClick ? () => onClick(card) : undefined}
          onDragStart={onDragStart ? e => onDragStart(e, card) : undefined} onDragEnd={onDragEnd} title={person.email || undefined}>
       <div style={{ position: 'relative', width: 28, height: 28 }}>
         {card.is_vacancy

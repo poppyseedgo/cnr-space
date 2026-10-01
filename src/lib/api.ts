@@ -920,7 +920,7 @@ export async function loadUsers(): Promise<AppUser[]> {
     const data = await withRetry(async () => {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, employee_id, name, dept, role, email, is_active, avatar_url, employment_status, departure_scheduled_on, returned_on') // ← [2026-07-30] 3필드 추가
+        .select('id, employee_id, name, dept, role, email, is_active, avatar_url, employment_status, departure_scheduled_on, returned_on, azure_user_id, azure_extra, azure_synced_at') // ← [2026-07-30] 3필드 추가 · [2026-10-01] Azure 전체 필드 3개
         .neq('is_active', false) // ← [2026-05-14] 퇴사자 제외 — 시스템 전반 일관성
         .order('name')
       if (error) throw error
@@ -939,6 +939,9 @@ export async function loadUsers(): Promise<AppUser[]> {
       employment_status:      (row.employment_status ?? 'active') as import('../types').EmploymentStatus, // ← [2026-07-30]
       departure_scheduled_on: row.departure_scheduled_on ?? null,                                          // ← [2026-07-30]
       returned_on:            row.returned_on            ?? null,                                          // ← [2026-07-30]
+      azure_user_id:          row.azure_user_id          ?? null,                                          // ← [2026-10-01]
+      azure_extra:            row.azure_extra            ?? null,
+      azure_synced_at:        row.azure_synced_at        ?? null,
     }))
   } catch (e) {
     // ← [2026-04-23] 재시도 3회 모두 실패 시 도달 — 기존대로 빈 배열 반환 (호환성 유지)

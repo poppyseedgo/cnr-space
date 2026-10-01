@@ -1,9 +1,15 @@
 // @ts-nocheck
 /**
- * sync-all-users Edge Function v9
+ * sync-all-users Edge Function v10
  * Microsoft Graph API User.Read.All (Application 권한)
  *
  * ✅ 변경 이력
+ *  - v10 [2026-10-01] Azure 프로필 전체 필드 저장 (20261011 짝 배포 — profiles.azure_extra jsonb · azure_synced_at · azure_user_id)
+ *      · Graph $select 확장: givenName,surname,jobTitle,officeLocation,mobilePhone,businessPhones,employeeId,employeeType,employeeHireDate,
+ *        companyName,city,country,usageLocation,preferredLanguage,createdDateTime + $expand=manager(id,displayName,mail)
+ *      · $expand 가 거부되면(400) $expand 없이 재시도 — sync 자체는 절대 멈추지 않는다
+ *      · 신규 INSERT·기존 PATCH 모두 azure_extra(원본 그대로) · azure_synced_at · azure_user_id 기록. name/email/employee_id/dept 규칙은 불변
+ *      · 조직도 카드 드로어 'Azure 프로필' 섹션이 이 jsonb 를 그대로 표시
  *  - v9 [2026-10-01] 조직도 입사예정자 연결 후크 (20261006_org_phase2 짝 배포)
  *      · 신규 profiles INSERT 직후, 삽입된 이메일마다 RPC org_link_planned_person(p_email) 1회 호출
  *        → 조직도 입사예정자(org_persons)와 이메일이 일치하면 전 파일 카드 profile_id 백필 + 입사예정 상태 종료
@@ -115,23 +121,46 @@ async function fetchAllAzureUsers(token: string): Promise<any[]> {
   //   이 필터로 비활성 계정이 응답에서 빠지면 기존 퇴사 감지 로직이 자동으로
   //   이들을 퇴사 처리한다(departed_users 이력 + profiles DELETE + 미래 예약 취소) — 별도 백필 불필요.
   //   ※ $filter의 userType 조건은 advanced query 요건($count=true + ConsistencyLevel: eventual) 필요 — 둘 다 이미 충족.
-  let url: string | null =
+  // ← [v10] 조직도 카드용 전체 필드. manager 는 $expand (거부되면 없이 재시도)
+  const SELECT = 'id,displayName,givenName,surname,mail,userPrincipalName,department,accountEnabled,userType,' +
+                 'jobTitle,officeLocation,mobilePhone,businessPhones,employeeId,employeeType,employeeHireDate,companyName,city,country,usageLocation,preferredLanguage,createdDateTime'
+  const build = (expand: boolean) =>
     'https://graph.microsoft.com/v1.0/users' +
-    '?$select=id,displayName,mail,userPrincipalName,department,accountEnabled,userType' + // ← [2026-07-27] 진단 로그용 필드 추가
+    `?$select=${SELECT}` +
+    (expand ? '&$expand=manager($select=id,displayName,mail)' : '') +
     "&$filter=accountEnabled eq true and userType eq 'Member'" + // ← [2026-07-27] 재직 + 내부 구성원만
     '&$top=999' +
     '&$count=true'
+  let url: string | null = build(true)
+  let expand = true
 
   while (url) {
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: 'eventual' },
     })
-    if (!res.ok) throw new Error(`Graph API 오류 (${res.status}): ${await res.text()}`)
+    if (!res.ok) {
+      if (expand && all.length === 0 && res.status === 400) {   // ← [v10] $expand 미지원/거부 → manager 없이
+        console.warn('[sync] Graph $expand=manager 거부 → manager 없이 재시도:', (await res.text()).slice(0, 200))
+        expand = false; url = build(false); continue
+      }
+      throw new Error(`Graph API 오류 (${res.status}): ${await res.text()}`)
+    }
     const data = await res.json()
     all.push(...(data.value ?? []))
     url = data['@odata.nextLink'] ?? null
   }
   return all
+}
+
+// ← [v10] profiles.azure_extra — Graph 응답을 정규화 없이 보존 (조직도 드로어가 라벨만 입힌다). @odata 키 제거
+function azureExtra(u: any): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(u ?? {})) {
+    if (k.startsWith('@odata')) continue
+    if (k === 'manager' && v && typeof v === 'object') { const m: any = v; out.manager = { id: m.id ?? null, displayName: m.displayName ?? null, mail: m.mail ?? null }; continue }
+    out[k] = v ?? null
+  }
+  return out
 }
 
 // ── profiles 전체 조회 ───────────────────────────────────────────────────────
@@ -192,6 +221,7 @@ async function syncProfiles(
       email:       (u.mail ?? u.userPrincipalName ?? '').toLowerCase(),
       employee_id: u.userPrincipalName ?? '',
       dept:        u.department ?? '', // ← [v7 2026-05-14] Azure AD department 추출
+      extra:       azureExtra(u),      // ← [v10] 전체 필드
     }))
     .filter(r => r.name && r.email)
 
@@ -208,6 +238,9 @@ async function syncProfiles(
       employee_id: r.employee_id,
       role:        'USER',
       dept:        r.dept, // ← [v7 2026-05-14] Azure department 그대로 (빈문자열 가능)
+      azure_user_id:   r.azureId,          // ← [v10]
+      azure_extra:     r.extra,            // ← [v10]
+      azure_synced_at: new Date().toISOString(),
     }))
 
   if (toInsert.length > 0) {
@@ -248,6 +281,9 @@ async function syncProfiles(
     const patchBody: Record<string, any> = {
       name:        row.name,
       employee_id: row.employee_id,
+      azure_user_id:   row.azureId,          // ← [v10]
+      azure_extra:     row.extra,            // ← [v10] 전체 필드 — 매 sync 갱신
+      azure_synced_at: new Date().toISOString(),
     }
     if (row.dept) patchBody.dept = row.dept // ← Azure SoT — 값 있을 때만 갱신
 

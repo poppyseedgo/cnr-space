@@ -63,6 +63,9 @@ export interface AppUser {
   employment_status?:      EmploymentStatus  // ← [2026-07-30] 재직/퇴사예정/휴직/복직
   departure_scheduled_on?: string | null     // ← [2026-07-30] 퇴사 예정일 (KST date, departing 전용)
   returned_on?:            string | null     // ← [2026-07-30] 복직일 (30일 후 라벨 자동 소멸)
+  azure_user_id?:   string | null                 // ← [2026-10-01 v10] Azure object id
+  azure_extra?:     Record<string, unknown> | null // ← [2026-10-01 v10] Graph /users 전체 필드 원본 (조직도 드로어 'Azure 프로필')
+  azure_synced_at?: string | null
 }
 
 export interface DepartedUser {

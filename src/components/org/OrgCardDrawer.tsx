@@ -7,7 +7,7 @@
  *
  *  섹션(위→아래): ①프로필 헤더(live) ②배치(단위·직급·직무 복수·보고선·단위장·고용형태·근무지·FTE)
  *                 ③상태(활성 라벨 + 상태 변경 폼 — category 별 필수값) ④반납 체크리스트(퇴사예정일 때)
- *                 ⑤메모 ⑥이 사람의 변경 이력(접이식)
+ *                 ⑤메모 ⑤-b Azure 프로필(전체 필드, 접이식 · [2026-10-01 v10]) ⑥이 사람의 변경 이력(접이식)
  *  저장: 필드 단위 즉시 저장(초안만). 부모가 updateOrgCard → 단건 재조회 → card prop 갱신 (낙관적 갱신 금지)
  *  상태 변경만 ConfirmDialog — profiles.employment_status 동기화(외부 영향) 때문
  *  Active·Archived 파일에서는 배치 섹션 읽기 전용, 상태 섹션은 사람 소속이라 편집 가능(org 역할)
@@ -169,6 +169,7 @@ export function OrgCardDrawer(p: Props) {
 
   // ── [Phase 5] 조직도 표기 이름 ──
   const [dnEdit, setDnEdit] = useState<string | null>(null)   // null = 보기 모드
+  const [azOpen, setAzOpen] = useState(false)
   const [dnBusy, setDnBusy] = useState(false)
   const azureUser = person.user
   const saveDisplayName = async () => {
@@ -367,6 +368,33 @@ export function OrgCardDrawer(p: Props) {
           {/* ⑤ 메모 */}
           {sec('메모')}
           <textarea disabled={ro} value={memo} onChange={e => setMemo(e.target.value)} onBlur={() => memo !== (card.memo ?? '') && save({ memo: memo.trim() || null })} rows={3} style={{ ...dis(inp), resize: 'vertical' }} placeholder="카드 메모 (이 조직도 파일에만 저장)" />
+
+          {/* ⑤-b [2026-10-01] Azure 프로필 — profiles 컬럼 + azure_extra(jsonb 원본) 전부 표시. 읽기 전용 */}
+          {azureUser && (() => {
+            const ex = (azureUser.azure_extra ?? {}) as Record<string, unknown>
+            const fmt = (v: unknown): string => v == null || v === '' ? '—' : Array.isArray(v) ? (v.length ? v.map(String).join(', ') : '—') : typeof v === 'object' ? ((v as any).displayName ? `${(v as any).displayName}${(v as any).mail ? ` (${(v as any).mail})` : ''}` : JSON.stringify(v)) : typeof v === 'boolean' ? (v ? '예' : '아니오') : /^\d{4}-\d{2}-\d{2}T/.test(String(v)) ? String(v).slice(0, 10) : String(v)
+            const rowsA: [string, unknown][] = [
+              ['이름 (displayName)', azureUser.name], ['이메일 (mail)', azureUser.email], ['사번 / UPN', azureUser.employee_id], ['부서 (department)', azureUser.dept],
+              ['Azure object id', azureUser.azure_user_id], ['재직 상태 (SPACE)', azureUser.employment_status],
+            ]
+            const known: [string, string][] = [['givenName', '이름 (givenName)'], ['surname', '성 (surname)'], ['jobTitle', '직함 (jobTitle)'], ['officeLocation', '근무지 (officeLocation)'], ['mobilePhone', '휴대전화'], ['businessPhones', '사무실 전화'],
+              ['employeeId', '사원번호 (employeeId)'], ['employeeType', '고용 유형 (employeeType)'], ['employeeHireDate', '입사일 (employeeHireDate)'], ['companyName', '회사'], ['city', '도시'], ['country', '국가'], ['usageLocation', '사용 지역'],
+              ['preferredLanguage', '언어'], ['createdDateTime', '계정 생성일'], ['accountEnabled', '계정 활성'], ['userType', '계정 유형'], ['manager', '관리자 (manager)']]
+            const skip = new Set(['id', 'displayName', 'mail', 'userPrincipalName', 'department', ...known.map(k => k[0])])
+            const extraRows: [string, unknown][] = [...known.filter(([k]) => k in ex).map(([k, l]) => [l, ex[k]] as [string, unknown]), ...Object.entries(ex).filter(([k]) => !skip.has(k)).map(([k, v]) => [k, v] as [string, unknown])]
+            return <>
+              <div onClick={() => setAzOpen(o => !o)} style={{ fontSize: 11, fontWeight: 700, color: OG.quiet, margin: '20px 0 8px', paddingBottom: 6, borderBottom: `1px solid ${OG.lineSoft}`, cursor: 'pointer', display: 'flex', gap: 8 }}>
+                <span>{azOpen ? '▾' : '▸'} Azure 프로필</span><span style={{ fontWeight: 400 }}>{azureUser.azure_synced_at ? `sync ${fmtWhen(azureUser.azure_synced_at)}` : 'sync-all-users v10 배포 후 채워짐'}</span>
+              </div>
+              {azOpen && (
+                <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', rowGap: 4, columnGap: 10, fontSize: 12, background: '#F8FAFC', border: `1px solid ${OG.line}`, borderRadius: 8, padding: '8px 10px' }}>
+                  {[...rowsA, ...extraRows].map(([l, v], i) => <div key={i} style={{ display: 'contents' }}><span style={{ color: OG.quiet, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={l}>{l}</span><span style={{ wordBreak: 'break-all' }}>{fmt(v)}</span></div>)}
+                  {extraRows.length === 0 && <span style={{ gridColumn: '1 / -1', color: OG.faint, fontSize: 11 }}>확장 필드 없음 — 다음 sync 후 직함·근무지·전화·관리자 등이 표시됩니다.</span>}
+                  <span style={{ gridColumn: '1 / -1', color: OG.faint, fontSize: 11, marginTop: 4 }}>읽기 전용 · Azure 가 원천. 조직도 표기 이름은 위 헤더에서.</span>
+                </div>
+              )}
+            </>
+          })()}
 
           {/* ⑥ 이력 */}
           <div onClick={() => setHistOpen(o => !o)} style={{ fontSize: 11, fontWeight: 700, color: OG.quiet, margin: '20px 0 8px', paddingBottom: 6, borderBottom: `1px solid ${OG.lineSoft}`, cursor: 'pointer' }}>{histOpen ? '▾' : '▸'} 변경 이력</div>
