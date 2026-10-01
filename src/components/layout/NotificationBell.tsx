@@ -43,6 +43,8 @@ interface NotificationBellProps {
   onOpenBookingDetail: (bookingId: string) => void
   /** ← [2026-07-21] 도서 대여 알림 클릭. 미전달 시 도서 알림은 아무것도 열지 않는다 */
   onOpenBookLoanDetail?: (checkoutId: string) => void;
+  /** ← [2026-09-30 NOTIFY 5-B] Work Space 알림 클릭 — 업무/이슈 드로어 열기. 다이제스트(target null)는 페이지만 연다 */
+  onOpenWorkboard?: (target: { type: 'task' | 'issue'; id: string } | null) => void;
 }
 
 export function NotificationBell({
@@ -50,6 +52,7 @@ export function NotificationBell({
   dark,
   onOpenBookingDetail,
   onOpenBookLoanDetail,
+  onOpenWorkboard,
 }: NotificationBellProps) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
@@ -160,7 +163,11 @@ export function NotificationBell({
                     //   bookings.find() 로 찾다 undefined 를 얻어
                     //   회의실 상세 모달이 data=null 로 열린다 → 빈 화면.
                     //   알림 type 접두사가 유일하게 신뢰할 수 있는 판별자다.
-                    if (n.booking_id) {
+                    if (n.type?.startsWith('wb_')) {
+                      // ← [2026-09-30 5-B] Work Space: booking_id = 'task-{uuid}' | 'issue-{uuid}' | 'digest-{date}'
+                      const m = /^(task|issue)-([0-9a-f-]{36})$/i.exec(n.booking_id ?? '')
+                      onOpenWorkboard?.(m ? { type: m[1] as 'task' | 'issue', id: m[2] } : null)
+                    } else if (n.booking_id) {
                       if (n.type?.startsWith('book_')) onOpenBookLoanDetail?.(n.booking_id)
                       else                             onOpenBookingDetail(n.booking_id)
                     }

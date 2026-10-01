@@ -13,6 +13,11 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * 변경 이력
  * ═══════════════════════════════════════════════════════════════════════════
+ * [2026-09-30 Phase 5-B] Work Space 알림 5종 (wb_task_assigned · wb_comment_added · wb_issue_created · wb_issue_resolved · wb_daily_digest)
+ *   · RecipientRule 'wb_recipients' — 수신자는 DB wb_notification_recipients(20261004) 가 결정, 본문 재료는 wb_notification_context
+ *   · CTA 딥링크 {APP_URL}#workboard-task-{id} / #workboard-issue-{id} / #workboard
+ *   · getSubject: wb_ 는 '· 관리자' 역할 접미 생략
+ *
  * [2026-06-12] 예약자(소유권) 변경 알림 2종 추가 (관리자 전용)
  *   · NotificationType: owner_changed, former_booker
  *   · RecipientRule: former_booker (원래 예약자 1명)
@@ -121,6 +126,15 @@ export type NotificationType =
   | 'resource_overdue'                     // 연체 09:00 KST 매일 반복 → 예약자+자원 관리자
   | 'resource_booking_period_changed'      // ← [2026-08-26] 기간(사용시간·반납일) 변경 → 예약자 (관리자 변경 시 라벨 접미)
   | 'resource_hold_conflict'               // ← [2026-08-28] 시작일 도래 시 선행 건 미반납 09:00 KST 1회 → 예약자+자원 관리자
+  // ── [2026-09-30 Phase 5-B] Work Space ────────────────────────────────────
+  //   수신자 규칙 'wb_recipients' 1종 — DB wb_notification_recipients(p_type, …) 가 타입별 대상을 정한다 (SSOT).
+  //   본문 재료는 DB wb_notification_context(...) — Edge 는 payload 의 id 만 받고 DB 에서 다시 읽는다 (화면 계산 금지).
+  //   Teams 비대상. 자격 = 명시 workboard 권한 (notification_required_roles 'wb_%' → workboard).
+  | 'wb_task_assigned'     // 담당자 추가 → 새로 담당이 된 사람(본인 배정 제외)
+  | 'wb_comment_added'     // 댓글 → 담당자·작성자·기존 댓글 작성자 (댓글 쓴 본인 제외)
+  | 'wb_issue_created'     // 이슈 등록(빠른 등록 포함) → 멤버 전원(등록자 제외)
+  | 'wb_issue_resolved'    // 이슈 해결·보류 → 등록자·연결 업무 담당자·댓글 작성자 (처리자 제외)
+  | 'wb_daily_digest'      // 매일 09:00 KST 1인 1통 — 지연·오늘·내일·오늘 생성 반복 (wb-daily-digest Edge → send-notification)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 2. 수신자 규칙
@@ -137,6 +151,7 @@ export type RecipientRule =
   | 'book_admins'              // ← [2026-07-23] 도서 담당 관리자 (admin_roles 'book'/'super')
   | 'resource_owner'           // ← [2026-08-19 Phase 4] 자원 예약자 본인 1명 (book_borrower 동일 해석 — 이름=의미 원칙으로 분리)
   | 'resource_admins_and_owner'// ← [2026-08-19 Phase 4] 자원 예약자 + 자원 담당 관리자('resource'/'super') — 연체 전용
+  | 'wb_recipients'            // ← [2026-09-30 5-B] Work Space — DB wb_notification_recipients 가 타입별 대상 결정 (admins 슬롯에 담는다)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 3. 헤더 색상 체계 (5색)
@@ -255,6 +270,12 @@ const CTA_BOOK_APPROVE   = { label: '신청 승인하러 가기', urlTemplate: '
 // ← [2026-07-23] 관리자용 — 대여 건 하나로 포커싱한다. 도서관 목록으로 보내면
 //   방금 접수된 건을 관리자가 다시 찾아야 한다.
 const CTA_BOOK_LOAN_ADMIN = { label: '대여 내역 확인하기', urlTemplate: '{APP_URL}#library', color: COLORS.INDIGO }
+// ← [2026-09-30 5-B] Work Space CTA — 딥링크 {APP_URL}#workboard-task-{id} / #workboard-issue-{id} (드로어 자동 오픈), 다이제스트는 #workboard
+//   BOOKING_ID 슬롯에 'task-{uuid}' | 'issue-{uuid}' 가 들어온다 (send-notification 이 wb payload 로 조립) → renderUrl 그대로 사용
+const CTA_WB_TASK    = { label: '업무 확인하기',   urlTemplate: '{APP_URL}#workboard-{BOOKING_ID}', color: COLORS.INDIGO }
+const CTA_WB_COMMENT = { label: '댓글 확인하기',   urlTemplate: '{APP_URL}#workboard-{BOOKING_ID}', color: COLORS.INDIGO }
+const CTA_WB_ISSUE   = { label: '이슈 확인하기',   urlTemplate: '{APP_URL}#workboard-{BOOKING_ID}', color: COLORS.INDIGO }
+const CTA_WB_HOME    = { label: 'Work Space 열기', urlTemplate: '{APP_URL}#workboard',              color: COLORS.INDIGO }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 7. 정책 정의 — 이벤트별 전체 매트릭스
@@ -1108,6 +1129,77 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
     cta: { booker: CTA_MY_LOANS_WARN },
     isCancelledStyle: false,
   },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Work Space (← [2026-09-30 Phase 5-B]) — 수신자는 전부 'admin' 슬롯(role='admin')으로 렌더된다.
+  //   역할 배지·본문 행·인용 박스는 send-notification renderEmail 의 isWorkboard 분기가 wb 컨텍스트로 그린다.
+  //   contextBanner.admin 은 파랑 안내 1줄. 제목은 getSubject 가 wb_ 는 '· 관리자' 접미를 붙이지 않는다.
+  // ═══════════════════════════════════════════════════════════════════════
+  wb_task_assigned: {
+    subjectTag:         '[업무배정]',
+    headerLabel:        '업무가 배정되었습니다',
+    headerColor:        COLORS.INDIGO,
+    recipients:         'wb_recipients',
+    inappType:          'wb_task_assigned',
+    inappTitleBooker:   '',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '업무가 배정되었습니다',
+    contextBanner: { admin: { ...BANNER_PRESETS.info, title: '담당자로 지정되었습니다.', body: '진행 상태는 Work Space 에서 직접 변경할 수 있습니다.' } },
+    cta: { admin: CTA_WB_TASK },
+    isCancelledStyle: false,
+  },
+  wb_comment_added: {
+    subjectTag:         '[댓글]',
+    headerLabel:        '새 댓글이 달렸습니다',
+    headerColor:        COLORS.CYAN,
+    recipients:         'wb_recipients',
+    inappType:          'wb_comment_added',
+    inappTitleBooker:   '',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '새 댓글이 달렸습니다',
+    contextBanner:      null,                       // 인용 박스가 배너 역할 (renderEmail wb 분기)
+    cta: { admin: CTA_WB_COMMENT },
+    isCancelledStyle: false,
+  },
+  wb_issue_created: {
+    subjectTag:         '[이슈등록]',
+    headerLabel:        '이슈가 등록되었습니다',
+    headerColor:        COLORS.AMBER,
+    recipients:         'wb_recipients',
+    inappType:          'wb_issue_created',
+    inappTitleBooker:   '',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '이슈가 등록되었습니다',
+    contextBanner: { admin: { ...BANNER_PRESETS.warning, title: '새 이슈입니다.', body: '담당·연결 업무가 비어 있으면 Work Space 에서 지정해 주세요.' } },
+    cta: { admin: CTA_WB_ISSUE },
+    isCancelledStyle: false,
+  },
+  wb_issue_resolved: {
+    subjectTag:         '[이슈처리]',
+    headerLabel:        '이슈가 처리되었습니다',     // 해결/보류 는 renderEmail wb 분기가 상태 라벨로 구체화
+    headerColor:        COLORS.INDIGO,
+    recipients:         'wb_recipients',
+    inappType:          'wb_issue_resolved',
+    inappTitleBooker:   '',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '이슈가 처리되었습니다',
+    contextBanner:      null,
+    cta: { admin: CTA_WB_ISSUE },
+    isCancelledStyle: false,
+  },
+  wb_daily_digest: {
+    subjectTag:         '[Work Space]',
+    headerLabel:        '오늘의 Work Space',
+    headerColor:        COLORS.CYAN,
+    recipients:         'wb_recipients',
+    inappType:          'wb_daily_digest',
+    inappTitleBooker:   '',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '오늘의 Work Space',
+    contextBanner: { admin: { ...BANNER_PRESETS.info, title: '이 요약은 Work Space 멤버 전원의 업무 기준입니다 (본인 담당은 "나"로 표시).', body: '해당 항목이 하나도 없는 날은 발송되지 않습니다.' } },
+    cta: { admin: CTA_WB_HOME },
+    isCancelledStyle: false,
+  },
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1161,7 +1253,8 @@ export function getSubject(
 
   // ← [2026-04-18] attendee_removed 예외: 말머리에 '참석자' 단어가 이미 있어 중복 방지
   //   (role 파라미터가 attendee로 들어와도 역할 표시 생략)
-  const skipRoleLabel = type === 'attendee_removed'
+  // ← [2026-09-30 5-B] Work Space 는 수신자가 '관리자'가 아니라 담당자·관련자 — 역할 접미 생략 ("[C&R SPACE · 업무배정]  제목")
+  const skipRoleLabel = type === 'attendee_removed' || type.startsWith('wb_')
 
   if (!skipRoleLabel) {
     if (role === 'attendee') {
