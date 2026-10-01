@@ -125,7 +125,11 @@ export function OrgCanvas(p: Props) {
   }, [full])
   useEffect(() => { document.body.style.overflow = full ? 'hidden' : ''; return () => { document.body.style.overflow = '' } }, [full])
   const [roHint, setRoHint] = useState(false)   // 읽기 전용에서 더블클릭 시 헤더 안내 강조
-  const [view, setView] = useState<'tree' | 'flow' | 'list'>(editable ? 'flow' : 'tree')   // 초안 = 노드 캔버스, 읽기 전용 = 고정 트리
+  // 초안 = 노드 캔버스, 읽기 전용 = 고정 트리. editable 은 잠금 획득 뒤(비동기) true 가 되므로 초기값이 아니라 효과로 전환한다 — 사용자가 뷰를 직접 고르기 전까지만
+  const [view, setViewState] = useState<'tree' | 'flow' | 'list'>('tree')
+  const viewTouched = useRef(false)
+  const setView = (v: 'tree' | 'flow' | 'list') => { viewTouched.current = true; setViewState(v) }
+  useEffect(() => { if (editable && !viewTouched.current) setViewState('flow') }, [editable])
   const [focusTick, setFocusTick] = useState(0)
   const [filter, setFilter] = useState<OrgFilter>('all')
   const [q, setQ] = useState('')
