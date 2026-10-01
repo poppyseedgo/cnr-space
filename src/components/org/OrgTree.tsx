@@ -7,15 +7,16 @@
  *    · 미배치 패널의 사람 → 단위 노드 = 카드 생성
  *    · 접힌 노드 위에 600ms 머물면 자동 펼침
  *  표시 전용: 데이터·액션은 OrgCanvas/OrgAdminPanel 이 소유
+ *  - [2026-10-01 ORG Phase 6] 작업대 노드(kind=bench: 점선 프레임·드래그 불가·헤드카운트 대신 '보관 n') · 다중 선택 카드 드래그(DND.cards → drop.onDropCards) · 카드 클릭 MouseEvent 전달
  *  - [2026-10-01 ORG Phase 5-B] ctx.concurrent/departedSince/hidden 전달 · 헤드카운트 = 본 카드·비숨김
  */
-import { useCallback, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
+import { useCallback, useMemo, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
 import type { OrgCard, OrgJob, OrgRank, OrgUnit } from '../../types'
 import { cardLevel, descendantIds, primaryJob, sortCards, subtreeHeadcount, type OrgBadgeSpec, type OrgPersonView, type OrgUnitNode } from '../../utils/orgStatus'
 import { OrgCardView } from './OrgCardView'
 import { OG } from './orgShared'
 
-export const DND = { card: 'text/org-card', unit: 'text/org-unit', profile: 'text/org-profile' } as const
+export const DND = { card: 'text/org-card', cards: 'text/org-cards', unit: 'text/org-unit', profile: 'text/org-profile' } as const   // cards = [Phase 6] 다중 선택(JSON id 배열)
 const MAX_VISIBLE = 20
 const STEM = 28
 
@@ -35,6 +36,8 @@ export interface TreeDropHandlers {
   onDropCard:    (cardId: string, unitId: string) => void
   onDropUnit:    (unitId: string, newParentId: string) => void
   onDropProfile: (profileId: string, unitId: string) => void
+  /** [Phase 6] 다중 선택 카드를 한 번에 (org_move_cards) */
+  onDropCards?:  (cardIds: string[], unitId: string) => void
 }
 interface Props {
   roots:        OrgUnitNode[]
@@ -45,29 +48,40 @@ interface Props {
   expanded:     Set<string>
   onToggle:     (unitId: string) => void
   selectedCard: string | null
-  onCardClick:  (c: OrgCard) => void
+  onCardClick:  (c: OrgCard, e: MouseEvent) => void
   onUnitClick?: (u: OrgUnit) => void
   drop:         TreeDropHandlers
   zoom:         number
   highlightUnit?: string | null
+  /** [Phase 6] 다중 선택된 카드 id — 포함된 카드를 끌면 전체가 함께 이동 */
+  selectedIds?: Set<string>
 }
 
-export function OrgTree({ roots, units, cardsByUnit, ctx, editable, expanded, onToggle, selectedCard, onCardClick, onUnitClick, drop, zoom, highlightUnit }: Props) {
-  const [dragging, setDragging] = useState<{ kind: 'card' | 'unit' | 'profile'; id: string; fromUnit?: string } | null>(null)
+export function OrgTree({ roots, units, cardsByUnit, ctx, editable, expanded, onToggle, selectedCard, onCardClick, onUnitClick, drop, zoom, highlightUnit, selectedIds }: Props) {
+  const [dragging, setDragging] = useState<{ kind: 'card' | 'unit' | 'profile'; id: string; fromUnit?: string; ids?: string[] } | null>(null)
   const [overUnit, setOverUnit] = useState<string | null>(null)
   const blocked = useMemo(() => dragging?.kind === 'unit' ? new Set([dragging.id, ...descendantIds(dragging.id, units)]) : new Set<string>(), [dragging, units])
   const canDropOn = useCallback((unitId: string) => {
     if (!editable || !dragging) return false
-    if (dragging.kind === 'card')    return dragging.fromUnit !== unitId
+    if (dragging.kind === 'card')    return dragging.ids ? dragging.ids.some(id => [...cardsByUnit.values()].flat().find(c => c.id === id)?.unit_id !== unitId) : dragging.fromUnit !== unitId
     if (dragging.kind === 'unit')    return !blocked.has(unitId) && units.find(u => u.id === dragging.id)?.parent_unit_id !== unitId
     return true
-  }, [editable, dragging, blocked, units])
+  }, [editable, dragging, blocked, units, cardsByUnit])
 
   const onCardDragStart = (e: DragEvent, c: OrgCard) => {
-    e.dataTransfer.setData(DND.card, c.id); e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.effectAllowed = 'move'
+    // [Phase 6] 선택 묶음에 포함된 카드를 끌면 묶음 전체
+    if (selectedIds && selectedIds.has(c.id) && selectedIds.size > 1 && drop.onDropCards) {
+      const ids = [...selectedIds]
+      e.dataTransfer.setData(DND.cards, JSON.stringify(ids)); e.dataTransfer.setData(DND.card, c.id)
+      setDragging({ kind: 'card', id: c.id, fromUnit: c.unit_id, ids })
+      return
+    }
+    e.dataTransfer.setData(DND.card, c.id)
     setDragging({ kind: 'card', id: c.id, fromUnit: c.unit_id })
   }
   const onUnitDragStart = (e: DragEvent, u: OrgUnit) => {
+    if (u.kind === 'bench') { e.preventDefault(); return }   // 작업대는 고정
     e.dataTransfer.setData(DND.unit, u.id); e.dataTransfer.effectAllowed = 'move'
     setDragging({ kind: 'unit', id: u.id })
     e.stopPropagation()
@@ -93,8 +107,13 @@ export function OrgTree({ roots, units, cardsByUnit, ctx, editable, expanded, on
   }
   const onDropOnUnit = (e: DragEvent, unitId: string) => {
     e.preventDefault(); e.stopPropagation()
-    const cardId = e.dataTransfer.getData(DND.card), uId = e.dataTransfer.getData(DND.unit), pId = e.dataTransfer.getData(DND.profile)
-    if (cardId) { const c = [...cardsByUnit.values()].flat().find(x => x.id === cardId); if (c && c.unit_id !== unitId) drop.onDropCard(cardId, unitId) }
+    const cardId = e.dataTransfer.getData(DND.card), uId = e.dataTransfer.getData(DND.unit), pId = e.dataTransfer.getData(DND.profile), many = e.dataTransfer.getData(DND.cards)
+    if (many && drop.onDropCards) {
+      const all = [...cardsByUnit.values()].flat()
+      let ids: string[] = []; try { ids = JSON.parse(many) } catch { ids = [] }
+      ids = ids.filter(id => all.find(c => c.id === id)?.unit_id !== unitId)
+      if (ids.length) drop.onDropCards(ids, unitId)
+    } else if (cardId) { const c = [...cardsByUnit.values()].flat().find(x => x.id === cardId); if (c && c.unit_id !== unitId) drop.onDropCard(cardId, unitId) }
     else if (uId) { if (!blocked.has(unitId) && units.find(u => u.id === uId)?.parent_unit_id !== unitId) drop.onDropUnit(uId, unitId) }
     else if (pId) drop.onDropProfile(pId, unitId)
     endDrag()
@@ -108,19 +127,21 @@ export function OrgTree({ roots, units, cardsByUnit, ctx, editable, expanded, on
     const over = overUnit === u.id && (dragging ? canDropOn(u.id) : false)
     const hasKids = node.children.length > 0 && isOpen
     const visible = cards.length > MAX_VISIBLE ? cards.slice(0, MAX_VISIBLE) : cards
+    const bench = u.kind === 'bench'   // [Phase 6] 작업대 — 점선 프레임, 드래그 불가, 이름 편집 없음
     return (
       <div key={u.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <div data-unit-id={u.id} onDragOver={e => onDragOverUnit(e, u.id)} onDragLeave={() => setOverUnit(x => x === u.id ? null : x)} onDrop={e => onDropOnUnit(e, u.id)}
-             style={{ width: OG.cardW, border: `1px solid ${node.depth <= 1 ? '#C7CDD8' : OG.line}`, borderRadius: 10, background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,.04)',
+             style={{ width: OG.cardW, border: bench ? `1.5px dashed ${OG.drop}` : `1px solid ${node.depth <= 1 ? '#C7CDD8' : OG.line}`, borderRadius: 10, background: bench ? '#F8FAFF' : '#fff', boxShadow: bench ? 'none' : '0 1px 2px rgba(0,0,0,.04)',
                       outline: over ? `2px solid ${OG.drop}` : highlightUnit === u.id ? `2px solid ${OG.amber}` : 'none', outlineOffset: 2 }}>
-          <div draggable={editable} onDragStart={e => onUnitDragStart(e, u)} onDragEnd={endDrag}
-               onClick={() => onToggle(u.id)} onDoubleClick={() => onUnitClick?.(u)}
-               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderBottom: isOpen && (cards.length > 0) ? `1px solid ${OG.line}` : 'none', fontWeight: 600, fontSize: 12.5, cursor: editable ? 'grab' : 'pointer', userSelect: 'none' }}>
+          <div draggable={editable && !bench} onDragStart={e => onUnitDragStart(e, u)} onDragEnd={endDrag}
+               onClick={() => onToggle(u.id)} onDoubleClick={() => !bench && onUnitClick?.(u)}
+               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderBottom: isOpen && (cards.length > 0) ? `1px solid ${OG.line}` : 'none', fontWeight: 600, fontSize: 12.5, cursor: editable && !bench ? 'grab' : 'pointer', userSelect: 'none', color: bench ? OG.drop : OG.ink }}>
             <span style={{ color: OG.quiet, fontSize: 10 }}>{node.children.length > 0 || cards.length > 0 ? (isOpen ? '▾' : '▸') : '·'}</span>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={u.name}>{u.name}</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={bench ? '작업대 — 잠시 떼어 둔 카드·단위. Active 지정 전에 비워야 합니다' : u.name}>{bench ? '🧰 작업대' : u.name}</span>
             {u.code && u.code !== 'ROOT' && u.code !== u.name && <span style={{ fontSize: 10, color: OG.quiet, border: `1px solid ${OG.line}`, borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>{u.code}</span>}
-            <small style={{ color: OG.quiet, fontWeight: 400, marginLeft: 'auto', flexShrink: 0 }}>{total}</small>
+            <small style={{ color: OG.quiet, fontWeight: 400, marginLeft: 'auto', flexShrink: 0 }}>{bench ? `보관 ${total}${node.children.length ? ` · 단위 ${node.children.length}` : ''}` : total}</small>
           </div>
+          {bench && isOpen && cards.length === 0 && node.children.length === 0 && <div style={{ padding: '10px 12px', fontSize: 11, color: OG.quiet, lineHeight: 1.5 }}>비어 있음 — 카드·단위를 끌어다 놓거나, 선택 후 '작업대로' 를 누르세요</div>}
           {isOpen && cards.length > 0 && (
             <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {visible.map((c, i) => {
@@ -137,7 +158,7 @@ export function OrgTree({ roots, units, cardsByUnit, ctx, editable, expanded, on
                     {(sep || (!!prevC && prevC.is_unit_head && !c.is_unit_head)) && <div style={{ fontSize: 10, color: OG.quiet, padding: '4px 0 6px 2px', borderTop: `1px dashed ${OG.line}`, marginTop: 2 }}>{tier}</div>}
                     <OrgCardView card={c} person={ctx.person(c)} rank={r} jobs={jobs} badge={ctx.badge(c)} mismatch={ctx.mismatch(c)} dim={ctx.dim(c)}
                                  concurrent={ctx.concurrent(c)} departedSince={ctx.departedSince(c)} hidden={ctx.hidden(c)}
-                                 selected={selectedCard === c.id} draggable={editable} onClick={onCardClick} onDragStart={onCardDragStart} onDragEnd={endDrag} />
+                                 selected={selectedCard === c.id} checked={selectedIds?.has(c.id)} draggable={editable} onClick={onCardClick} onDragStart={onCardDragStart} onDragEnd={endDrag} />
                   </div>
                 )
               })}

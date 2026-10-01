@@ -1,5 +1,6 @@
 /**
  * OrgAdminPanel.tsx — 어드민 '조직도' 탭 루트: 데이터 소유 + 갤러리(A) ↔ 캔버스(B) 전환 + 모든 저장 경로
+ *  - [2026-10-01 ORG Phase 6] 작업대(초안 열 때 ensure) · 다중 이동(org_move_cards) · 분리/합치기 모달 · 떼어내기 · 되돌리기(peek 는 저장마다 갱신) · Excel/CSV/썸네일 작업대 제외 (설계서 §13)
  *  - [2026-10-01 ORG 5-C] 단위 이동(상위로/하위로/이동… 모달) · 재배치 시 형제 끝에 배치 · 전체화면/스크롤은 OrgCanvas
  *  - [2026-10-01 ORG Phase 5-B] 퇴사 판정·숨김(departedOf/isHidden) · 미배치에서 퇴사일 경과자 제외 · 겸직 카드 추가/승격 · 숨김 토글 · Excel 내보내기
  *  - [2026-10-01 ORG Phase 5] 조직도 표기 이름(org_display_names) 로드 · 드로어 편집 연결 · CSV Azure 이름 열
@@ -22,9 +23,10 @@ import {
   notifyOrgActivated,   // ← [Phase 4-B]
   loadOrgDisplayNames, setOrgDisplayName,   // ← [Phase 5]
   setOrgCardHidden, swapOrgPrimaryCard,     // ← [Phase 5-B]
+  ensureOrgBench, moveOrgCards, splitOrgUnit, mergeOrgUnit, undoOrgLast, undoOrgPeek, type OrgUndoPeek,   // ← [Phase 6]
   type OrgCodes, type OrgFileBundle, type OrgOffboardingTemplate,
 } from '../../lib/orgApi'
-import { orgErrorMessage, orgPersonView, orgStatusBadge, orgExportRows, orgDepartedInfo, isCardHidden, todayKST, descendantIds, type OrgDepartedInfo } from '../../utils/orgStatus'
+import { orgErrorMessage, orgPersonView, orgStatusBadge, orgExportRows, orgDepartedInfo, isCardHidden, todayKST, descendantIds, splitBench, type OrgDepartedInfo } from '../../utils/orgStatus'
 import { exportOrgExcel } from '../../utils/orgExcel'
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import { OrgGallery } from './OrgGallery'
@@ -65,8 +67,10 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   const [history, setHistory]   = useState<null | { file: OrgFileBundle['file'] | null; tab: 'log' | 'diff' }>(null)   // ← [Phase 4-A] 드로어 D
   const [codesOpen, setCodesOpen] = useState(false)   // ← [Phase 4-B] 패널 E
   const [displayNames, setDisplayNames] = useState<Map<string, OrgDisplayName>>(new Map())   // ← [Phase 5]
+  const [undo, setUndo] = useState<OrgUndoPeek | null>(null)   // ← [Phase 6] 되돌리기 가능 여부
   const myName = useMemo(() => users.find(u => u.user_id === currentUserId)?.name ?? '관리자', [users, currentUserId])
-  const [modal, setModal]       = useState<null | { kind: 'new' } | { kind: 'copy'; src: OrgFileSummary | { id: string; name: string } } | { kind: 'meta' } | { kind: 'unit-new'; parentId: string | null } | { kind: 'unit-rename'; unit: OrgUnit } | { kind: 'unit-move'; unit: OrgUnit } | { kind: 'vacancy'; unitId: string } | { kind: 'person-new'; unitId: string }>(null)
+  const [modal, setModal]       = useState<null | { kind: 'new' } | { kind: 'copy'; src: OrgFileSummary | { id: string; name: string } } | { kind: 'meta' } | { kind: 'unit-new'; parentId: string | null } | { kind: 'unit-rename'; unit: OrgUnit } | { kind: 'unit-move'; unit: OrgUnit } | { kind: 'vacancy'; unitId: string } | { kind: 'person-new'; unitId: string }
+    | { kind: 'cards-move'; cardIds: string[] } | { kind: 'split'; cardIds: string[] } | { kind: 'unit-merge'; unit: OrgUnit }>(null)   // ← [Phase 6]
   const [confirm, setConfirm]   = useState<null | { title: string; message: React.ReactNode; variant: 'danger' | 'warn' | 'neutral'; label: string; run: () => Promise<void> }>(null)
 
   const ranks = useMemo(() => new Map(codes.ranks.map(r => [r.id, r])), [codes.ranks])
@@ -92,7 +96,8 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
     const act = fs.find(f => f.status === 'active')
     if (act) {
       const [b, rc] = await Promise.all([loadOrgFileBundle(act.id), rosterCheck(act.id).catch(() => null)])
-      setActiveBundle(b ? { units: b.units, cards: b.cards } : null); setActiveRoster(rc)
+      if (b) { const { inBench } = splitBench(b.units); setActiveBundle({ units: b.units.filter(u => !inBench.has(u.id)), cards: b.cards.filter(c => !inBench.has(c.unit_id)) }) } else setActiveBundle(null)   // [Phase 6] 썸네일·diff 보조에서 작업대 제외
+      setActiveRoster(rc)
     } else { setActiveBundle(null); setActiveRoster(null) }
   }, [])
   useEffect(() => {
@@ -131,6 +136,9 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
             await acquireOrgLock(fileId)
             if (dead) return
             setEditable(true); setLockHolder(null)
+            // [Phase 6] 작업대는 초안을 편집으로 열 때 보장 — 항상 드롭 대상으로 존재 (되돌리기 묶음에서는 제외됨)
+            if (!b.units.some(u => u.kind === 'bench')) { try { const bid = await ensureOrgBench(fileId); const bu = await loadOrgUnitById(bid); if (!dead && bu) setBundle(x => x && x.file.id === fileId ? { ...x, units: [...x.units, bu] } : x) } catch (e) { console.error('[org] ensure bench', e) } }
+            undoOrgPeek(fileId).then(u => !dead && setUndo(u)).catch(() => {})
             lockTimer.current = window.setInterval(() => acquireOrgLock(fileId).catch(() => {}), LOCK_REFRESH_MS)
           } catch (e) {
             const msg = e instanceof Error ? e.message : ''
@@ -140,7 +148,7 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
               showToast(`${holder} 님이 편집 중입니다 — 읽기 전용으로 엽니다.${isSuper ? ' (최고 관리자: 헤더에서 강제 획득 가능)' : ''}`)
             } else { fail(e); setEditable(false) }
           }
-        } else { setEditable(false); setLockHolder(null) }
+        } else { setEditable(false); setLockHolder(null); setUndo(null) }
       } catch (e) { fail(e, '조직도를 불러오지 못했습니다.') }
     })()
     return () => {
@@ -151,7 +159,8 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   }, [fileId])   // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 단건 재조회 머지 ──
-  const touch = () => setSavedAt(new Date().toISOString())
+  const refreshUndo = () => { if (fileId) undoOrgPeek(fileId).then(setUndo).catch(() => {}) }
+  const touch = () => { setSavedAt(new Date().toISOString()); refreshUndo() }   // [Phase 6] 저장마다 되돌리기 가능 여부 갱신
   const mergeCard = async (id: string) => { const c = await loadOrgCardById(id); setBundle(b => b ? { ...b, cards: c ? b.cards.map(x => x.id === id ? c : x).concat(b.cards.some(x => x.id === id) ? [] : [c]) : b.cards.filter(x => x.id !== id) } : b); touch() }
   const mergeUnit = async (id: string) => { const u = await loadOrgUnitById(id); setBundle(b => b ? { ...b, units: u ? (b.units.some(x => x.id === id) ? b.units.map(x => x.id === id ? u : x) : [...b.units, u]) : b.units.filter(x => x.id !== id) } : b); touch() }
   const refreshRoster = () => { if (fileId) rosterCheck(fileId).then(setRoster).catch(() => {}) }
@@ -174,6 +183,25 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   }
   const onToggleHidden = async (c: OrgCard) => {
     try { await setOrgCardHidden(c.id, !c.hidden_at); await mergeCard(c.id); refreshRoster(); showToast(c.hidden_at ? '카드 숨김을 해제했습니다.' : '카드를 숨겼습니다 — Active 전환 시 자동 제거됩니다.') } catch (e) { fail(e) }
+  }
+
+  // ── [Phase 6] 작업대 · 다중 이동 · 분리/합치기 · 되돌리기 (설계서 §13) ──
+  const reloadBundle = async () => { if (!bundle) return; const b = await loadOrgFileBundle(bundle.file.id); if (b) setBundle(b); touch(); refreshRoster() }
+  const benchId = async (): Promise<string> => {
+    if (!bundle) throw new Error('ORG_FILE_NOT_FOUND')
+    const have = bundle.units.find(u => u.kind === 'bench'); if (have) return have.id
+    const id = await ensureOrgBench(bundle.file.id); await mergeUnit(id); return id
+  }
+  const onDropCards = async (cardIds: string[], unitId: string) => {
+    try { const r = await moveOrgCards(cardIds, unitId); await reloadBundle(); showToast(`카드 ${r.moved}장 이동`) } catch (e) { fail(e) }
+  }
+  const onToBench = async (cardIds: string[]) => { try { await onDropCards(cardIds, await benchId()) } catch (e) { fail(e) } }
+  const onDetachUnit = async (u: OrgUnit) => {
+    try { const bid = await benchId(); await updateOrgUnit(u.id, { parent_unit_id: bid, sort_order: bundle!.units.filter(x => x.parent_unit_id === bid).length }); await mergeUnit(u.id); refreshRoster(); showToast(`'${u.name}' 을(를) 작업대로 떼어냈습니다 — 되돌리기 가능`) } catch (e) { fail(e) }
+  }
+  const onUndo = async () => {
+    if (!bundle) return
+    try { const r = await undoOrgLast(bundle.file.id); await reloadBundle(); setSelectedCard(null); showToast(`되돌렸습니다 — ${r.reverted}건 (다시 되돌리면 재실행)`) } catch (e) { fail(e) }
   }
 
   // ── 드래그 저장 ──
@@ -248,8 +276,10 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
       const pm = new Map(b.persons.map(p => [p.id, { name: p.name, email: p.email }]))
       const pv = (c: OrgCard) => orgPersonView(c, users, pm, departedMap, displayNames)
       const hid = (c: OrgCard) => isCardHidden(c, orgDepartedInfo(c, pv(c), statusOf(c), statusTypeMap, c.profile_id ? departedAtMap.get(c.profile_id) : null))
-      const rows = orgExportRows(b.units, b.cards, ranks, jobs, statusTypeMap, pv, statusOf, hid)
-      const n = await exportOrgExcel({ file: b.file, units: b.units, cards: b.cards.filter(c => !hid(c)), ranks, jobs, person: pv, rows })
+      const { orgUnits, inBench } = splitBench(b.units)   // [Phase 6] 작업대는 내보내기 제외
+      const cards = b.cards.filter(c => !inBench.has(c.unit_id))
+      const rows = orgExportRows(orgUnits, cards, ranks, jobs, statusTypeMap, pv, statusOf, hid)
+      const n = await exportOrgExcel({ file: b.file, units: orgUnits, cards: cards.filter(c => !hid(c)), ranks, jobs, person: pv, rows })
       showToast(`Excel 내보내기 — 조직도 시트 단위 ${n.units} · 명단 ${rows.length}행`)
     } catch (e) { fail(e, 'Excel 내보내기에 실패했습니다.') }
   }
@@ -279,6 +309,15 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
       } else if (modal.kind === 'unit-move') {
         if (!v.target) throw new Error('대상 단위를 선택하세요.')
         await onDropUnit(modal.unit.id, v.target === '__root__' ? null : v.target); setModal(null)
+      } else if (modal.kind === 'cards-move') {
+        if (!v.target) throw new Error('대상 단위를 선택하세요.')
+        const r = await moveOrgCards(modal.cardIds, v.target); await reloadBundle(); setModal(null); showToast(`카드 ${r.moved}장 이동`)
+      } else if (modal.kind === 'split' && bundle) {
+        if (!v.parent) throw new Error('새 단위를 둘 위치를 선택하세요.')
+        const r = await splitOrgUnit(modal.cardIds, v.parent, v.name.trim()); await reloadBundle(); setModal(null); showToast(`'${v.name.trim()}' 단위 생성 · 카드 ${r.moved}장 이동 — 되돌리기 가능`)
+      } else if (modal.kind === 'unit-merge') {
+        if (!v.target) throw new Error('합칠 대상 단위를 선택하세요.')
+        const r = await mergeOrgUnit(modal.unit.id, v.target); await reloadBundle(); setModal(null); setSelectedCard(null); showToast(`'${modal.unit.name}' 합침 — 카드 ${r.cards}장 · 하위 단위 ${r.units}개 이동 — 되돌리기 가능`)
       } else if (modal.kind === 'unit-rename') {
         await updateOrgUnit(modal.unit.id, { name: v.name.trim(), code: v.code.trim() || null, azure_division: v.azure_division.trim() || null }); await mergeUnit(modal.unit.id); setModal(null); refreshRoster()
       } else if (modal.kind === 'vacancy' && bundle) {
@@ -332,13 +371,32 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
     if (modal.kind === 'meta' && bundle) return <OrgPromptModal title="파일 정보" fields={[{ key: 'name', label: '이름', required: true }, { key: 'effective_on', label: '적용일', type: 'date' }, { key: 'memo', label: '메모' }]} initial={{ name: bundle.file.name, effective_on: bundle.file.effective_on ?? '', memo: bundle.file.memo ?? '' }} loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
     if (modal.kind === 'unit-new') return <OrgPromptModal title={modal.parentId ? '하위 단위 추가' : '최상위 단위 추가'} fields={[{ key: 'name', label: '단위 이름', required: true }, { key: 'code', label: '약칭(code)', placeholder: '예: CO1-1 · 파일 안에서 유일' }]} confirmLabel="추가" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
     if (modal.kind === 'unit-rename') return <OrgPromptModal title="단위 편집" fields={[{ key: 'name', label: '단위 이름', required: true }, { key: 'code', label: '약칭(code)' }, { key: 'azure_division', label: 'Azure Division 매핑', help: '교차검증용 — profiles.dept 와 비교할 값 (예: CO). 하위 단위는 가장 가까운 상위 값을 상속' }]} initial={{ name: modal.unit.name, code: modal.unit.code ?? '', azure_division: modal.unit.azure_division ?? '' }} loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
-    if (modal.kind === 'unit-move' && bundle) {
-      const ex = new Set([modal.unit.id, ...descendantIds(modal.unit.id, bundle.units)])
+    // 단위 선택 옵션(들여쓰기 트리) — ex 제외, 작업대는 '🧰 작업대' 로 표시 (allowBench=false 면 작업대 하위 전체 제외)
+    const unitOpts = (ex: Set<string>, mark: string | null, allowBench: boolean) => {
+      if (!bundle) return []
+      const { inBench } = splitBench(bundle.units)
       const opts: { value: string; label: string }[] = []
       const walk = (parent: string | null, depth: number) => bundle.units.filter(x => x.parent_unit_id === parent).sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'ko'))
-        .forEach(x => { if (!ex.has(x.id)) opts.push({ value: x.id, label: `${'\u00a0\u00a0'.repeat(depth)}${x.name}${x.id === modal.unit.parent_unit_id ? ' (현재 상위)' : ''}` }); walk(x.id, depth + 1) })
-      walk(null, 0)
-      return <OrgPromptModal title={`'${modal.unit.name}' 이동 — 어느 단위 아래로?`} fields={[{ key: 'target', label: '대상 단위', type: 'select', options: [{ value: '', label: '(선택)' }, ...opts], required: true, help: '선택한 단위의 하위 끝으로 들어갑니다. 하위 단위·카드는 함께 이동. 순서는 ↑↓ 로 조정' }]} confirmLabel="이동" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
+        .forEach(x => { if (ex.has(x.id) || (!allowBench && inBench.has(x.id))) return; opts.push({ value: x.id, label: `${'\u00a0\u00a0'.repeat(depth)}${x.kind === 'bench' ? '🧰 작업대' : x.name}${x.id === mark ? ' (현재)' : ''}` }); walk(x.id, depth + 1) })
+      walk(null, 0); return opts
+    }
+    if (modal.kind === 'unit-move' && bundle) {
+      const opts = unitOpts(new Set([modal.unit.id, ...descendantIds(modal.unit.id, bundle.units)]), modal.unit.parent_unit_id, true)
+      return <OrgPromptModal title={`'${modal.unit.name}' 이동 — 어느 단위 아래로?`} fields={[{ key: 'target', label: '대상 단위', type: 'select', options: [{ value: '', label: '(선택)' }, ...opts], required: true, help: '선택한 단위의 하위 끝으로 들어갑니다. 하위 단위·카드는 함께 이동. 순서는 ↑↓ 로 조정. 작업대를 고르면 떼어내기' }]} confirmLabel="이동" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
+    }
+    if (modal.kind === 'cards-move' && bundle) {
+      const cur = new Set(bundle.cards.filter(c => modal.cardIds.includes(c.id)).map(c => c.unit_id))
+      return <OrgPromptModal title={`카드 ${modal.cardIds.length}장 이동 — 어느 단위로?`} fields={[{ key: 'target', label: '대상 단위', type: 'select', options: [{ value: '', label: '(선택)' }, ...unitOpts(new Set(), cur.size === 1 ? [...cur][0] : null, true)], required: true, help: '한 트랜잭션으로 이동(되돌리기 1단계). 단위장·보고선은 해제되고 대상 단위 끝에 붙습니다' }]} confirmLabel="이동" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
+    }
+    if (modal.kind === 'split' && bundle) {
+      const cur = [...new Set(bundle.cards.filter(c => modal.cardIds.includes(c.id)).map(c => c.unit_id))]
+      const srcUnit = cur.length === 1 ? bundle.units.find(u => u.id === cur[0]) : null
+      const dflt = srcUnit ? (srcUnit.parent_unit_id ?? srcUnit.id) : (bundle.units.find(u => !u.parent_unit_id && u.kind !== 'bench')?.id ?? '')
+      return <OrgPromptModal title={`카드 ${modal.cardIds.length}장으로 새 단위 만들기`} fields={[{ key: 'name', label: '새 단위 이름', required: true, placeholder: '예: Data Management Team' }, { key: 'parent', label: '새 단위를 둘 위치(상위 단위)', type: 'select', options: [{ value: '', label: '(선택)' }, ...unitOpts(new Set(), dflt, true)], required: true, help: srcUnit ? `기본값 = '${srcUnit.name}' 과 같은 층(형제). 작업대를 고르면 작업대 안에 만들어 둡니다` : '작업대를 고르면 작업대 안에 만들어 둡니다' }]} initial={{ parent: dflt }} confirmLabel="분리" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
+    }
+    if (modal.kind === 'unit-merge' && bundle) {
+      const opts = unitOpts(new Set([modal.unit.id, ...descendantIds(modal.unit.id, bundle.units)]), null, false)
+      return <OrgPromptModal title={`'${modal.unit.name}' 합치기 — 어느 단위로?`} fields={[{ key: 'target', label: '대상 단위', type: 'select', options: [{ value: '', label: '(선택)' }, ...opts], required: true, help: `'${modal.unit.name}' 의 카드·하위 단위가 대상 단위로 옮겨지고 이 단위는 삭제됩니다. 같은 사람이 양쪽에 있으면 거부. 되돌리기 가능` }]} confirmLabel="합치기" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
     }
     if (modal.kind === 'vacancy') return <OrgPromptModal title="공석(TO) 추가" fields={[{ key: 'name', label: '표기', placeholder: '예: 공석 · CRA' }, { key: 'job', label: '직무', type: 'select', options: jobOptions }]} confirmLabel="추가" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
     if (modal.kind === 'person-new') return <OrgPromptModal title="입사 예정자 추가" fields={[{ key: 'name', label: '이름', required: true }, { key: 'email', label: '회사 이메일', placeholder: 'sync 시 이 이메일로 프로필을 자동 연결', help: '입사 후 Azure 계정이 생기면 sync-all-users 가 같은 이메일의 profile 과 자동 연결합니다' }, { key: 'start_on', label: '입사일', type: 'date', help: '입력하면 입사예정 상태가 함께 등록됩니다' }, { key: 'job', label: '직무', type: 'select', options: jobOptions }]} confirmLabel="추가" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
@@ -357,7 +415,9 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
                    onHistory={() => setHistory({ file: bundle.file, tab: 'log' })} onAddPerson={unitId => setModal({ kind: 'person-new', unitId })}
                    onAddUnit={parentId => setModal({ kind: 'unit-new', parentId })} onRenameUnit={u => setModal({ kind: 'unit-rename', unit: u })} onDeleteUnit={onDeleteUnit} onMoveUnit={onMoveUnit}
                    onAddVacancy={unitId => setModal({ kind: 'vacancy', unitId })} onOutdentUnit={onOutdentUnit} onIndentUnit={onIndentUnit} onMoveUnitTo={onMoveUnitTo}
-                   onDropCard={onDropCard} onDropUnit={onDropUnit} onDropProfile={onDropProfile} />
+                   onDropCard={onDropCard} onDropUnit={onDropUnit} onDropProfile={onDropProfile}
+                   onDropCards={onDropCards} onToBench={onToBench} onMoveCardsTo={ids => setModal({ kind: 'cards-move', cardIds: ids })} onSplitCards={ids => setModal({ kind: 'split', cardIds: ids })}
+                   onDetachUnit={onDetachUnit} onMergeUnit={u => setModal({ kind: 'unit-merge', unit: u })} onUndo={onUndo} undo={undo} />
       ) : fileId ? (
         <div style={{ padding: 40, color: OG.quiet, fontFamily: OG.font }}>불러오는 중…</div>
       ) : (

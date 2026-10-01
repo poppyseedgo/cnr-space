@@ -711,6 +711,8 @@ export interface OrgUnit {
   azure_division: string | null
   head_card_id:   string | null
   sort_order:     number
+  /** [ORG Phase 6] 'bench' = 작업대(파일당 1개, 두 번째 루트) — 트리·헤드카운트·Excel·Active diff 제외. 설계서 §13 */
+  kind?:          'unit' | 'bench'
 }
 export interface OrgCard {
   id:                 string

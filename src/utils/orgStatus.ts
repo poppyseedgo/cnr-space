@@ -10,6 +10,7 @@
  *      · 퇴사 판정: profile_id 있는데 users 에 없음 (departed_users 존재 여부는 표시 보조)
  *  - [2026-10-01 ORG Phase 5-B] orgDepartedInfo(퇴사 판정 2종 + 7일 자동 숨김) · isCardHidden · 겸직(is_primary) 헤드카운트/CSV 반영
  *  - [2026-10-01 ORG Phase 5] orgPersonView displayNames(조직도 표기 이름) 우선 · CSV 'Azure 이름' 열
+ *  - [2026-10-01 ORG Phase 6] splitBench(작업대 분리) · ERR 작업대/분리/합치기/되돌리기 코드
  *  - [2026-10-01 ORG Phase 4-B] orgExportRows — 파일 단위 카드 CSV 행 빌더(utils/csv.exportCSV 와 결합)
  */
 
@@ -126,6 +127,12 @@ export function buildUnitTree(units: OrgUnit[]): OrgUnitNode[] {
       return { unit: u, children: build(u.id, depth + 1, seen), depth }
     })
   return build(null, 0, new Set())
+}
+/** [Phase 6] 작업대 분리 — bench = kind='bench' 루트, inBench = 작업대 하위 단위 id(작업대 자신 포함). 트리·헤드카운트·Excel·CSV 는 orgUnits 만 쓴다 */
+export function splitBench(units: OrgUnit[]): { bench: OrgUnit | null; inBench: Set<string>; orgUnits: OrgUnit[]; benchUnits: OrgUnit[] } {
+  const bench = units.find(u => u.kind === 'bench') ?? null
+  const inBench = bench ? new Set([bench.id, ...descendantIds(bench.id, units)]) : new Set<string>()
+  return { bench, inBench, orgUnits: units.filter(u => !inBench.has(u.id)), benchUnits: units.filter(u => inBench.has(u.id)) }
 }
 /** 단위 + 하위 전체 인원 — 공석·겸직 카드·숨김 카드 제외 (= 사람 수). isHidden 은 [Phase 5-B] 자동/수동 숨김 판정 */
 export function subtreeHeadcount(node: OrgUnitNode, cardsByUnit: Map<string, OrgCard[]>, isHidden?: (c: OrgCard) => boolean): number {
@@ -254,6 +261,17 @@ const ERR: Record<string, string> = {
   ORG_ACTIVATE_EMPTY:          '단위가 없는 빈 조직도는 Active 로 지정할 수 없습니다.',
   ORG_ACTIVATE_GHOSTS:         '퇴사자 카드가 남아 있습니다. 정리한 뒤 다시 시도하세요.',
   ORG_NAME_REQUIRED:           '이름을 입력하세요.',
+  // [Phase 6] 작업대 · 분리/합치기 · 되돌리기
+  ORG_ACTIVATE_BENCH_NOT_EMPTY:'작업대에 카드·단위가 남아 있습니다. 조직에 붙이거나 제거한 뒤 Active 지정하세요.',
+  ORG_BENCH_PROTECTED:         '작업대는 삭제하거나 바꿀 수 없습니다.',
+  ORG_MOVE_DUPLICATE_PERSON:   '대상 단위에 이미 같은 사람의 카드가 있습니다.',
+  ORG_MERGE_DUPLICATE_PERSON:  '양쪽 단위에 모두 있는 사람이 있어 합칠 수 없습니다. 한쪽 카드를 먼저 정리하세요.',
+  ORG_MERGE_SELF:              '같은 단위끼리는 합칠 수 없습니다.',
+  ORG_UNIT_NOT_FOUND:          '대상 단위를 찾을 수 없습니다(작업대로는 합칠 수 없습니다).',
+  ORG_UNDO_NOTHING:            '되돌릴 내 변경이 없습니다.',
+  ORG_UNDO_CONFLICT:           '그 뒤에 다른 사용자의 변경이 있어 되돌릴 수 없습니다.',
+  org_cards_unit_profile:      '같은 단위에 같은 사람의 카드가 이미 있습니다.',
+  org_cards_unit_person:       '같은 단위에 같은 사람의 카드가 이미 있습니다.',
   ORG_STATUS_UNKNOWN:          '알 수 없는 상태 코드입니다.',
   ORG_STATUS_START_REQUIRED:   '시작일을 지정하세요.',
   ORG_STATUS_RETURN_REQUIRED:  '복귀 예정일을 지정하세요.',

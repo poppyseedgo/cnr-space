@@ -2,9 +2,10 @@
  * OrgCardView.tsx — 인사 카드 (트리 노드 안 스택용)
  *  - [2026-10-01 ORG Phase 3] 신규 — 설계서 §6.2 카드. 아바타 앞 상태 점(기존 EmploymentBadge 규칙) · 이름 · 직급·직무 · 상태 라벨 1줄
  *    공석 = 점선, 퇴사 = 취소선 + 빨강 라벨, Azure Division 불일치 = 우상단 앰버 점
+ *  - [2026-10-01 ORG Phase 6] 다중 선택(checked = 파란 테두리 + 체크 배지) · onClick 에 MouseEvent 전달(Shift/Ctrl 판별은 캔버스)
  *  - [2026-10-01 ORG Phase 5-B] 겸직 태그('겸' + 본 소속 / 본 카드 '겸직 n'), 퇴사일 경과 라벨(회색 '퇴사 · M/D'), 숨김 카드 반투명 + '숨김' 태그
  */
-import type { CSSProperties, DragEvent } from 'react'
+import type { CSSProperties, DragEvent, MouseEvent } from 'react'
 import type { OrgCard, OrgJob, OrgRank } from '../../types'
 import { UserAvatar } from '../common/UserAvatar'
 import { ORG_DEPARTED_STYLE, ORG_VACANCY_STYLE, ORG_EMPLOYMENT_TYPE_LABEL, type OrgBadgeSpec, type OrgPersonView } from '../../utils/orgStatus'
@@ -20,7 +21,9 @@ export interface OrgCardViewProps {
   dim?:       boolean
   selected?:  boolean
   draggable?: boolean
-  onClick?:   (card: OrgCard) => void
+  onClick?:   (card: OrgCard, e: MouseEvent) => void
+  /** [Phase 6] 다중 선택 포함 여부 */
+  checked?:   boolean
   onDragStart?: (e: DragEvent, card: OrgCard) => void
   onDragEnd?:   () => void
   /** [Phase 5-B] 겸직: 겸직 카드면 본 소속 단위명, 본 카드면 겸직 카드 수 */
@@ -30,15 +33,16 @@ export interface OrgCardViewProps {
   hidden?:    boolean
 }
 
-export function OrgCardView({ card, person, rank, jobs, badge, mismatch, dim, selected, draggable, onClick, onDragStart, onDragEnd, concurrent, departedSince, hidden }: OrgCardViewProps) {
+export function OrgCardView({ card, person, rank, jobs, badge, mismatch, dim, selected, draggable, onClick, onDragStart, onDragEnd, concurrent, departedSince, hidden, checked }: OrgCardViewProps) {
   const lead = card.is_unit_head
   const style: CSSProperties = {
-    border: `1px solid ${selected ? OG.drop : lead ? OG.ink : OG.line}`,
+    borderWidth: 1, borderColor: checked || selected ? OG.drop : lead ? OG.ink : OG.line,   // shorthand 혼용 경고 방지
     borderStyle: card.is_vacancy ? 'dashed' : 'solid',
     borderRadius: 7, background: card.is_vacancy ? 'transparent' : lead ? '#FAFAFA' : OG.card,
     padding: '7px 8px', display: 'grid', gridTemplateColumns: '28px 1fr', columnGap: 8, alignItems: 'center',
     position: 'relative', opacity: dim ? 0.35 : hidden ? 0.45 : 1, cursor: onClick ? 'pointer' : 'default', fontFamily: OG.font,
-    boxShadow: selected ? `0 0 0 2px ${OG.drop}22` : 'none',
+    boxShadow: checked ? `0 0 0 2px ${OG.drop}` : selected ? `0 0 0 2px ${OG.drop}22` : 'none',
+    ...(checked ? { background: '#EFF6FF' } : {}),
   }
   const jobText = jobs.map(j => j.code).join(' / ')
   const sub = [rank?.label, jobText].filter(Boolean).join(' · ') || (card.is_vacancy ? '직급/직무 미지정' : '')
@@ -49,7 +53,7 @@ export function OrgCardView({ card, person, rank, jobs, badge, mismatch, dim, se
     : card.is_vacancy ? { label: 'TO · 공석', ...ORG_VACANCY_STYLE } : badge
 
   return (
-    <div data-card-id={card.id} style={style} draggable={draggable} onClick={onClick ? () => onClick(card) : undefined}
+    <div data-card-id={card.id} style={style} draggable={draggable} onClick={onClick ? e => onClick(card, e) : undefined}
          onDragStart={onDragStart ? e => onDragStart(e, card) : undefined} onDragEnd={onDragEnd} title={person.email || undefined}>
       <div style={{ position: 'relative', width: 28, height: 28 }}>
         {card.is_vacancy
@@ -70,6 +74,7 @@ export function OrgCardView({ card, person, rank, jobs, badge, mismatch, dim, se
         <div style={{ fontSize: 11, color: OG.quiet, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}{card.work_location ? ` · ${card.work_location}` : ''}{concurrent?.kind === 'secondary' ? ` · 본소속 ${concurrent.homeUnit}` : ''}</div>
       </div>
       {label && <span style={{ gridColumn: '1 / -1', fontSize: 10, padding: '1px 6px', borderRadius: 4, width: 'fit-content', marginTop: 2, background: label.bg, color: label.color }}>{label.label}</span>}
+      {checked && <span style={{ position: 'absolute', right: -6, top: -6, width: 16, height: 16, borderRadius: '50%', background: OG.drop, color: '#fff', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #fff' }}>✓</span>}
       {mismatch && <span title="Azure Division 불일치" style={{ position: 'absolute', right: 8, top: 8, width: 8, height: 8, borderRadius: '50%', background: OG.amber }} />}
     </div>
   )

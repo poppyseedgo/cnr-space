@@ -373,3 +373,42 @@ export async function swapOrgPrimaryCard(cardId: string): Promise<void> {
   const { error } = await supabase.rpc('org_swap_primary_card', { p_card_id: cardId })
   if (error) throw new Error(error.message)
 }
+
+// ─── [Phase 6] 대규모 개편 편집 — 작업대 · 다중 이동 · 분리/합치기 · 되돌리기 (20261012 RPC, 설계서 §13) ───
+/** 파일의 작업대 단위 id (없으면 생성 — 초안만). 작업대는 kind='bench' 인 두 번째 루트 */
+export async function ensureOrgBench(fileId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('org_ensure_bench', { p_file_id: fileId })
+  if (error) throw new Error(error.message)
+  return data as string
+}
+/** 카드 여러 장을 한 단위로 한 트랜잭션에 이동(= 되돌리기 1단계). 단위장·보고선은 해제, 대상 단위 끝에 순서대로 */
+export async function moveOrgCards(cardIds: string[], unitId: string): Promise<{ moved: number; unit_id: string }> {
+  const { data, error } = await supabase.rpc('org_move_cards', { p_card_ids: cardIds, p_unit_id: unitId })
+  if (error) throw new Error(error.message)
+  return data
+}
+/** 선택 카드로 새 단위 생성(부모 아래 형제 끝) + 이동 */
+export async function splitOrgUnit(cardIds: string[], parentUnitId: string, name: string): Promise<{ unit_id: string; moved: number }> {
+  const { data, error } = await supabase.rpc('org_split_unit', { p_card_ids: cardIds, p_parent_unit_id: parentUnitId, p_name: name })
+  if (error) throw new Error(error.message)
+  return data
+}
+/** from 의 카드·하위 단위를 into 로 옮기고 from 삭제. 같은 사람이 양쪽에 있으면 ORG_MERGE_DUPLICATE_PERSON */
+export async function mergeOrgUnit(fromUnitId: string, intoUnitId: string): Promise<{ into: string; cards: number; units: number }> {
+  const { data, error } = await supabase.rpc('org_merge_unit', { p_from: fromUnitId, p_into: intoUnitId })
+  if (error) throw new Error(error.message)
+  return data
+}
+export interface OrgUndoPeek { available: boolean; conflict?: boolean; at?: string; rows?: number }
+/** 내 마지막 동작(같은 트랜잭션 묶음) 되돌리기 — 그 뒤 타인 변경이 있으면 ORG_UNDO_CONFLICT. 되돌림도 기록되어 다시 되돌리면 재실행 */
+export async function undoOrgLast(fileId: string): Promise<{ reverted: number; at: string }> {
+  const { data, error } = await supabase.rpc('org_undo_last', { p_file_id: fileId })
+  if (error) throw new Error(error.message)
+  return data
+}
+export async function undoOrgPeek(fileId: string): Promise<OrgUndoPeek> {
+  if (!isSupabaseEnabled) return { available: false }
+  const { data, error } = await supabase.rpc('org_undo_peek', { p_file_id: fileId })
+  if (error) throw new Error(error.message)
+  return data as OrgUndoPeek
+}

@@ -1,14 +1,16 @@
 /**
  * OrgCanvas.tsx — 화면 B: 파일 상세(헤더 + 좌측 패널 + 조직 트리/단위별 리스트 + 줌)
+ *  - [2026-10-01 ORG Phase 6] 다중 선택(선택 모드 토글 · Ctrl/⌘ 클릭 토글 · Shift 클릭 범위) + 하단 액션 바(작업대로 · 이동… · 새 단위로 분리… · 해제) · 되돌리기 버튼 · 작업대 노드 (설계서 §13)
  *  - [2026-10-01 ORG 5-C] 검색: 입력 즉시 첫 일치 카드로 스크롤(펼침 포함), Enter = 다음 일치, 'n/m' 표시
  *  - [2026-10-01 ORG 5-C] 전체화면(고정 오버레이 + 브라우저 fullscreen) · 기본 펼침 = 전체 · 패널 클릭 → 노드 스크롤 · 읽기 전용 더블클릭 피드백 · 단위 이동(상위로/하위로/이동…)
  *  - [2026-10-01 ORG Phase 5-B] 숨김 카드(수동/자동 7일) 기본 제외 + '숨김 n 보기' 토글 · 겸직 카드 태그(본 소속) · 헤드카운트 = 사람 수
  *  - [2026-10-01 ORG Phase 3] 신규 — 설계서 §6.2. 표시·인터랙션만, 데이터·저장은 OrgAdminPanel
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import type { AppUser, OrgCard, OrgFile, OrgJob, OrgRank, OrgRosterCheck, OrgStatusCategory, OrgStatusType, OrgUnit } from '../../types'
 import { buildUnitTree, cardPersonKey, primaryJob, sortCards, type OrgBadgeSpec, type OrgDepartedInfo, type OrgPersonView, type OrgUnitNode } from '../../utils/orgStatus'
 import { OrgTree, type TreeDropHandlers } from './OrgTree'
+import type { OrgUndoPeek } from '../../lib/orgApi'
 import { OrgUnitPanel } from './OrgUnitPanel'
 import { OrgCardView } from './OrgCardView'
 import { OG, Tag, btn, btnPri, btnDisabled, fileStatusLabel, fmtWhen } from './orgShared'
@@ -33,6 +35,13 @@ export interface CanvasActions extends TreeDropHandlers {
   onOutdentUnit?: (u: OrgUnit) => void
   onIndentUnit?:  (u: OrgUnit) => void
   onMoveUnitTo?:  (u: OrgUnit) => void
+  /** [Phase 6] 대규모 개편 — 작업대 · 다중 이동 · 분리/합치기 · 되돌리기 */
+  onToBench?:     (cardIds: string[]) => void
+  onMoveCardsTo?: (cardIds: string[]) => void
+  onSplitCards?:  (cardIds: string[]) => void
+  onDetachUnit?:  (u: OrgUnit) => void
+  onMergeUnit?:   (u: OrgUnit) => void
+  onUndo?:        () => void
 }
 interface Props extends CanvasActions {
   file:         OrgFile
@@ -55,16 +64,19 @@ interface Props extends CanvasActions {
   /** [Phase 5-B] 퇴사 판정(자동 숨김 포함) — OrgAdminPanel 소유 */
   departedOf:   (c: OrgCard) => OrgDepartedInfo
   isHidden:     (c: OrgCard) => boolean
+  /** [Phase 6] 되돌리기 가능 여부(org_undo_peek) — OrgAdminPanel 이 변경마다 갱신 */
+  undo?:        OrgUndoPeek | null
 }
 
 export function OrgCanvas(p: Props) {
-  const { file, units, cards, ranks, jobs, statusTypes, person, badge, categoryOf, roster, editable, isSuper, lockHolder, savedAt, selectedCard, unassigned, departedOf, isHidden } = p
-  const roots = useMemo(() => buildUnitTree(units), [units])
+  const { file, units, cards, ranks, jobs, statusTypes, person, badge, categoryOf, roster, editable, isSuper, lockHolder, savedAt, selectedCard, unassigned, departedOf, isHidden, undo } = p
   // [Phase 5-B] 숨김 카드는 기본 제외, 토글로 표시
   const [showHidden, setShowHidden] = useState(false)
   const hiddenCount = useMemo(() => cards.filter(isHidden).length, [cards, isHidden])
   const visibleCards = useMemo(() => showHidden ? cards : cards.filter(c => !isHidden(c)), [cards, showHidden, isHidden])
   const cardsByUnit = useMemo(() => { const m = new Map<string, OrgCard[]>(); for (const c of visibleCards) { if (!m.has(c.unit_id)) m.set(c.unit_id, []); m.get(c.unit_id)!.push(c) } return m }, [visibleCards])
+  // [Phase 6] 작업대(kind=bench, sort 9999) 는 마지막 루트로 함께 그린다 — 읽기 전용(Active/지난 파일)에서 비어 있으면 숨김
+  const roots = useMemo(() => buildUnitTree(units).filter(n => n.unit.kind !== 'bench' || editable || n.children.length > 0 || (cardsByUnit.get(n.unit.id)?.length ?? 0) > 0), [units, editable, cardsByUnit])
   // [Phase 5-B] 겸직: 사람 키 → 본 카드 단위명 / 겸직 카드 수
   const concurrentOf = useMemo(() => {
     const unitName = new Map(units.map(u => [u.id, u.name]))
@@ -137,6 +149,36 @@ export function OrgCanvas(p: Props) {
   }, [roots, depthPreset])
   const toggle = (id: string) => setExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
 
+  // [Phase 6] 다중 선택 — 선택 모드(클릭 = 토글) 또는 Ctrl/⌘ 클릭 = 토글, Shift 클릭 = 같은 단위 스택 안 범위. 선택 카드를 끌면 묶음 전체 이동
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [selectMode, setSelectMode] = useState(false)
+  const anchor = useRef<string | null>(null)
+  useEffect(() => { setSel(prev => { const alive = new Set(cards.map(c => c.id)); const n = new Set([...prev].filter(id => alive.has(id))); return n.size === prev.size ? prev : n }) }, [cards])
+  useEffect(() => { if (!editable) { setSel(new Set()); setSelectMode(false) } }, [editable])
+  const onCardClickX = (c: OrgCard, e: MouseEvent) => {
+    const multi = editable && (selectMode || e.ctrlKey || e.metaKey || e.shiftKey)
+    if (!multi) { p.onCardClick(c); return }
+    setSel(prev => {
+      const n = new Set(prev)
+      if (e.shiftKey && anchor.current) {
+        const a = cards.find(x => x.id === anchor.current)
+        if (a && a.unit_id === c.unit_id) {
+          const stack = sortCards(cardsByUnit.get(c.unit_id) ?? [], ranks, jobs, x => person(x).name).map(x => x.id)
+          const i = stack.indexOf(a.id), j = stack.indexOf(c.id)
+          if (i >= 0 && j >= 0) { for (const id of stack.slice(Math.min(i, j), Math.max(i, j) + 1)) n.add(id); return n }
+        }
+      }
+      n.has(c.id) ? n.delete(c.id) : n.add(c.id)
+      return n
+    })
+    anchor.current = c.id
+  }
+  const selIds = useMemo(() => [...sel], [sel])
+  const selUnits = useMemo(() => new Set(cards.filter(c => sel.has(c.id)).map(c => c.unit_id)), [cards, sel])
+  const selectUnitCards = (unitId: string) => setSel(prev => { const n = new Set(prev); for (const c of cardsByUnit.get(unitId) ?? []) n.add(c.id); return n })
+  const clearSel = () => { setSel(new Set()); anchor.current = null }
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && sel.size) clearSel() }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) }, [sel.size])
+
 
   const matches = (c: OrgCard) => {
     const s = q.trim().toLowerCase()
@@ -198,6 +240,8 @@ export function OrgCanvas(p: Props) {
         <span style={{ flex: 1 }} />
         {editable && <span style={{ fontSize: 11.5, color: OG.quiet }}>{savedAt ? `자동 저장됨 ${fmtWhen(savedAt)}` : ''}</span>}
         {!editable && <span style={{ fontSize: 11.5, color: roHint ? '#fff' : OG.quiet, background: roHint ? OG.amber : 'transparent', padding: '2px 8px', borderRadius: 999, transition: 'all 200ms' }}>읽기 전용 — 수정하려면 복사{lockHolder ? '(또는 잠금 해제 대기)' : ''}</span>}
+        {editable && p.onUndo && <button style={{ ...btn, ...(undo?.available ? {} : btnDisabled) }} disabled={!undo?.available} onClick={p.onUndo}
+                 title={undo?.available ? `내 마지막 동작 되돌리기 (${undo.rows ?? 0}건 · ${undo.at ? fmtWhen(undo.at) : ''})` : undo?.conflict ? '그 뒤에 다른 사용자의 변경이 있어 되돌릴 수 없습니다' : '되돌릴 내 변경이 없습니다'}>↶ 되돌리기{undo?.available && undo.rows ? ` (${undo.rows})` : ''}</button>}
         <button style={{ ...btn, ...(full ? { background: OG.ink, color: '#fff', borderColor: OG.ink } : {}) }} onClick={toggleFull} title={full ? '전체화면 종료 (Esc)' : '전체화면 — 앱 레이아웃 폭 제한 없이 보기'}>{full ? '✕ 전체화면 종료' : '⛶ 전체화면'}</button>
         <button style={{ ...btn, ...(rosterTotal > 0 ? { borderColor: '#FDE68A', background: '#FFFBEB', color: '#92400E' } : {}) }} onClick={p.onRoster}>검증{roster ? ` (${rosterTotal})` : ''}</button>
         {p.onHistory && <button style={btn} onClick={p.onHistory}>히스토리</button>}
@@ -211,6 +255,7 @@ export function OrgCanvas(p: Props) {
         {panelOpen && <OrgUnitPanel roots={roots} cardsByUnit={cardsByUnit} expanded={expanded} editable={editable} focusUnit={focusUnit} onFocusUnit={focusOn}
                       onAddUnit={p.onAddUnit} onRenameUnit={p.onRenameUnit} onDeleteUnit={p.onDeleteUnit} onMoveUnit={p.onMoveUnit} onAddVacancy={p.onAddVacancy} onAddPerson={p.onAddPerson}
                       onOutdentUnit={p.onOutdentUnit} onIndentUnit={p.onIndentUnit} onMoveUnitTo={p.onMoveUnitTo} onReparentUnit={p.onDropUnit} units={units} onCollapse={() => setPanelOpen(false)}
+                      onDetachUnit={p.onDetachUnit} onMergeUnit={p.onMergeUnit}
                       unassigned={unassigned} mismatchByUnit={mismatchByUnit} ghostByUnit={ghostByUnit} isHidden={isHidden} />}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
           {/* 필터 바 */}
@@ -222,6 +267,7 @@ export function OrgCanvas(p: Props) {
             </div>
             {catChips.map(c => <span key={c.id} style={chip(filter === c.id)} onClick={() => setFilter(c.id)}>{c.label}{c.id !== 'all' && counts[c.id] ? ` ${counts[c.id]}` : ''}</span>)}
             {hiddenCount > 0 && <span style={chip(showHidden)} onClick={() => setShowHidden(v => !v)} title="퇴사일+7일 경과 또는 수동 숨김 카드">숨김 {hiddenCount}{showHidden ? ' 표시 중' : ''}</span>}
+            {editable && <span style={{ ...chip(selectMode), borderColor: selectMode ? OG.drop : OG.line, background: selectMode ? OG.drop : '#fff' }} onClick={() => { setSelectMode(v => !v); if (selectMode) clearSel() }} title="켜면 카드 클릭 = 선택 토글. 꺼져 있어도 Ctrl/⌘ 클릭 = 토글, Shift 클릭 = 범위">☑ 선택 모드{sel.size ? ` ${sel.size}` : ''}</span>}
             <select value={depthPreset} onChange={e => setDepthPreset(Number(e.target.value) as 2 | 4 | 99)} style={{ fontSize: 11.5, padding: '5px 8px', border: `1px solid ${OG.line}`, borderRadius: 6, background: '#fff', color: OG.quiet, fontFamily: OG.font }}>
               <option value={2}>펼침 깊이: 본부</option><option value={4}>펼침 깊이: Division</option><option value={99}>펼침 깊이: 전체</option>
             </select>
@@ -237,16 +283,26 @@ export function OrgCanvas(p: Props) {
             <span><i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, marginRight: 4, verticalAlign: -1, background: '#EEF2FF', border: '1px solid #C7D2FE' }} />겸직 카드</span>
             <span><i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, marginRight: 4, verticalAlign: -1, border: `1px dashed ${OG.faint}` }} />공석(TO)</span>
             <span><i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', marginRight: 4, verticalAlign: -1, background: OG.amber }} />Azure Division 불일치</span>
-            {editable && <span style={{ marginLeft: 'auto' }}>노드 헤더 드래그 = 단위 이동 · 카드 드래그 = 소속 변경 · 헤더 클릭 = 접기/펼침 · 더블클릭 = 이름</span>}
+            {editable && <span style={{ marginLeft: 'auto' }}>노드 헤더 드래그 = 단위 이동 · 카드 드래그 = 소속 변경(선택 묶음은 함께) · 헤더 클릭 = 접기/펼침 · 더블클릭 = 이름 · 🧰 작업대 = 떼어 둔 카드·단위</span>}
           </div>
           {/* 본체 */}
           <div ref={bodyRef} style={{ flex: 1, overflow: 'auto', padding: '20px 40px 80px' }}>
             {view === 'tree'
               ? <OrgTree roots={roots} units={units} cardsByUnit={cardsByUnit} ctx={ctx} editable={editable} expanded={expanded} onToggle={toggle}
-                         selectedCard={selectedCard} onCardClick={p.onCardClick} onUnitClick={u => { if (editable) p.onRenameUnit(u); else { setRoHint(true); window.setTimeout(() => setRoHint(false), 1600) } }}
-                         drop={{ onDropCard: p.onDropCard, onDropUnit: p.onDropUnit, onDropProfile: p.onDropProfile }} zoom={zoom} highlightUnit={focusUnit} />
-              : <ListView roots={roots} cardsByUnit={cardsByUnit} ctx={ctx} selectedCard={selectedCard} onCardClick={p.onCardClick} editable={editable} onAddVacancy={p.onAddVacancy} onAddPerson={p.onAddPerson} />}
+                         selectedCard={selectedCard} onCardClick={onCardClickX} onUnitClick={u => { if (editable) p.onRenameUnit(u); else { setRoHint(true); window.setTimeout(() => setRoHint(false), 1600) } }}
+                         drop={{ onDropCard: p.onDropCard, onDropUnit: p.onDropUnit, onDropProfile: p.onDropProfile, onDropCards: p.onDropCards }} zoom={zoom} highlightUnit={focusUnit} selectedIds={sel} />
+              : <ListView roots={roots} cardsByUnit={cardsByUnit} ctx={ctx} selectedCard={selectedCard} selectedIds={sel} onCardClick={onCardClickX} editable={editable} onAddVacancy={p.onAddVacancy} onAddPerson={p.onAddPerson} onSelectUnit={editable ? selectUnitCards : undefined} />}
           </div>
+          {/* [Phase 6] 선택 액션 바 */}
+          {editable && sel.size > 0 && (
+            <div style={{ position: 'absolute', left: '50%', bottom: 20, transform: 'translateX(-50%)', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: OG.ink, color: '#fff', borderRadius: 10, boxShadow: '0 6px 20px rgba(0,0,0,.25)', fontSize: 12.5, zIndex: 5 }}>
+              <b>{sel.size}장 선택</b><span style={{ color: '#9CA3AF' }}>· 단위 {selUnits.size}개</span>
+              {p.onToBench && <button style={barBtn} onClick={() => p.onToBench!(selIds)} title="선택 카드를 작업대로 떼어 둡니다 (단위장·보고선 해제)">🧰 작업대로</button>}
+              {p.onMoveCardsTo && <button style={barBtn} onClick={() => p.onMoveCardsTo!(selIds)} title="대상 단위를 골라 한 번에 이동">이동…</button>}
+              {p.onSplitCards && <button style={barBtn} onClick={() => p.onSplitCards!(selIds)} title="선택 카드로 새 단위를 만듭니다">새 단위로 분리…</button>}
+              <button style={{ ...barBtn, background: 'transparent', borderColor: '#4B5563' }} onClick={clearSel} title="Esc">해제</button>
+            </div>
+          )}
           {view === 'tree' && (
             <div style={{ position: 'absolute', right: 20, bottom: 20, display: 'flex', border: `1px solid ${OG.line}`, borderRadius: 6, background: '#fff', overflow: 'hidden', fontSize: 12 }}>
               {[['−', () => setZoom(z => Math.max(0.5, +(z - 0.1).toFixed(2)))], [`${Math.round(zoom * 100)}%`, () => setZoom(1)], ['+', () => setZoom(z => Math.min(1.2, +(z + 0.1).toFixed(2)))]].map(([l, fn], i) =>
@@ -259,10 +315,11 @@ export function OrgCanvas(p: Props) {
   )
 }
 
+const barBtn: React.CSSProperties = { fontFamily: OG.font, fontSize: 12, padding: '5px 10px', border: '1px solid #374151', borderRadius: 6, background: '#374151', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }
 function badgeBg(cat: OrgStatusCategory) { return cat === 'hire_planned' ? '#CCFBF1' : cat === 'departing' ? '#FEF3C7' : cat === 'return_planned' ? '#E0E7FF' : '#EDE9FE' }
 
 /** 단위별 리스트(보조 뷰) — 단위 섹션 세로 나열, 직급/직무 level 행 */
-function ListView({ roots, cardsByUnit, ctx, selectedCard, onCardClick, editable, onAddVacancy, onAddPerson }: { roots: OrgUnitNode[]; cardsByUnit: Map<string, OrgCard[]>; ctx: any; selectedCard: string | null; onCardClick: (c: OrgCard) => void; editable: boolean; onAddVacancy: (unitId: string) => void; onAddPerson?: (unitId: string) => void }) {
+function ListView({ roots, cardsByUnit, ctx, selectedCard, selectedIds, onCardClick, editable, onAddVacancy, onAddPerson, onSelectUnit }: { roots: OrgUnitNode[]; cardsByUnit: Map<string, OrgCard[]>; ctx: any; selectedCard: string | null; selectedIds?: Set<string>; onCardClick: (c: OrgCard, e: MouseEvent) => void; editable: boolean; onAddVacancy: (unitId: string) => void; onAddPerson?: (unitId: string) => void; onSelectUnit?: (unitId: string) => void }) {
   const flat: OrgUnitNode[] = []
   const walk = (n: OrgUnitNode) => { flat.push(n); n.children.forEach(walk) }
   roots.forEach(walk)
@@ -274,17 +331,18 @@ function ListView({ roots, cardsByUnit, ctx, selectedCard, onCardClick, editable
         const head = cards.find(c => c.is_unit_head)
         return (
           <div key={n.unit.id} style={{ background: '#fff', border: `1px solid ${OG.line}`, borderRadius: 10, padding: '14px 16px', marginBottom: 14, marginLeft: n.depth * 16 }}>
-            <h4 style={{ fontSize: 13.5, margin: '0 0 10px', display: 'flex', gap: 8, alignItems: 'center' }}>{n.unit.name} <small style={{ color: OG.quiet, fontWeight: 400 }}>{cards.filter(c => !c.is_vacancy && c.is_primary !== false && !ctx.hidden(c)).length}명{cards.some(c => c.is_primary === false) ? ` (+겸직 ${cards.filter(c => c.is_primary === false).length})` : ''}</small>
+            <h4 style={{ fontSize: 13.5, margin: '0 0 10px', display: 'flex', gap: 8, alignItems: 'center', color: n.unit.kind === 'bench' ? OG.drop : undefined }}>{n.unit.kind === 'bench' ? '🧰 작업대' : n.unit.name} <small style={{ color: OG.quiet, fontWeight: 400 }}>{cards.filter(c => !c.is_vacancy && c.is_primary !== false && !ctx.hidden(c)).length}명{cards.some(c => c.is_primary === false) ? ` (+겸직 ${cards.filter(c => c.is_primary === false).length})` : ''}</small>
               {head && <span style={{ marginLeft: 'auto', fontSize: 11, color: OG.quiet }}>단위장: {ctx.person(head).name}</span>}
               {editable && <button style={{ ...btn, fontSize: 10.5, padding: '2px 6px', marginLeft: head ? 8 : 'auto' }} onClick={() => onAddVacancy(n.unit.id)}>+ 공석</button>}
               {editable && onAddPerson && <button style={{ ...btn, fontSize: 10.5, padding: '2px 6px' }} onClick={() => onAddPerson(n.unit.id)}>+ 입사예정자</button>}
+              {onSelectUnit && cards.length > 0 && <button style={{ ...btn, fontSize: 10.5, padding: '2px 6px' }} onClick={() => onSelectUnit(n.unit.id)} title="이 단위 카드 전체 선택">☑ 전체 선택</button>}
             </h4>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(212px, 1fr))', gap: 10 }}>
               {cards.map(c => {
                 const r = c.rank_id ? ctx.ranks.get(c.rank_id) ?? null : null
                 const pj = primaryJob(c, ctx.jobs)
                 const jl = [pj, ...c.jobs.filter(j => !j.is_primary).map(j => ctx.jobs.get(j.job_id))].filter(Boolean) as OrgJob[]
-                return <OrgCardView key={c.id} card={c} person={ctx.person(c)} rank={r} jobs={jl} badge={ctx.badge(c)} mismatch={ctx.mismatch(c)} dim={ctx.dim(c)} concurrent={ctx.concurrent(c)} departedSince={ctx.departedSince(c)} hidden={ctx.hidden(c)} selected={selectedCard === c.id} onClick={onCardClick} />
+                return <OrgCardView key={c.id} card={c} person={ctx.person(c)} rank={r} jobs={jl} badge={ctx.badge(c)} mismatch={ctx.mismatch(c)} dim={ctx.dim(c)} concurrent={ctx.concurrent(c)} departedSince={ctx.departedSince(c)} hidden={ctx.hidden(c)} selected={selectedCard === c.id} checked={selectedIds?.has(c.id)} onClick={onCardClick} />
               })}
               {cards.length === 0 && <span style={{ color: OG.faint, fontSize: 12 }}>카드 없음 — 미배치 패널에서 드래그하거나 공석을 추가하세요</span>}
             </div>
