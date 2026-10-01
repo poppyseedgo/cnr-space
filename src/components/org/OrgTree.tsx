@@ -187,7 +187,7 @@ export function OrgTree({ roots, units, cardsByUnit, ctx, editable, expanded, on
   }
 
   return (
-    <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center', display: 'flex', gap: 40, fontFamily: OG.font, width: 'max-content', margin: '0 auto' }}>  {/* margin auto — 컨테이너보다 넓어도 왼쪽이 잘리지 않음(justify center 는 overflow 시 왼쪽 클리핑) */}
+    <div style={{ zoom, display: 'flex', gap: 40, fontFamily: OG.font, width: 'max-content', margin: '0 auto' }}>  {/* [2026-10-01] transform:scale → CSS zoom: 레이아웃 폭도 함께 줄어 축소 시 스크롤 영역·가운데 정렬이 맞는다. margin auto — 컨테이너보다 넓어도 왼쪽이 잘리지 않음 */}
       {roots.map(renderNode)}
     </div>
   )

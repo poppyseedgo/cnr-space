@@ -21,6 +21,8 @@ export interface GalleryActions {
 }
 interface Props extends GalleryActions {
   files:        OrgFileSummary[]
+  /** [2026-10-01] 초안 카드도 실제 트리 썸네일 — OrgAdminPanel 이 파일별로 로드(작업대 제외). 없으면 요약 자리표시 */
+  draftTrees?:  Map<string, { units: OrgUnit[]; cards: OrgCard[] }>
   users:        AppUser[]
   isSuper:      boolean
   /** Active 파일 썸네일·요약용 */
@@ -34,7 +36,7 @@ interface Props extends GalleryActions {
 
 const nameOf = (users: AppUser[], id: string | null) => users.find(u => u.user_id === id)?.name ?? ''
 
-export function OrgGallery({ files, users, isSuper, activeBundle, statuses, statusTypes, roster, onRoster, loading, onOpen, onCopy, onActivate, onDelete, onNew, onExport, onDiff, onHistory, onCodes }: Props) {
+export function OrgGallery({ files, users, isSuper, activeBundle, draftTrees, statuses, statusTypes, roster, onRoster, loading, onOpen, onCopy, onActivate, onDelete, onNew, onExport, onDiff, onHistory, onCodes }: Props) {
   const active   = files.find(f => f.status === 'active') ?? null
   const drafts   = files.filter(f => f.status === 'draft').sort((a, b) => b.updated_at.localeCompare(a.updated_at))
   const archived = files.filter(f => f.status === 'archived').sort((a, b) => (b.effective_on ?? '').localeCompare(a.effective_on ?? ''))
@@ -108,7 +110,7 @@ export function OrgGallery({ files, users, isSuper, activeBundle, statuses, stat
       <h4 style={{ fontSize: 13.5, margin: '0 0 12px', color: OG.quiet, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>초안 <Tag>{drafts.length}</Tag></h4>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14, marginBottom: 28 }}>
         {drafts.map(f => (
-          <DraftCard key={f.id} f={f} users={users} isSuper={isSuper} onOpen={onOpen} onCopy={onCopy} onActivate={onActivate} onDelete={onDelete} />
+          <DraftCard key={f.id} f={f} users={users} isSuper={isSuper} tree={draftTrees?.get(f.id)} onOpen={onOpen} onCopy={onCopy} onActivate={onActivate} onDelete={onDelete} />
         ))}
         <div onClick={onNew} style={{ border: `1px dashed ${OG.line}`, borderRadius: 12, minHeight: 190, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: OG.quiet, fontSize: 12.5, cursor: 'pointer', gap: 6 }}>
           <span style={{ fontSize: 22, fontWeight: 300 }}>+</span>새 조직도<span style={{ fontSize: 11 }}>빈 파일 또는 Active 복사</span>
@@ -144,7 +146,7 @@ function Stat({ n, label }: { n: number; label: string }) {
   return <div style={{ border: `1px solid ${OG.line}`, borderRadius: 8, padding: '8px 12px', minWidth: 92 }}><b style={{ display: 'block', fontSize: 17 }}>{n}</b><span style={{ fontSize: 11, color: OG.quiet }}>{label}</span></div>
 }
 
-function DraftCard({ f, users, isSuper, onOpen, onCopy, onActivate, onDelete }: { f: OrgFileSummary; users: AppUser[]; isSuper: boolean } & Pick<GalleryActions, 'onOpen' | 'onCopy' | 'onActivate' | 'onDelete'>) {
+function DraftCard({ f, users, isSuper, tree, onOpen, onCopy, onActivate, onDelete }: { f: OrgFileSummary; users: AppUser[]; isSuper: boolean; tree?: { units: OrgUnit[]; cards: OrgCard[] } } & Pick<GalleryActions, 'onOpen' | 'onCopy' | 'onActivate' | 'onDelete'>) {
   const [hover, setHover] = useState(false)
   const locked = f.lock_by && f.lock_at && (Date.now() - new Date(f.lock_at).getTime()) < 30 * 60_000
   const stop = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); fn() }
@@ -152,7 +154,7 @@ function DraftCard({ f, users, isSuper, onOpen, onCopy, onActivate, onDelete }: 
     <div onClick={() => onOpen(f)} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
          style={{ background: '#fff', border: `1px solid ${hover ? '#B8BEC9' : OG.line}`, borderRadius: 12, overflow: 'hidden', position: 'relative', cursor: 'pointer', boxShadow: hover ? '0 4px 14px rgba(0,0,0,.08)' : 'none' }}>
       <div style={{ background: '#FAFAFA', borderBottom: `1px solid ${OG.line}`, padding: 12, minHeight: 110, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <ThumbSlot f={f} />
+        {tree && tree.units.length > 0 ? <OrgThumbnail units={tree.units} cards={tree.cards} width={200} height={86} compact /> : <ThumbSlot f={f} />}
       </div>
       {hover && (
         <div style={{ position: 'absolute', right: 10, top: 10, display: 'flex', gap: 4 }}>
@@ -169,7 +171,7 @@ function DraftCard({ f, users, isSuper, onOpen, onCopy, onActivate, onDelete }: 
     </div>
   )
 }
-/** 초안 썸네일은 갤러리 로딩 비용 때문에 요약 숫자만 (상세 진입 시 트리) */
+/** 초안 트리 로드 전·실패 시 자리표시 — [2026-10-01] 로드되면 OrgThumbnail(compact) 로 교체 */
 function ThumbSlot({ f }: { f: OrgFileSummary }) {
   return <svg width={200} height={86} viewBox="0 0 200 86" fontFamily={OG.font} fontSize={9}>
     <rect x={70} y={6} width={60} height={18} rx={3} fill="#fff" stroke="#C7CDD8" /><text x={100} y={18} textAnchor="middle" fill={OG.ink}>{f.unit_count}단위</text>

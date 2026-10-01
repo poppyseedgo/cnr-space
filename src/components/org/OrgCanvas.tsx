@@ -1,5 +1,6 @@
 /**
  * OrgCanvas.tsx — 화면 B: 파일 상세(헤더 + 좌측 패널 + 조직 트리/단위별 리스트 + 줌)
+ *  - [2026-10-01 ORG] 줌: 트랙패드 핀치 / Ctrl·⌘ + 휠 = 확대·축소(30%~200%, 비passive 리스너로 브라우저 페이지 줌 차단) · 일반 휠 = 스크롤
  *  - [2026-10-01 ORG Phase 6] 다중 선택(선택 모드 토글 · Ctrl/⌘ 클릭 토글 · Shift 클릭 범위) + 하단 액션 바(작업대로 · 이동… · 새 단위로 분리… · 해제) · 되돌리기 버튼 · 작업대 노드 (설계서 §13)
  *  - [2026-10-01 ORG 5-C] 검색: 입력 즉시 첫 일치 카드로 스크롤(펼침 포함), Enter = 다음 일치, 'n/m' 표시
  *  - [2026-10-01 ORG 5-C] 전체화면(고정 오버레이 + 브라우저 fullscreen) · 기본 펼침 = 전체 · 패널 클릭 → 노드 스크롤 · 읽기 전용 더블클릭 피드백 · 단위 이동(상위로/하위로/이동…)
@@ -112,6 +113,20 @@ export function OrgCanvas(p: Props) {
   const [filter, setFilter] = useState<OrgFilter>('all')
   const [q, setQ] = useState('')
   const [zoom, setZoom] = useState(1)
+  const ZOOM_MIN = 0.3, ZOOM_MAX = 2
+  const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, +z.toFixed(2)))
+  // 트랙패드 핀치(브라우저가 ctrlKey 휠로 전달) · Ctrl/⌘ + 마우스 휠 = 줌. passive:false 여야 preventDefault 로 페이지 줌을 막는다
+  useEffect(() => {
+    const el = bodyRef.current; if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      e.preventDefault()
+      const factor = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.04 : 0.0015))   // 핀치/휠 모두 비례 배율
+      setZoom(z => clampZoom(z * factor))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [view])   // eslint-disable-line react-hooks/exhaustive-deps
   const [focusUnit, setFocusUnit] = useState<string | null>(null)
 
   // [5-C] 검색 → 일치 카드 목록(트리 순서) + 현재 인덱스. 입력 300ms 후 첫 일치로 스크롤, Enter 로 순환
@@ -305,8 +320,8 @@ export function OrgCanvas(p: Props) {
           )}
           {view === 'tree' && (
             <div style={{ position: 'absolute', right: 20, bottom: 20, display: 'flex', border: `1px solid ${OG.line}`, borderRadius: 6, background: '#fff', overflow: 'hidden', fontSize: 12 }}>
-              {[['−', () => setZoom(z => Math.max(0.5, +(z - 0.1).toFixed(2)))], [`${Math.round(zoom * 100)}%`, () => setZoom(1)], ['+', () => setZoom(z => Math.min(1.2, +(z + 0.1).toFixed(2)))]].map(([l, fn], i) =>
-                <div key={i} onClick={fn as () => void} style={{ padding: '5px 10px', borderLeft: i ? `1px solid ${OG.line}` : 'none', cursor: 'pointer', minWidth: 36, textAlign: 'center' }}>{l as string}</div>)}
+              {[['−', () => setZoom(z => clampZoom(z - 0.1))], [`${Math.round(zoom * 100)}%`, () => setZoom(1)], ['+', () => setZoom(z => clampZoom(z + 0.1))]].map(([l, fn], i) =>
+                <div key={i} onClick={fn as () => void} title={i === 1 ? '클릭 = 100% · 트랙패드 핀치 또는 Ctrl/⌘ + 휠 = 확대·축소' : undefined} style={{ padding: '5px 10px', borderLeft: i ? `1px solid ${OG.line}` : 'none', cursor: 'pointer', minWidth: 36, textAlign: 'center' }}>{l as string}</div>)}
             </div>
           )}
         </div>

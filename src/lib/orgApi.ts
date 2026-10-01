@@ -39,13 +39,13 @@ export async function loadOrgFiles(): Promise<OrgFileSummary[]> {
   if (!isSupabaseEnabled) return []
   const [f, u, c] = await Promise.all([
     supabase.from('org_files').select('*').order('updated_at', { ascending: false }),
-    supabase.from('org_units').select('file_id'),
+    supabase.from('org_units').select('file_id, kind'),
     supabase.from('org_cards').select('file_id, is_vacancy'),
   ])
   if (f.error) throw new Error(f.error.message)
   if (u.error) throw new Error(u.error.message)
   if (c.error) throw new Error(c.error.message)
-  const uc = new Map<string, number>(); for (const x of u.data ?? []) uc.set(x.file_id, (uc.get(x.file_id) ?? 0) + 1)
+  const uc = new Map<string, number>(); for (const x of u.data ?? []) if (x.kind !== 'bench') uc.set(x.file_id, (uc.get(x.file_id) ?? 0) + 1)   // [Phase 6] 작업대 제외
   const cc = new Map<string, number>(); for (const x of c.data ?? []) if (!x.is_vacancy) cc.set(x.file_id, (cc.get(x.file_id) ?? 0) + 1)
   return ((f.data ?? []) as OrgFile[]).map(x => ({ ...x, unit_count: uc.get(x.id) ?? 0, card_count: cc.get(x.id) ?? 0 }))
 }
@@ -58,6 +58,17 @@ function rowToCard(r: any): OrgCard {
   return { ...rest, fte: Number(rest.fte ?? 1), jobs: (org_card_jobs ?? []) as OrgCard['jobs'] }
 }
 /** 캔버스 — 파일 1개의 단위·카드·직무·입사예정자 */
+/** 갤러리 초안 썸네일용 — 파일별 단위·카드 최소 컬럼(작업대 하위 제외는 호출부 splitBench). 초안 수가 적어 파일마다 2쿼리 */
+export async function loadOrgTree(fileId: string): Promise<{ units: OrgUnit[]; cards: OrgCard[] }> {
+  if (!isSupabaseEnabled) return { units: [], cards: [] }
+  const [u, c] = await Promise.all([
+    supabase.from('org_units').select('id, file_id, parent_unit_id, name, code, sort_order, kind, azure_division, head_card_id').eq('file_id', fileId),
+    supabase.from('org_cards').select('id, file_id, unit_id, is_vacancy, is_primary, hidden_at').eq('file_id', fileId),
+  ])
+  if (u.error) throw new Error(u.error.message)
+  if (c.error) throw new Error(c.error.message)
+  return { units: (u.data ?? []) as OrgUnit[], cards: (c.data ?? []) as unknown as OrgCard[] }
+}
 export async function loadOrgFileBundle(fileId: string): Promise<OrgFileBundle | null> {
   if (!isSupabaseEnabled) return null
   const f = await supabase.from('org_files').select('*').eq('id', fileId).maybeSingle()

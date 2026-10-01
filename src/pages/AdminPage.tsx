@@ -877,7 +877,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
    *   ★ 사이드 네비의 left 계산과 **반드시 같은 값**이어야 한다.
    *     둘이 다르면 네비와 본문의 좌측 정렬이 어긋난다(이전에 1400/1920 이 갈렸던 자리).
    */
-  const shellMaxW = activeTab === 'dashboard' ? 1920 : 1400
+  const shellMaxW = (activeTab === 'dashboard' || activeTab === 'org') ? 1920 : 1400   // ← [2026-10-01 ORG] 조직도 탭도 1920 (캔버스 가로폭 확보, width 100%)
 
   // ── 사이드 네비 배치 (← [2026-07-24 #4] iPad 세로 대응) ──────────────────
   //

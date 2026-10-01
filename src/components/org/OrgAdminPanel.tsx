@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AppUser, DepartedUser, OrgCard, OrgDisplayName, OrgFileSummary, OrgPersonStatus, OrgRosterCheck, OrgStatusCategory, OrgUnit } from '../../types'
 import { loadDepartedUsers } from '../../lib/api'
 import {
-  loadOrgCodes, loadOrgFiles, loadOrgFileBundle, loadActiveOrgStatuses, createOrgFile, updateOrgFileMeta, deleteOrgFile,
+  loadOrgCodes, loadOrgFiles, loadOrgFileBundle, loadOrgTree, loadActiveOrgStatuses, createOrgFile, updateOrgFileMeta, deleteOrgFile,
   copyOrgFile, activateOrgFile, acquireOrgLock, releaseOrgLock, rosterCheck,
   insertOrgUnit, updateOrgUnit, deleteOrgUnit, reorderOrgUnits, insertOrgCard, updateOrgCard, deleteOrgCard, setOrgCardJobs, loadOrgCardById, loadOrgUnitById,
   loadOffboardingTemplates, insertOrgPerson, setOrgPersonStatus,
@@ -56,6 +56,7 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   const [fileId, setFileId]     = useState<string | null>(hashFileId)
   const [bundle, setBundle]     = useState<OrgFileBundle | null>(null)
   const [activeBundle, setActiveBundle] = useState<{ units: OrgUnit[]; cards: OrgCard[] } | null>(null)
+  const [draftTrees, setDraftTrees] = useState<Map<string, { units: OrgUnit[]; cards: OrgCard[] }>>(new Map())   // [2026-10-01] 초안 카드 실제 트리 썸네일
   const [roster, setRoster]     = useState<OrgRosterCheck | null>(null)
   const [activeRoster, setActiveRoster] = useState<OrgRosterCheck | null>(null)
   const [lockHolder, setLockHolder] = useState<string | null>(null)
@@ -99,6 +100,12 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
       if (b) { const { inBench } = splitBench(b.units); setActiveBundle({ units: b.units.filter(u => !inBench.has(u.id)), cards: b.cards.filter(c => !inBench.has(c.unit_id)) }) } else setActiveBundle(null)   // [Phase 6] 썸네일·diff 보조에서 작업대 제외
       setActiveRoster(rc)
     } else { setActiveBundle(null); setActiveRoster(null) }
+    // 초안 썸네일: 파일별 단위·카드(최소 컬럼) — 작업대 하위 제외. 실패한 파일은 자리표시로 둔다
+    const trees = await Promise.all(fs.filter(f => f.status === 'draft').map(async f => {
+      try { const t = await loadOrgTree(f.id); const { inBench } = splitBench(t.units); return [f.id, { units: t.units.filter(u => !inBench.has(u.id)), cards: t.cards.filter(c => !inBench.has(c.unit_id) && !c.hidden_at) }] as const }
+      catch { return null }
+    }))
+    setDraftTrees(new Map(trees.filter((x): x is NonNullable<typeof x> => !!x)))
   }, [])
   useEffect(() => {
     let dead = false
@@ -421,7 +428,7 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
       ) : fileId ? (
         <div style={{ padding: 40, color: OG.quiet, fontFamily: OG.font }}>불러오는 중…</div>
       ) : (
-        <OrgGallery files={files} users={users} isSuper={isSuper} activeBundle={activeBundle} statuses={statuses} statusTypes={codes.statusTypes} roster={activeRoster} onRoster={() => showRoster(activeRoster)} loading={loading}
+        <OrgGallery files={files} users={users} isSuper={isSuper} activeBundle={activeBundle} draftTrees={draftTrees} statuses={statuses} statusTypes={codes.statusTypes} roster={activeRoster} onRoster={() => showRoster(activeRoster)} loading={loading}
                     onOpen={f => openFile(f.id)} onCopy={f => setModal({ kind: 'copy', src: f })} onActivate={f => onActivate(f)} onDelete={onDelete} onNew={() => setModal({ kind: 'new' })}
                     onHistory={() => setHistory({ file: null, tab: 'log' })} onDiff={f => setHistory({ file: f, tab: 'diff' })}
                     onExport={onExport} onCodes={() => setCodesOpen(true)} />
