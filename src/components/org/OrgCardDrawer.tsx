@@ -1,6 +1,7 @@
 /**
  * OrgCardDrawer.tsx — 드로어 C: 인사 카드 편집 (설계서 §6.3)
  *  - [2026-10-01 ORG Phase 4-A] 신규
+ *  - [2026-10-01 ORG Phase 4-B] ④ 반납 체크리스트 아래 "시스템 잔여"(도서·자원·어드민 권한·회의실) — org_offboarding_system_check RPC
  *
  *  섹션(위→아래): ①프로필 헤더(live) ②배치(단위·직급·직무 복수·보고선·단위장·고용형태·근무지·FTE)
  *                 ③상태(활성 라벨 + 상태 변경 폼 — category 별 필수값) ④반납 체크리스트(퇴사예정일 때)
@@ -18,7 +19,8 @@ import { DateField } from '../common/DateField'
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import {
   loadOffboardingItems, setOffboardingItem, loadOrgStatusHistory, loadOrgChangeLog, setOrgPersonStatus, endOrgPersonStatus,
-  type OrgOffboardingTemplate, type OrgStatusPayload, type OrgChangeLogRow,
+  offboardingSystemCheck,   // ← [Phase 4-B]
+  type OrgOffboardingTemplate, type OrgStatusPayload, type OrgChangeLogRow, type OrgSystemCheck,
 } from '../../lib/orgApi'
 import { ORG_EMPLOYMENT_TYPE_LABEL, orgErrorMessage, orgStatusBadge, type OrgPersonView } from '../../utils/orgStatus'
 import { OG, Tag, btn, btnPri, btnDanger, btnDisabled, fmtWhen } from './orgShared'
@@ -121,6 +123,16 @@ export function OrgCardDrawer(p: Props) {
   }
   const applicableItems = items.filter(i => i.applicable)
   const doneCnt = applicableItems.filter(i => i.checked).length
+
+  // ── [Phase 4-B] 시스템 잔여 확인 (도서 대출·자원 예약·어드민 권한·회의실 예약) — profile 이 있는 퇴사예정자만 ──
+  const [sysCheck, setSysCheck] = useState<OrgSystemCheck | null | 'error'>(null)
+  useEffect(() => {
+    if (status && curType?.category === 'departing' && card.profile_id) {
+      setSysCheck(null)
+      offboardingSystemCheck(card.profile_id).then(setSysCheck).catch(() => setSysCheck('error'))
+    } else setSysCheck(null)
+  }, [status?.id, curType?.category, card.profile_id])
+  const sysTotal = sysCheck && sysCheck !== 'error' ? sysCheck.book_count + sysCheck.resource_count + sysCheck.admin_role_count + sysCheck.future_room_bookings : 0
 
   // ── 이력 ──
   const [histOpen, setHistOpen] = useState(false)
@@ -258,7 +270,22 @@ export function OrgCardDrawer(p: Props) {
                 </div>
               ))}
               {items.length === 0 && <span style={{ fontSize: 12, color: OG.faint }}>항목 없음</span>}
-              <div style={{ fontSize: 11, color: OG.faint, marginTop: 4 }}>도서 미반납·자원 예약·어드민 권한은 퇴사 실행 시 시스템이 강제 회수합니다(Phase 4-B 에서 잔여 현황 표시 예정).</div>
+            </div>
+
+            {/* [Phase 4-B] 시스템 잔여 — 퇴사 실행(process_departure) 시 강제 회수되지만, 사전에 사람이 정리할 수 있도록 표시 */}
+            <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 8, background: sysTotal > 0 ? '#FEF2F2' : '#F8FAFC', border: `1px solid ${sysTotal > 0 ? '#FECACA' : OG.line}` }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: sysTotal > 0 ? OG.red : OG.ink, marginBottom: 4 }}>
+                시스템 잔여 {sysCheck === null ? (card.profile_id ? '확인 중…' : '— 프로필 없음(입사예정자)') : sysCheck === 'error' ? '— 조회 실패' : sysTotal === 0 ? '없음 ✓' : `${sysTotal}건`}
+              </div>
+              {sysCheck && sysCheck !== 'error' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12 }}>
+                  <SysRow label="도서 대출" n={sysCheck.book_count}>{sysCheck.books.map((b, i) => <small key={i} style={{ color: OG.quiet }}>{b.title} (반납 {b.due_at?.slice(0, 10)})</small>)}</SysRow>
+                  <SysRow label="자원 예약(진행·예정)" n={sysCheck.resource_count}>{sysCheck.resources.map((r, i) => <small key={i} style={{ color: OG.quiet }}>{r.label} {r.start_at?.slice(0, 10)}~{r.end_at?.slice(0, 10)}</small>)}</SysRow>
+                  <SysRow label="어드민 권한" n={sysCheck.admin_role_count}>{sysCheck.admin_roles.length > 0 && <small style={{ color: OG.quiet }}>{sysCheck.admin_roles.join(', ')}</small>}</SysRow>
+                  <SysRow label="회의실 예약(예정)" n={sysCheck.future_room_bookings} />
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: OG.faint, marginTop: 4 }}>퇴사 실행 시 도서·자원·회의실 예약은 자동 해제되고 어드민 권한은 회수됩니다. 가능하면 사전에 정리하세요.</div>
             </div>
           </>}
 
@@ -285,6 +312,16 @@ export function OrgCardDrawer(p: Props) {
       </div>
       {confirmSt && <ConfirmDialog title={confirmSt.title} message={confirmSt.message} variant={confirmSt.variant} confirmLabel="확인" loading={busy} onConfirm={runConfirm} onClose={() => !busy && setConfirmSt(null)} />}
     </ModalPortal>
+  )
+}
+
+/** [Phase 4-B] 시스템 잔여 한 줄 */
+function SysRow({ label, n, children }: { label: string; n: number; children?: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><span style={{ color: OG.quiet }}>{label}</span><b style={{ color: n > 0 ? OG.red : OG.ink }}>{n}</b></div>
+      {n > 0 && children && <div style={{ display: 'flex', flexDirection: 'column', paddingLeft: 8 }}>{children}</div>}
+    </div>
   )
 }
 

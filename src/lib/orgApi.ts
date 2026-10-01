@@ -116,10 +116,11 @@ export async function copyOrgFile(sourceId: string, name: string, effectiveOn: s
   if (error) throw new Error(error.message)
   return data
 }
-export async function activateOrgFile(fileId: string, force = false): Promise<{ file_id: string; prev_file_id: string | null; diff_count: number; diff: Record<string, number>; inapp_sent: number }> {
+/** [Phase 4-B] 반환 형식 OrgActivateResult 로 확장 (20261007 — RPC 는 인앱 미발송, 알림은 notifyOrgActivated) */
+export async function activateOrgFile(fileId: string, force = false): Promise<OrgActivateResult> {
   const { data, error } = await supabase.rpc('org_activate_file', { p_file_id: fileId, p_force: force })
   if (error) throw new Error(error.message)
-  return data
+  return data as OrgActivateResult
 }
 export async function acquireOrgLock(fileId: string, force = false): Promise<{ lock_by: string; lock_at: string; forced: boolean }> {
   const { data, error } = await supabase.rpc('org_acquire_lock', { p_file_id: fileId, p_force: force })
@@ -278,4 +279,66 @@ export async function updateOrgPerson(id: string, patch: { name?: string; email?
   const { data, error } = await supabase.from('org_persons').update(body).eq('id', id).select('id, name, email, planned_start_on, linked_profile_id').single()
   if (error) throw new Error(error.message)
   return data as OrgPerson
+}
+
+// ─── [2026-10-01 ORG Phase 4-B] 알림 · 시스템 잔여 · 코드 관리 ──────────────
+/** Active 전환 알림 — send-notification(org_activated) fire-and-forget. 이메일+인앱 모두 Edge 가 담당(RPC 는 더 이상 인앱을 넣지 않음, 20261007) */
+export interface OrgActivateResult { file_id: string; file_name: string; prev_file_id: string | null; prev_file_name: string | null; effective_on: string | null; units: number; cards: number; diff_count: number; diff: Record<string, number>; ghost_count: number; missing_count: number }
+export function notifyOrgActivated(r: OrgActivateResult, actorName: string): void {
+  if (!isSupabaseEnabled) return
+  supabase.functions.invoke('send-notification', {
+    body: {
+      type: 'org_activated',
+      booking: {
+        id: `org-${r.file_id}`,                     // CTA #admin-org-{fileId} · 알림벨 딥링크
+        title: r.file_name,
+        org: { file_name: r.file_name, effective_on: r.effective_on, prev_file_name: r.prev_file_name, diff_count: r.diff_count, diff: r.diff, actor_name: actorName, units: r.units, cards: r.cards },
+      },
+    },
+  }).then(({ error }) => { if (error) console.warn('[orgApi] org_activated 알림 발송 실패:', error.message) })
+    .catch(err => console.warn('[orgApi] org_activated 알림 발송 예외:', err))
+}
+export interface OrgSystemCheck { profile_id: string; books: { title: string; due_at: string }[]; book_count: number; resources: { label: string; start_at: string; end_at: string }[]; resource_count: number; admin_roles: string[]; admin_role_count: number; future_room_bookings: number }
+export async function offboardingSystemCheck(profileId: string): Promise<OrgSystemCheck> {
+  const { data, error } = await supabase.rpc('org_offboarding_system_check', { p_profile_id: profileId })
+  if (error) throw new Error(error.message)
+  return data as OrgSystemCheck
+}
+// 코드 테이블 CRUD (직접 쓰기 — RLS org 전체 쓰기 · 시스템 상태코드는 트리거 보호)
+export async function upsertOrgRank(r: Partial<OrgRank> & { code: string; label: string }): Promise<OrgRank> {
+  const q = r.id ? supabase.from('org_ranks').update({ code: r.code, label: r.label, level: r.level ?? 0, sort_order: r.sort_order ?? 0, is_active: r.is_active ?? true }).eq('id', r.id)
+                 : supabase.from('org_ranks').insert({ code: r.code, label: r.label, level: r.level ?? 0, sort_order: r.sort_order ?? 0, is_active: r.is_active ?? true })
+  const { data, error } = await q.select('*').single()
+  if (error) throw new Error(error.message)
+  return data as OrgRank
+}
+export async function upsertOrgJob(j: Partial<OrgJob> & { code: string; label: string }): Promise<OrgJob> {
+  const body = { code: j.code, label: j.label, level: j.level ?? 40, aliases: j.aliases ?? [], sort_order: j.sort_order ?? 0, is_active: j.is_active ?? true }
+  const q = j.id ? supabase.from('org_jobs').update(body).eq('id', j.id) : supabase.from('org_jobs').insert(body)
+  const { data, error } = await q.select('*').single()
+  if (error) throw new Error(error.message)
+  return data as OrgJob
+}
+export async function upsertOrgStatusType(t: OrgStatusType, isNew: boolean): Promise<OrgStatusType> {
+  const body = { label: t.label, category: t.category, color: t.color, sort_order: t.sort_order, is_active: t.is_active }
+  const q = isNew ? supabase.from('org_status_types').insert({ code: t.code, ...body, is_system: false }) : supabase.from('org_status_types').update(body).eq('code', t.code)
+  const { data, error } = await q.select('*').single()
+  if (error) throw new Error(error.message)
+  return data as OrgStatusType
+}
+export async function deleteOrgStatusType(code: string): Promise<void> {
+  const { error } = await supabase.from('org_status_types').delete().eq('code', code)
+  if (error) throw new Error(error.message)
+}
+export async function upsertOffboardingTemplate(t: Partial<OrgOffboardingTemplate> & { label: string }): Promise<OrgOffboardingTemplate> {
+  const body = { label: t.label, is_conditional: t.is_conditional ?? false, is_critical: t.is_critical ?? false, sort_order: t.sort_order ?? 0, is_active: t.is_active ?? true }
+  const q = t.id ? supabase.from('org_offboarding_templates').update(body).eq('id', t.id) : supabase.from('org_offboarding_templates').insert(body)
+  const { data, error } = await q.select('*').single()
+  if (error) throw new Error(error.message)
+  return data as OrgOffboardingTemplate
+}
+export async function loadAllOffboardingTemplates(): Promise<OrgOffboardingTemplate[]> {
+  const { data, error } = await supabase.from('org_offboarding_templates').select('*').order('sort_order')
+  if (error) throw new Error(error.message)
+  return (data ?? []) as OrgOffboardingTemplate[]
 }

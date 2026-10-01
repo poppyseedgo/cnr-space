@@ -8,6 +8,7 @@
  *      · 카드 정렬: 단위장 → 직급 level ↓ → 대표 직무 level ↓ → 이름
  *      · 트리 빌드: org_units.parent_unit_id 기준, sort_order → name
  *      · 퇴사 판정: profile_id 있는데 users 에 없음 (departed_users 존재 여부는 표시 보조)
+ *  - [2026-10-01 ORG Phase 4-B] orgExportRows — 파일 단위 카드 CSV 행 빌더(utils/csv.exportCSV 와 결합)
  */
 
 import type { AppUser, OrgCard, OrgJob, OrgPersonStatus, OrgRank, OrgStatusCategory, OrgStatusType, OrgUnit, OrgEmploymentType } from '../types'
@@ -130,6 +131,58 @@ export function descendantIds(unitId: string, units: OrgUnit[]): Set<string> {
   const walk = (id: string) => units.filter(u => u.parent_unit_id === id).forEach(u => { out.add(u.id); walk(u.id) })
   walk(unitId)
   return out
+}
+
+// ─── [Phase 4-B] CSV 내보내기 행 빌더 ───────────────────────────────────────
+/**
+ * 조직도 파일 1개의 카드를 CSV 행으로 변환. 트리 순서(단위 sort_order → 카드 정렬) 그대로.
+ * 헤더 = 객체 key 순서(utils/csv.exportCSV 규칙). 공석도 포함(이름 = 표기, 이메일·사번 공란).
+ */
+export function orgExportRows(
+  units: OrgUnit[], cards: OrgCard[], ranks: Map<string, OrgRank>, jobs: Map<string, OrgJob>, types: Map<string, OrgStatusType>,
+  person: (c: OrgCard) => OrgPersonView, statusOf: (c: OrgCard) => OrgPersonStatus | null,
+): Record<string, string>[] {
+  const byUnit = new Map<string, OrgCard[]>()
+  for (const c of cards) { if (!byUnit.has(c.unit_id)) byUnit.set(c.unit_id, []); byUnit.get(c.unit_id)!.push(c) }
+  const cardById = new Map(cards.map(c => [c.id, c]))
+  const unitById = new Map(units.map(u => [u.id, u]))
+  const pathOf = (u: OrgUnit): string => { const p = u.parent_unit_id ? unitById.get(u.parent_unit_id) : null; return p ? `${pathOf(p)} > ${u.name}` : u.name }
+  const rows: Record<string, string>[] = []
+  const walk = (n: OrgUnitNode, depth: number) => {
+    const path = pathOf(n.unit)
+    for (const c of sortCards(byUnit.get(n.unit.id) ?? [], ranks, jobs, x => person(x).name)) {
+      const pv = person(c), st = statusOf(c), stType = st ? types.get(st.status_code) : null
+      const pj = primaryJob(c, jobs)
+      const others = c.jobs.filter(j => j.job_id !== pj?.id).map(j => jobs.get(j.job_id)?.code).filter(Boolean)
+      const mgr = c.reports_to_card_id ? cardById.get(c.reports_to_card_id) : null
+      rows.push({
+        '단위 경로':   path,
+        '단위 깊이':   String(depth),
+        '단위 약칭':   n.unit.code ?? '',
+        '이름':        c.is_vacancy ? (c.display_name || '공석') : pv.name,
+        '구분':        c.is_vacancy ? '공석' : pv.departed ? '퇴사' : c.profile_id ? '재직' : '입사예정',
+        '이메일':      c.is_vacancy ? '' : pv.email,
+        '사번':        pv.user?.employee_id ?? '',
+        '직급':        c.rank_id ? (ranks.get(c.rank_id)?.label ?? '') : '',
+        '대표 직무':   pj?.code ?? '',
+        '겸직':        others.join(' / '),
+        '단위장':      c.is_unit_head ? 'Y' : '',
+        '보고선':      mgr ? person(mgr).name : '',
+        '고용형태':    ORG_EMPLOYMENT_TYPE_LABEL[c.employment_type] ?? c.employment_type,
+        '근무지':      c.work_location ?? '',
+        'FTE':         String(c.fte ?? 1),
+        '상태':        stType?.label ?? (st?.status_code ?? ''),
+        '상태 시작일': st?.start_on ?? '',
+        '상태 종료일': st?.end_on ?? '',
+        '복직 예정일': st?.return_on ?? '',
+        'Azure 부서':  pv.user?.dept ?? '',
+        '메모':        c.memo ?? '',
+      })
+    }
+    n.children.forEach(ch => walk(ch, depth + 1))
+  }
+  buildUnitTree(units).forEach(r => walk(r, 0))
+  return rows
 }
 
 // ─── RPC 에러 한글 매핑 ─────────────────────────────────────────────────────

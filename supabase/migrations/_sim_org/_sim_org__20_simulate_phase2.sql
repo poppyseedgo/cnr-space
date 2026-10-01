@@ -77,7 +77,8 @@ SELECT _expect('4-1 org 역할은 NOT_SUPER', _err($q$SELECT org_activate_file('
 SET request.jwt.claim.sub = :SUPER;
 SELECT org_activate_file('aaaaaaaa-0000-0000-0000-000000000001') AS act1 \gset
 SELECT _expect('4-2 첫 Active (prev 없음, diff 0)', (:'act1'::jsonb->>'prev_file_id') IS NULL AND (:'act1'::jsonb->>'diff_count')::int = 0 AND (SELECT status FROM org_files WHERE id='aaaaaaaa-0000-0000-0000-000000000001')='active');
-SELECT _expect('4-3 인앱 알림 → org 역할 보유자 (조직담당 1명, super 는 org 미보유라 제외)', (:'act1'::jsonb->>'inapp_sent')::int = 1 AND EXISTS (SELECT 1 FROM notifications WHERE type='org_activated' AND user_id=:ORGADM AND booking_id='org-file-aaaaaaaa-0000-0000-0000-000000000001'));
+-- ← [2026-10-01 Phase 4-B] 인앱 INSERT 는 RPC 에서 제거됨(send-notification 이 이메일+인앱 담당). 20261007 적용 상태 기준으로 검증
+SELECT _expect('4-3 (4-B) RPC 는 인앱을 넣지 않는다 · file_name 반환', (SELECT count(*) FROM notifications WHERE type='org_activated') = 0 AND (:'act1'::jsonb->>'file_name') = '2026-10 초안');
 SELECT _expect('4-4 Active 재지정 → NOT_DRAFT', _err($q$SELECT org_activate_file('aaaaaaaa-0000-0000-0000-000000000001')$q$) = 'ORG_ACTIVATE_NOT_DRAFT');
 -- 복사본 편집: STAFF2 승진(이사) + 직무 변경 + 새 단위 + 신규 입사예정자 배치, 유령카드 1장
 SET request.jwt.claim.sub = :ORGADM;

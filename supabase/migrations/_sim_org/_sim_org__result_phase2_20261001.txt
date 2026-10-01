@@ -22,13 +22,13 @@
 === [4] Active 전환 ===
 ✅  4-1 org 역할은 NOT_SUPER 
 ✅  4-2 첫 Active (prev 없음, diff 0) 
-✅  4-3 인앱 알림 → org 역할 보유자 (조직담당 1명, super 는 org 미보유라 제외) 
+✅  4-3 (4-B) RPC 는 인앱을 넣지 않는다 · file_name 반환 
 ✅  4-4 Active 재지정 → NOT_DRAFT 
 ✅  4-5 유령 카드 → ORG_ACTIVATE_GHOSTS 
-{"forced": false, "file_id": "6927de3f-a947-4411-831f-c58c969f67f6", "lock_at": "2026-10-01T10:39:47.494165+09:00", "lock_by": "11111111-1111-1111-1111-111111111111"}
+{"forced": false, "file_id": "a9905b1b-2941-41bf-8aab-b6e3d5a19514", "lock_at": "2026-10-01T13:31:16.773733+09:00", "lock_by": "11111111-1111-1111-1111-111111111111"}
 ✅  4-6 타인 잠금 중 → ORG_FILE_LOCKED 
 ✅  4-7 force 전환: 이전 Active archived · 새 Active · 잠금 해제 
-✅  4-8 diff: hired 1 · moved 1 · promoted 1 · job_changed 1 · unit_created 1 {"diff": {"hired": 1, "moved": 1, "promoted": 1, "job_changed": 1, "unit_created": 1}, "file_id": "6927de3f-a947-4411-831f-c58c969f67f6", "diff_count": 5, "inapp_sent": 1, "ghost_count": 0, "effective_on": "2026-11-01", "prev_file_id": "aaaaaaaa-0000-0000-0000-000000000001", "missing_count": 2}
+✅  4-8 diff: hired 1 · moved 1 · promoted 1 · job_changed 1 · unit_created 1 {"diff": {"hired": 1, "moved": 1, "promoted": 1, "job_changed": 1, "unit_created": 1}, "cards": 3, "units": 4, "file_id": "a9905b1b-2941-41bf-8aab-b6e3d5a19514", "file_name": "복사본", "diff_count": 5, "ghost_count": 0, "effective_on": "2026-11-01", "prev_file_id": "aaaaaaaa-0000-0000-0000-000000000001", "missing_count": 2, "prev_file_name": "2026-10 초안"}
 ✅  4-9 diff 라벨 = profiles live 이름 
 ✅  4-10 변경 로그에 status 전환 2건 (archived·active) 
 === [5] 사람 상태 ===
@@ -37,7 +37,7 @@
 ✅  5-3 퇴사예정 예정일 누락 → DEPARTURE_DATE_REQUIRED 
 ✅  5-4 과거 예정일 → DEPARTURE_DATE_PAST (기존 규칙 승계) 
 ✅  5-5 사용자 상태 테이블에 활성 1건 
-{"id": "ddf86cf0-054b-4018-8381-e138812b9d24", "note": null, "end_on": "2026-10-21", "ended_at": "2026-10-01T10:39:47.51281+09:00", "ended_by": "11111111-1111-1111-1111-111111111111", "start_on": null, "person_id": null, "return_on": null, "created_at": "2026-10-01T10:39:47.504834+09:00", "created_by": "11111111-1111-1111-1111-111111111111", "profile_id": "22222222-2222-2222-2222-222222222222", "status_code": "departing", "ended_reason": "manual", "planned_status_code": null}
+{"id": "3522847b-647b-49d7-aced-83de2a8e8e2a", "note": null, "end_on": "2026-10-21", "ended_at": "2026-10-01T13:31:16.790941+09:00", "ended_by": "11111111-1111-1111-1111-111111111111", "start_on": null, "person_id": null, "return_on": null, "created_at": "2026-10-01T13:31:16.783651+09:00", "created_by": "11111111-1111-1111-1111-111111111111", "profile_id": "22222222-2222-2222-2222-222222222222", "status_code": "departing", "ended_reason": "manual", "planned_status_code": null}
 ✅  5-6 철회 → profiles active · 예정일 NULL · 체크리스트 보존 
 ✅  5-7 휴직예정 등록: profiles 는 active 유지 
 ✅  5-8 휴직예정에 예정 종류 누락 → 에러 
@@ -46,7 +46,7 @@
 ✅  5-11 cron 2회차: 복직예정→복직 · profiles returned + returned_on 
 ✅  5-12 cron 멱등 (변화 0) 
 ✅  5-13 사용자 정의 코드(category leave) → profiles leave 
-{"id": "04456ee2-55e1-48d7-8e43-7562a621ff6c", "note": null, "end_on": null, "ended_at": "2026-10-01T10:39:47.52868+09:00", "ended_by": "11111111-1111-1111-1111-111111111111", "start_on": "2026-10-01", "person_id": null, "return_on": null, "created_at": "2026-10-01T10:39:47.527096+09:00", "created_by": "11111111-1111-1111-1111-111111111111", "profile_id": "33333333-3333-3333-3333-333333333333", "status_code": "sabbatical", "ended_reason": "manual", "planned_status_code": null}
+{"id": "9f304fd2-377a-479f-b3f9-eb0df7c08847", "note": null, "end_on": null, "ended_at": "2026-10-01T13:31:16.803527+09:00", "ended_by": "11111111-1111-1111-1111-111111111111", "start_on": "2026-10-01", "person_id": null, "return_on": null, "created_at": "2026-10-01T13:31:16.802058+09:00", "created_by": "11111111-1111-1111-1111-111111111111", "profile_id": "33333333-3333-3333-3333-333333333333", "status_code": "sabbatical", "ended_reason": "manual", "planned_status_code": null}
 ✅  5-14 휴직 수동 종료 → returned 
 === [6] 입사예정자 연결 (sync 후크) ===
 ✅  6-1 입사예정 등록 → planned_start_on 
@@ -54,7 +54,7 @@
 ✅  6-3 입사예정 상태 종료(linked) · org_persons 연결 
 ✅  6-4 재호출 → no_unlinked_person (멱등) 
 === [7] 퇴사 트리거 ===
-{"id": "c7088be3-c769-43f8-919d-d9dbafb2964e", "note": null, "end_on": "2026-10-01", "ended_at": null, "ended_by": null, "start_on": null, "person_id": null, "return_on": null, "created_at": "2026-10-01T10:39:47.536921+09:00", "created_by": "11111111-1111-1111-1111-111111111111", "profile_id": "22222222-2222-2222-2222-222222222222", "status_code": "departing", "ended_reason": null, "planned_status_code": null}
+{"id": "8b3d8bc4-9f61-4ea3-ac73-178b92f19bf7", "note": null, "end_on": "2026-10-01", "ended_at": null, "ended_by": null, "start_on": null, "person_id": null, "return_on": null, "created_at": "2026-10-01T13:31:16.810622+09:00", "created_by": "11111111-1111-1111-1111-111111111111", "profile_id": "22222222-2222-2222-2222-222222222222", "status_code": "departing", "ended_reason": null, "planned_status_code": null}
 ✅  7-1 departed_users INSERT → 활성 상태 departed 종결 
 ✅  7-2 카드 보존 (FK 없음) 
 ✅  7-3 roster_check: 유령 1(직원A) · 누락 2(고지·조직담당) 

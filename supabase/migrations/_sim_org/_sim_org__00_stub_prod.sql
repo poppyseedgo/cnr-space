@@ -119,3 +119,10 @@ END $function$;
 UPDATE public.profiles SET employee_id = 'E' || substr(id::text, 1, 4);
 -- 스텁 생성 시점 이전 테이블에도 Supabase 기본 권한 재현
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+-- ── Phase 4-B 용 스텁 (운영 실측 2026-10-01 컬럼 중 사용분) ──
+CREATE TABLE IF NOT EXISTS public.books (id serial PRIMARY KEY, title text);
+CREATE TABLE IF NOT EXISTS public.book_checkouts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), book_id int, user_id uuid, due_at timestamptz, status text);
+CREATE TABLE IF NOT EXISTS public.resource_items (id serial PRIMARY KEY, label text);
+CREATE TABLE IF NOT EXISTS public.resource_bookings (id text PRIMARY KEY DEFAULT gen_random_uuid()::text, item_id int, user_id uuid, start_at timestamptz, end_at timestamptz, occupied_until timestamptz, status text, returned_at timestamptz);
+CREATE TABLE IF NOT EXISTS public.bookings (id text PRIMARY KEY DEFAULT gen_random_uuid()::text, user_id uuid, status text, start_at timestamptz);
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;

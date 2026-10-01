@@ -50,7 +50,7 @@ export interface NotifCatalogItem {
   type:      string
   label:     string
   /** 화면 그룹 */
-  group:     '회의실 예약' | '체크인·노쇼' | '노쇼 제재' | '도서관' | '연체 제재' | '자원예약' | 'Work Space'  // ← [2026-08-19 Phase 4] · [2026-09-30 5-B]
+  group:     '회의실 예약' | '체크인·노쇼' | '노쇼 제재' | '도서관' | '연체 제재' | '자원예약' | 'Work Space' | '조직도'  // ← [2026-08-19 Phase 4] · [2026-09-30 5-B] · [2026-10-01 ORG]
   /** 언제 나가는가 (사람이 읽는 문장) */
   trigger:   string
   audience:  NotifAudience
@@ -212,6 +212,11 @@ export const NOTIFICATION_CATALOG: NotifCatalogItem[] = [
   { type: 'wb_daily_digest',   label: '오늘의 업무 (다이제스트)', group: 'Work Space',
     trigger: '매일 09:00 KST (wb-daily-digest)',        audience: 'wb_recipients',
     channels: ['email','inapp'], toAdmins: true, note: '멤버 각자 1통 — 지연 · 오늘 마감 · 내일 마감 · 오늘 자동 생성된 내 반복 업무. 항목이 없으면 안 보냄.' },
+  // ── 조직도 (← [2026-10-01 ORG Phase 4-B]) ─────────────────────────────────
+  //   자격 = org 역할 (DB notification_required_roles 'org_%'). 지정 수신자로 좁힐 수 있다.
+  { type: 'org_activated',     label: '조직도 Active 전환', group: '조직도',
+    trigger: '최고 관리자가 초안을 Active 로 지정한 즉시',  audience: 'admins_only',
+    channels: ['email','inapp'], toAdmins: true, note: '조직도(org) 역할 보유자 전원. 본문에 파일명·적용일·이전 Active 대비 변경 건수.' },
 ]
 
 /** 화면 그룹 표시 순서 */

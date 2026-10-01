@@ -1946,6 +1946,11 @@ function AppContent() {
                   setWbDeepLink(target)
                   setView('workboard')
                 }}
+                /* ← [2026-10-01 ORG Phase 4-B] 조직도 알림 → 어드민 조직도 캔버스 (#admin-org-{fileId}). AdminPage hashchange 리스너가 탭을 맞춘다 */
+                onOpenOrgFile={(fileId) => {
+                  setView('admin')
+                  window.location.hash = `admin-org-${fileId}`
+                }}
               />
 
               {/* ← [2026-05-04] 프로필 + 드롭다운 메뉴 → ProfileDropdown 컴포넌트로 분리 (Phase 1+2 Step 2)

@@ -1,5 +1,6 @@
 /**
  * OrgAdminPanel.tsx — 어드민 '조직도' 탭 루트: 데이터 소유 + 갤러리(A) ↔ 캔버스(B) 전환 + 모든 저장 경로
+ *  - [2026-10-01 ORG Phase 4-B] 코드 관리 패널(E) · Active 전환 알림(send-notification org_activated) · 카드 CSV 내보내기
  *  - [2026-10-01 ORG Phase 4-A] 카드 드로어(C) · 히스토리/diff 드로어(D) · 입사예정자 카드 추가 · 카드 제거 연결
  *  - [2026-10-01 ORG Phase 3] 신규 — 설계서 §6
  *
@@ -15,15 +16,18 @@ import {
   copyOrgFile, activateOrgFile, acquireOrgLock, releaseOrgLock, rosterCheck,
   insertOrgUnit, updateOrgUnit, deleteOrgUnit, reorderOrgUnits, insertOrgCard, updateOrgCard, deleteOrgCard, setOrgCardJobs, loadOrgCardById, loadOrgUnitById,
   loadOffboardingTemplates, insertOrgPerson, setOrgPersonStatus,
+  notifyOrgActivated,   // ← [Phase 4-B]
   type OrgCodes, type OrgFileBundle, type OrgOffboardingTemplate,
 } from '../../lib/orgApi'
-import { orgErrorMessage, orgPersonView, orgStatusBadge } from '../../utils/orgStatus'
+import { orgErrorMessage, orgPersonView, orgStatusBadge, orgExportRows } from '../../utils/orgStatus'
+import { exportCSV } from '../../utils/csv'
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import { OrgGallery } from './OrgGallery'
 import { OrgCanvas } from './OrgCanvas'
 import { OrgPromptModal, type PromptField } from './OrgPromptModal'
 import { OrgCardDrawer, type CardPatch } from './OrgCardDrawer'   // ← [Phase 4-A]
 import { OrgHistoryDrawer } from './OrgHistoryDrawer'            // ← [Phase 4-A]
+import { OrgCodesPanel } from './OrgCodesPanel'                  // ← [Phase 4-B]
 import { OG } from './orgShared'
 
 interface Props {
@@ -54,6 +58,8 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   const [busy, setBusy]         = useState(false)
   const [templates, setTemplates] = useState<OrgOffboardingTemplate[]>([])   // ← [Phase 4-A] 반납 템플릿
   const [history, setHistory]   = useState<null | { file: OrgFileBundle['file'] | null; tab: 'log' | 'diff' }>(null)   // ← [Phase 4-A] 드로어 D
+  const [codesOpen, setCodesOpen] = useState(false)   // ← [Phase 4-B] 패널 E
+  const myName = useMemo(() => users.find(u => u.user_id === currentUserId)?.name ?? '관리자', [users, currentUserId])
   const [modal, setModal]       = useState<null | { kind: 'new' } | { kind: 'copy'; src: OrgFileSummary | { id: string; name: string } } | { kind: 'meta' } | { kind: 'unit-new'; parentId: string | null } | { kind: 'unit-rename'; unit: OrgUnit } | { kind: 'vacancy'; unitId: string } | { kind: 'person-new'; unitId: string }>(null)
   const [confirm, setConfirm]   = useState<null | { title: string; message: React.ReactNode; variant: 'danger' | 'warn' | 'neutral'; label: string; run: () => Promise<void> }>(null)
 
@@ -169,11 +175,12 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   // ── 갤러리 액션 ──
   const onActivate = (f: { id: string; name: string }, force = false) => setConfirm({
     title: force ? 'Active 강제 지정' : 'Active 지정', variant: 'warn', label: force ? '강제 지정' : 'Active 지정',
-    message: <>'{f.name}' 을(를) 현재 조직도로 지정합니다. 기존 Active 는 Archived 로 내려가고 되돌릴 수 없습니다(복사해서 다시 지정은 가능). org 역할 보유자에게 인앱 알림이 갑니다.{force && <><br /><b style={{ color: OG.red }}>퇴사자 카드가 남아 있는 상태로 강제 전환합니다.</b></>}</>,
+    message: <>'{f.name}' 을(를) 현재 조직도로 지정합니다. 기존 Active 는 Archived 로 내려가고 되돌릴 수 없습니다(복사해서 다시 지정은 가능). org 역할 보유자에게 인앱·이메일 알림이 갑니다.{force && <><br /><b style={{ color: OG.red }}>퇴사자 카드가 남아 있는 상태로 강제 전환합니다.</b></>}</>,
     run: async () => {
       try {
         const r = await activateOrgFile(f.id, force)
-        showToast(`Active 지정 완료 — 변경 ${r.diff_count}건, 알림 ${r.inapp_sent}명`)
+        notifyOrgActivated(r, myName)   // [Phase 4-B] 이메일+인앱 — Edge 가 담당, 실패해도 전환은 완료
+        showToast(`Active 지정 완료 — 변경 ${r.diff_count}건 · 단위 ${r.units} · 카드 ${r.cards} · org 담당자에게 알림 발송`)
         await reloadFiles(); if (fileId === f.id) { const b = await loadOrgFileBundle(f.id); setBundle(b); setEditable(false) }
       } catch (e) {
         const msg = e instanceof Error ? e.message : ''
@@ -185,6 +192,21 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
     run: async () => { await deleteOrgFile(f.id); await reloadFiles(); if (fileId === f.id) goGallery() } })
 
   const runConfirm = async () => { if (!confirm) return; setBusy(true); try { await confirm.run(); setConfirm(null) } catch (e) { fail(e) } finally { setBusy(false) } }
+
+  // ── [Phase 4-B] CSV 내보내기 (파일 단위, 트리 순서) ──
+  const onExport = async (f: { id: string; name: string }) => {
+    try {
+      const b = (bundle && bundle.file.id === f.id) ? bundle : await loadOrgFileBundle(f.id)
+      if (!b) { showToast('조직도 파일을 찾을 수 없습니다.'); return }
+      const pm = new Map(b.persons.map(p => [p.id, { name: p.name, email: p.email }]))
+      const rows = orgExportRows(b.units, b.cards, ranks, jobs, statusTypeMap, c => orgPersonView(c, users, pm, departedMap), statusOf)
+      if (!rows.length) { showToast('내보낼 카드가 없습니다.'); return }
+      exportCSV(rows, `조직도_${f.name.replace(/[\\/:*?"<>|]/g, '_')}`)
+      showToast(`CSV 내보내기 — ${rows.length}행`)
+    } catch (e) { fail(e, 'CSV 내보내기에 실패했습니다.') }
+  }
+  // ── [Phase 4-B] 코드 변경 후 재로드(직급·직무·상태코드·반납 템플릿) ──
+  const reloadCodes = async () => { try { const [c, t] = await Promise.all([loadOrgCodes(), loadOffboardingTemplates()]); setCodes(c); setTemplates(t) } catch (e) { fail(e) } }
 
   // ── 모달 submit ──
   const submitModal = async (v: Record<string, string>) => {
@@ -261,7 +283,7 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
         <OrgCanvas file={bundle.file} units={bundle.units} cards={bundle.cards} users={users} ranks={ranks} jobs={jobs} statusTypes={codes.statusTypes}
                    person={person} badge={badge} categoryOf={categoryOf} roster={roster} editable={editable} isSuper={isSuper} lockHolder={lockHolder} savedAt={savedAt}
                    selectedCard={selectedCard} unassigned={unassigned}
-                   onBack={goGallery} onCopy={() => setModal({ kind: 'copy', src: bundle.file })} onActivate={() => onActivate(bundle.file)} onRoster={() => showRoster(roster)}
+                   onBack={goGallery} onCopy={() => setModal({ kind: 'copy', src: bundle.file })} onActivate={() => onActivate(bundle.file)} onRoster={() => showRoster(roster)} onExport={() => onExport(bundle.file)}
                    onEditMeta={() => editable || bundle.file.status === 'active' ? setModal({ kind: 'meta' }) : showToast('지난 조직도는 수정할 수 없습니다.')}
                    onCardClick={c => setSelectedCard(c.id)}
                    onHistory={() => setHistory({ file: bundle.file, tab: 'log' })} onAddPerson={unitId => setModal({ kind: 'person-new', unitId })}
@@ -273,7 +295,8 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
       ) : (
         <OrgGallery files={files} users={users} isSuper={isSuper} activeBundle={activeBundle} statuses={statuses} statusTypes={codes.statusTypes} roster={activeRoster} onRoster={() => showRoster(activeRoster)} loading={loading}
                     onOpen={f => openFile(f.id)} onCopy={f => setModal({ kind: 'copy', src: f })} onActivate={f => onActivate(f)} onDelete={onDelete} onNew={() => setModal({ kind: 'new' })}
-                    onHistory={() => setHistory({ file: null, tab: 'log' })} onDiff={f => setHistory({ file: f, tab: 'diff' })} />
+                    onHistory={() => setHistory({ file: null, tab: 'log' })} onDiff={f => setHistory({ file: f, tab: 'diff' })}
+                    onExport={onExport} onCodes={() => setCodesOpen(true)} />
       )}
       {modalEl}
       {selected && bundle && (
@@ -286,6 +309,7 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
                           cardName={id => { const c = bundle?.cards.find(x => x.id === id) ?? activeBundle?.cards.find(x => x.id === id); return c ? person(c).name : '(제거된 카드)' }}
                           initialTab={history.tab} onClose={() => setHistory(null)} />
       )}
+      {codesOpen && <OrgCodesPanel onClose={() => setCodesOpen(false)} onChanged={reloadCodes} showToast={showToast} initial={{ ranks: codes.ranks, jobs: codes.jobs, statusTypes: codes.statusTypes, templates }} />}
       {confirm && <ConfirmDialog title={confirm.title} message={confirm.message} confirmLabel={confirm.label} variant={confirm.variant} loading={busy} onConfirm={runConfirm} onClose={() => !busy && setConfirm(null)} />}
     </>
   )

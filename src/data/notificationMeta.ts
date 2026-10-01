@@ -63,6 +63,7 @@ export const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
   wb_issue_created:         "#D97706",  // 이슈 등록 — 앰버(주의)
   wb_issue_resolved:        "#16A34A",  // 해결·보류 — 그린(종결)
   wb_daily_digest:          "#0891B2",  // 일일 요약 — 시안
+  org_activated:            "#16A34A",  // ← [2026-10-01 ORG] 조직도 Active 전환 — 그린(확정)
 
   // ── 대여 신청/승인 (← [2026-07-22]) ────────────────────────────────────
   // ← [2026-07-21] 승인 폐지로 신규 발송 없음. 과거 알림 이력 렌더링용으로 유지.
