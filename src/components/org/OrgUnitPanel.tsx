@@ -1,11 +1,12 @@
 /**
  * OrgUnitPanel.tsx — 캔버스 좌측 패널: 단위 트리(접기/펼치기·추가·이름변경·삭제·순서) / 미배치(로스터에 있는데 카드 없는 사람 → 드래그 배치)
+ *  - [2026-10-01 ORG 5-C] 패널 행 드래그&드롭(다른 행 위에 놓기 = 그 단위의 하위로 이동) · 상위로/하위로/이동… 버튼 · 더블클릭 = 이름 편집
  *  - [2026-10-01 ORG Phase 3] 신규 — 설계서 §6.2 좌측 패널
  */
 import { useMemo, useState, type DragEvent } from 'react'
 import type { AppUser, OrgCard, OrgUnit } from '../../types'
 import { UserAvatar } from '../common/UserAvatar'
-import { subtreeHeadcount, type OrgUnitNode } from '../../utils/orgStatus'
+import { descendantIds, subtreeHeadcount, type OrgUnitNode } from '../../utils/orgStatus'
 import { DND } from './OrgTree'
 import { OG, btn, btnDisabled } from './orgShared'
 
@@ -26,9 +27,16 @@ interface Props {
   mismatchByUnit: Map<string, number>
   ghostByUnit:    Map<string, number>
   isHidden?:    (c: OrgCard) => boolean   // ← [Phase 5-B] 헤드카운트에서 숨김 제외
+  /** [5-C] 단위 이동 */
+  units?:          OrgUnit[]
+  onOutdentUnit?:  (u: OrgUnit) => void
+  onIndentUnit?:   (u: OrgUnit) => void
+  onMoveUnitTo?:   (u: OrgUnit) => void
+  onReparentUnit?: (unitId: string, newParentId: string) => void
+  onCollapse?:     () => void
 }
 
-export function OrgUnitPanel({ roots, cardsByUnit, expanded, editable, focusUnit, onFocusUnit, onAddUnit, onRenameUnit, onDeleteUnit, onMoveUnit, onAddVacancy, onAddPerson, unassigned, mismatchByUnit, ghostByUnit, isHidden }: Props) {
+export function OrgUnitPanel({ roots, cardsByUnit, expanded, editable, focusUnit, onFocusUnit, onAddUnit, onRenameUnit, onDeleteUnit, onMoveUnit, onAddVacancy, onAddPerson, unassigned, mismatchByUnit, ghostByUnit, isHidden, units = [], onOutdentUnit, onIndentUnit, onMoveUnitTo, onReparentUnit, onCollapse }: Props) {
   const [tab, setTab] = useState<'tree' | 'unassigned'>('tree')
   const [q, setQ] = useState('')
   const filtered = useMemo(() => {
@@ -37,14 +45,30 @@ export function OrgUnitPanel({ roots, cardsByUnit, expanded, editable, focusUnit
   }, [unassigned, q])
 
   const onProfileDrag = (e: DragEvent, u: AppUser) => { e.dataTransfer.setData(DND.profile, u.user_id); e.dataTransfer.effectAllowed = 'copy' }
+  // [5-C] 패널 행 드래그: 단위 → 다른 행 = 그 단위의 하위로 (자기 자신·하위로는 불가)
+  const [dragUnit, setDragUnit] = useState<string | null>(null)
+  const [overRow, setOverRow] = useState<string | null>(null)
+  const blocked = useMemo(() => dragUnit ? new Set([dragUnit, ...descendantIds(dragUnit, units)]) : new Set<string>(), [dragUnit, units])
+  const canDrop = (targetId: string) => !!dragUnit && !blocked.has(targetId) && units.find(u => u.id === dragUnit)?.parent_unit_id !== targetId
 
   const row = (n: OrgUnitNode, siblings: OrgUnitNode[], idx: number) => {
     const u = n.unit, open = expanded.has(u.id), isFocus = focusUnit === u.id
     const mm = mismatchByUnit.get(u.id) ?? 0, gh = ghostByUnit.get(u.id) ?? 0
+    const parent = u.parent_unit_id ? units.find(x => x.id === u.parent_unit_id) : null
+    const canOutdent = !!parent && !!parent.parent_unit_id
+    const canIndent = idx > 0
+    const over = overRow === u.id && canDrop(u.id)
     return (
       <div key={u.id}>
-        <div onClick={() => onFocusUnit(u.id)}
-             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: `5px 6px 5px ${8 + n.depth * 14}px`, fontSize: 12.5, cursor: 'pointer', borderRadius: 6, background: isFocus ? '#EEF2FF' : 'transparent', fontWeight: isFocus ? 600 : 400 }}>
+        <div onClick={() => onFocusUnit(u.id)} onDoubleClick={() => editable && onRenameUnit(u)}
+             draggable={editable && !!onReparentUnit}
+             onDragStart={e => { e.dataTransfer.setData(DND.unit, u.id); e.dataTransfer.effectAllowed = 'move'; setDragUnit(u.id) }}
+             onDragEnd={() => { setDragUnit(null); setOverRow(null) }}
+             onDragOver={e => { if (dragUnit && canDrop(u.id)) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (overRow !== u.id) setOverRow(u.id) } }}
+             onDragLeave={() => setOverRow(x => x === u.id ? null : x)}
+             onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData(DND.unit); if (id && canDrop(u.id) && onReparentUnit) onReparentUnit(id, u.id); setDragUnit(null); setOverRow(null) }}
+             title={editable ? '클릭 = 캔버스 이동 · 더블클릭 = 이름 · 드래그해 다른 단위 위에 놓기 = 그 단위의 하위로' : '클릭 = 캔버스 해당 노드로 이동'}
+             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: `5px 6px 5px ${8 + n.depth * 14}px`, fontSize: 12.5, cursor: editable ? 'grab' : 'pointer', borderRadius: 6, background: over ? '#DBEAFE' : isFocus ? '#EEF2FF' : 'transparent', fontWeight: isFocus ? 600 : 400, outline: over ? `1.5px dashed ${OG.drop}` : 'none', opacity: dragUnit === u.id ? .5 : 1 }}>
           <span style={{ width: 10, color: OG.quiet, fontSize: 10 }}>{n.children.length > 0 ? (open ? '▾' : '▸') : ''}</span>
           <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name}</span>
           {(mm > 0 || gh > 0) && <small style={{ color: OG.red, fontSize: 10.5 }}>{gh > 0 ? `유령 ${gh}` : ''}{gh > 0 && mm > 0 ? ' · ' : ''}{mm > 0 ? `불일치 ${mm}` : ''}</small>}
@@ -54,8 +78,11 @@ export function OrgUnitPanel({ roots, cardsByUnit, expanded, editable, focusUnit
           <div style={{ display: 'flex', gap: 4, padding: `2px 6px 6px ${8 + n.depth * 14}px`, flexWrap: 'wrap' }}>
             <MiniBtn onClick={() => onAddUnit(u.id)}>+ 하위</MiniBtn>
             <MiniBtn onClick={() => onRenameUnit(u)}>이름·약칭</MiniBtn>
-            <MiniBtn onClick={() => onMoveUnit(u, -1)} disabled={idx === 0}>↑</MiniBtn>
-            <MiniBtn onClick={() => onMoveUnit(u, 1)} disabled={idx === siblings.length - 1}>↓</MiniBtn>
+            <MiniBtn onClick={() => onMoveUnit(u, -1)} disabled={idx === 0} title="형제 순서 위로">↑</MiniBtn>
+            <MiniBtn onClick={() => onMoveUnit(u, 1)} disabled={idx === siblings.length - 1} title="형제 순서 아래로">↓</MiniBtn>
+            {onOutdentUnit && <MiniBtn onClick={() => onOutdentUnit(u)} disabled={!canOutdent} title={canOutdent ? `상위로 — '${parent?.name}' 와 같은 층으로` : '최상위 바로 아래라 올릴 수 없음'}>← 상위로</MiniBtn>}
+            {onIndentUnit && <MiniBtn onClick={() => onIndentUnit(u)} disabled={!canIndent} title={canIndent ? `하위로 — 앞 형제 '${siblings[idx - 1]?.unit.name}' 아래로` : '앞 형제가 없음'}>→ 하위로</MiniBtn>}
+            {onMoveUnitTo && <MiniBtn onClick={() => onMoveUnitTo(u)} title="대상 단위를 골라 그 아래로 이동">이동…</MiniBtn>}
             {onAddVacancy && <MiniBtn onClick={() => onAddVacancy(u.id)}>+ 공석</MiniBtn>}
             {onAddPerson && <MiniBtn onClick={() => onAddPerson(u.id)}>+ 입사예정</MiniBtn>}
             <MiniBtn onClick={() => onDeleteUnit(u)} danger disabled={n.children.length > 0 || (cardsByUnit.get(u.id)?.length ?? 0) > 0} title={n.children.length > 0 ? '하위 단위가 있어 삭제 불가' : (cardsByUnit.get(u.id)?.length ?? 0) > 0 ? '카드가 있어 삭제 불가' : ''}>삭제</MiniBtn>
@@ -74,12 +101,13 @@ export function OrgUnitPanel({ roots, cardsByUnit, expanded, editable, focusUnit
             {t === 'tree' ? '단위 트리' : <>미배치 {unassigned.length > 0 && <span style={{ color: OG.red }}>{unassigned.length}</span>}</>}
           </div>
         ))}
+        {onCollapse && <div onClick={onCollapse} title="패널 접기" style={{ padding: '10px 8px', fontSize: 11, color: OG.quiet, cursor: 'pointer' }}>◀</div>}
       </div>
       {tab === 'tree' ? (
         <div style={{ padding: '10px 8px', overflow: 'auto', flex: 1 }}>
           {roots.map((r, i) => row(r, roots, i))}
           {editable && <div style={{ paddingTop: 10 }}><button style={{ ...btn, fontSize: 11.5, width: '100%' }} onClick={() => onAddUnit(null)}>+ 최상위 단위 추가</button></div>}
-          <div style={{ paddingTop: 12, color: OG.quiet, fontSize: 11 }}>클릭 = 캔버스 해당 노드로 이동 · 더블클릭(캔버스 헤더) = 이름 편집</div>
+          <div style={{ paddingTop: 12, color: OG.quiet, fontSize: 11 }}>클릭 = 캔버스 해당 노드로 이동 · 더블클릭 = 이름 편집{editable ? ' · 행 드래그 → 다른 행 위 = 그 단위의 하위로' : ''}</div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>

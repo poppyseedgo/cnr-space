@@ -1,9 +1,10 @@
 /**
  * OrgCanvas.tsx — 화면 B: 파일 상세(헤더 + 좌측 패널 + 조직 트리/단위별 리스트 + 줌)
+ *  - [2026-10-01 ORG 5-C] 전체화면(고정 오버레이 + 브라우저 fullscreen) · 기본 펼침 = 전체 · 패널 클릭 → 노드 스크롤 · 읽기 전용 더블클릭 피드백 · 단위 이동(상위로/하위로/이동…)
  *  - [2026-10-01 ORG Phase 5-B] 숨김 카드(수동/자동 7일) 기본 제외 + '숨김 n 보기' 토글 · 겸직 카드 태그(본 소속) · 헤드카운트 = 사람 수
  *  - [2026-10-01 ORG Phase 3] 신규 — 설계서 §6.2. 표시·인터랙션만, 데이터·저장은 OrgAdminPanel
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AppUser, OrgCard, OrgFile, OrgJob, OrgRank, OrgRosterCheck, OrgStatusCategory, OrgStatusType, OrgUnit } from '../../types'
 import { buildUnitTree, cardPersonKey, primaryJob, sortCards, type OrgBadgeSpec, type OrgDepartedInfo, type OrgPersonView, type OrgUnitNode } from '../../utils/orgStatus'
 import { OrgTree, type TreeDropHandlers } from './OrgTree'
@@ -27,6 +28,10 @@ export interface CanvasActions extends TreeDropHandlers {
   onMoveUnit:    (u: OrgUnit, dir: -1 | 1) => void
   onAddVacancy:  (unitId: string) => void
   onAddPerson?:  (unitId: string) => void   // ← [Phase 4-A] 입사 예정자 카드
+  /** [5-C] 단위 이동 — 상위로(부모의 형제로) · 하위로(앞 형제 아래로) · 이동…(대상 선택) */
+  onOutdentUnit?: (u: OrgUnit) => void
+  onIndentUnit?:  (u: OrgUnit) => void
+  onMoveUnitTo?:  (u: OrgUnit) => void
 }
 interface Props extends CanvasActions {
   file:         OrgFile
@@ -72,8 +77,24 @@ export function OrgCanvas(p: Props) {
   const mismatchByUnit = useMemo(() => perUnit(mismatchSet), [cards, mismatchSet])  // eslint-disable-line react-hooks/exhaustive-deps
   const ghostByUnit    = useMemo(() => perUnit(ghostSet), [cards, ghostSet])        // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 펼침 깊이 프리셋 — 엑셀 실측 계층: 회사(0) → 총괄본부(1) → 실/본부(2) → Division(3) → 팀그룹(4) → 팀(5). 기본 = Division 까지 펼침(4)
-  const [depthPreset, setDepthPreset] = useState<2 | 4 | 99>(4)
+  // 펼침 깊이 프리셋 — 엑셀 실측 계층: 회사(0) → 총괄본부(1) → 실/본부(2) → Division(3) → 팀그룹(4) → 팀(5). 기본 = 전체 펼침 (10/1 결정)
+  const [depthPreset, setDepthPreset] = useState<2 | 4 | 99>(99)
+  // [5-C] 전체화면: 고정 오버레이(앱 레이아웃 폭 제한 해제) + 가능하면 브라우저 fullscreen
+  const [full, setFull] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const toggleFull = () => {
+    const next = !full; setFull(next)
+    try { if (next) rootRef.current?.requestFullscreen?.().catch(() => {}); else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}) } catch { /* 미지원 브라우저 */ }
+  }
+  useEffect(() => {
+    const onFs = () => { if (!document.fullscreenElement && full) setFull(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && full && !document.fullscreenElement) setFull(false) }
+    document.addEventListener('fullscreenchange', onFs); window.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('fullscreenchange', onFs); window.removeEventListener('keydown', onKey) }
+  }, [full])
+  useEffect(() => { document.body.style.overflow = full ? 'hidden' : ''; return () => { document.body.style.overflow = '' } }, [full])
+  const [roHint, setRoHint] = useState(false)   // 읽기 전용에서 더블클릭 시 헤더 안내 강조
+  const [panelOpen, setPanelOpen] = useState(true)   // [5-C] 좌측 패널 접기 — 캔버스 폭 확보
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   useEffect(() => {
     const s = new Set<string>()
@@ -117,19 +138,29 @@ export function OrgCanvas(p: Props) {
     { id: 'vacancy', label: '공석' },
   ]
 
-  // 패널 클릭 → 해당 노드 펼치고 스크롤
+  // 패널 클릭 → 해당 노드 펼치고 스크롤 ([5-C] 실제 스크롤 — data-unit-id 로 노드를 찾아 가운데로)
+  const bodyRef = useRef<HTMLDivElement>(null)
   const focusOn = (id: string) => {
-    setFocusUnit(id)
+    setFocusUnit(id); setView('tree')
     const path: string[] = []; let cur = units.find(u => u.id === id)
     while (cur?.parent_unit_id) { path.push(cur.parent_unit_id); cur = units.find(u => u.id === cur!.parent_unit_id) }
     setExpanded(prev => new Set([...prev, ...path, id]))
+    let tries = 0
+    const scroll = () => {
+      const el = bodyRef.current?.querySelector<HTMLElement>(`[data-unit-id="${id}"]`)
+      if (el) el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' })
+      else if (tries++ < 10) requestAnimationFrame(scroll)   // 펼침 렌더 대기
+    }
+    requestAnimationFrame(scroll)
   }
 
   const rosterTotal = roster ? roster.missing_count + roster.ghost_count + roster.division_mismatch_count : 0
   const chip = (active: boolean): React.CSSProperties => ({ fontSize: 11.5, padding: '4px 10px', borderRadius: 999, border: `1px solid ${active ? OG.ink : OG.line}`, background: active ? OG.ink : '#fff', color: active ? '#fff' : OG.quiet, cursor: 'pointer', whiteSpace: 'nowrap' })
 
   return (
-    <div style={{ fontFamily: OG.font, color: OG.ink, display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)', minHeight: 640, background: OG.pageBg, border: `1px solid ${OG.line}`, borderRadius: 12, overflow: 'hidden' }}>
+    <div ref={rootRef} style={full
+      ? { fontFamily: OG.font, color: OG.ink, display: 'flex', flexDirection: 'column', position: 'fixed', inset: 0, zIndex: 950, height: '100vh', background: OG.pageBg, overflow: 'hidden' }
+      : { fontFamily: OG.font, color: OG.ink, display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)', minHeight: 640, background: OG.pageBg, border: `1px solid ${OG.line}`, borderRadius: 12, overflow: 'hidden' }}>
       {/* 헤더 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px', height: 56, background: '#fff', borderBottom: `1px solid ${OG.line}`, flexShrink: 0 }}>
         <button style={btn} onClick={p.onBack}>← 목록</button>
@@ -139,7 +170,8 @@ export function OrgCanvas(p: Props) {
         {lockHolder && <span style={{ fontSize: 11.5, color: OG.amber }}>● {lockHolder} 편집 중</span>}
         <span style={{ flex: 1 }} />
         {editable && <span style={{ fontSize: 11.5, color: OG.quiet }}>{savedAt ? `자동 저장됨 ${fmtWhen(savedAt)}` : ''}</span>}
-        {!editable && <span style={{ fontSize: 11.5, color: OG.quiet }}>읽기 전용 — 수정하려면 복사</span>}
+        {!editable && <span style={{ fontSize: 11.5, color: roHint ? '#fff' : OG.quiet, background: roHint ? OG.amber : 'transparent', padding: '2px 8px', borderRadius: 999, transition: 'all 200ms' }}>읽기 전용 — 수정하려면 복사{lockHolder ? '(또는 잠금 해제 대기)' : ''}</span>}
+        <button style={{ ...btn, ...(full ? { background: OG.ink, color: '#fff', borderColor: OG.ink } : {}) }} onClick={toggleFull} title={full ? '전체화면 종료 (Esc)' : '전체화면 — 앱 레이아웃 폭 제한 없이 보기'}>{full ? '✕ 전체화면 종료' : '⛶ 전체화면'}</button>
         <button style={{ ...btn, ...(rosterTotal > 0 ? { borderColor: '#FDE68A', background: '#FFFBEB', color: '#92400E' } : {}) }} onClick={p.onRoster}>검증{roster ? ` (${rosterTotal})` : ''}</button>
         {p.onHistory && <button style={btn} onClick={p.onHistory}>히스토리</button>}
         {p.onExport  && <button style={btn} onClick={p.onExport}>내보내기</button>}
@@ -148,9 +180,11 @@ export function OrgCanvas(p: Props) {
       </div>
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        <OrgUnitPanel roots={roots} cardsByUnit={cardsByUnit} expanded={expanded} editable={editable} focusUnit={focusUnit} onFocusUnit={focusOn}
+        {!panelOpen && <div onClick={() => setPanelOpen(true)} title="단위 패널 열기" style={{ width: 22, background: '#fff', borderRight: `1px solid ${OG.line}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: OG.quiet, fontSize: 11, writingMode: 'vertical-rl' }}>▶ 단위 패널</div>}
+        {panelOpen && <OrgUnitPanel roots={roots} cardsByUnit={cardsByUnit} expanded={expanded} editable={editable} focusUnit={focusUnit} onFocusUnit={focusOn}
                       onAddUnit={p.onAddUnit} onRenameUnit={p.onRenameUnit} onDeleteUnit={p.onDeleteUnit} onMoveUnit={p.onMoveUnit} onAddVacancy={p.onAddVacancy} onAddPerson={p.onAddPerson}
-                      unassigned={unassigned} mismatchByUnit={mismatchByUnit} ghostByUnit={ghostByUnit} isHidden={isHidden} />
+                      onOutdentUnit={p.onOutdentUnit} onIndentUnit={p.onIndentUnit} onMoveUnitTo={p.onMoveUnitTo} onReparentUnit={p.onDropUnit} units={units} onCollapse={() => setPanelOpen(false)}
+                      unassigned={unassigned} mismatchByUnit={mismatchByUnit} ghostByUnit={ghostByUnit} isHidden={isHidden} />}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
           {/* 필터 바 */}
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 16px', background: '#fff', borderBottom: `1px solid ${OG.line}`, flexWrap: 'wrap', flexShrink: 0 }}>
@@ -175,10 +209,10 @@ export function OrgCanvas(p: Props) {
             {editable && <span style={{ marginLeft: 'auto' }}>노드 헤더 드래그 = 단위 이동 · 카드 드래그 = 소속 변경 · 헤더 클릭 = 접기/펼침 · 더블클릭 = 이름</span>}
           </div>
           {/* 본체 */}
-          <div style={{ flex: 1, overflow: 'auto', padding: '20px 40px 80px' }}>
+          <div ref={bodyRef} style={{ flex: 1, overflow: 'auto', padding: '20px 40px 80px' }}>
             {view === 'tree'
               ? <OrgTree roots={roots} units={units} cardsByUnit={cardsByUnit} ctx={ctx} editable={editable} expanded={expanded} onToggle={toggle}
-                         selectedCard={selectedCard} onCardClick={p.onCardClick} onUnitClick={u => editable && p.onRenameUnit(u)}
+                         selectedCard={selectedCard} onCardClick={p.onCardClick} onUnitClick={u => { if (editable) p.onRenameUnit(u); else { setRoHint(true); window.setTimeout(() => setRoHint(false), 1600) } }}
                          drop={{ onDropCard: p.onDropCard, onDropUnit: p.onDropUnit, onDropProfile: p.onDropProfile }} zoom={zoom} highlightUnit={focusUnit} />
               : <ListView roots={roots} cardsByUnit={cardsByUnit} ctx={ctx} selectedCard={selectedCard} onCardClick={p.onCardClick} editable={editable} onAddVacancy={p.onAddVacancy} onAddPerson={p.onAddPerson} />}
           </div>

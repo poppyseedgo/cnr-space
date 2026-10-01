@@ -1,5 +1,6 @@
 /**
  * OrgAdminPanel.tsx — 어드민 '조직도' 탭 루트: 데이터 소유 + 갤러리(A) ↔ 캔버스(B) 전환 + 모든 저장 경로
+ *  - [2026-10-01 ORG 5-C] 단위 이동(상위로/하위로/이동… 모달) · 재배치 시 형제 끝에 배치 · 전체화면/스크롤은 OrgCanvas
  *  - [2026-10-01 ORG Phase 5-B] 퇴사 판정·숨김(departedOf/isHidden) · 미배치에서 퇴사일 경과자 제외 · 겸직 카드 추가/승격 · 숨김 토글 · Excel 내보내기
  *  - [2026-10-01 ORG Phase 5] 조직도 표기 이름(org_display_names) 로드 · 드로어 편집 연결 · CSV Azure 이름 열
  *  - [2026-10-01 ORG Phase 4-B] 코드 관리 패널(E) · Active 전환 알림(send-notification org_activated) · 카드 CSV 내보내기
@@ -23,7 +24,7 @@ import {
   setOrgCardHidden, swapOrgPrimaryCard,     // ← [Phase 5-B]
   type OrgCodes, type OrgFileBundle, type OrgOffboardingTemplate,
 } from '../../lib/orgApi'
-import { orgErrorMessage, orgPersonView, orgStatusBadge, orgExportRows, orgDepartedInfo, isCardHidden, todayKST, type OrgDepartedInfo } from '../../utils/orgStatus'
+import { orgErrorMessage, orgPersonView, orgStatusBadge, orgExportRows, orgDepartedInfo, isCardHidden, todayKST, descendantIds, type OrgDepartedInfo } from '../../utils/orgStatus'
 import { exportOrgExcel } from '../../utils/orgExcel'
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import { OrgGallery } from './OrgGallery'
@@ -65,7 +66,7 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   const [codesOpen, setCodesOpen] = useState(false)   // ← [Phase 4-B] 패널 E
   const [displayNames, setDisplayNames] = useState<Map<string, OrgDisplayName>>(new Map())   // ← [Phase 5]
   const myName = useMemo(() => users.find(u => u.user_id === currentUserId)?.name ?? '관리자', [users, currentUserId])
-  const [modal, setModal]       = useState<null | { kind: 'new' } | { kind: 'copy'; src: OrgFileSummary | { id: string; name: string } } | { kind: 'meta' } | { kind: 'unit-new'; parentId: string | null } | { kind: 'unit-rename'; unit: OrgUnit } | { kind: 'vacancy'; unitId: string } | { kind: 'person-new'; unitId: string }>(null)
+  const [modal, setModal]       = useState<null | { kind: 'new' } | { kind: 'copy'; src: OrgFileSummary | { id: string; name: string } } | { kind: 'meta' } | { kind: 'unit-new'; parentId: string | null } | { kind: 'unit-rename'; unit: OrgUnit } | { kind: 'unit-move'; unit: OrgUnit } | { kind: 'vacancy'; unitId: string } | { kind: 'person-new'; unitId: string }>(null)
   const [confirm, setConfirm]   = useState<null | { title: string; message: React.ReactNode; variant: 'danger' | 'warn' | 'neutral'; label: string; run: () => Promise<void> }>(null)
 
   const ranks = useMemo(() => new Map(codes.ranks.map(r => [r.id, r])), [codes.ranks])
@@ -177,7 +178,31 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
 
   // ── 드래그 저장 ──
   const onDropCard = async (cardId: string, unitId: string) => { try { await updateOrgCard(cardId, { unit_id: unitId }); await mergeCard(cardId); refreshRoster() } catch (e) { fail(e) } }
-  const onDropUnit = async (unitId: string, parentId: string) => { try { await updateOrgUnit(unitId, { parent_unit_id: parentId }); await mergeUnit(unitId) } catch (e) { fail(e) } }
+  const onDropUnit = async (unitId: string, parentId: string | null) => {
+    if (!bundle) return
+    try {
+      const sib = bundle.units.filter(u => u.parent_unit_id === parentId && u.id !== unitId)
+      await updateOrgUnit(unitId, { parent_unit_id: parentId, sort_order: sib.length }); await mergeUnit(unitId)   // 새 부모의 형제 끝으로
+    } catch (e) { fail(e) }
+  }
+  // [5-C] 상위로 = 부모의 형제로 (부모 바로 다음) · 하위로 = 앞 형제의 하위 끝 · 이동… = 모달에서 대상 선택
+  const onOutdentUnit = async (u: OrgUnit) => {
+    if (!bundle) return
+    const parent = bundle.units.find(x => x.id === u.parent_unit_id); if (!parent || !parent.parent_unit_id) { showToast('최상위 바로 아래 단위는 더 올릴 수 없습니다.'); return }
+    try {
+      const sib = siblingsOf(parent).filter(x => x.id !== u.id)
+      const i = sib.findIndex(x => x.id === parent.id)
+      const ids = sib.map(x => x.id); ids.splice(i + 1, 0, u.id)
+      await updateOrgUnit(u.id, { parent_unit_id: parent.parent_unit_id, sort_order: i + 1 })
+      await reorderOrgUnits(ids); const b = await loadOrgFileBundle(bundle.file.id); setBundle(b); touch()
+    } catch (e) { fail(e) }
+  }
+  const onIndentUnit = async (u: OrgUnit) => {
+    const sib = siblingsOf(u); const i = sib.findIndex(x => x.id === u.id)
+    if (i <= 0) { showToast('앞 형제가 없어 내릴 수 없습니다.'); return }
+    await onDropUnit(u.id, sib[i - 1].id)
+  }
+  const onMoveUnitTo = (u: OrgUnit) => setModal({ kind: 'unit-move', unit: u })
   const onDropProfile = async (profileId: string, unitId: string) => {
     if (!bundle) return
     try { const c = await insertOrgCard({ file_id: bundle.file.id, unit_id: unitId, profile_id: profileId }); await mergeCard(c.id); refreshRoster() } catch (e) { fail(e) }
@@ -251,6 +276,9 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
         const sib = bundle.units.filter(u => u.parent_unit_id === modal.parentId)
         const u = await insertOrgUnit({ file_id: bundle.file.id, parent_unit_id: modal.parentId, name: v.name.trim(), code: v.code.trim() || null, sort_order: sib.length })
         setBundle(b => b ? { ...b, units: [...b.units, u] } : b); setModal(null); touch()
+      } else if (modal.kind === 'unit-move') {
+        if (!v.target) throw new Error('대상 단위를 선택하세요.')
+        await onDropUnit(modal.unit.id, v.target === '__root__' ? null : v.target); setModal(null)
       } else if (modal.kind === 'unit-rename') {
         await updateOrgUnit(modal.unit.id, { name: v.name.trim(), code: v.code.trim() || null, azure_division: v.azure_division.trim() || null }); await mergeUnit(modal.unit.id); setModal(null); refreshRoster()
       } else if (modal.kind === 'vacancy' && bundle) {
@@ -304,6 +332,14 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
     if (modal.kind === 'meta' && bundle) return <OrgPromptModal title="파일 정보" fields={[{ key: 'name', label: '이름', required: true }, { key: 'effective_on', label: '적용일', type: 'date' }, { key: 'memo', label: '메모' }]} initial={{ name: bundle.file.name, effective_on: bundle.file.effective_on ?? '', memo: bundle.file.memo ?? '' }} loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
     if (modal.kind === 'unit-new') return <OrgPromptModal title={modal.parentId ? '하위 단위 추가' : '최상위 단위 추가'} fields={[{ key: 'name', label: '단위 이름', required: true }, { key: 'code', label: '약칭(code)', placeholder: '예: CO1-1 · 파일 안에서 유일' }]} confirmLabel="추가" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
     if (modal.kind === 'unit-rename') return <OrgPromptModal title="단위 편집" fields={[{ key: 'name', label: '단위 이름', required: true }, { key: 'code', label: '약칭(code)' }, { key: 'azure_division', label: 'Azure Division 매핑', help: '교차검증용 — profiles.dept 와 비교할 값 (예: CO). 하위 단위는 가장 가까운 상위 값을 상속' }]} initial={{ name: modal.unit.name, code: modal.unit.code ?? '', azure_division: modal.unit.azure_division ?? '' }} loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
+    if (modal.kind === 'unit-move' && bundle) {
+      const ex = new Set([modal.unit.id, ...descendantIds(modal.unit.id, bundle.units)])
+      const opts: { value: string; label: string }[] = []
+      const walk = (parent: string | null, depth: number) => bundle.units.filter(x => x.parent_unit_id === parent).sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'ko'))
+        .forEach(x => { if (!ex.has(x.id)) opts.push({ value: x.id, label: `${'\u00a0\u00a0'.repeat(depth)}${x.name}${x.id === modal.unit.parent_unit_id ? ' (현재 상위)' : ''}` }); walk(x.id, depth + 1) })
+      walk(null, 0)
+      return <OrgPromptModal title={`'${modal.unit.name}' 이동 — 어느 단위 아래로?`} fields={[{ key: 'target', label: '대상 단위', type: 'select', options: [{ value: '', label: '(선택)' }, ...opts], required: true, help: '선택한 단위의 하위 끝으로 들어갑니다. 하위 단위·카드는 함께 이동. 순서는 ↑↓ 로 조정' }]} confirmLabel="이동" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
+    }
     if (modal.kind === 'vacancy') return <OrgPromptModal title="공석(TO) 추가" fields={[{ key: 'name', label: '표기', placeholder: '예: 공석 · CRA' }, { key: 'job', label: '직무', type: 'select', options: jobOptions }]} confirmLabel="추가" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
     if (modal.kind === 'person-new') return <OrgPromptModal title="입사 예정자 추가" fields={[{ key: 'name', label: '이름', required: true }, { key: 'email', label: '회사 이메일', placeholder: 'sync 시 이 이메일로 프로필을 자동 연결', help: '입사 후 Azure 계정이 생기면 sync-all-users 가 같은 이메일의 profile 과 자동 연결합니다' }, { key: 'start_on', label: '입사일', type: 'date', help: '입력하면 입사예정 상태가 함께 등록됩니다' }, { key: 'job', label: '직무', type: 'select', options: jobOptions }]} confirmLabel="추가" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
     return null
@@ -320,7 +356,7 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
                    onCardClick={c => setSelectedCard(c.id)}
                    onHistory={() => setHistory({ file: bundle.file, tab: 'log' })} onAddPerson={unitId => setModal({ kind: 'person-new', unitId })}
                    onAddUnit={parentId => setModal({ kind: 'unit-new', parentId })} onRenameUnit={u => setModal({ kind: 'unit-rename', unit: u })} onDeleteUnit={onDeleteUnit} onMoveUnit={onMoveUnit}
-                   onAddVacancy={unitId => setModal({ kind: 'vacancy', unitId })}
+                   onAddVacancy={unitId => setModal({ kind: 'vacancy', unitId })} onOutdentUnit={onOutdentUnit} onIndentUnit={onIndentUnit} onMoveUnitTo={onMoveUnitTo}
                    onDropCard={onDropCard} onDropUnit={onDropUnit} onDropProfile={onDropProfile} />
       ) : fileId ? (
         <div style={{ padding: 40, color: OG.quiet, fontFamily: OG.font }}>불러오는 중…</div>

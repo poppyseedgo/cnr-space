@@ -110,7 +110,7 @@ export function OrgTree({ roots, units, cardsByUnit, ctx, editable, expanded, on
     const visible = cards.length > MAX_VISIBLE ? cards.slice(0, MAX_VISIBLE) : cards
     return (
       <div key={u.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <div onDragOver={e => onDragOverUnit(e, u.id)} onDragLeave={() => setOverUnit(x => x === u.id ? null : x)} onDrop={e => onDropOnUnit(e, u.id)}
+        <div data-unit-id={u.id} onDragOver={e => onDragOverUnit(e, u.id)} onDragLeave={() => setOverUnit(x => x === u.id ? null : x)} onDrop={e => onDropOnUnit(e, u.id)}
              style={{ width: OG.cardW, border: `1px solid ${node.depth <= 1 ? '#C7CDD8' : OG.line}`, borderRadius: 10, background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,.04)',
                       outline: over ? `2px solid ${OG.drop}` : highlightUnit === u.id ? `2px solid ${OG.amber}` : 'none', outlineOffset: 2 }}>
           <div draggable={editable} onDragStart={e => onUnitDragStart(e, u)} onDragEnd={endDrag}
