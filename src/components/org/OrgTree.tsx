@@ -7,6 +7,7 @@
  *    · 미배치 패널의 사람 → 단위 노드 = 카드 생성
  *    · 접힌 노드 위에 600ms 머물면 자동 펼침
  *  표시 전용: 데이터·액션은 OrgCanvas/OrgAdminPanel 이 소유
+ *  - [2026-10-01 ORG Phase 7-E] dashedIds(선이 끊긴 단위) = 점선 프레임 + '연결 안 됨' 태그. 보류 루트(kind=bench) 는 headless 트레이에서만 사용
  *  - [2026-10-01 ORG Phase 6-b] 다른 OrgTree 인스턴스·패널에서 시작된 드래그(dragging 없음)도 types 로 받아 드롭 허용 — 작업대 트레이 ↔ 본 트리 교차 드래그. 드롭 시 실제 id 로 순환 재검증
  *  - [2026-10-01 ORG Phase 6] 작업대 노드(kind=bench: 점선 프레임·드래그 불가·헤드카운트 대신 '보관 n') · 다중 선택 카드 드래그(DND.cards → drop.onDropCards) · 카드 클릭 MouseEvent 전달
  *  - [2026-10-01 ORG Phase 5-B] ctx.concurrent/departedSince/hidden 전달 · 헤드카운트 = 본 카드·비숨김
@@ -56,11 +57,13 @@ interface Props {
   highlightUnit?: string | null
   /** [Phase 6] 다중 선택된 카드 id — 포함된 카드를 끌면 전체가 함께 이동 */
   selectedIds?: Set<string>
-  /** [Phase 6-b] 루트 노드의 헤더·프레임 없이 카드 스택 + 하위 단위만 (작업대 트레이용 — 트레이 자체가 헤더·드롭 대상) */
+  /** [Phase 6-b] 루트 노드의 헤더·프레임 없이 카드 스택 + 하위 단위만 (보류 카드 트레이용 — 트레이 자체가 헤더·드롭 대상) */
   headless?:    boolean
+  /** [7-E] 선이 끊긴 단위(보류 루트 하위) — 점선 프레임 */
+  dashedIds?:   Set<string>
 }
 
-export function OrgTree({ roots, units, cardsByUnit, ctx, editable, expanded, onToggle, selectedCard, onCardClick, onUnitClick, drop, zoom, highlightUnit, selectedIds, headless }: Props) {
+export function OrgTree({ roots, units, cardsByUnit, ctx, editable, expanded, onToggle, selectedCard, onCardClick, onUnitClick, drop, zoom, highlightUnit, selectedIds, headless, dashedIds }: Props) {
   const [dragging, setDragging] = useState<{ kind: 'card' | 'unit' | 'profile'; id: string; fromUnit?: string; ids?: string[] } | null>(null)
   const [overUnit, setOverUnit] = useState<string | null>(null)
   const blocked = useMemo(() => dragging?.kind === 'unit' ? new Set([dragging.id, ...descendantIds(dragging.id, units)]) : new Set<string>(), [dragging, units])
@@ -130,7 +133,8 @@ export function OrgTree({ roots, units, cardsByUnit, ctx, editable, expanded, on
     const over = overUnit === u.id && (dragging ? canDropOn(u.id) : false)
     const hasKids = node.children.length > 0 && isOpen
     const visible = cards.length > MAX_VISIBLE ? cards.slice(0, MAX_VISIBLE) : cards
-    const bench = u.kind === 'bench'   // [Phase 6] 작업대 — 점선 프레임, 드래그 불가, 이름 편집 없음
+    const bench = u.kind === 'bench'   // 보류 루트 — 트레이(headless) 전용
+    const loose = !!dashedIds?.has(u.id)   // [7-E] 선이 끊긴 단위
     const cardEl = (c: OrgCard) => {
       const r = c.rank_id ? ctx.ranks.get(c.rank_id) ?? null : null
       const pj = primaryJob(c, ctx.jobs)
@@ -150,17 +154,18 @@ export function OrgTree({ roots, units, cardsByUnit, ctx, editable, expanded, on
     return (
       <div key={u.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <div data-unit-id={u.id} onDragOver={e => onDragOverUnit(e, u.id)} onDragLeave={() => setOverUnit(x => x === u.id ? null : x)} onDrop={e => onDropOnUnit(e, u.id)}
-             style={{ width: OG.cardW, border: bench ? `1.5px dashed ${OG.drop}` : `1px solid ${node.depth <= 1 ? '#C7CDD8' : OG.line}`, borderRadius: 10, background: bench ? '#F8FAFF' : '#fff', boxShadow: bench ? 'none' : '0 1px 2px rgba(0,0,0,.04)',
+             style={{ width: OG.cardW, border: bench || loose ? `1.5px dashed ${OG.drop}` : `1px solid ${node.depth <= 1 ? '#C7CDD8' : OG.line}`, borderRadius: 10, background: bench || loose ? '#F8FAFF' : '#fff', boxShadow: bench ? 'none' : '0 1px 2px rgba(0,0,0,.04)',
                       outline: over ? `2px solid ${OG.drop}` : highlightUnit === u.id ? `2px solid ${OG.amber}` : 'none', outlineOffset: 2 }}>
           <div draggable={editable && !bench} onDragStart={e => onUnitDragStart(e, u)} onDragEnd={endDrag}
                onClick={() => onToggle(u.id)} onDoubleClick={() => !bench && onUnitClick?.(u)}
                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderBottom: isOpen && (cards.length > 0) ? `1px solid ${OG.line}` : 'none', fontWeight: 600, fontSize: 12.5, cursor: editable && !bench ? 'grab' : 'pointer', userSelect: 'none', color: bench ? OG.drop : OG.ink }}>
             <span style={{ color: OG.quiet, fontSize: 10 }}>{node.children.length > 0 || cards.length > 0 ? (isOpen ? '▾' : '▸') : '·'}</span>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={bench ? '작업대 — 잠시 떼어 둔 카드·단위. Active 지정 전에 비워야 합니다' : u.name}>{bench ? '🧰 작업대' : u.name}</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={loose ? '상위와 선이 끊긴 단위 — 노드로 끌어다 놓으면 다시 연결' : u.name}>{bench ? '보류 카드' : u.name}</span>
+            {loose && <span style={{ fontSize: 10, color: OG.drop, border: `1px dashed ${OG.drop}`, borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>연결 안 됨</span>}
             {u.code && u.code !== 'ROOT' && u.code !== u.name && <span style={{ fontSize: 10, color: OG.quiet, border: `1px solid ${OG.line}`, borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>{u.code}</span>}
             <small style={{ color: OG.quiet, fontWeight: 400, marginLeft: 'auto', flexShrink: 0 }}>{bench ? `보관 ${total}${node.children.length ? ` · 단위 ${node.children.length}` : ''}` : total}</small>
           </div>
-          {bench && isOpen && cards.length === 0 && node.children.length === 0 && <div style={{ padding: '10px 12px', fontSize: 11, color: OG.quiet, lineHeight: 1.5 }}>비어 있음 — 카드·단위를 끌어다 놓거나, 선택 후 '작업대로' 를 누르세요</div>}
+          {bench && isOpen && cards.length === 0 && node.children.length === 0 && <div style={{ padding: '10px 12px', fontSize: 11, color: OG.quiet, lineHeight: 1.5 }}>비어 있음</div>}
           {isOpen && cards.length > 0 && (
             <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {visible.map((c, i) => {

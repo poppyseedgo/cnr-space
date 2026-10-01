@@ -86,7 +86,10 @@ export function OrgCanvas(p: Props) {
   const allRoots = useMemo(() => buildUnitTree(units), [units])
   const roots = useMemo(() => allRoots.filter(n => n.unit.kind !== 'bench'), [allRoots])
   const benchNode = useMemo(() => allRoots.find(n => n.unit.kind === 'bench') ?? null, [allRoots])
-  const benchCount = useMemo(() => benchNode ? (cardsByUnit.get(benchNode.unit.id)?.length ?? 0) + benchNode.children.length : 0, [benchNode, cardsByUnit])
+  const benchCount = useMemo(() => benchNode ? (cardsByUnit.get(benchNode.unit.id)?.length ?? 0) : 0, [benchNode, cardsByUnit])   // 보류 카드 수(단위 제외)
+  const heldNode = useMemo(() => benchNode ? { ...benchNode, children: [] } : null, [benchNode])   // 트레이용: 카드만
+  // [7-E] 고정 트리에서는 끊긴 단위를 오른쪽에 별도 루트(점선)로 그린다
+  const treeRoots = useMemo(() => benchNode ? [...roots, ...benchNode.children.map(c => ({ ...c, depth: 0 }))] : roots, [roots, benchNode])
   const benchIds = useMemo(() => benchNode ? new Set([benchNode.unit.id, ...descendantIds(benchNode.unit.id, units)]) : new Set<string>(), [benchNode, units])
   const [benchOpen, setBenchOpen] = useState(false)
   useEffect(() => { if (benchCount > 0) setBenchOpen(true) }, [benchCount > 0])   // eslint-disable-line react-hooks/exhaustive-deps  — 내용이 생기면 자동 펼침, 비면 알약으로
@@ -160,12 +163,13 @@ export function OrgCanvas(p: Props) {
     while (cur) { path.push(cur.id); cur = cur.parent_unit_id ? units.find(u => u.id === cur!.parent_unit_id) : undefined }
     setExpanded(prev => new Set([...prev, ...path]))
     if (view === 'list') setView('tree')
-    if (benchIds.has(c.unit_id)) setBenchOpen(true)
-    if (view === 'flow' && !benchIds.has(c.unit_id)) { setFocusUnit(c.unit_id); setFocusTick(t => t + 1) }   // 노드 캔버스: 노드 가운데로(React Flow setCenter)
+    const inTray = benchNode?.unit.id === c.unit_id   // 보류 카드(트레이) 인지
+    if (inTray) setBenchOpen(true)
+    if (view === 'flow' && !inTray) { setFocusUnit(c.unit_id); setFocusTick(t => t + 1) }   // 노드 캔버스: 노드 가운데로(React Flow setCenter)
     let tries = 0
     const scroll = () => {
       const el = rootRef.current?.querySelector<HTMLElement>(`[data-card-id="${c.id}"]`)
-      if (el) { if (view !== 'flow' || benchIds.has(c.unit_id)) el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' }); el.animate([{ boxShadow: `0 0 0 4px ${OG.amber}` }, { boxShadow: '0 0 0 0 transparent' }], { duration: 1200 }) }
+      if (el) { if (view !== 'flow' || inTray) el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' }); el.animate([{ boxShadow: `0 0 0 4px ${OG.amber}` }, { boxShadow: '0 0 0 0 transparent' }], { duration: 1200 }) }
       else if (tries++ < 10) requestAnimationFrame(scroll)
     }
     window.setTimeout(() => requestAnimationFrame(scroll), view === 'flow' ? 450 : 0)
@@ -246,8 +250,7 @@ export function OrgCanvas(p: Props) {
     const path: string[] = []; let cur = units.find(u => u.id === id)
     while (cur?.parent_unit_id) { path.push(cur.parent_unit_id); cur = units.find(u => u.id === cur!.parent_unit_id) }
     setExpanded(prev => new Set([...prev, ...path, id]))
-    if (benchIds.has(id)) setBenchOpen(true)
-    if (view === 'flow' && !benchIds.has(id)) return   // 노드 캔버스가 focusUnit/focusTick 으로 가운데 이동
+    if (view === 'flow') return   // 노드 캔버스가 focusUnit/focusTick 으로 가운데 이동 (연결 안 된 단위도 노드)
     let tries = 0
     const scroll = () => {
       const el = rootRef.current?.querySelector<HTMLElement>(`[data-unit-id="${id}"]`)
@@ -301,7 +304,7 @@ export function OrgCanvas(p: Props) {
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         {!panelOpen && <div onClick={() => setPanelOpen(true)} title="단위 패널 열기" style={{ width: 22, background: '#fff', borderRight: `1px solid ${OG.line}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: OG.quiet, fontSize: 11, writingMode: 'vertical-rl' }}>▶ 단위 패널</div>}
-        {panelOpen && <OrgUnitPanel roots={roots} cardsByUnit={cardsByUnit} expanded={expanded} editable={editable} focusUnit={focusUnit} onFocusUnit={focusOn}
+        {panelOpen && <OrgUnitPanel roots={allRoots} cardsByUnit={cardsByUnit} expanded={expanded} editable={editable} focusUnit={focusUnit} onFocusUnit={focusOn}
                       onAddUnit={p.onAddUnit} onRenameUnit={p.onRenameUnit} onDeleteUnit={p.onDeleteUnit} onMoveUnit={p.onMoveUnit} onAddVacancy={p.onAddVacancy} onAddPerson={p.onAddPerson}
                       onOutdentUnit={p.onOutdentUnit} onIndentUnit={p.onIndentUnit} onMoveUnitTo={p.onMoveUnitTo} onReparentUnit={p.onDropUnit} units={units} onCollapse={() => setPanelOpen(false)}
                       onDetachUnit={p.onDetachUnit} onMergeUnit={p.onMergeUnit}
@@ -332,7 +335,7 @@ export function OrgCanvas(p: Props) {
             <span><i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, marginRight: 4, verticalAlign: -1, background: '#EEF2FF', border: '1px solid #C7D2FE' }} />겸직 카드</span>
             <span><i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, marginRight: 4, verticalAlign: -1, border: `1px dashed ${OG.faint}` }} />공석(TO)</span>
             <span><i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', marginRight: 4, verticalAlign: -1, background: OG.amber }} />Azure Division 불일치</span>
-            {editable && <span style={{ marginLeft: 'auto' }}>{view === 'flow' ? '헤더 드래그 = 노드 배치(저장) · 카드 드래그 = 소속 변경(선택 묶음 함께) · 휠/핀치 = 줌 · 배경 드래그 = 이동 · Shift+드래그 = 영역 선택 · 더블클릭 = 이름' : '노드 헤더 드래그 = 단위 이동 · 카드 드래그 = 소속 변경(선택 묶음은 함께) · 헤더 클릭 = 접기/펼침 · 더블클릭 = 이름'} · 🧰 우상단 작업대로 끌어다 떼어 두고, 다시 끌어 붙이기</span>}
+            {editable && <span style={{ marginLeft: 'auto' }}>{view === 'flow' ? '헤더 드래그 = 노드 배치(저장) · 카드 드래그 = 소속 변경(선택 묶음 함께) · 포트 선 연결 = 상위 변경 · 선 선택+Delete = 끊기 · 휠/핀치 = 줌 · Shift+드래그 = 영역 선택 · 우클릭 = 메뉴' : '노드 헤더 드래그 = 단위 이동 · 카드 드래그 = 소속 변경(선택 묶음은 함께) · 헤더 클릭 = 접기/펼침 · 더블클릭 = 이름'} · 📥 우상단 = 보류 카드</span>}
           </div>
           {/* 본체 — 스크롤 영역 + [Phase 6-b] 우상단 플로팅 작업대 트레이 */}
           <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
@@ -347,9 +350,9 @@ export function OrgCanvas(p: Props) {
           )}
           <div ref={bodyRef} style={{ position: 'absolute', inset: 0, overflow: 'auto', padding: '20px 40px 80px', display: view === 'flow' ? 'none' : 'block' }}>
             {view === 'tree'
-              ? <OrgTree roots={roots} units={units} cardsByUnit={cardsByUnit} ctx={ctx} editable={editable} expanded={expanded} onToggle={toggle}
+              ? <OrgTree roots={treeRoots} units={units} cardsByUnit={cardsByUnit} ctx={ctx} editable={editable} expanded={expanded} onToggle={toggle}
                          selectedCard={selectedCard} onCardClick={onCardClickX} onUnitClick={u => { if (editable) p.onRenameUnit(u); else { setRoHint(true); window.setTimeout(() => setRoHint(false), 1600) } }}
-                         drop={{ onDropCard: p.onDropCard, onDropUnit: p.onDropUnit, onDropProfile: p.onDropProfile, onDropCards: p.onDropCards }} zoom={zoom} highlightUnit={focusUnit} selectedIds={sel} />
+                         drop={{ onDropCard: p.onDropCard, onDropUnit: p.onDropUnit, onDropProfile: p.onDropProfile, onDropCards: p.onDropCards }} zoom={zoom} highlightUnit={focusUnit} selectedIds={sel} dashedIds={benchIds} />
               : <ListView roots={roots} cardsByUnit={cardsByUnit} ctx={ctx} selectedCard={selectedCard} selectedIds={sel} onCardClick={onCardClickX} editable={editable} onAddVacancy={p.onAddVacancy} onAddPerson={p.onAddPerson} onSelectUnit={editable ? selectUnitCards : undefined} />}
           </div>
           {showTray && benchNode && (
@@ -360,15 +363,15 @@ export function OrgCanvas(p: Props) {
                  onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.opacity = '1' }} onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.opacity = benchOpen || benchOver ? '1' : '.85' }}>
               <div onClick={() => setBenchOpen(o => !o)} title={benchOpen ? '접기' : '펼치기'}
                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: OG.drop, userSelect: 'none', borderBottom: benchOpen ? `1px dashed ${OG.line}` : 'none' }}>
-                <span>🧰 작업대</span>
-                <span style={{ fontSize: 11, fontWeight: 500, color: OG.quiet }}>{benchCount ? `카드 ${cardsByUnit.get(benchNode.unit.id)?.length ?? 0}${benchNode.children.length ? ` · 단위 ${benchNode.children.length}` : ''}` : '비어 있음'}</span>
+                <span>📥 보류 카드</span>
+                <span style={{ fontSize: 11, fontWeight: 500, color: OG.quiet }}>{benchCount ? `${benchCount}장` : '비어 있음'}</span>
                 <span style={{ marginLeft: 'auto', fontSize: 11, color: OG.quiet }}>{benchOpen ? '▾' : '▸'}</span>
               </div>
               {benchOpen && (
                 <div style={{ overflow: 'auto', padding: '10px 12px 12px' }}>
                   {benchCount === 0
-                    ? <div style={{ fontSize: 11.5, color: OG.quiet, lineHeight: 1.6, maxWidth: 220 }}>{editable ? '카드·단위를 여기로 끌어다 놓거나, 선택 후 \'작업대로\'. 꺼낼 때는 여기서 조직 노드로 끌어다 놓으세요. Active 지정 전에 비워야 합니다.' : '비어 있음'}</div>
-                    : <OrgTree roots={[benchNode]} units={units} cardsByUnit={cardsByUnit} ctx={ctx} editable={editable} expanded={expanded} onToggle={toggle}
+                    ? <div style={{ fontSize: 11.5, color: OG.quiet, lineHeight: 1.6, maxWidth: 220 }}>{editable ? '소속을 아직 정하지 않은 카드를 여기 끌어다 두세요(직급·직무·메모 유지). 다시 조직 노드로 끌어 배치. Active 지정 전에 비워야 합니다.' : '비어 있음'}</div>
+                    : <OrgTree roots={[heldNode!]} units={units} cardsByUnit={cardsByUnit} ctx={ctx} editable={editable} expanded={expanded} onToggle={toggle}
                                selectedCard={selectedCard} onCardClick={onCardClickX} onUnitClick={u => editable && p.onRenameUnit(u)}
                                drop={{ onDropCard: p.onDropCard, onDropUnit: p.onDropUnit, onDropProfile: p.onDropProfile, onDropCards: p.onDropCards }} zoom={0.9} highlightUnit={focusUnit} selectedIds={sel} headless />}
                 </div>
@@ -380,7 +383,7 @@ export function OrgCanvas(p: Props) {
           {editable && sel.size > 0 && (
             <div style={{ position: 'absolute', left: '50%', bottom: 20, transform: 'translateX(-50%)', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: OG.ink, color: '#fff', borderRadius: 10, boxShadow: '0 6px 20px rgba(0,0,0,.25)', fontSize: 12.5, zIndex: 5 }}>
               <b>{sel.size}장 선택</b><span style={{ color: '#9CA3AF' }}>· 단위 {selUnits.size}개</span>
-              {p.onToBench && <button style={barBtn} onClick={() => p.onToBench!(selIds)} title="선택 카드를 작업대로 떼어 둡니다 (단위장·보고선 해제)">🧰 작업대로</button>}
+              {p.onToBench && <button style={barBtn} onClick={() => p.onToBench!(selIds)} title="선택 카드를 보류 카드로 빼둡니다 (단위장·보고선 해제, 직급·직무·메모 유지)">📥 보류</button>}
               {p.onMoveCardsTo && <button style={barBtn} onClick={() => p.onMoveCardsTo!(selIds)} title="대상 단위를 골라 한 번에 이동">이동…</button>}
               {p.onSplitCards && <button style={barBtn} onClick={() => p.onSplitCards!(selIds)} title="선택 카드로 새 단위를 만듭니다">새 단위로 분리…</button>}
               <button style={{ ...barBtn, background: 'transparent', borderColor: '#4B5563' }} onClick={clearSel} title="Esc">해제</button>
@@ -414,7 +417,7 @@ function ListView({ roots, cardsByUnit, ctx, selectedCard, selectedIds, onCardCl
         const head = cards.find(c => c.is_unit_head)
         return (
           <div key={n.unit.id} style={{ background: '#fff', border: `1px solid ${OG.line}`, borderRadius: 10, padding: '14px 16px', marginBottom: 14, marginLeft: n.depth * 16 }}>
-            <h4 style={{ fontSize: 13.5, margin: '0 0 10px', display: 'flex', gap: 8, alignItems: 'center', color: n.unit.kind === 'bench' ? OG.drop : undefined }}>{n.unit.kind === 'bench' ? '🧰 작업대' : n.unit.name} <small style={{ color: OG.quiet, fontWeight: 400 }}>{cards.filter(c => !c.is_vacancy && c.is_primary !== false && !ctx.hidden(c)).length}명{cards.some(c => c.is_primary === false) ? ` (+겸직 ${cards.filter(c => c.is_primary === false).length})` : ''}</small>
+            <h4 style={{ fontSize: 13.5, margin: '0 0 10px', display: 'flex', gap: 8, alignItems: 'center', color: n.unit.kind === 'bench' ? OG.drop : undefined }}>{n.unit.kind === 'bench' ? '📥 보류 카드' : n.unit.name} <small style={{ color: OG.quiet, fontWeight: 400 }}>{cards.filter(c => !c.is_vacancy && c.is_primary !== false && !ctx.hidden(c)).length}명{cards.some(c => c.is_primary === false) ? ` (+겸직 ${cards.filter(c => c.is_primary === false).length})` : ''}</small>
               {head && <span style={{ marginLeft: 'auto', fontSize: 11, color: OG.quiet }}>단위장: {ctx.person(head).name}</span>}
               {editable && <button style={{ ...btn, fontSize: 10.5, padding: '2px 6px', marginLeft: head ? 8 : 'auto' }} onClick={() => onAddVacancy(n.unit.id)}>+ 공석</button>}
               {editable && onAddPerson && <button style={{ ...btn, fontSize: 10.5, padding: '2px 6px' }} onClick={() => onAddPerson(n.unit.id)}>+ 입사예정자</button>}

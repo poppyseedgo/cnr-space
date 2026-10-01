@@ -1,5 +1,6 @@
 /**
  * OrgUnitPanel.tsx — 캔버스 좌측 패널: 단위 트리(접기/펼치기·추가·이름변경·삭제·순서) / 미배치(로스터에 있는데 카드 없는 사람 → 드래그 배치)
+ *  - [2026-10-01 ORG Phase 7-E] 작업대 행 제거 → '연결 안 된 단위 n' 섹션(선이 끊긴 단위만 나열, 클릭 = 캔버스 이동, 조직에 붙이기…). '떼어내기' → '선 끊기'
  *  - [2026-10-01 ORG Phase 6] 작업대 행(점선·고정: 이름/삭제/순서 없음) · '떼어내기 → 작업대' · '합치기…' 버튼 (설계서 §13)
  *  - [2026-10-01 ORG 5-C] 패널 행 드래그&드롭(다른 행 위에 놓기 = 그 단위의 하위로 이동) · 상위로/하위로/이동… 버튼 · 더블클릭 = 이름 편집
  *  - [2026-10-01 ORG Phase 3] 신규 — 설계서 §6.2 좌측 패널
@@ -63,9 +64,18 @@ export function OrgUnitPanel({ roots, cardsByUnit, expanded, editable, focusUnit
     const canIndent = idx > 0
     const over = overRow === u.id && canDrop(u.id)
     const bench = u.kind === 'bench'
-    const inBench = !bench && !!u.parent_unit_id && units.some(x => x.id === u.parent_unit_id && x.kind === 'bench')   // 직계 부모가 작업대
+    const inBench = !bench && !!u.parent_unit_id && units.some(x => x.id === u.parent_unit_id && x.kind === 'bench')   // 직계 부모가 보류 루트 = 선이 끊긴 단위
+    if (bench) {   // [7-E] 보류 루트 자체는 행이 아니라 섹션 헤더 — 끊긴 단위가 있을 때만
+      if (n.children.length === 0) return null
+      return (
+        <div key={u.id} style={{ marginTop: 8, borderTop: `1px dashed ${OG.line}`, paddingTop: 6 }}>
+          <div style={{ padding: '4px 6px', fontSize: 11, color: OG.quiet }} title="상위와 선이 끊긴 단위 — 헤드카운트·Excel·Active 에서 제외. Active 지정 전에 조직에 붙이거나 제거">⚡ 연결 안 된 단위 <b style={{ color: OG.drop }}>{n.children.length}</b></div>
+          {n.children.map((ch, i) => row(ch, n.children, i))}
+        </div>
+      )
+    }
     return (
-      <div key={u.id} style={bench ? { marginTop: 8, borderTop: `1px dashed ${OG.line}`, paddingTop: 6 } : undefined}>
+      <div key={u.id}>
         <div onClick={() => onFocusUnit(u.id)} onDoubleClick={() => editable && !bench && onRenameUnit(u)}
              draggable={editable && !!onReparentUnit && !bench}
              onDragStart={e => { e.dataTransfer.setData(DND.unit, u.id); e.dataTransfer.effectAllowed = 'move'; setDragUnit(u.id) }}
@@ -76,18 +86,11 @@ export function OrgUnitPanel({ roots, cardsByUnit, expanded, editable, focusUnit
              title={editable ? '클릭 = 캔버스 이동 · 더블클릭 = 이름 · 드래그해 다른 단위 위에 놓기 = 그 단위의 하위로' : '클릭 = 캔버스 해당 노드로 이동'}
              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: `5px 6px 5px ${8 + n.depth * 14}px`, fontSize: 12.5, cursor: editable ? 'grab' : 'pointer', borderRadius: 6, background: over ? '#DBEAFE' : isFocus ? '#EEF2FF' : 'transparent', fontWeight: isFocus ? 600 : 400, outline: over ? `1.5px dashed ${OG.drop}` : 'none', opacity: dragUnit === u.id ? .5 : 1 }}>
           <span style={{ width: 10, color: OG.quiet, fontSize: 10 }}>{n.children.length > 0 ? (open ? '▾' : '▸') : ''}</span>
-          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: bench ? OG.drop : undefined }}>{bench ? '🧰 작업대' : u.name}</span>
+          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: inBench ? OG.drop : undefined }}>{u.name}</span>
           {(mm > 0 || gh > 0) && <small style={{ color: OG.red, fontSize: 10.5 }}>{gh > 0 ? `유령 ${gh}` : ''}{gh > 0 && mm > 0 ? ' · ' : ''}{mm > 0 ? `불일치 ${mm}` : ''}</small>}
           <small style={{ color: OG.quiet }}>{subtreeHeadcount(n, cardsByUnit, isHidden)}</small>
         </div>
-        {isFocus && editable && bench && (
-          <div style={{ display: 'flex', gap: 4, padding: `2px 6px 6px ${8 + n.depth * 14}px`, flexWrap: 'wrap' }}>
-            <MiniBtn onClick={() => onAddUnit(u.id)} title="작업대 안에 새 단위를 만들어 구조를 먼저 짜고, 완성되면 '이동…' 으로 조직에 붙입니다">+ 단위</MiniBtn>
-            {onAddVacancy && <MiniBtn onClick={() => onAddVacancy(u.id)}>+ 공석</MiniBtn>}
-            <span style={{ fontSize: 10.5, color: OG.quiet, alignSelf: 'center' }}>Active 지정 전에 비워야 함</span>
-          </div>
-        )}
-        {isFocus && editable && !bench && (
+        {isFocus && editable && (
           <div style={{ display: 'flex', gap: 4, padding: `2px 6px 6px ${8 + n.depth * 14}px`, flexWrap: 'wrap' }}>
             <MiniBtn onClick={() => onAddUnit(u.id)}>+ 하위</MiniBtn>
             <MiniBtn onClick={() => onRenameUnit(u)}>이름·약칭</MiniBtn>
@@ -96,7 +99,7 @@ export function OrgUnitPanel({ roots, cardsByUnit, expanded, editable, focusUnit
             {onOutdentUnit && <MiniBtn onClick={() => onOutdentUnit(u)} disabled={!canOutdent} title={canOutdent ? `상위로 — '${parent?.name}' 와 같은 층으로` : '최상위 바로 아래라 올릴 수 없음'}>← 상위로</MiniBtn>}
             {onIndentUnit && <MiniBtn onClick={() => onIndentUnit(u)} disabled={!canIndent} title={canIndent ? `하위로 — 앞 형제 '${siblings[idx - 1]?.unit.name}' 아래로` : '앞 형제가 없음'}>→ 하위로</MiniBtn>}
             {onMoveUnitTo && <MiniBtn onClick={() => onMoveUnitTo(u)} title={inBench ? '조직의 대상 단위를 골라 그 아래에 붙입니다' : '대상 단위를 골라 그 아래로 이동'}>{inBench ? '조직에 붙이기…' : '이동…'}</MiniBtn>}
-            {onDetachUnit && !inBench && <MiniBtn onClick={() => onDetachUnit(u)} title="하위 단위·카드째 작업대로 떼어 둡니다 (선이 끊김)">떼어내기</MiniBtn>}
+            {onDetachUnit && !inBench && <MiniBtn onClick={() => onDetachUnit(u)} disabled={!u.parent_unit_id} title={u.parent_unit_id ? '상위와의 선을 끊습니다 — 하위·카드째 연결 안 된 단위로 남음(되돌리기 가능)' : '최상위 단위는 끊을 수 없음'}>선 끊기</MiniBtn>}
             {onMergeUnit && <MiniBtn onClick={() => onMergeUnit(u)} title="이 단위의 카드·하위 단위를 다른 단위로 옮기고 이 단위는 삭제">합치기…</MiniBtn>}
             {onAddVacancy && <MiniBtn onClick={() => onAddVacancy(u.id)}>+ 공석</MiniBtn>}
             {onAddPerson && <MiniBtn onClick={() => onAddPerson(u.id)}>+ 입사예정</MiniBtn>}
@@ -122,7 +125,7 @@ export function OrgUnitPanel({ roots, cardsByUnit, expanded, editable, focusUnit
         <div style={{ padding: '10px 8px', overflow: 'auto', flex: 1 }}>
           {roots.map((r, i) => row(r, roots, i))}
           {editable && <div style={{ paddingTop: 10 }}><button style={{ ...btn, fontSize: 11.5, width: '100%' }} onClick={() => onAddUnit(null)}>+ 최상위 단위 추가</button></div>}
-          <div style={{ paddingTop: 12, color: OG.quiet, fontSize: 11 }}>클릭 = 캔버스 해당 노드로 이동 · 더블클릭 = 이름 편집{editable ? ' · 행 드래그 → 다른 행 위 = 그 단위의 하위로 · 작업대 행 위 = 떼어내기' : ''}</div>
+          <div style={{ paddingTop: 12, color: OG.quiet, fontSize: 11 }}>클릭 = 캔버스 해당 노드로 이동 · 더블클릭 = 이름 편집{editable ? ' · 행 드래그 → 다른 행 위 = 그 단위의 하위로' : ''}</div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>

@@ -1,5 +1,6 @@
 /**
  * OrgAdminPanel.tsx — 어드민 '조직도' 탭 루트: 데이터 소유 + 갤러리(A) ↔ 캔버스(B) 전환 + 모든 저장 경로
+ *  - [2026-10-01 ORG Phase 7-E] 작업대 개념 제거(UI) — 보류 루트는 DB 상태로만. 토스트/모달 문구 '보류 카드' · '선 끊기' · '연결 안 됨'
  *  - [2026-10-01 ORG Phase 6] 작업대(초안 열 때 ensure) · 다중 이동(org_move_cards) · 분리/합치기 모달 · 떼어내기 · 되돌리기(peek 는 저장마다 갱신) · Excel/CSV/썸네일 작업대 제외 (설계서 §13)
  *  - [2026-10-01 ORG 5-C] 단위 이동(상위로/하위로/이동… 모달) · 재배치 시 형제 끝에 배치 · 전체화면/스크롤은 OrgCanvas
  *  - [2026-10-01 ORG Phase 5-B] 퇴사 판정·숨김(departedOf/isHidden) · 미배치에서 퇴사일 경과자 제외 · 겸직 카드 추가/승격 · 숨김 토글 · Excel 내보내기
@@ -206,9 +207,9 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   const onDropCards = async (cardIds: string[], unitId: string) => {
     try { const r = await moveOrgCards(cardIds, unitId); await reloadBundle(); showToast(`카드 ${r.moved}장 이동`) } catch (e) { fail(e) }
   }
-  const onToBench = async (cardIds: string[]) => { try { await onDropCards(cardIds, await benchId()) } catch (e) { fail(e) } }
+  const onToBench = async (cardIds: string[]) => { try { const r = await moveOrgCards(cardIds, await benchId()); await reloadBundle(); showToast(`카드 ${r.moved}장 보류 — 우상단 보류 카드에서 다시 배치`) } catch (e) { fail(e) } }
   const onDetachUnit = async (u: OrgUnit) => {
-    try { const bid = await benchId(); await updateOrgUnit(u.id, { parent_unit_id: bid, sort_order: bundle!.units.filter(x => x.parent_unit_id === bid).length }); await mergeUnit(u.id); refreshRoster(); showToast(`'${u.name}' 을(를) 작업대로 떼어냈습니다 — 되돌리기 가능`) } catch (e) { fail(e) }
+    try { const bid = await benchId(); await updateOrgUnit(u.id, { parent_unit_id: bid, sort_order: bundle!.units.filter(x => x.parent_unit_id === bid).length }); await mergeUnit(u.id); refreshRoster(); showToast(`'${u.name}' 의 상위 선을 끊었습니다 — 연결 안 된 단위로 남아 있습니다 (되돌리기 가능)`) } catch (e) { fail(e) }
   }
   // [Phase 7] 배치 저장 — 300ms 디바운스로 묶어 RPC 1회. 로컬 맵은 즉시 갱신(재진입 시 동일 배치)
   const onSaveLayout = (items: { unit_id: string; x: number; y: number }[]) => {
@@ -400,12 +401,12 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
       const { inBench } = splitBench(bundle.units)
       const opts: { value: string; label: string }[] = []
       const walk = (parent: string | null, depth: number) => bundle.units.filter(x => x.parent_unit_id === parent).sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'ko'))
-        .forEach(x => { if (ex.has(x.id) || (!allowBench && inBench.has(x.id))) return; opts.push({ value: x.id, label: `${'\u00a0\u00a0'.repeat(depth)}${x.kind === 'bench' ? '🧰 작업대' : x.name}${x.id === mark ? ' (현재)' : ''}` }); walk(x.id, depth + 1) })
+        .forEach(x => { if (ex.has(x.id) || (!allowBench && inBench.has(x.id))) return; opts.push({ value: x.id, label: `${'\u00a0\u00a0'.repeat(depth)}${x.kind === 'bench' ? '📥 보류 카드 / 연결 안 된 단위' : x.name}${x.id === mark ? ' (현재)' : ''}` }); walk(x.id, depth + 1) })
       walk(null, 0); return opts
     }
     if (modal.kind === 'unit-move' && bundle) {
       const opts = unitOpts(new Set([modal.unit.id, ...descendantIds(modal.unit.id, bundle.units)]), modal.unit.parent_unit_id, true)
-      return <OrgPromptModal title={`'${modal.unit.name}' 이동 — 어느 단위 아래로?`} fields={[{ key: 'target', label: '대상 단위', type: 'select', options: [{ value: '', label: '(선택)' }, ...opts], required: true, help: '선택한 단위의 하위 끝으로 들어갑니다. 하위 단위·카드는 함께 이동. 순서는 ↑↓ 로 조정. 작업대를 고르면 떼어내기' }]} confirmLabel="이동" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
+      return <OrgPromptModal title={`'${modal.unit.name}' 이동 — 어느 단위 아래로?`} fields={[{ key: 'target', label: '대상 단위', type: 'select', options: [{ value: '', label: '(선택)' }, ...opts], required: true, help: '선택한 단위의 하위 끝으로 들어갑니다. 하위 단위·카드는 함께 이동. 순서는 ↑↓ 로 조정' }]} confirmLabel="이동" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
     }
     if (modal.kind === 'cards-move' && bundle) {
       const cur = new Set(bundle.cards.filter(c => modal.cardIds.includes(c.id)).map(c => c.unit_id))
@@ -415,7 +416,7 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
       const cur = [...new Set(bundle.cards.filter(c => modal.cardIds.includes(c.id)).map(c => c.unit_id))]
       const srcUnit = cur.length === 1 ? bundle.units.find(u => u.id === cur[0]) : null
       const dflt = srcUnit ? (srcUnit.parent_unit_id ?? srcUnit.id) : (bundle.units.find(u => !u.parent_unit_id && u.kind !== 'bench')?.id ?? '')
-      return <OrgPromptModal title={`카드 ${modal.cardIds.length}장으로 새 단위 만들기`} fields={[{ key: 'name', label: '새 단위 이름', required: true, placeholder: '예: Data Management Team' }, { key: 'parent', label: '새 단위를 둘 위치(상위 단위)', type: 'select', options: [{ value: '', label: '(선택)' }, ...unitOpts(new Set(), dflt, true)], required: true, help: srcUnit ? `기본값 = '${srcUnit.name}' 과 같은 층(형제). 작업대를 고르면 작업대 안에 만들어 둡니다` : '작업대를 고르면 작업대 안에 만들어 둡니다' }]} initial={{ parent: dflt }} confirmLabel="분리" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
+      return <OrgPromptModal title={`카드 ${modal.cardIds.length}장으로 새 단위 만들기`} fields={[{ key: 'name', label: '새 단위 이름', required: true, placeholder: '예: Data Management Team' }, { key: 'parent', label: '새 단위를 둘 위치(상위 단위)', type: 'select', options: [{ value: '', label: '(선택)' }, ...unitOpts(new Set(), dflt, true)], required: true, help: srcUnit ? `기본값 = '${srcUnit.name}' 과 같은 층(형제). '보류 카드'를 고르면 연결 안 된 단위로 만들어 둡니다` : "'보류 카드'를 고르면 연결 안 된 단위로 만들어 둡니다" }]} initial={{ parent: dflt }} confirmLabel="분리" loading={busy} onConfirm={submitModal} onClose={() => setModal(null)} />
     }
     if (modal.kind === 'unit-merge' && bundle) {
       const opts = unitOpts(new Set([modal.unit.id, ...descendantIds(modal.unit.id, bundle.units)]), null, false)

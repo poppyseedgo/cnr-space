@@ -83,7 +83,7 @@ export function OrgCardDrawer(p: Props) {
   const unitOptions = useMemo(() => {
     const out: { id: string; label: string }[] = []
     const walk = (parent: string | null, depth: number) => units.filter(u => u.parent_unit_id === parent).sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'ko'))
-      .forEach(u => { out.push({ id: u.id, label: `${'  '.repeat(depth)}${u.kind === 'bench' ? '🧰 작업대' : u.name}${u.code && u.code !== 'ROOT' && u.code !== u.name ? ` (${u.code})` : ''}` }); walk(u.id, depth + 1) })   // [Phase 6] 작업대 표시
+      .forEach(u => { out.push({ id: u.id, label: `${'  '.repeat(depth)}${u.kind === 'bench' ? '📥 보류 카드' : u.name}${u.code && u.code !== 'ROOT' && u.code !== u.name ? ` (${u.code})` : ''}` }); walk(u.id, depth + 1) })   // [Phase 6] 작업대 표시
     walk(null, 0); return out
   }, [units])
   // [Phase 5-B] 이 사람의 카드(본 + 겸직), 겸직 추가 대상 단위

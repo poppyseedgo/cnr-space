@@ -1,5 +1,6 @@
 /**
  * OrgFlowCanvas.tsx — 노드 캔버스 (설계서 §14 · Phase 7). Supabase Schema Visualizer 식 자유 배치
+ *  - [2026-10-01 ORG Phase 7-E] 작업대 개념 제거 — 끊긴 단위 = '연결 안 됨' 점선 노드(DB 는 parent=보류 루트 그대로), 메뉴 '떼어내기 → 작업대' → '선 끊기'
  *  - [2026-10-01 ORG Phase 7-D] 선 끌어 연결 = 상위 변경(부모 아래 포트 → 자식 위 포트, 순환·자기자신 거부) · 선 끝을 끌어 다른 부모로(reconnect) · 허공에 놓거나 선택 후 Delete / ✕ = 끊기 → 작업대
  *    · Shift+드래그 영역 선택 → 상단 묶음 액션(떼어내기 n · 합치기… · 해제) · 우클릭 메뉴(노드: 이름·하위·합치기·떼어내기/붙이기·카드 전체 선택·삭제, 선: 끊기)
  *  - [2026-10-01 ORG Phase 7-C] 신규 — React Flow(@xyflow/react) + dagre
@@ -185,14 +186,14 @@ function Inner(p: Props) {
   useEffect(() => { if (!menu) return; const close = () => setMenu(null); window.addEventListener('click', close); window.addEventListener('keydown', close); return () => { window.removeEventListener('click', close); window.removeEventListener('keydown', close) } }, [menu])
   const menuItems = (): { label: string; run: () => void; danger?: boolean; disabled?: boolean; title?: string }[] => {
     if (!menu || !act) return []
-    if (menu.edge) { const u = unitOf(menu.edge.target); return [{ label: '✕ 선 끊기 → 작업대', run: () => u && act.onDetachUnit?.(u), danger: true }] }
+    if (menu.edge) { const u = unitOf(menu.edge.target); return [{ label: '✕ 선 끊기', run: () => u && act.onDetachUnit?.(u), danger: true }] }
     const u = menu.unit!; const benchy = inBench.has(u.id)
     const kids = units.filter(x => x.parent_unit_id === u.id).length, ncards = (cardsByUnit.get(u.id)?.length ?? 0)
     return [
       { label: '이름·약칭', run: () => act.onRenameUnit?.(u) },
       { label: '+ 하위 단위', run: () => act.onAddUnit?.(u.id) },
       { label: '합치기…', run: () => act.onMergeUnit?.(u), disabled: !act.onMergeUnit },
-      benchy ? { label: '조직에 붙이기…', run: () => act.onMoveUnitTo?.(u) } : { label: '떼어내기 → 작업대', run: () => act.onDetachUnit?.(u), disabled: !u.parent_unit_id, title: !u.parent_unit_id ? '최상위 단위는 떼어낼 수 없음' : undefined },
+      benchy ? { label: '조직에 붙이기…', run: () => act.onMoveUnitTo?.(u) } : { label: '선 끊기', run: () => act.onDetachUnit?.(u), disabled: !u.parent_unit_id, title: !u.parent_unit_id ? '최상위 단위는 끊을 수 없음' : '상위와의 선을 끊습니다 — 하위·카드째 연결 안 된 단위로 남음' },
       { label: '이 단위 카드 전체 선택', run: () => act.onSelectUnitCards?.(u.id), disabled: ncards === 0 },
       { label: '삭제', run: () => act.onDeleteUnit?.(u), danger: true, disabled: kids > 0 || ncards > 0, title: kids > 0 ? '하위 단위가 있어 삭제 불가' : ncards > 0 ? '카드가 있어 삭제 불가' : undefined },
     ]
@@ -221,7 +222,7 @@ function Inner(p: Props) {
           <Panel position="top-center">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: OG.ink, color: '#fff', borderRadius: 8, fontSize: 12.5, boxShadow: '0 6px 20px rgba(0,0,0,.25)' }}>
               <b>단위 {selNodes.length}개 선택</b>
-              {act?.onDetachUnit && <button style={{ ...barBtn, ...(topLevelSel.length ? {} : btnDisabled) }} disabled={!topLevelSel.length} onClick={detachSel} title={`최상위 ${topLevelSel.length}개(하위 포함)를 작업대로 — 한 단위에 되돌리기 1단계`}>떼어내기 {topLevelSel.length}</button>}
+              {act?.onDetachUnit && <button style={{ ...barBtn, ...(topLevelSel.length ? {} : btnDisabled) }} disabled={!topLevelSel.length} onClick={detachSel} title={`선택 중 최상위 ${topLevelSel.length}개의 상위 선을 끊습니다(하위는 따라감) — 한 단위에 되돌리기 1단계`}>선 끊기 {topLevelSel.length}</button>}
               {selNodes.length === 1 && act?.onMergeUnit && <button style={barBtn} onClick={() => { const u = unitOf(selNodes[0]); if (u) act.onMergeUnit!(u) }}>합치기…</button>}
               <button style={{ ...barBtn, background: 'transparent', borderColor: '#4B5563' }} onClick={clearSel}>해제</button>
             </div>
@@ -276,13 +277,13 @@ const UnitNode = memo(function UnitNode({ id, selected }: NodeProps) {
     <div data-unit-id={id} onDragOver={onDragOver} onDragLeave={() => setOver(false)} onDrop={onDrop}
          style={{ width: NODE_W, background: benchy ? '#F8FAFF' : '#fff', border: benchy ? `1.5px dashed ${OG.drop}` : `1px solid ${depth <= 1 ? '#C7CDD8' : OG.line}`, borderRadius: 10, boxShadow: selected ? `0 0 0 2px ${OG.drop}` : '0 1px 2px rgba(0,0,0,.05)',
                   outline: over ? `2px solid ${OG.drop}` : s.highlightUnit === id ? `2px solid ${OG.amber}` : 'none', outlineOffset: 2, fontFamily: OG.font, fontSize: 12.5 }}>
-      <Handle type="target" position={Position.Top} isConnectable={s.editable} style={{ width: 10, height: 10, background: '#fff', border: `2px solid ${OG.drop}`, opacity: s.editable ? 1 : 0 }} title="위 포트: 부모의 아래 포트에서 선을 끌어와 붙이면 상위 변경" />
+      <Handle type="target" position={Position.Top} isConnectable={s.editable} style={{ width: 10, height: 10, background: '#fff', border: `2px solid ${OG.drop}`, opacity: s.editable ? 1 : 0 }} title="위 포트: 부모의 아래 포트에서 선을 끌어와 붙이면 상위 변경(연결 안 된 단위도 여기로 붙입니다)" />
       <div className="org-node-header" onClick={() => s.onToggle(id)}
            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderBottom: isOpen && cards.length > 0 ? `1px solid ${OG.line}` : 'none', fontWeight: 600, cursor: s.editable ? 'grab' : 'pointer', userSelect: 'none', color: benchy ? OG.drop : OG.ink }}>
         <span style={{ color: OG.quiet, fontSize: 10 }}>{cards.length > 0 ? (isOpen ? '▾' : '▸') : '·'}</span>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={u.name}>{u.name}</span>
         {u.code && u.code !== 'ROOT' && u.code !== u.name && <span style={{ fontSize: 10, color: OG.quiet, border: `1px solid ${OG.line}`, borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>{u.code}</span>}
-        {benchy && <span style={{ fontSize: 10, color: OG.drop, border: `1px dashed ${OG.drop}`, borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>작업대</span>}
+        {benchy && <span style={{ fontSize: 10, color: OG.drop, border: `1px dashed ${OG.drop}`, borderRadius: 4, padding: '0 4px', flexShrink: 0 }} title="상위와 선이 끊긴 단위 — 부모 아래 포트에서 선을 끌어 붙이면 다시 연결">연결 안 됨</span>}
         <small style={{ color: OG.quiet, fontWeight: 400, marginLeft: 'auto', flexShrink: 0 }}>{total}</small>
       </div>
       {isOpen && cards.length > 0 && (
@@ -326,7 +327,7 @@ function OrgEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targe
       <BaseEdge id={id} path={path} style={{ ...style, stroke: selected ? OG.drop : (style?.stroke as string), strokeWidth: selected ? 2 : 1.5 }} interactionWidth={16} />
       {editable && selected && onlyThis && (
         <EdgeLabelRenderer>
-          <button className="nodrag nopan" onClick={() => deleteElements({ edges: [{ id }] })} title="선 끊기 → 하위 단위를 작업대로 (Delete 키와 동일)"
+          <button className="nodrag nopan" onClick={() => deleteElements({ edges: [{ id }] })} title="선 끊기 — 하위 단위는 연결 안 된 상태로 남습니다 (Delete 키와 동일)"
                   style={{ position: 'absolute', transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)`, pointerEvents: 'all', fontSize: 11, padding: '2px 8px', borderRadius: 999, border: `1px solid ${OG.red}`, background: '#fff', color: OG.red, cursor: 'pointer', fontFamily: OG.font }}>✕ 끊기</button>
         </EdgeLabelRenderer>
       )}
