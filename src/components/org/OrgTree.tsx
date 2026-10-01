@@ -7,6 +7,7 @@
  *    · 미배치 패널의 사람 → 단위 노드 = 카드 생성
  *    · 접힌 노드 위에 600ms 머물면 자동 펼침
  *  표시 전용: 데이터·액션은 OrgCanvas/OrgAdminPanel 이 소유
+ *  - [2026-10-01 ORG Phase 6-b] 다른 OrgTree 인스턴스·패널에서 시작된 드래그(dragging 없음)도 types 로 받아 드롭 허용 — 작업대 트레이 ↔ 본 트리 교차 드래그. 드롭 시 실제 id 로 순환 재검증
  *  - [2026-10-01 ORG Phase 6] 작업대 노드(kind=bench: 점선 프레임·드래그 불가·헤드카운트 대신 '보관 n') · 다중 선택 카드 드래그(DND.cards → drop.onDropCards) · 카드 클릭 MouseEvent 전달
  *  - [2026-10-01 ORG Phase 5-B] ctx.concurrent/departedSince/hidden 전달 · 헤드카운트 = 본 카드·비숨김
  */
@@ -55,9 +56,11 @@ interface Props {
   highlightUnit?: string | null
   /** [Phase 6] 다중 선택된 카드 id — 포함된 카드를 끌면 전체가 함께 이동 */
   selectedIds?: Set<string>
+  /** [Phase 6-b] 루트 노드의 헤더·프레임 없이 카드 스택 + 하위 단위만 (작업대 트레이용 — 트레이 자체가 헤더·드롭 대상) */
+  headless?:    boolean
 }
 
-export function OrgTree({ roots, units, cardsByUnit, ctx, editable, expanded, onToggle, selectedCard, onCardClick, onUnitClick, drop, zoom, highlightUnit, selectedIds }: Props) {
+export function OrgTree({ roots, units, cardsByUnit, ctx, editable, expanded, onToggle, selectedCard, onCardClick, onUnitClick, drop, zoom, highlightUnit, selectedIds, headless }: Props) {
   const [dragging, setDragging] = useState<{ kind: 'card' | 'unit' | 'profile'; id: string; fromUnit?: string; ids?: string[] } | null>(null)
   const [overUnit, setOverUnit] = useState<string | null>(null)
   const blocked = useMemo(() => dragging?.kind === 'unit' ? new Set([dragging.id, ...descendantIds(dragging.id, units)]) : new Set<string>(), [dragging, units])
@@ -96,8 +99,8 @@ export function OrgTree({ roots, units, cardsByUnit, ctx, editable, expanded, on
   const onDragOverUnit = (e: DragEvent, unitId: string) => {
     const k = kindFromTypes(e)
     if (!k || !editable) return
-    if (k === 'profile' && !dragging) setDragging({ kind: 'profile', id: '' })
-    if (!canDropOn(unitId) && k !== 'profile') return
+    if (!dragging) setDragging({ kind: k, id: '' })   // 외부(다른 트리 인스턴스·패널)에서 온 드래그 — id 는 드롭 시 dataTransfer 로 확정
+    if (dragging && dragging.id !== '' && !canDropOn(unitId) && k !== 'profile') return
     e.preventDefault(); e.dataTransfer.dropEffect = 'move'
     if (overUnit !== unitId) {
       setOverUnit(unitId)
@@ -114,7 +117,7 @@ export function OrgTree({ roots, units, cardsByUnit, ctx, editable, expanded, on
       ids = ids.filter(id => all.find(c => c.id === id)?.unit_id !== unitId)
       if (ids.length) drop.onDropCards(ids, unitId)
     } else if (cardId) { const c = [...cardsByUnit.values()].flat().find(x => x.id === cardId); if (c && c.unit_id !== unitId) drop.onDropCard(cardId, unitId) }
-    else if (uId) { if (!blocked.has(unitId) && units.find(u => u.id === uId)?.parent_unit_id !== unitId) drop.onDropUnit(uId, unitId) }
+    else if (uId) { if (uId !== unitId && !descendantIds(uId, units).has(unitId) && units.find(u => u.id === uId)?.parent_unit_id !== unitId) drop.onDropUnit(uId, unitId) }
     else if (pId) drop.onDropProfile(pId, unitId)
     endDrag()
   }
@@ -128,6 +131,22 @@ export function OrgTree({ roots, units, cardsByUnit, ctx, editable, expanded, on
     const hasKids = node.children.length > 0 && isOpen
     const visible = cards.length > MAX_VISIBLE ? cards.slice(0, MAX_VISIBLE) : cards
     const bench = u.kind === 'bench'   // [Phase 6] 작업대 — 점선 프레임, 드래그 불가, 이름 편집 없음
+    const cardEl = (c: OrgCard) => {
+      const r = c.rank_id ? ctx.ranks.get(c.rank_id) ?? null : null
+      const pj = primaryJob(c, ctx.jobs)
+      const jobs = [pj, ...c.jobs.filter(j => !j.is_primary).map(j => ctx.jobs.get(j.job_id))].filter((x): x is OrgJob => !!x)
+      return <OrgCardView key={c.id} card={c} person={ctx.person(c)} rank={r} jobs={jobs} badge={ctx.badge(c)} mismatch={ctx.mismatch(c)} dim={ctx.dim(c)}
+                          concurrent={ctx.concurrent(c)} departedSince={ctx.departedSince(c)} hidden={ctx.hidden(c)}
+                          selected={selectedCard === c.id} checked={selectedIds?.has(c.id)} draggable={editable} onClick={onCardClick} onDragStart={onCardDragStart} onDragEnd={endDrag} />
+    }
+    if (headless && node.depth === 0) {   // [Phase 6-b] 트레이: 카드 스택(가로 랩) + 하위 단위 트리를 나란히, 연결선 없음
+      return (
+        <div key={u.id} data-unit-id={u.id} style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-start' }}>
+          {cards.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{cards.map(c => <div key={c.id} style={{ width: OG.cardW }}>{cardEl(c)}</div>)}</div>}
+          {node.children.length > 0 && <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>{node.children.map(renderNode)}</div>}
+        </div>
+      )
+    }
     return (
       <div key={u.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <div data-unit-id={u.id} onDragOver={e => onDragOverUnit(e, u.id)} onDragLeave={() => setOverUnit(x => x === u.id ? null : x)} onDrop={e => onDropOnUnit(e, u.id)}
