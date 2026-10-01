@@ -43,6 +43,8 @@ interface NotificationBellProps {
   onOpenBookingDetail: (bookingId: string) => void
   /** ← [2026-07-21] 도서 대여 알림 클릭. 미전달 시 도서 알림은 아무것도 열지 않는다 */
   onOpenBookLoanDetail?: (checkoutId: string) => void;
+  /** ← [2026-10-01 ORG Phase 4-B] 조직도 알림 — booking_id 'org-{fileId}' → 어드민 조직도 캔버스 */
+  onOpenOrgFile?: (fileId: string) => void;
   /** ← [2026-09-30 NOTIFY 5-B] Work Space 알림 클릭 — 업무/이슈 드로어 열기. 다이제스트(target null)는 페이지만 연다 */
   onOpenWorkboard?: (target: { type: 'task' | 'issue'; id: string } | null) => void;
 }
@@ -53,6 +55,7 @@ export function NotificationBell({
   onOpenBookingDetail,
   onOpenBookLoanDetail,
   onOpenWorkboard,
+  onOpenOrgFile,   // ← [2026-10-01 ORG]
 }: NotificationBellProps) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
@@ -167,6 +170,10 @@ export function NotificationBell({
                       // ← [2026-09-30 5-B] Work Space: booking_id = 'task-{uuid}' | 'issue-{uuid}' | 'digest-{date}'
                       const m = /^(task|issue)-([0-9a-f-]{36})$/i.exec(n.booking_id ?? '')
                       onOpenWorkboard?.(m ? { type: m[1] as 'task' | 'issue', id: m[2] } : null)
+                    } else if (n.type?.startsWith('org_')) {
+                      // ← [2026-10-01 ORG Phase 4-B] 조직도: booking_id = 'org-{fileId}'
+                      const m = /^org-([0-9a-f-]{36})$/i.exec(n.booking_id ?? '')
+                      if (m) onOpenOrgFile?.(m[1])
                     } else if (n.booking_id) {
                       if (n.type?.startsWith('book_')) onOpenBookLoanDetail?.(n.booking_id)
                       else                             onOpenBookingDetail(n.booking_id)

@@ -135,6 +135,9 @@ export type NotificationType =
   | 'wb_issue_created'     // 이슈 등록(빠른 등록 포함) → 멤버 전원(등록자 제외)
   | 'wb_issue_resolved'    // 이슈 해결·보류 → 등록자·연결 업무 담당자·댓글 작성자 (처리자 제외)
   | 'wb_daily_digest'      // 매일 09:00 KST 1인 1통 — 지연·오늘·내일·오늘 생성 반복 (wb-daily-digest Edge → send-notification)
+  // ── [2026-10-01 ORG Phase 4-B] 조직도 ──────────────────────────────────────
+  //   수신자 규칙 admins_only — 자격 = notification_required_roles 'org_%' → org (20261006). 본문 재료는 payload.booking.org (RPC org_activate_file 반환값)
+  | 'org_activated'        // Active 전환 → org 역할 보유자 (프론트가 전환 성공 직후 발사)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 2. 수신자 규칙
@@ -164,6 +167,7 @@ export const COLORS = {
   RED:    '#DC2626',   // 취소/거절/실패
   CYAN:   '#0891B2',   // 리마인더/정보
   GRAY:   '#6B7280',   // 중립
+  GREEN:  '#16A34A',   // ← [2026-10-01 ORG] 확정·반영 (조직도 Active)
 } as const
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -276,6 +280,7 @@ const CTA_WB_TASK    = { label: '업무 확인하기',   urlTemplate: '{APP_URL}
 const CTA_WB_COMMENT = { label: '댓글 확인하기',   urlTemplate: '{APP_URL}#workboard-{BOOKING_ID}', color: COLORS.INDIGO }
 const CTA_WB_ISSUE   = { label: '이슈 확인하기',   urlTemplate: '{APP_URL}#workboard-{BOOKING_ID}', color: COLORS.INDIGO }
 const CTA_WB_HOME    = { label: 'Work Space 열기', urlTemplate: '{APP_URL}#workboard',              color: COLORS.INDIGO }
+const CTA_ORG_FILE   = { label: '조직도 열기',      urlTemplate: '{APP_URL}#admin-{BOOKING_ID}',      color: COLORS.GREEN }   // ← [2026-10-01 ORG] BOOKING_ID = 'org-{fileId}' → #admin-org-{fileId}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 7. 정책 정의 — 이벤트별 전체 매트릭스
@@ -1198,6 +1203,20 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
     inappTitleAdmin:    '오늘의 Work Space',
     contextBanner: { admin: { ...BANNER_PRESETS.info, title: '이 요약은 Work Space 멤버 전원의 업무 기준입니다 (본인 담당은 "나"로 표시).', body: '해당 항목이 하나도 없는 날은 발송되지 않습니다.' } },
     cta: { admin: CTA_WB_HOME },
+    isCancelledStyle: false,
+  },
+  // ── [2026-10-01 ORG Phase 4-B] 조직도 Active 전환 ────────────────────────
+  org_activated: {
+    subjectTag:         '[조직도]',
+    headerLabel:        '조직도가 Active 로 전환되었습니다',
+    headerColor:        COLORS.GREEN,
+    recipients:         'admins_only',              // 자격 = org 역할 (DB notification_required_roles)
+    inappType:          'org_activated',
+    inappTitleBooker:   '',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '조직도가 Active 로 전환되었습니다',
+    contextBanner: { admin: { ...BANNER_PRESETS.info, title: '이 조직도가 현재 반영본입니다.', body: '이전 Active 는 지난 조직도로 보존되며, 변경 내역은 히스토리 → Active diff 에서 확인할 수 있습니다.' } },
+    cta: { admin: CTA_ORG_FILE },
     isCancelledStyle: false,
   },
 }

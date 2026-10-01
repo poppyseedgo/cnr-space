@@ -9,6 +9,9 @@
  *
  * [2026-09-30 5-B] Work Space 알림 5종 (wb_task_assigned · wb_comment_added · wb_issue_created · wb_issue_resolved · wb_daily_digest)
  *   · payload.booking 은 { id:'task-{uuid}'|'issue-{uuid}'|'digest-{date}', wb_target_type, wb_target_id, wb_actor_id, wb_added_ids?, wb_comment_id?, wb_digest? }
+ *
+ * [2026-10-01 ORG Phase 4-B] 조직도 org_activated — payload.booking = { id:'org-{fileId}', title: 파일명, org: { file_name, effective_on, prev_file_name, diff_count, diff, actor_name, units, cards } }
+ *   · 수신자 admins_only (자격 org 역할) · 이메일 FILE/EFFECTIVE/PREV/CHANGES/BY 행 · 인앱 "파일명 · 적용일 · 변경 N건" · CTA #admin-org-{fileId}
  *     — 제목·영역·마감·담당 등 본문 재료는 프론트가 아니라 DB wb_notification_context 에서 다시 읽는다 (화면 계산 금지, SSOT)
  *   · 수신자 규칙 wb_recipients → DB wb_notification_recipients (admins 슬롯, role='admin' 렌더 재사용)
  *   · renderEmail isWorkboard 분기: 역할 배지(담당자/관련자/일일 요약) · AREA/STATUS/DUE/MILESTONE/담당자/작성자 행 · 댓글 인용 박스 · 다이제스트 4섹션
@@ -144,8 +147,20 @@ interface EmailBookingData {
   noshow_count?: number; penalty_starts_kst?: string; penalty_ends_kst?: string
   // ← [2026-09-30 5-B] Work Space — DB wb_notification_context(...) 결과(task/issue) 또는 wb_digest_build(...) 결과(digest). 있으면 wb 렌더 분기
   wb?: WbContext
+  // ← [2026-10-01 ORG Phase 4-B] 조직도 Active 전환 — RPC org_activate_file 반환값(프론트가 그대로 전달). 있으면 org 렌더 분기
+  org?: OrgActivatedCtx
 }
 type InAppBookingData = EmailBookingData
+/** ← [2026-10-01 ORG Phase 4-B] org_activate_file 반환 + 프론트 보강(파일명·행위자) */
+interface OrgActivatedCtx {
+  file_name: string; effective_on?: string | null; prev_file_name?: string | null
+  diff_count: number; diff?: Record<string, number>; actor_name?: string; units?: number; cards?: number
+}
+const ORG_DIFF_LABEL: Record<string, string> = { hired: '입사·신규', departed: '제외', moved: '이동', promoted: '직급', job_changed: '직무', head_changed: '단위장', unit_created: '단위 신설', unit_removed: '단위 폐지' }
+function orgDiffSummary(d?: Record<string, number>): string {
+  if (!d) return ''
+  return Object.entries(d).filter(([, n]) => n > 0).map(([k, n]) => `${ORG_DIFF_LABEL[k] ?? k} ${n}`).join(' · ')
+}
 
 /** ← [2026-09-30 5-B] wb_notification_context / wb_digest_build 의 jsonb 형태 (DB 가 완성한 문자열 — 재계산·재변환 금지) */
 interface WbPerson { user_id: string; name: string; dept?: string | null; avatar_url?: string | null; departed?: boolean }
@@ -497,6 +512,7 @@ function renderEmail(input: EmailRenderInput): string {
   const isDigest = isWorkboard && type === 'wb_daily_digest'
 
   const isBook    = !!(booking.book_title || booking.due_date_kst)
+  const isOrg     = !!booking.org && type.startsWith('org_')   // ← [2026-10-01 ORG Phase 4-B]
   const isResource = !!booking.resource_label   // ← [2026-08-19 Phase 4]
   const isPenalty = !!booking.penalty_ends_kst && (type === 'noshow_penalty_applied' || type === 'noshow_penalty_cleared')
   const pText = purposeText(booking.purpose, booking.purpose_detail)
@@ -530,6 +546,14 @@ function renderEmail(input: EmailRenderInput): string {
     else if (type === 'wb_comment_added')  rows.push(infoRow('작성자', wbPersonCell(wb.comment?.author ?? null)))
     else if (type === 'wb_issue_created')  rows.push(infoRow('등록자', wbPersonCell(wb.creator ?? null)))
     else if (type === 'wb_issue_resolved') { rows.push(infoRow('등록자', wbPersonCell(wb.creator ?? null))); rows.push(infoRow('처리자', wbPersonCell(wb.resolver ?? null))) }
+  } else if (isOrg && booking.org) {   // ← [2026-10-01 ORG Phase 4-B] 조직도 분기 — 파일/적용일/이전/변경/행위자
+    const o = booking.org
+    rows.push(infoRow('FILE', esc(o.file_name)))
+    if (o.effective_on)   rows.push(infoRow('EFFECTIVE', esc(o.effective_on)))
+    if (o.prev_file_name) rows.push(infoRow('PREV', esc(o.prev_file_name)))
+    if (typeof o.units === 'number' && typeof o.cards === 'number') rows.push(infoRow('SIZE', esc(`단위 ${o.units} · 인원 ${o.cards}`)))
+    rows.push(infoRow('CHANGES', esc(o.diff_count > 0 ? `${o.diff_count}건 — ${orgDiffSummary(o.diff)}` : '이전 Active 대비 변경 없음 (또는 첫 Active)')))
+    if (o.actor_name) rows.push(infoRow('지정자', personHtml(o.actor_name, '', creatorInfo?.avatar_url)))
   } else if (isResource) {   // ← [2026-08-19 Phase 4] 자원 분기 — 사용시간/반납일/연체/사유/예약자
     if (booking.use_time_kst)    rows.push(infoRow('USE', esc(booking.use_time_kst)))
     if (booking.return_due_kst)  rows.push(infoRow('DUE', esc(booking.return_due_kst)))
@@ -830,6 +854,11 @@ function buildEmailItems(
 // ═══════════════════════════════════════════════════════════════════════════
 
 function buildInAppBody(type: NotificationType, d: InAppBookingData): string {
+  // ← [2026-10-01 ORG Phase 4-B] 조직도 — "파일명 · 적용일 YYYY-MM-DD · 변경 N건"
+  if (d.org && type.startsWith('org_')) {
+    const o = d.org
+    return [o.file_name, o.effective_on ? `적용일 ${o.effective_on}` : '', `변경 ${o.diff_count}건`].filter(Boolean).join(' · ')
+  }
   // ← [2026-09-30 5-B] Work Space — 규칙: {제목} · {영역} · {D-n}  (고지 확정: 이메일 서브라인과 동일 규칙)
   if (d.wb && type.startsWith('wb_')) {
     const wb = d.wb
@@ -1064,6 +1093,7 @@ Deno.serve(async (req: Request) => {
       // ← [5-B] wb 는 DB 제목이 SSOT. 다이제스트 제목 = "10/1 (목) 지연 2 · 오늘 3 · 내일 1" (getSubject 가 [C&R SPACE · Work Space] 를 앞에 붙인다)
       title:         wbCtx ? (type === 'wb_daily_digest' ? `${wbCtx.date_short ?? ''} ${wbDigestSummary(wbCtx, true)}`.trim() : (wbCtx.title ?? booking.title ?? '')) : (booking.title ?? ''),
       wb:            wbCtx,
+      org:           booking.org,   // ← [2026-10-01 ORG Phase 4-B]
       memo:          booking.memo,
       start_at:      booking.start_at,
       end_at:        booking.end_at,

@@ -51,6 +51,7 @@ import {
   AccountCircleIcon,
   DualScreenIcon,
   AsteriskIcon,
+  OrgChartIcon,     // ← [2026-10-01 ORG Phase 3] 조직도 메뉴 아이콘
   BooksIcon,
   VisitorLogIcon,   // ← [2026-07-10] 방문 기록 메뉴 아이콘
   BellIcon,         // ← [2026-07-23] 알림 설정 메뉴 아이콘
@@ -68,6 +69,7 @@ export type AdminTabId = 'dashboard' | 'approvals' | 'bookings' | 'users' | 'roo
   | 'kb'             // ← [2026-07-27] KB 관리 (GA 챗봇 지식베이스 kb_chunks 편집)
   | 'resources'      // ← [2026-08-19] 자원 관리 활성화 (Phase 3 — 2026-05-11 비활성 예고 자리)
   | 'canteen-dp'     // ← [2026-09-08] CANTEEN DP — 로비 디스플레이 공지 관리 (notice 역할 공유)
+  | 'org'            // ← [2026-10-01 ORG Phase 3] 조직도 — 파일(버전)·조직 트리·인사 카드 (org 역할)
 
 // ─── 메뉴 ID (내부 전용) ─────────────────────────────────────────────────────
 //   · [2026-07-23] 도서 관리가 활성으로 전환되어 비활성은 'resources' 1개만 남았다.
@@ -102,6 +104,8 @@ const MENU_ITEMS: MenuItem[] = [
   { id: 'kb',            label: 'KB 관리',   icon: <SmartToyIcon   /> },
   // ← [2026-08-19] 자원 관리 활성화 (Phase 3) — 2026-05-11 비활성 예고 자리 그대로 오픈
   { id: 'resources', label: '자원 관리',   icon: <AsteriskIcon     /> },
+  // ← [2026-10-01 ORG Phase 3] 조직도 — SPACE 소유 조직도 원장(파일·Active·상태 라벨·히스토리). 20261005_org_phase1 CHECK 'org' 와 동기화
+  { id: 'org',       label: '조직도',       icon: <OrgChartIcon     /> },
 ]
 
 // ─── Props ───────────────────────────────────────────────────────────────────

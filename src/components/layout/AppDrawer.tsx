@@ -25,7 +25,7 @@
 
 import { useEffect, useState } from 'react'
 import { X, UserCircle, Settings,
-  MessageCircleQuestion, FileText, Bot, Armchair, Megaphone, ClipboardList } from 'lucide-react'  // ← [2026-09-29] ClipboardList — Work Space
+  MessageCircleQuestion, FileText, Bot, Armchair, Megaphone, ClipboardList, Network } from 'lucide-react'  // ← [2026-09-29] ClipboardList — Work Space  // ← [2026-10-01 ORG] Network — 조직도
 // ← [2026-07-31] 헤더 필 네비와 동일 아이콘·명칭 (IcoSchedule=실시간 현황 / IcoCalendar=캘린더 뷰)
 import { IcoSchedule, IcoCalendar } from './HeaderNav'
 import { ModalPortal } from '../common/ModalPortal'
@@ -39,6 +39,8 @@ interface AppDrawerProps {
   isAdmin:   boolean
   /** ← [2026-09-29 WORKBOARD P2] admin_roles 'workboard'(또는 super) 보유 여부 — 팀 워크스페이스 섹션 노출 */
   canWorkboard: boolean
+  /** ← [2026-10-01 ORG Phase 4-A] admin_roles 'org'(또는 super) — 팀 워크스페이스 섹션에 '조직도' 항목 노출 (어드민 조직도 탭으로 진입) */
+  canOrg:    boolean
   isMobile:  boolean
   onSetView: (v: string) => void
   onClose:   () => void
@@ -52,7 +54,7 @@ export const UPCOMING_SERVICES = [
   { label: '자리 예약',           icon: Armchair },
 ] as const
 
-export function AppDrawer({ open, view, isAdmin, canWorkboard, isMobile, onSetView, onClose }: AppDrawerProps) {
+export function AppDrawer({ open, view, isAdmin, canWorkboard, canOrg, isMobile, onSetView, onClose }: AppDrawerProps) {
   // 슬라이드 애니메이션 — 마운트 다음 프레임에 in 상태로 전환
   const [entered, setEntered] = useState(false)
   useEffect(() => {
@@ -74,6 +76,10 @@ export function AppDrawer({ open, view, isAdmin, canWorkboard, isMobile, onSetVi
   if (!open) return null
 
   const go = (v: string) => { onSetView(v); onClose() }
+  // ← [2026-10-01 ORG Phase 4-A] 조직도 = 어드민 '조직도' 탭. setView('admin') 이 해시를 'admin' 으로 쓰므로 그 뒤에 탭 해시로 덮어쓴다
+  //   (AdminPage 는 마운트 시 getTabFromHash + hashchange 리스너로 탭을 맞춘다)
+  const goOrg = () => { onSetView('admin'); window.location.hash = 'admin-tab-org'; onClose() }
+  const onOrgTab = view === 'admin' && (window.location.hash === '#admin-tab-org' || window.location.hash.startsWith('#admin-org-'))
 
   const itemStyle = (active: boolean, disabled = false): React.CSSProperties => ({
     display: 'flex', alignItems: 'center', gap: 10, width: '100%',
@@ -163,19 +169,28 @@ export function AppDrawer({ open, view, isAdmin, canWorkboard, isMobile, onSetVi
 
             {/* ── 팀 워크스페이스 — ← [2026-09-29 WORKBOARD P2] 권한(workboard) 보유자에게만 섹션 통째로 노출.
                   '권한 없음 = 숨김' 원칙 (어드민 항목과 동일). 서비스 섹션에 섞지 않고 분리 배치 (고지 확정) ── */}
-            {canWorkboard && (
+            {(canWorkboard || canOrg) && (
               <>
                 <div style={{ ...sectionLabel, marginTop: 14, borderTop: '1px solid #F8FAFC', paddingTop: 12 }}>
                   팀 워크스페이스
                 </div>
-                <button className="btn" style={itemStyle(view === 'workboard')} onClick={() => go('workboard')}>
+                {canWorkboard && <button className="btn" style={itemStyle(view === 'workboard')} onClick={() => go('workboard')}>
                   <ClipboardList size={17} strokeWidth={1.8} /> Work Space
                   <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '1px 7px',
                     color: view === 'workboard' ? '#FFFFFF' : '#1E6FE8',
                     background: view === 'workboard' ? 'rgba(255,255,255,0.18)' : '#EAF2FF' }}>
                     MS
                   </span>
-                </button>
+                </button>}
+                {/* ← [2026-10-01 ORG Phase 4-A] 조직도 — org 역할 보유자. 어드민 '조직도' 탭으로 바로 진입 (고지 요청: SPACE 화면에서 접근 경로 없음) */}
+                {canOrg && <button className="btn" style={itemStyle(onOrgTab)} onClick={goOrg}>
+                  <Network size={17} strokeWidth={1.8} /> 조직도
+                  <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '1px 7px',
+                    color: onOrgTab ? '#FFFFFF' : '#0D9488',
+                    background: onOrgTab ? 'rgba(255,255,255,0.18)' : '#CCFBF1' }}>
+                    HR
+                  </span>
+                </button>}
               </>
             )}
 

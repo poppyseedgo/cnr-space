@@ -1,6 +1,7 @@
 /**
  * adminRoles.ts — 관리자 권한 카탈로그
  *
+ * [2026-10-01] 'org' 역할 추가 — 조직도 탭(어드민) 1:1. 20261005_org_phase1.sql CHECK 와 동기화
  * [2026-09-29] 'workboard' 역할 추가 — 어드민 탭이 아닌 **일반 뷰**(Work Space, #workboard) 를 여는 첫 역할.
  *              AdminRoleDef.view 필드 신설로 '탭 없음(미구현)' 과 '일반 뷰' 를 구분. 20260929_workboard_phase1.sql CHECK 와 동기화
  * [2026-07-28] 'pointer' → 'resource' 개명 — 자원예약 일반화 확정(20260734_resource_phase1.sql).
@@ -51,6 +52,7 @@ export const ADMIN_ROLES: AdminRoleDef[] = [
   { id: 'kb',           label: 'KB 관리',    tab: 'kb',            desc: 'GA 챗봇 지식베이스 청크 편집' }, // ← [2026-07-27] 20260733 CHECK와 동기화
   { id: 'resource',     label: '자원예약',   tab: 'resources',     desc: '자원 카테고리·개체 등록, 예약·반납 확인·대리예약' }, // ← [2026-08-19] Phase 3 화면 오픈, 탭 1:1 연결
   { id: 'workboard',    label: 'Work Space', tab: null, view: 'workboard', explicit: true, desc: 'MS팀 업무보드 — 업무분장·일정·이슈보드 (드로어 Work Space)' }, // ← [2026-09-29] 일반 뷰 역할 — profiles.role 재계산 제외(20260929 phase1 [B])
+  { id: 'org',          label: '조직도',     tab: 'org',           desc: '조직도 파일(버전)·조직 트리·인사 카드·상태 라벨 관리. Active 지정은 super 전용' }, // ← [2026-10-01 ORG Phase 3] 20261005_org_phase1 CHECK 와 동기화
   { id: 'super',        label: '최고 관리자', tab: null,           desc: '모든 메뉴 + 권한 부여·회수' },
   // 폐기: zoom — 사내 ZOOM 사용 종료(2026-07-21). 기존 데이터 보존을 위해 목록에만 남긴다
   { id: 'zoom',         label: '[폐기] ZOOM', tab: null,           desc: '사내 사용 종료', deprecated: true },
