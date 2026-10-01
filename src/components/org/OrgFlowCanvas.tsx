@@ -1,5 +1,7 @@
 /**
  * OrgFlowCanvas.tsx — 노드 캔버스 (설계서 §14 · Phase 7). Supabase Schema Visualizer 식 자유 배치
+ *  - [2026-10-01 ORG Phase 7-D] 선 끌어 연결 = 상위 변경(부모 아래 포트 → 자식 위 포트, 순환·자기자신 거부) · 선 끝을 끌어 다른 부모로(reconnect) · 허공에 놓거나 선택 후 Delete / ✕ = 끊기 → 작업대
+ *    · Shift+드래그 영역 선택 → 상단 묶음 액션(떼어내기 n · 합치기… · 해제) · 우클릭 메뉴(노드: 이름·하위·합치기·떼어내기/붙이기·카드 전체 선택·삭제, 선: 끊기)
  *  - [2026-10-01 ORG Phase 7-C] 신규 — React Flow(@xyflow/react) + dagre
  *    · 단위 1개 = 노드 1개(헤더 = 드래그 핸들, 단위장 → 구성원 카드 스택, 기존 OrgCardView). 카드는 노드가 아님 — 노드 안에서 HTML5 DnD 로 소속 변경(선택 묶음 함께)
  *    · 상위→하위 직각 연결선(smoothstep). 작업대 하위 단위 = 점선 노드, 연결선 없음
@@ -9,16 +11,27 @@
  *  표시·배치만 담당. 구조 저장은 OrgCanvas → OrgAdminPanel(기존 drop 핸들러 재사용)
  */
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from 'react'
-import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, MiniMap, Panel, Handle, Position, useNodesState, useEdgesState, useReactFlow, useNodesInitialized, type Node, type Edge, type NodeProps, type NodeMouseHandler } from '@xyflow/react'
+import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, MiniMap, Panel, Handle, Position, BaseEdge, EdgeLabelRenderer, getSmoothStepPath, useNodesState, useEdgesState, useReactFlow, useNodesInitialized, useStore, type Node, type Edge, type NodeProps, type EdgeProps, type NodeMouseHandler, type EdgeMouseHandler, type Connection, type OnSelectionChangeFunc, type IsValidConnection } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import dagre from '@dagrejs/dagre'
 import type { OrgCard, OrgJob, OrgUnit } from '../../types'
 import { buildUnitTree, cardLevel, descendantIds, primaryJob, sortCards, subtreeHeadcount, type OrgUnitNode } from '../../utils/orgStatus'
 import { OrgCardView } from './OrgCardView'
 import { DND, type TreeCardCtx, type TreeDropHandlers } from './OrgTree'
-import { OG, btn } from './orgShared'
+import { OG, btn, btnDisabled } from './orgShared'
 
 export interface OrgLayoutItem { unit_id: string; x: number; y: number }
+/** [7-D] 구조 액션 — OrgCanvas 가 OrgAdminPanel 핸들러를 그대로 넘긴다 */
+export interface FlowActions {
+  onReparent:    (unitId: string, newParentId: string) => void   // 선 연결/재연결
+  onDetachUnit?: (u: OrgUnit) => void                            // 선 끊기 → 작업대
+  onRenameUnit?: (u: OrgUnit) => void
+  onAddUnit?:    (parentId: string) => void
+  onMergeUnit?:  (u: OrgUnit) => void
+  onMoveUnitTo?: (u: OrgUnit) => void
+  onDeleteUnit?: (u: OrgUnit) => void
+  onSelectUnitCards?: (unitId: string) => void
+}
 
 interface FlowShared {
   ctx:          TreeCardCtx
@@ -44,6 +57,7 @@ interface Props extends Omit<FlowShared, 'totals' | 'inBench' | 'cardsByUnit'> {
   onSaveLayout: (items: OrgLayoutItem[]) => void
   focusUnit?:   string | null
   focusTick?:   number
+  actions?:     FlowActions
 }
 
 const NODE_W = OG.cardW
@@ -66,8 +80,11 @@ function Inner(p: Props) {
   const shared: FlowShared = { ...p, totals, inBench, cardsByUnit }
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
-  const [edges, setEdges] = useEdgesState<Edge>([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const nodeTypes = useMemo(() => ({ unit: UnitNode }), [])
+  const edgeTypes = useMemo(() => ({ org: OrgEdge }), [])
+  const act = p.actions
+  const unitOf = useCallback((id: string) => units.find(u => u.id === id), [units])
 
   // 단위 → 노드 (위치: 현재 노드 상태 > 저장된 배치 > 미정(자동 정렬 대상))
   const needLayout = useRef<Set<string>>(new Set())
@@ -81,12 +98,12 @@ function Inner(p: Props) {
         if (u.kind === 'bench') continue
         const saved = pos.get(u.id) ?? layout.get(u.id)
         if (!saved) needLayout.current.add(u.id)
-        next.push({ id: u.id, type: 'unit', position: saved ?? { x: 0, y: 0 }, data: { unitId: u.id }, dragHandle: '.org-node-header', draggable: editable, selectable: true })
+        next.push({ id: u.id, type: 'unit', position: saved ?? { x: 0, y: 0 }, data: { unitId: u.id }, dragHandle: '.org-node-header', draggable: editable, selectable: true, deletable: false, connectable: editable })
       }
       return next
     })
     setEdges(units.filter(u => u.kind !== 'bench' && u.parent_unit_id && !inBench.has(u.id)).map(u => ({
-      id: `e-${u.id}`, source: u.parent_unit_id!, target: u.id, type: 'smoothstep', style: { stroke: '#9CA3AF', strokeWidth: 1.5 }, focusable: editable,
+      id: `e-${u.id}`, source: u.parent_unit_id!, target: u.id, type: 'org', style: { stroke: '#9CA3AF', strokeWidth: 1.5 }, focusable: editable, deletable: editable, reconnectable: editable, data: { editable },
     })))
   }, [units, inBench, editable, setNodes, setEdges])
 
@@ -141,12 +158,56 @@ function Inner(p: Props) {
   const onNodeDoubleClick: NodeMouseHandler = (_, n) => { const u = units.find(x => x.id === n.id); if (u) p.onUnitClick?.(u) }
   const [zoomPct, setZoomPct] = useState(100)
 
+  // ── [7-D] 선 연결 = 상위 변경. source(부모 아래 포트) → target(자식 위 포트). 자기 자신·자기 하위로는 불가(ORG_UNIT_CYCLE 과 동일 규칙)
+  const isValid: IsValidConnection = useCallback(c => {
+    if (!editable || !c.source || !c.target || c.source === c.target) return false
+    if (descendantIds(c.target, units).has(c.source)) return false
+    return unitOf(c.target)?.parent_unit_id !== c.source
+  }, [editable, units, unitOf])
+  const onConnect = useCallback((c: Connection) => { if (isValid(c) && act) act.onReparent(c.target, c.source) }, [isValid, act])
+  const reconnected = useRef(false)
+  const onReconnect = useCallback((old: Edge, c: Connection) => { reconnected.current = true; if (c.target === old.target && isValid(c) && act) act.onReparent(c.target, c.source) }, [isValid, act])
+  const onReconnectStart = useCallback(() => { reconnected.current = false }, [])
+  const onReconnectEnd = useCallback((_: unknown, edge: Edge) => { if (!reconnected.current && act?.onDetachUnit) { const u = unitOf(edge.target); if (u && !inBench.has(u.id)) act.onDetachUnit(u) } reconnected.current = true }, [act, unitOf, inBench])
+  const onEdgesDelete = useCallback((es: Edge[]) => { if (!act?.onDetachUnit) return; for (const e of es) { const u = unitOf(e.target); if (u && !inBench.has(u.id)) act.onDetachUnit(u) } }, [act, unitOf, inBench])
+
+  // ── [7-D] 영역 선택 → 묶음 액션
+  const [selNodes, setSelNodes] = useState<string[]>([])
+  const onSelectionChange: OnSelectionChangeFunc = useCallback(({ nodes: ns }) => setSelNodes(ns.map(n => n.id)), [])
+  const topLevelSel = useMemo(() => { const set = new Set(selNodes); return selNodes.filter(id => { const u = unitOf(id); return u && !inBench.has(id) && !(u.parent_unit_id && set.has(u.parent_unit_id)) }) }, [selNodes, unitOf, inBench])
+  const detachSel = () => { if (!act?.onDetachUnit) return; for (const id of topLevelSel) { const u = unitOf(id); if (u) act.onDetachUnit(u) } }
+  const clearSel = () => setNodes(ns => ns.map(n => n.selected ? { ...n, selected: false } : n))
+
+  // ── [7-D] 우클릭 메뉴 (노드 / 선)
+  const [menu, setMenu] = useState<null | { x: number; y: number; unit?: OrgUnit; edge?: Edge }>(null)
+  const onNodeContextMenu: NodeMouseHandler = (e, n) => { e.preventDefault(); if (!editable) return; const u = unitOf(n.id); if (u) setMenu({ x: e.clientX, y: e.clientY, unit: u }) }
+  const onEdgeContextMenu: EdgeMouseHandler = (e, edge) => { e.preventDefault(); if (!editable) return; setMenu({ x: e.clientX, y: e.clientY, edge }) }
+  useEffect(() => { if (!menu) return; const close = () => setMenu(null); window.addEventListener('click', close); window.addEventListener('keydown', close); return () => { window.removeEventListener('click', close); window.removeEventListener('keydown', close) } }, [menu])
+  const menuItems = (): { label: string; run: () => void; danger?: boolean; disabled?: boolean; title?: string }[] => {
+    if (!menu || !act) return []
+    if (menu.edge) { const u = unitOf(menu.edge.target); return [{ label: '✕ 선 끊기 → 작업대', run: () => u && act.onDetachUnit?.(u), danger: true }] }
+    const u = menu.unit!; const benchy = inBench.has(u.id)
+    const kids = units.filter(x => x.parent_unit_id === u.id).length, ncards = (cardsByUnit.get(u.id)?.length ?? 0)
+    return [
+      { label: '이름·약칭', run: () => act.onRenameUnit?.(u) },
+      { label: '+ 하위 단위', run: () => act.onAddUnit?.(u.id) },
+      { label: '합치기…', run: () => act.onMergeUnit?.(u), disabled: !act.onMergeUnit },
+      benchy ? { label: '조직에 붙이기…', run: () => act.onMoveUnitTo?.(u) } : { label: '떼어내기 → 작업대', run: () => act.onDetachUnit?.(u), disabled: !u.parent_unit_id, title: !u.parent_unit_id ? '최상위 단위는 떼어낼 수 없음' : undefined },
+      { label: '이 단위 카드 전체 선택', run: () => act.onSelectUnitCards?.(u.id), disabled: ncards === 0 },
+      { label: '삭제', run: () => act.onDeleteUnit?.(u), danger: true, disabled: kids > 0 || ncards > 0, title: kids > 0 ? '하위 단위가 있어 삭제 불가' : ncards > 0 ? '카드가 있어 삭제 불가' : undefined },
+    ]
+  }
+
   return (
     <Shared.Provider value={shared}>
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onNodeDragStop={onDragStop} onNodeDoubleClick={onNodeDoubleClick}
-                 nodesDraggable={editable} nodesConnectable={false} elementsSelectable selectionKeyCode="Shift" multiSelectionKeyCode={['Meta', 'Control']}
+      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onNodeDragStop={onDragStop} onNodeDoubleClick={onNodeDoubleClick}
+                 nodesDraggable={editable} nodesConnectable={editable} elementsSelectable selectionKeyCode="Shift" multiSelectionKeyCode={['Meta', 'Control']}
+                 onConnect={onConnect} isValidConnection={isValid} onReconnect={onReconnect} onReconnectStart={onReconnectStart} onReconnectEnd={onReconnectEnd} edgesReconnectable={editable}
+                 onEdgesDelete={onEdgesDelete} deleteKeyCode={editable ? ['Delete', 'Backspace'] : null} onSelectionChange={onSelectionChange}
+                 onNodeContextMenu={onNodeContextMenu} onEdgeContextMenu={onEdgeContextMenu} onPaneContextMenu={e => e.preventDefault()}
+                 connectionLineStyle={{ stroke: OG.drop, strokeWidth: 2 }} connectionRadius={28}
                  minZoom={0.3} maxZoom={2} zoomOnScroll zoomOnPinch panOnDrag panOnScroll={false} onMove={(_, v) => setZoomPct(Math.round(v.zoom * 100))}
-                 proOptions={{ hideAttribution: true }} fitView fitViewOptions={{ padding: 0.1, maxZoom: 1 }} style={{ fontFamily: OG.font }} deleteKeyCode={null}>
+                 proOptions={{ hideAttribution: true }} fitView fitViewOptions={{ padding: 0.1, maxZoom: 1 }} style={{ fontFamily: OG.font }}>
         <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#D1D5DB" />
         <MiniMap pannable zoomable position="bottom-right" nodeColor={n => inBench.has(n.id) ? '#BFDBFE' : '#D1D5DB'} nodeStrokeWidth={0} style={{ width: 180, height: 110, border: `1px solid ${OG.line}`, borderRadius: 8 }} />
         <Panel position="bottom-left">
@@ -156,7 +217,25 @@ function Inner(p: Props) {
           </div>
         </Panel>
         {editable && <Panel position="top-left"><button style={btn} onClick={doAuto} title="dagre 트리 정렬로 전체 재배치 (저장됨)">⟳ 자동 정렬</button></Panel>}
+        {editable && selNodes.length > 0 && (
+          <Panel position="top-center">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: OG.ink, color: '#fff', borderRadius: 8, fontSize: 12.5, boxShadow: '0 6px 20px rgba(0,0,0,.25)' }}>
+              <b>단위 {selNodes.length}개 선택</b>
+              {act?.onDetachUnit && <button style={{ ...barBtn, ...(topLevelSel.length ? {} : btnDisabled) }} disabled={!topLevelSel.length} onClick={detachSel} title={`최상위 ${topLevelSel.length}개(하위 포함)를 작업대로 — 한 단위에 되돌리기 1단계`}>떼어내기 {topLevelSel.length}</button>}
+              {selNodes.length === 1 && act?.onMergeUnit && <button style={barBtn} onClick={() => { const u = unitOf(selNodes[0]); if (u) act.onMergeUnit!(u) }}>합치기…</button>}
+              <button style={{ ...barBtn, background: 'transparent', borderColor: '#4B5563' }} onClick={clearSel}>해제</button>
+            </div>
+          </Panel>
+        )}
       </ReactFlow>
+      {menu && (
+        <div style={{ position: 'fixed', left: menu.x, top: menu.y, zIndex: 1000, background: '#fff', border: `1px solid ${OG.line}`, borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.14)', fontSize: 12.5, minWidth: 170, padding: 4, fontFamily: OG.font }} onClick={e => e.stopPropagation()}>
+          {menu.unit && <div style={{ padding: '6px 10px', fontSize: 11, color: OG.quiet, borderBottom: `1px solid ${OG.lineSoft}`, marginBottom: 2 }}>{menu.unit.name}</div>}
+          {menuItems().map((it, i) => <div key={i} title={it.title} onClick={() => { if (it.disabled) return; setMenu(null); it.run() }}
+            style={{ padding: '7px 10px', borderRadius: 6, cursor: it.disabled ? 'not-allowed' : 'pointer', color: it.disabled ? OG.faint : it.danger ? OG.red : OG.ink }}
+            onMouseEnter={e => { if (!it.disabled) (e.currentTarget as HTMLDivElement).style.background = '#F3F4F6' }} onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}>{it.label}</div>)}
+        </div>
+      )}
     </Shared.Provider>
   )
 }
@@ -197,7 +276,7 @@ const UnitNode = memo(function UnitNode({ id, selected }: NodeProps) {
     <div data-unit-id={id} onDragOver={onDragOver} onDragLeave={() => setOver(false)} onDrop={onDrop}
          style={{ width: NODE_W, background: benchy ? '#F8FAFF' : '#fff', border: benchy ? `1.5px dashed ${OG.drop}` : `1px solid ${depth <= 1 ? '#C7CDD8' : OG.line}`, borderRadius: 10, boxShadow: selected ? `0 0 0 2px ${OG.drop}` : '0 1px 2px rgba(0,0,0,.05)',
                   outline: over ? `2px solid ${OG.drop}` : s.highlightUnit === id ? `2px solid ${OG.amber}` : 'none', outlineOffset: 2, fontFamily: OG.font, fontSize: 12.5 }}>
-      <Handle type="target" position={Position.Top} style={{ opacity: 0, width: 8, height: 8 }} />
+      <Handle type="target" position={Position.Top} isConnectable={s.editable} style={{ width: 10, height: 10, background: '#fff', border: `2px solid ${OG.drop}`, opacity: s.editable ? 1 : 0 }} title="위 포트: 부모의 아래 포트에서 선을 끌어와 붙이면 상위 변경" />
       <div className="org-node-header" onClick={() => s.onToggle(id)}
            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderBottom: isOpen && cards.length > 0 ? `1px solid ${OG.line}` : 'none', fontWeight: 600, cursor: s.editable ? 'grab' : 'pointer', userSelect: 'none', color: benchy ? OG.drop : OG.ink }}>
         <span style={{ color: OG.quiet, fontSize: 10 }}>{cards.length > 0 ? (isOpen ? '▾' : '▸') : '·'}</span>
@@ -228,10 +307,32 @@ const UnitNode = memo(function UnitNode({ id, selected }: NodeProps) {
           {cards.length > MAX_VISIBLE && <div style={{ fontSize: 11, color: OG.quiet, textAlign: 'center', padding: 4, border: `1px dashed ${OG.line}`, borderRadius: 6 }}>외 {cards.length - MAX_VISIBLE}명 — 단위별 리스트에서 전체 보기</div>}
         </div>
       )}
-      <Handle type="source" position={Position.Bottom} style={{ opacity: 0, width: 8, height: 8 }} />
+      {!benchy && <Handle type="source" position={Position.Bottom} isConnectable={s.editable} style={{ width: 10, height: 10, background: '#fff', border: `2px solid ${OG.drop}`, opacity: s.editable ? 1 : 0 }} title="아래 포트: 여기서 선을 끌어 다른 단위의 위 포트에 놓으면 그 단위가 하위가 됨" />}
+      {benchy && <Handle type="source" position={Position.Bottom} isConnectable={s.editable} style={{ width: 10, height: 10, background: '#fff', border: `2px dashed ${OG.drop}`, opacity: s.editable ? 1 : 0 }} />}
     </div>
   )
 })
+
+const barBtn: React.CSSProperties = { fontFamily: OG.font, fontSize: 12, padding: '4px 10px', border: '1px solid #374151', borderRadius: 6, background: '#374151', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }
+
+/** 직각 연결선 + 선택 시 중앙 ✕(끊기 → 작업대) */
+function OrgEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, selected, style, data }: EdgeProps) {
+  const [path, lx, ly] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 6 })
+  const { deleteElements } = useReactFlow()
+  const editable = !!(data as { editable?: boolean } | undefined)?.editable
+  const onlyThis = useStore(st => st.edges.filter(e => e.selected).length === 1 && !st.nodes.some(n => n.selected))   // 영역 선택으로 여러 선이 같이 잡혔을 땐 ✕ 숨김
+  return (
+    <>
+      <BaseEdge id={id} path={path} style={{ ...style, stroke: selected ? OG.drop : (style?.stroke as string), strokeWidth: selected ? 2 : 1.5 }} interactionWidth={16} />
+      {editable && selected && onlyThis && (
+        <EdgeLabelRenderer>
+          <button className="nodrag nopan" onClick={() => deleteElements({ edges: [{ id }] })} title="선 끊기 → 하위 단위를 작업대로 (Delete 키와 동일)"
+                  style={{ position: 'absolute', transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)`, pointerEvents: 'all', fontSize: 11, padding: '2px 8px', borderRadius: 999, border: `1px solid ${OG.red}`, background: '#fff', color: OG.red, cursor: 'pointer', fontFamily: OG.font }}>✕ 끊기</button>
+        </EdgeLabelRenderer>
+      )}
+    </>
+  )
+}
 
 function tierLabel(level: number, rank: { label: string } | null): string {
   if (rank) return rank.label

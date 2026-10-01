@@ -341,7 +341,8 @@ export function OrgCanvas(p: Props) {
               <OrgFlowCanvas ctx={ctx} units={units} cardsByUnit={cardsByUnit} editable={editable} expanded={expanded} onToggle={toggle} selectedCard={selectedCard} selectedIds={sel}
                              onCardClick={onCardClickX} onUnitClick={u => { if (editable) p.onRenameUnit(u); else { setRoHint(true); window.setTimeout(() => setRoHint(false), 1600) } }}
                              drop={{ onDropCard: p.onDropCard, onDropUnit: p.onDropUnit, onDropProfile: p.onDropProfile, onDropCards: p.onDropCards }}
-                             layout={p.layout ?? new Map()} onSaveLayout={p.onSaveLayout ?? (() => {})} focusUnit={focusUnit} focusTick={focusTick} highlightUnit={focusUnit} />
+                             layout={p.layout ?? new Map()} onSaveLayout={p.onSaveLayout ?? (() => {})} focusUnit={focusUnit} focusTick={focusTick} highlightUnit={focusUnit}
+                             actions={{ onReparent: (unitId, parentId) => p.onDropUnit(unitId, parentId), onDetachUnit: p.onDetachUnit, onRenameUnit: p.onRenameUnit, onAddUnit: id => p.onAddUnit(id), onMergeUnit: p.onMergeUnit, onMoveUnitTo: p.onMoveUnitTo, onDeleteUnit: p.onDeleteUnit, onSelectUnitCards: selectUnitCards }} />
             </div>
           )}
           <div ref={bodyRef} style={{ position: 'absolute', inset: 0, overflow: 'auto', padding: '20px 40px 80px', display: view === 'flow' ? 'none' : 'block' }}>
