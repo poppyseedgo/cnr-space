@@ -1,6 +1,7 @@
 /**
  * OrgCardDrawer.tsx — 드로어 C: 인사 카드 편집 (설계서 §6.3)
  *  - [2026-10-01 ORG Phase 4-A] 신규
+ *  - [2026-10-01 ORG Phase 5] 헤더에 '조직도 표기 이름' 편집(사람 단위 · 파일 무관 · org 역할) — Azure 이름은 보조 표기
  *  - [2026-10-01 ORG Phase 4-B] ④ 반납 체크리스트 아래 "시스템 잔여"(도서·자원·어드민 권한·회의실) — org_offboarding_system_check RPC
  *
  *  섹션(위→아래): ①프로필 헤더(live) ②배치(단위·직급·직무 복수·보고선·단위장·고용형태·근무지·FTE)
@@ -47,6 +48,8 @@ interface Props {
   onSetJobs:    (jobIds: string[]) => Promise<void>
   onDelete:     () => void
   onStatusChanged: () => Promise<void>
+  /** [Phase 5] 조직도 표기 이름 저장('' = Azure 이름으로 복귀). 부모가 org_display_names 재조회 */
+  onDisplayName?: (profileId: string, name: string) => Promise<void>
   onClose:      () => void
   showToast:    (msg: string) => void
 }
@@ -150,6 +153,17 @@ export function OrgCardDrawer(p: Props) {
   const dis = (s: CSSProperties = {}): CSSProperties => ro ? { ...s, background: '#F9FAFB', color: OG.quiet } : s
   const nameOf = (id: string | null) => p.users.find(u => u.user_id === id)?.name ?? (id ? '시스템' : '시스템')
 
+  // ── [Phase 5] 조직도 표기 이름 ──
+  const [dnEdit, setDnEdit] = useState<string | null>(null)   // null = 보기 모드
+  const [dnBusy, setDnBusy] = useState(false)
+  const azureUser = person.user
+  const saveDisplayName = async () => {
+    if (dnEdit === null || !card.profile_id || !p.onDisplayName) return
+    setDnBusy(true)
+    try { await p.onDisplayName(card.profile_id, dnEdit); setDnEdit(null); p.showToast(dnEdit.trim() ? '표기 이름을 저장했습니다.' : 'Azure 이름으로 되돌렸습니다.') }
+    catch (e) { p.showToast(orgErrorMessage(e)) } finally { setDnBusy(false) }
+  }
+
   return (
     <ModalPortal>
       <div onClick={p.onClose} style={{ position: 'fixed', inset: 0, zIndex: 1250, background: 'rgba(15,23,42,0.35)', opacity: entered ? 1 : 0, transition: 'opacity 160ms ease-out' }}>
@@ -161,8 +175,19 @@ export function OrgCardDrawer(p: Props) {
             <div style={{ flex: 1, minWidth: 0 }}>
               {card.is_vacancy
                 ? <input value={dname} disabled={ro} onChange={e => setDname(e.target.value)} onBlur={() => dname !== (card.display_name ?? '') && save({ display_name: dname.trim() || '공석' })} style={{ ...inp, fontWeight: 600, fontSize: 15 }} placeholder="공석 표기" />
-                : <div style={{ fontWeight: 600, fontSize: 16, textDecoration: person.departed ? 'line-through' : 'none' }}>{person.name}</div>}
+                : dnEdit !== null
+                  ? <div style={{ display: 'flex', gap: 4 }}>
+                      <input autoFocus value={dnEdit} disabled={dnBusy} onChange={e => setDnEdit(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveDisplayName(); if (e.key === 'Escape') setDnEdit(null) }} style={{ ...inp, fontWeight: 600, fontSize: 15 }} placeholder={azureUser?.name ?? ''} />
+                      <button style={btnPri} disabled={dnBusy} onClick={saveDisplayName}>저장</button>
+                      <button style={btn} disabled={dnBusy} onClick={() => setDnEdit(null)}>취소</button>
+                    </div>
+                  : <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                      <span style={{ fontWeight: 600, fontSize: 16, textDecoration: person.departed ? 'line-through' : 'none' }}>{person.name}</span>
+                      {azureUser && p.onDisplayName && <button title="조직도 표기 이름 편집 (Azure 이름은 유지)" style={{ ...btn, fontSize: 10.5, padding: '1px 6px' }} onClick={() => setDnEdit(person.azureName ? person.name : '')}>표기 이름</button>}
+                    </div>}
               <div style={{ fontSize: 11.5, color: OG.quiet, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{person.email || (card.person_id ? '입사 예정자' : card.is_vacancy ? '공석(TO)' : '')}{person.departed && ' · 퇴사 완료'}</div>
+              {person.azureName && dnEdit === null && <div style={{ fontSize: 11, color: OG.faint }}>Azure: {person.azureName}</div>}
+              {dnEdit !== null && <div style={{ fontSize: 11, color: OG.faint }}>비우고 저장하면 Azure 이름({azureUser?.name})으로 표시됩니다. 모든 조직도 파일에 공통 적용.</div>}
             </div>
             {saving && <span style={{ fontSize: 11, color: OG.faint }}>저장 중…</span>}
             <button onClick={p.onClose} aria-label="닫기" style={{ ...btn, padding: '5px 7px' }}><X size={14} /></button>

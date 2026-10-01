@@ -735,6 +735,8 @@ export interface OrgPerson {
   planned_start_on:  string | null
   linked_profile_id: string | null
 }
+/** [2026-10-01 ORG Phase 5] 조직도 표기 이름 — Azure profiles.name 과 별개(사람 단위, 파일 무관). 퇴사 시 CASCADE */
+export interface OrgDisplayName { id: string; profile_id: string; display_name: string; note: string | null; updated_by: string | null; updated_at: string }
 export interface OrgRank  { id: string; code: string; label: string; level: number; sort_order: number; is_active: boolean }
 export interface OrgJob   { id: string; code: string; label: string; level: number; aliases: string[]; sort_order: number; is_active: boolean }
 export interface OrgStatusType {

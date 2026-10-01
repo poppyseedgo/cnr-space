@@ -8,6 +8,7 @@
  *      · 카드 정렬: 단위장 → 직급 level ↓ → 대표 직무 level ↓ → 이름
  *      · 트리 빌드: org_units.parent_unit_id 기준, sort_order → name
  *      · 퇴사 판정: profile_id 있는데 users 에 없음 (departed_users 존재 여부는 표시 보조)
+ *  - [2026-10-01 ORG Phase 5] orgPersonView displayNames(조직도 표기 이름) 우선 · CSV 'Azure 이름' 열
  *  - [2026-10-01 ORG Phase 4-B] orgExportRows — 파일 단위 카드 CSV 행 빌더(utils/csv.exportCSV 와 결합)
  */
 
@@ -61,6 +62,8 @@ export function orgStatusBadge(st: OrgPersonStatus | null | undefined, types: Ma
 // ─── 사람 표시 룩업 ──────────────────────────────────────────────────────────
 export interface OrgPersonView {
   name:       string
+  /** [Phase 5] Azure 원본 이름(표기 이름이 적용된 경우에만 값, 아니면 null) */
+  azureName:  string | null
   dept:       string
   email:      string
   avatarUrl:  string | null
@@ -68,19 +71,22 @@ export interface OrgPersonView {
   departed:   boolean
   user:       AppUser | null
 }
-export function orgPersonView(card: OrgCard, users: AppUser[], persons: Map<string, { name: string; email: string | null }>, departed: Map<string, { name: string; avatar_url?: string | null }>): OrgPersonView {
-  if (card.is_vacancy) return { name: card.display_name || '공석', dept: '', email: '', avatarUrl: null, departed: false, user: null }
+export function orgPersonView(card: OrgCard, users: AppUser[], persons: Map<string, { name: string; email: string | null }>, departed: Map<string, { name: string; avatar_url?: string | null }>, displayNames?: Map<string, { display_name: string }>): OrgPersonView {
+  if (card.is_vacancy) return { name: card.display_name || '공석', azureName: null, dept: '', email: '', avatarUrl: null, departed: false, user: null }
   if (card.profile_id) {
     const u = users.find(x => x.user_id === card.profile_id)
-    if (u) return { name: u.name, dept: u.dept, email: u.email, avatarUrl: u.avatar_url ?? null, departed: false, user: u }
+    if (u) {
+      const dn = displayNames?.get(card.profile_id)?.display_name   // [Phase 5] 조직도 표기 이름 우선
+      return { name: dn || u.name, azureName: dn && dn !== u.name ? u.name : null, dept: u.dept, email: u.email, avatarUrl: u.avatar_url ?? null, departed: false, user: u }
+    }
     const d = departed.get(card.profile_id)
-    return { name: d?.name ?? card.display_name ?? '(퇴사자)', dept: '', email: '', avatarUrl: d?.avatar_url ?? null, departed: true, user: null }
+    return { name: d?.name ?? card.display_name ?? '(퇴사자)', azureName: null, dept: '', email: '', avatarUrl: d?.avatar_url ?? null, departed: true, user: null }
   }
   if (card.person_id) {
     const p = persons.get(card.person_id)
-    return { name: p?.name ?? card.display_name ?? '(입사예정)', dept: '', email: p?.email ?? '', avatarUrl: null, departed: false, user: null }
+    return { name: p?.name ?? card.display_name ?? '(입사예정)', azureName: null, dept: '', email: p?.email ?? '', avatarUrl: null, departed: false, user: null }
   }
-  return { name: card.display_name ?? '-', dept: '', email: '', avatarUrl: null, departed: false, user: null }
+  return { name: card.display_name ?? '-', azureName: null, dept: '', email: '', avatarUrl: null, departed: false, user: null }
 }
 
 // ─── 정렬 (hierarchy) ───────────────────────────────────────────────────────
@@ -160,6 +166,7 @@ export function orgExportRows(
         '단위 깊이':   String(depth),
         '단위 약칭':   n.unit.code ?? '',
         '이름':        c.is_vacancy ? (c.display_name || '공석') : pv.name,
+        'Azure 이름':  pv.azureName ?? '',
         '구분':        c.is_vacancy ? '공석' : pv.departed ? '퇴사' : c.profile_id ? '재직' : '입사예정',
         '이메일':      c.is_vacancy ? '' : pv.email,
         '사번':        pv.user?.employee_id ?? '',

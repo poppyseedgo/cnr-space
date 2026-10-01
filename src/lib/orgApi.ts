@@ -13,7 +13,7 @@
  */
 
 import { supabase, isSupabaseEnabled } from './supabase'
-import type {
+import type { OrgDisplayName,
   OrgFile, OrgFileSummary, OrgUnit, OrgCard, OrgPerson, OrgRank, OrgJob, OrgStatusType, OrgPersonStatus,
   OrgOffboardingItem, OrgRosterCheck,
 } from '../types'
@@ -341,4 +341,22 @@ export async function loadAllOffboardingTemplates(): Promise<OrgOffboardingTempl
   const { data, error } = await supabase.from('org_offboarding_templates').select('*').order('sort_order')
   if (error) throw new Error(error.message)
   return (data ?? []) as OrgOffboardingTemplate[]
+}
+
+// ─── [2026-10-01 ORG Phase 5] 조직도 표기 이름 ───────────────────────────────
+export async function loadOrgDisplayNames(): Promise<Map<string, OrgDisplayName>> {
+  if (!isSupabaseEnabled) return new Map()
+  const { data, error } = await supabase.from('org_display_names').select('*')
+  if (error) throw new Error(error.message)
+  return new Map(((data ?? []) as OrgDisplayName[]).map(d => [d.profile_id, d]))
+}
+/** 빈 문자열 → 행 삭제(Azure 이름으로 복귀) */
+export async function setOrgDisplayName(profileId: string, displayName: string, actor: string, note: string | null = null): Promise<void> {
+  const v = displayName.trim()
+  if (!v) {
+    const { error } = await supabase.from('org_display_names').delete().eq('profile_id', profileId)
+    if (error) throw new Error(error.message); return
+  }
+  const { error } = await supabase.from('org_display_names').upsert({ profile_id: profileId, display_name: v, note, updated_by: actor }, { onConflict: 'profile_id' })
+  if (error) throw new Error(error.message)
 }

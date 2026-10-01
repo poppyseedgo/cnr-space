@@ -1,5 +1,6 @@
 /**
  * OrgAdminPanel.tsx — 어드민 '조직도' 탭 루트: 데이터 소유 + 갤러리(A) ↔ 캔버스(B) 전환 + 모든 저장 경로
+ *  - [2026-10-01 ORG Phase 5] 조직도 표기 이름(org_display_names) 로드 · 드로어 편집 연결 · CSV Azure 이름 열
  *  - [2026-10-01 ORG Phase 4-B] 코드 관리 패널(E) · Active 전환 알림(send-notification org_activated) · 카드 CSV 내보내기
  *  - [2026-10-01 ORG Phase 4-A] 카드 드로어(C) · 히스토리/diff 드로어(D) · 입사예정자 카드 추가 · 카드 제거 연결
  *  - [2026-10-01 ORG Phase 3] 신규 — 설계서 §6
@@ -9,7 +10,7 @@
  *  잠금: 초안 진입 시 org_acquire_lock, 10분마다 갱신, 떠날 때 해제. 타인 잠금이면 읽기 전용 + super 는 강제 획득 버튼
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AppUser, DepartedUser, OrgCard, OrgFileSummary, OrgPersonStatus, OrgRosterCheck, OrgStatusCategory, OrgUnit } from '../../types'
+import type { AppUser, DepartedUser, OrgCard, OrgDisplayName, OrgFileSummary, OrgPersonStatus, OrgRosterCheck, OrgStatusCategory, OrgUnit } from '../../types'
 import { loadDepartedUsers } from '../../lib/api'
 import {
   loadOrgCodes, loadOrgFiles, loadOrgFileBundle, loadActiveOrgStatuses, createOrgFile, updateOrgFileMeta, deleteOrgFile,
@@ -17,6 +18,7 @@ import {
   insertOrgUnit, updateOrgUnit, deleteOrgUnit, reorderOrgUnits, insertOrgCard, updateOrgCard, deleteOrgCard, setOrgCardJobs, loadOrgCardById, loadOrgUnitById,
   loadOffboardingTemplates, insertOrgPerson, setOrgPersonStatus,
   notifyOrgActivated,   // ← [Phase 4-B]
+  loadOrgDisplayNames, setOrgDisplayName,   // ← [Phase 5]
   type OrgCodes, type OrgFileBundle, type OrgOffboardingTemplate,
 } from '../../lib/orgApi'
 import { orgErrorMessage, orgPersonView, orgStatusBadge, orgExportRows } from '../../utils/orgStatus'
@@ -59,6 +61,7 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   const [templates, setTemplates] = useState<OrgOffboardingTemplate[]>([])   // ← [Phase 4-A] 반납 템플릿
   const [history, setHistory]   = useState<null | { file: OrgFileBundle['file'] | null; tab: 'log' | 'diff' }>(null)   // ← [Phase 4-A] 드로어 D
   const [codesOpen, setCodesOpen] = useState(false)   // ← [Phase 4-B] 패널 E
+  const [displayNames, setDisplayNames] = useState<Map<string, OrgDisplayName>>(new Map())   // ← [Phase 5]
   const myName = useMemo(() => users.find(u => u.user_id === currentUserId)?.name ?? '관리자', [users, currentUserId])
   const [modal, setModal]       = useState<null | { kind: 'new' } | { kind: 'copy'; src: OrgFileSummary | { id: string; name: string } } | { kind: 'meta' } | { kind: 'unit-new'; parentId: string | null } | { kind: 'unit-rename'; unit: OrgUnit } | { kind: 'vacancy'; unitId: string } | { kind: 'person-new'; unitId: string }>(null)
   const [confirm, setConfirm]   = useState<null | { title: string; message: React.ReactNode; variant: 'danger' | 'warn' | 'neutral'; label: string; run: () => Promise<void> }>(null)
@@ -70,7 +73,7 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   const personsMap  = useMemo(() => new Map((bundle?.persons ?? []).map(p => [p.id, { name: p.name, email: p.email }])), [bundle])
   const statusBySubject = useMemo(() => { const m = new Map<string, OrgPersonStatus>(); for (const s of statuses) m.set(s.profile_id ?? `p:${s.person_id}`, s); return m }, [statuses])
   const statusOf   = useCallback((c: OrgCard) => statusBySubject.get(c.profile_id ?? `p:${c.person_id}`) ?? null, [statusBySubject])
-  const person     = useCallback((c: OrgCard) => orgPersonView(c, users, personsMap, departedMap), [users, personsMap, departedMap])
+  const person     = useCallback((c: OrgCard) => orgPersonView(c, users, personsMap, departedMap, displayNames), [users, personsMap, departedMap, displayNames])
   const badge      = useCallback((c: OrgCard) => orgStatusBadge(statusOf(c), statusTypeMap), [statusOf, statusTypeMap])
   const categoryOf = useCallback((c: OrgCard): OrgStatusCategory | null => { const s = statusOf(c); return s ? (statusTypeMap.get(s.status_code)?.category ?? null) : null }, [statusOf, statusTypeMap])
 
@@ -89,9 +92,9 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
     let dead = false
     ;(async () => {
       try {
-        const [c, s, d, t] = await Promise.all([loadOrgCodes(), loadActiveOrgStatuses(), loadDepartedUsers(), loadOffboardingTemplates().catch(() => [])])
+        const [c, s, d, t, dn] = await Promise.all([loadOrgCodes(), loadActiveOrgStatuses(), loadDepartedUsers(), loadOffboardingTemplates().catch(() => []), loadOrgDisplayNames().catch(() => new Map<string, OrgDisplayName>())])
         if (dead) return
-        setCodes(c); setStatuses(s); setDeparted(d); setTemplates(t)
+        setCodes(c); setStatuses(s); setDeparted(d); setTemplates(t); setDisplayNames(dn)
         await reloadFiles()
       } catch (e) { fail(e, '조직도 데이터를 불러오지 못했습니다.') }
       finally { if (!dead) setLoading(false) }
@@ -199,12 +202,14 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
       const b = (bundle && bundle.file.id === f.id) ? bundle : await loadOrgFileBundle(f.id)
       if (!b) { showToast('조직도 파일을 찾을 수 없습니다.'); return }
       const pm = new Map(b.persons.map(p => [p.id, { name: p.name, email: p.email }]))
-      const rows = orgExportRows(b.units, b.cards, ranks, jobs, statusTypeMap, c => orgPersonView(c, users, pm, departedMap), statusOf)
+      const rows = orgExportRows(b.units, b.cards, ranks, jobs, statusTypeMap, c => orgPersonView(c, users, pm, departedMap, displayNames), statusOf)
       if (!rows.length) { showToast('내보낼 카드가 없습니다.'); return }
       exportCSV(rows, `조직도_${f.name.replace(/[\\/:*?"<>|]/g, '_')}`)
       showToast(`CSV 내보내기 — ${rows.length}행`)
     } catch (e) { fail(e, 'CSV 내보내기에 실패했습니다.') }
   }
+  // ── [Phase 5] 조직도 표기 이름 저장 → 재조회 (사람 단위라 모든 파일에 즉시 반영)
+  const onDisplayName = async (profileId: string, name: string) => { await setOrgDisplayName(profileId, name, currentUserId); setDisplayNames(await loadOrgDisplayNames()) }
   // ── [Phase 4-B] 코드 변경 후 재로드(직급·직무·상태코드·반납 템플릿) ──
   const reloadCodes = async () => { try { const [c, t] = await Promise.all([loadOrgCodes(), loadOffboardingTemplates()]); setCodes(c); setTemplates(t) } catch (e) { fail(e) } }
 
@@ -302,7 +307,7 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
       {selected && bundle && (
         <OrgCardDrawer card={selected} person={person(selected)} units={bundle.units} cards={bundle.cards} users={users} ranks={codes.ranks} jobs={codes.jobs} statusTypes={codes.statusTypes}
                        templates={templates} status={statusOf(selected)} editable={editable} currentUserId={currentUserId} personName={c => person(c).name}
-                       onPatch={onCardPatch} onSetJobs={onCardJobs} onDelete={onCardDelete} onStatusChanged={onStatusChanged} onClose={() => setSelectedCard(null)} showToast={showToast} />
+                       onPatch={onCardPatch} onSetJobs={onCardJobs} onDelete={onCardDelete} onStatusChanged={onStatusChanged} onDisplayName={onDisplayName} onClose={() => setSelectedCard(null)} showToast={showToast} />
       )}
       {history && (
         <OrgHistoryDrawer file={history.file} files={files} units={bundle?.units ?? activeBundle?.units ?? []} users={users} ranks={codes.ranks} jobs={codes.jobs} statusTypes={codes.statusTypes}
