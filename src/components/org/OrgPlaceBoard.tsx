@@ -134,7 +134,7 @@ export function OrgPlaceBoard(p: Props) {
 
   return (
     <div style={stepShell}>
-      <OrgStepHeader file={p.file} editable={editable} isSuper={p.isSuper} lockHolder={p.lockHolder} savedAt={p.savedAt} undo={p.undo} roster={p.roster} stepper={p.stepper}
+      <OrgStepHeader file={p.file} editable={editable} isSuper={p.isSuper} lockHolder={p.lockHolder} savedAt={p.savedAt} undo={p.undo} roster={p.roster} stepper={p.stepper} extra={p.extra}
                      onBack={p.onBack} onEditMeta={p.onEditMeta} onRoster={p.onRoster} onHistory={p.onHistory} onExport={p.onExport} onCopy={p.onCopy} onActivate={p.onActivate} onUndo={p.onUndo} />
       <div style={{ display: 'flex', flex: 1, minHeight: 0, gap: 12, padding: 12 }}>
         {/* 좌: 인원 풀 */}
@@ -244,7 +244,7 @@ export function OrgPlaceBoard(p: Props) {
               </div>
             </>
           )}
-          <div style={{ padding: '10px 12px', borderTop: `1px solid ${OG.lineSoft}`, fontSize: 11, color: OG.faint, lineHeight: 1.5, marginTop: 8 }}>표 보기(이름·직무·소속 일괄 편집)는 8-D 에서. 겸직 카드 추가·단위장 지정·숨김은 카드 상세(드로어).</div>
+          <div style={{ padding: '10px 12px', borderTop: `1px solid ${OG.lineSoft}`, fontSize: 11, color: OG.faint, lineHeight: 1.5, marginTop: 8 }}>이름·직무·직급·소속 일괄 편집은 상단 '표' 보기. 겸직 카드 추가·단위장 지정·숨김은 카드 상세(드로어).</div>
         </div>
       </div>
       {picker && <OrgUnitPicker units={units} title={`선택 ${selected.length}명 배치 — 어느 단위로?`} countOf={countOf} onPick={id => { setPicker(false); void placeTo(selected, id) }} onClose={() => setPicker(false)} />}

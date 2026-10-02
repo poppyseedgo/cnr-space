@@ -16,6 +16,8 @@ export interface StepHeaderProps {
   undo:       OrgUndoPeek | null
   roster:     OrgRosterCheck | null
   stepper:    ReactNode
+  /** [8-D] 스텝퍼 오른쪽 추가 컨트롤(③ 보드·표 전환 등) */
+  extra?:     ReactNode
   onBack: () => void; onEditMeta: () => void; onRoster: () => void; onHistory: () => void; onExport: () => void; onCopy: () => void; onActivate: () => void; onUndo: () => void
 }
 
@@ -28,6 +30,7 @@ export function OrgStepHeader(p: StepHeaderProps) {
       <h3 style={{ fontSize: 15, margin: 0, cursor: 'pointer', whiteSpace: 'nowrap' }} onClick={p.onEditMeta} title="이름·적용일·메모 편집">{file.name}</h3>
       <Tag kind={file.status}>{fileStatusLabel(file.status)}</Tag>
       {p.stepper}
+      {p.extra}
       {p.lockHolder && <span style={{ fontSize: 11.5, color: OG.amber, whiteSpace: 'nowrap' }}>● {p.lockHolder} 편집 중</span>}
       <span style={{ flex: 1 }} />
       {editable && <span style={{ fontSize: 11.5, color: OG.quiet, whiteSpace: 'nowrap' }}>{p.savedAt ? `자동 저장됨 ${fmtWhen(p.savedAt)}` : ''}</span>}

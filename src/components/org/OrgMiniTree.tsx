@@ -2,6 +2,7 @@
  * OrgMiniTree.tsx — 단위 트리 전체 미니 미리보기 (SVG, 단위만 · 실시간) — 설계서 §15.5 W1 우측
  *  - [2026-10-02 ORG 8-A] 신규. 노드 캔버스 autoLayout 과 같은 규칙(부모는 자식 중앙 위, 형제 sort_order 순) 을 작은 박스로.
  *    선택 단위 + 하위 강조, 클릭 = 아웃라이너 선택. 폭에 맞춰 축소(최소 0.3배, 그 아래는 가로 스크롤)
+ *  - [2026-10-02 ORG 8-D] meta(unitId) → 박스 안 인원 수·증감(기준 조직도 대비) 표시 + 변경 단위 강조 (W6 '변경 강조')
  */
 import { useMemo } from 'react'
 import type { OrgUnit } from '../../types'
@@ -12,7 +13,8 @@ const BW = 76, BH = 18, GX = 6, GY = 22
 
 interface Box { id: string; name: string; x: number; y: number; depth: number; parent: string | null; loose: boolean }
 
-export function OrgMiniTree({ units, selected, width, height, onSelect }: { units: OrgUnit[]; selected: string | null; width: number; height: number; onSelect: (id: string) => void }) {
+export interface OrgMiniMeta { count: number; delta: number }
+export function OrgMiniTree({ units, selected, width, height, onSelect, meta }: { units: OrgUnit[]; selected: string | null; width: number; height: number; onSelect: (id: string) => void; meta?: (unitId: string) => OrgMiniMeta | null }) {
   const { boxes, w, h } = useMemo(() => {
     const roots = buildUnitTree(units)
     const bench = roots.find(r => r.unit.kind === 'bench')
@@ -53,10 +55,13 @@ export function OrgMiniTree({ units, selected, width, height, onSelect }: { unit
           </g>
           {boxes.map(b => {
             const on = hl.has(b.id), sel = b.id === selected
+            const m = meta?.(b.id) ?? null, changed = !!m && m.delta !== 0
+            const maxLen = m ? 8 : 12
             return (
               <g key={b.id} onClick={() => onSelect(b.id)} style={{ cursor: 'pointer' }}>
-                <rect x={b.x} y={b.y} width={BW} height={BH} rx={3} fill={on ? '#EFF6FF' : '#fff'} stroke={on ? OG.drop : b.loose ? OG.faint : '#C7CDD8'} strokeWidth={sel ? 2 / scale : 1 / scale} strokeDasharray={b.loose ? '3 2' : undefined} />
-                <text x={b.x + BW / 2} y={b.y + BH / 2 + 3} textAnchor="middle" fontSize={9} fill={on ? '#1D4ED8' : OG.ink}>{b.name.length > 12 ? b.name.slice(0, 11) + '…' : b.name}</text>
+                <rect x={b.x} y={b.y} width={BW} height={BH} rx={3} fill={on ? '#EFF6FF' : changed ? '#FFFBEB' : '#fff'} stroke={on ? OG.drop : changed ? OG.amber : b.loose ? OG.faint : '#C7CDD8'} strokeWidth={sel ? 2 / scale : 1 / scale} strokeDasharray={b.loose ? '3 2' : undefined} />
+                <text x={b.x + (m ? 3 : BW / 2)} y={b.y + BH / 2 + 3} textAnchor={m ? 'start' : 'middle'} fontSize={9} fill={on ? '#1D4ED8' : OG.ink}>{b.name.length > maxLen ? b.name.slice(0, maxLen - 1) + '…' : b.name}</text>
+                {m && <text x={b.x + BW - 3} y={b.y + BH / 2 + 3} textAnchor="end" fontSize={8} fill={m.delta > 0 ? OG.green : m.delta < 0 ? OG.red : OG.quiet}>{m.count}{m.delta > 0 ? `↑${m.delta}` : m.delta < 0 ? `↓${-m.delta}` : ''}</text>}
               </g>
             )
           })}
