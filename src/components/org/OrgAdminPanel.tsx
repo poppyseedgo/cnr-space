@@ -255,6 +255,8 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
     await onDropUnit(u.id, sib[i - 1].id)
   }
   const onMoveUnitTo = (u: OrgUnit) => setModal({ kind: 'unit-move', unit: u })
+  // [7-F] 노드 캔버스(정렬 고정)에서 형제 사이에 끌어 놓음 → 같은 부모 형제 전체 순서 저장
+  const onReorderSiblings = async (ids: string[]) => { try { await reorderOrgUnits(ids); await reloadBundle() } catch (e) { fail(e) } }
   const onDropProfile = async (profileId: string, unitId: string) => {
     if (!bundle) return
     try { const c = await insertOrgCard({ file_id: bundle.file.id, unit_id: unitId, profile_id: profileId }); await mergeCard(c.id); refreshRoster() } catch (e) { fail(e) }
@@ -441,7 +443,7 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
                    onAddVacancy={unitId => setModal({ kind: 'vacancy', unitId })} onOutdentUnit={onOutdentUnit} onIndentUnit={onIndentUnit} onMoveUnitTo={onMoveUnitTo}
                    onDropCard={onDropCard} onDropUnit={onDropUnit} onDropProfile={onDropProfile}
                    onDropCards={onDropCards} onToBench={onToBench} onMoveCardsTo={ids => setModal({ kind: 'cards-move', cardIds: ids })} onSplitCards={ids => setModal({ kind: 'split', cardIds: ids })}
-                   onDetachUnit={onDetachUnit} onMergeUnit={u => setModal({ kind: 'unit-merge', unit: u })} onUndo={onUndo} undo={undo}
+                   onDetachUnit={onDetachUnit} onMergeUnit={u => setModal({ kind: 'unit-merge', unit: u })} onUndo={onUndo} undo={undo} onReorderSiblings={onReorderSiblings}
                    layout={layout} onSaveLayout={onSaveLayout} />
       ) : fileId ? (
         <div style={{ padding: 40, color: OG.quiet, fontFamily: OG.font }}>불러오는 중…</div>

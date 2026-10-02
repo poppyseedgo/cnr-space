@@ -1,5 +1,9 @@
 /**
  * OrgFlowCanvas.tsx — 노드 캔버스 (설계서 §14 · Phase 7). Supabase Schema Visualizer 식 자유 배치
+ *  - [2026-10-02 ORG Phase 7-F] 배치 = 조직 트리와 같은 자체 트리 배치(부모 중앙 · 형제 sort_order · 자식 열은 부모 바로 아래, dagre 제거)
+ *    · 정렬 고정(기본): 구조·높이가 바뀌면 자동 재배치. 노드 드래그 = 형제 사이에 끼우면 순서 변경(reorder), 다른 노드 위에 놓으면 상위 변경. 배치 저장 안 함
+ *    · 자유 배치: 기존 동작(org_unit_layout 저장). 모드 전환 시 자유 배치 좌표는 보존
+ *    · 카드 밀도: 전체 / 단위장 + 요약(기본, '구성원 n명' 클릭 = 그 노드만 펼침) / 이름만(한 줄 행)
  *  - [2026-10-01 ORG Phase 7-E] 작업대 개념 제거 — 끊긴 단위 = '연결 안 됨' 점선 노드(DB 는 parent=보류 루트 그대로), 메뉴 '떼어내기 → 작업대' → '선 끊기'
  *  - [2026-10-01 ORG Phase 7-D] 선 끌어 연결 = 상위 변경(부모 아래 포트 → 자식 위 포트, 순환·자기자신 거부) · 선 끝을 끌어 다른 부모로(reconnect) · 허공에 놓거나 선택 후 Delete / ✕ = 끊기 → 작업대
  *    · Shift+드래그 영역 선택 → 상단 묶음 액션(떼어내기 n · 합치기… · 해제) · 우클릭 메뉴(노드: 이름·하위·합치기·떼어내기/붙이기·카드 전체 선택·삭제, 선: 끊기)
@@ -14,7 +18,6 @@
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from 'react'
 import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, MiniMap, Panel, Handle, Position, BaseEdge, EdgeLabelRenderer, getSmoothStepPath, useNodesState, useEdgesState, useReactFlow, useNodesInitialized, useStore, type Node, type Edge, type NodeProps, type EdgeProps, type NodeMouseHandler, type EdgeMouseHandler, type Connection, type OnSelectionChangeFunc, type IsValidConnection } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import dagre from '@dagrejs/dagre'
 import type { OrgCard, OrgJob, OrgUnit } from '../../types'
 import { buildUnitTree, cardLevel, descendantIds, primaryJob, sortCards, subtreeHeadcount, type OrgUnitNode } from '../../utils/orgStatus'
 import { OrgCardView } from './OrgCardView'
@@ -32,7 +35,11 @@ export interface FlowActions {
   onMoveUnitTo?: (u: OrgUnit) => void
   onDeleteUnit?: (u: OrgUnit) => void
   onSelectUnitCards?: (unitId: string) => void
+  /** [7-F] 정렬 고정 모드에서 노드를 형제 사이에 끌어 놓음 = 순서 변경 (같은 부모의 형제 id 전체, 새 순서) */
+  onReorderSiblings?: (ids: string[]) => void
 }
+export type FlowLayoutMode = 'locked' | 'free'
+export type FlowCardMode = 'all' | 'summary' | 'names'
 
 interface FlowShared {
   ctx:          TreeCardCtx
@@ -49,10 +56,14 @@ interface FlowShared {
   onUnitClick?: (u: OrgUnit) => void
   drop:         TreeDropHandlers
   highlightUnit?: string | null
+  /** [7-F] 카드 밀도 + 요약 모드에서 개별 펼친 노드 */
+  cardMode:     FlowCardMode
+  openNodes:    Set<string>
+  onToggleOpen: (unitId: string) => void
 }
 const Shared = createContext<FlowShared | null>(null)
 
-interface Props extends Omit<FlowShared, 'totals' | 'inBench' | 'cardsByUnit'> {
+interface Props extends Omit<FlowShared, 'totals' | 'inBench' | 'cardsByUnit' | 'cardMode' | 'openNodes' | 'onToggleOpen'> {
   cardsByUnit:  Map<string, OrgCard[]>
   layout:       Map<string, { x: number; y: number }>
   onSaveLayout: (items: OrgLayoutItem[]) => void
@@ -60,6 +71,7 @@ interface Props extends Omit<FlowShared, 'totals' | 'inBench' | 'cardsByUnit'> {
   focusTick?:   number
   actions?:     FlowActions
 }
+const GAP_X = 20, ROOT_GAP = 40, STEM2 = 56, LOOSE_GAP = 120   // OrgTree 와 같은 간격(형제 10+10, 루트 40, 부모→자식 STEM 28×2)
 
 const NODE_W = OG.cardW
 const MAX_VISIBLE = 30
@@ -78,7 +90,6 @@ function Inner(p: Props) {
     const walk = (n: OrgUnitNode) => { m.set(n.unit.id, subtreeHeadcount(n, cardsByUnit, p.ctx.hidden)); n.children.forEach(walk) }
     buildUnitTree(units).forEach(walk); return m
   }, [units, cardsByUnit, p.ctx.hidden])
-  const shared: FlowShared = { ...p, totals, inBench, cardsByUnit }
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
@@ -108,45 +119,86 @@ function Inner(p: Props) {
     })))
   }, [units, inBench, editable, setNodes, setEdges])
 
-  // 자동 정렬 — dagre(TB), 실측 크기. 작업대 단위는 오른쪽 열에 세로 나열
+  // [7-F] 자동 정렬 = 조직 트리와 같은 배치. 부모를 자식 열 가운데 위에, 형제는 sort_order, 자식 열은 부모 바로 아래(실측 높이 + STEM×2). 연결 안 된 단위는 오른쪽 열
   const autoLayout = useCallback((only?: Set<string>): Node[] => {
-    const cur = rf.getNodes()
-    const size = (n: Node) => ({ w: n.measured?.width ?? NODE_W, h: n.measured?.height ?? 120 })
-    const g = new dagre.graphlib.Graph(); g.setGraph({ rankdir: 'TB', nodesep: 28, ranksep: 56, marginx: 20, marginy: 20 }); g.setDefaultEdgeLabel(() => ({}))
-    const org = cur.filter(n => !inBench.has(n.id))
-    for (const n of org) { const s = size(n); g.setNode(n.id, { width: s.w, height: s.h }) }
-    for (const u of units) if (u.parent_unit_id && !inBench.has(u.id) && g.hasNode(u.id) && g.hasNode(u.parent_unit_id)) g.setEdge(u.parent_unit_id, u.id)
-    dagre.layout(g)
-    let maxX = 0
-    const out = cur.map(n => {
-      if (!g.hasNode(n.id)) return n
-      const d = g.node(n.id); const s = size(n)
-      const x = d.x - s.w / 2, y = d.y - s.h / 2; maxX = Math.max(maxX, x + s.w)
-      return (!only || only.has(n.id)) ? { ...n, position: { x, y } } : n
-    })
-    let by = 20
-    for (const n of out) {
-      if (!inBench.has(n.id)) continue
-      if (!only || only.has(n.id)) { n.position = { x: maxX + 120, y: by } }
-      by += size(n).h + 24
+    const cur = rf.getNodes(); const byId = new Map(cur.map(n => [n.id, n]))
+    const size = (id: string) => { const n = byId.get(id); return { w: n?.measured?.width ?? NODE_W, h: n?.measured?.height ?? 120 } }
+    const sortU = (a: OrgUnit, b: OrgUnit) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name, 'ko')
+    const kids = (id: string) => units.filter(u => u.parent_unit_id === id && byId.has(u.id)).sort(sortU)
+    const widthOf = new Map<string, number>()
+    const calcW = (id: string): number => { const ks = kids(id); const w = ks.length ? Math.max(NODE_W, ks.reduce((a, k) => a + calcW(k.id), 0) + GAP_X * (ks.length - 1)) : NODE_W; widthOf.set(id, w); return w }
+    const pos = new Map<string, { x: number; y: number }>()
+    const place = (id: string, x0: number, y: number) => {
+      const w = widthOf.get(id)!; pos.set(id, { x: x0 + (w - NODE_W) / 2, y })
+      let cx = x0; const cy = y + size(id).h + STEM2
+      for (const k of kids(id)) { place(k.id, cx, cy); cx += widthOf.get(k.id)! + GAP_X }
     }
-    return out
+    const roots = units.filter(u => u.kind !== 'bench' && !u.parent_unit_id && byId.has(u.id)).sort(sortU)
+    let x = 0
+    for (const r of roots) { calcW(r.id); place(r.id, x, 0); x += widthOf.get(r.id)! + ROOT_GAP }
+    const maxX = Math.max(0, x - ROOT_GAP)
+    // 연결 안 된 단위(보류 루트 하위) — 각각 작은 트리로 오른쪽 열에 세로 나열
+    const loose = units.filter(u => inBench.has(u.id) && u.parent_unit_id && units.find(b => b.id === u.parent_unit_id)?.kind === 'bench' && byId.has(u.id)).sort(sortU)
+    let ly = 0
+    for (const l of loose) { calcW(l.id); place(l.id, maxX + LOOSE_GAP, ly); let bottom = 0; const walk = (id: string) => { const q = pos.get(id)!; bottom = Math.max(bottom, q.y + size(id).h); kids(id).forEach(k => walk(k.id)) }; walk(l.id); ly = bottom + 24 }
+    return cur.map(n => { const q = pos.get(n.id); return q && (!only || only.has(n.id)) ? { ...n, position: q } : n })
   }, [rf, units, inBench])
 
   const ready = useNodesInitialized()
-  const saveAll = useCallback((ns: Node[]) => { if (editable) onSaveLayout(ns.map(n => ({ unit_id: n.id, x: n.position.x, y: n.position.y }))) }, [editable, onSaveLayout])
+  const [mode, setMode] = useState<FlowLayoutMode>('locked')
+  const locked = mode === 'locked'
+  const modeRef = useRef(mode); modeRef.current = mode
+  const [cardMode, setCardMode] = useState<FlowCardMode>('summary')
+  const [openNodes, setOpenNodes] = useState<Set<string>>(new Set())
+  const onToggleOpen = useCallback((id: string) => setOpenNodes(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n }), [])
+  const saveAll = useCallback((ns: Node[]) => { if (editable && modeRef.current === 'free') onSaveLayout(ns.map(n => ({ unit_id: n.id, x: n.position.x, y: n.position.y }))) }, [editable, onSaveLayout])
+  const fitted = useRef(false)
+  const relayout = useCallback((fit = false) => {
+    const ns = autoLayout(); setNodes(ns)
+    if (fit || !fitted.current) { fitted.current = true; window.setTimeout(() => rf.fitView({ padding: 0.1, maxZoom: 1, duration: fit ? 300 : 0 }), 50) }
+  }, [autoLayout, setNodes, rf])
+  // 정렬 고정: 노드가 측정될 때마다(구조·카드 밀도·펼침 변화) 재배치. 자유 배치: 배치 없는 노드만 트리 자리로
   useEffect(() => {
-    if (!ready || needLayout.current.size === 0) return
+    if (!ready) return
+    if (locked) { relayout(); needLayout.current.clear(); return }
+    if (needLayout.current.size === 0) return
     const pending = new Set(needLayout.current); needLayout.current.clear()
     const all = layoutRef.current.size === 0 || pending.size === rf.getNodes().length
-    const ns = autoLayout(all ? undefined : pending)
-    setNodes(ns)
-    saveAll(all ? ns : ns.filter(n => pending.has(n.id)))
-    window.setTimeout(() => rf.fitView({ padding: 0.1, maxZoom: 1 }), 50)
-  }, [ready, units, autoLayout, saveAll, setNodes, rf])
+    const ns = autoLayout(all ? undefined : pending); setNodes(ns); saveAll(all ? ns : ns.filter(n => pending.has(n.id)))
+    if (!fitted.current) { fitted.current = true; window.setTimeout(() => rf.fitView({ padding: 0.1, maxZoom: 1 }), 50) }
+  }, [ready, units, locked, cardMode, autoLayout, saveAll, setNodes, rf, relayout])
+  const onNodesChangeX: typeof onNodesChange = useCallback(changes => {
+    onNodesChange(changes)
+    if (modeRef.current === 'locked' && changes.some(c => c.type === 'dimensions' && (c as { dimensions?: unknown }).dimensions)) requestAnimationFrame(() => relayout())
+  }, [onNodesChange, relayout])
+  const switchMode = (m: FlowLayoutMode) => {
+    setMode(m)
+    if (m === 'free') { const saved = layoutRef.current; if (saved.size) setNodes(ns => ns.map(n => saved.has(n.id) ? { ...n, position: saved.get(n.id)! } : n)); else { const ns = rf.getNodes(); onSaveLayout(ns.map(n => ({ unit_id: n.id, x: n.position.x, y: n.position.y }))) } }
+    else window.setTimeout(() => relayout(true), 0)
+  }
 
-  const onDragStop = useCallback((_: unknown, __: Node, dragged: Node[]) => saveAll(dragged), [saveAll])
-  const doAuto = () => { const ns = autoLayout(); setNodes(ns); saveAll(ns); window.setTimeout(() => rf.fitView({ padding: 0.1, maxZoom: 1, duration: 300 }), 50) }
+  // 드래그 종료: 자유 배치 = 저장 / 정렬 고정 = 다른 노드 위면 상위 변경, 아니면 형제 사이 순서 변경 → 재배치로 복귀
+  const onDragStop = useCallback((_: unknown, node: Node, dragged: Node[]) => {
+    if (modeRef.current === 'free') { saveAll(dragged); return }
+    const u = unitOf(node.id); if (!u || !act) { relayout(); return }
+    const w = node.measured?.width ?? NODE_W, h = node.measured?.height ?? 120
+    const cx = node.position.x + w / 2, cy = node.position.y + Math.min(h, 60) / 2
+    const desc = descendantIds(u.id, units)
+    const target = rf.getNodes().find(n => n.id !== u.id && !desc.has(n.id) && !inBench.has(n.id) && (() => { const nw = n.measured?.width ?? NODE_W, nh = n.measured?.height ?? 120; return cx >= n.position.x && cx <= n.position.x + nw && cy >= n.position.y && cy <= n.position.y + nh })())
+    relayout()   // 드롭 위치에서 즉시 트리 자리로 복귀 (구조가 바뀌면 데이터 갱신 후 한 번 더 재배치, 실패해도 어긋난 채 남지 않음)
+    if (target) { if (target.id !== u.parent_unit_id) act.onReparent(u.id, target.id); return }
+    // 형제 슬롯: 같은 부모의 다른 형제 중심 x 와 비교
+    const sib = units.filter(x => x.parent_unit_id === u.parent_unit_id && x.id !== u.id && x.kind !== 'bench').sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name, 'ko'))
+    const centers = sib.map(x => { const n = rf.getNode(x.id); return n ? n.position.x + (n.measured?.width ?? NODE_W) / 2 : Infinity })
+    let idx = centers.findIndex(c => cx < c); if (idx < 0) idx = sib.length
+    const ids = sib.map(x => x.id); ids.splice(idx, 0, u.id)
+    const curOrder = [...sib.map(x => x.id)]; const curIdx = units.filter(x => x.parent_unit_id === u.parent_unit_id && x.kind !== 'bench').sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name, 'ko')).findIndex(x => x.id === u.id)
+    curOrder.splice(curIdx, 0, u.id)
+    if (act.onReorderSiblings && ids.join() !== curOrder.join()) act.onReorderSiblings(ids)
+  }, [saveAll, unitOf, act, units, inBench, rf, relayout])
+  const doAuto = () => { if (locked) { relayout(true); return } const ns = autoLayout(); setNodes(ns); saveAll(ns); window.setTimeout(() => rf.fitView({ padding: 0.1, maxZoom: 1, duration: 300 }), 50) }
+
+  const shared: FlowShared = { ...p, totals, inBench, cardsByUnit, cardMode, openNodes, onToggleOpen }
 
   // 패널 클릭·검색 → 해당 노드 가운데로 (줌 유지)
   useEffect(() => {
@@ -201,7 +253,7 @@ function Inner(p: Props) {
 
   return (
     <Shared.Provider value={shared}>
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onNodeDragStop={onDragStop} onNodeDoubleClick={onNodeDoubleClick}
+      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChangeX} onEdgesChange={onEdgesChange} onNodeDragStop={onDragStop} onNodeDoubleClick={onNodeDoubleClick}
                  nodesDraggable={editable} nodesConnectable={editable} elementsSelectable selectionKeyCode="Shift" multiSelectionKeyCode={['Meta', 'Control']}
                  onConnect={onConnect} isValidConnection={isValid} onReconnect={onReconnect} onReconnectStart={onReconnectStart} onReconnectEnd={onReconnectEnd} edgesReconnectable={editable}
                  onEdgesDelete={onEdgesDelete} deleteKeyCode={editable ? ['Delete', 'Backspace'] : null} onSelectionChange={onSelectionChange}
@@ -217,7 +269,13 @@ function Inner(p: Props) {
               <div key={i} onClick={fn as () => void} title={i === 1 ? '클릭 = 100% · 휠/핀치 = 줌 · 배경 드래그 = 이동 · Shift+드래그 = 영역 선택' : undefined} style={{ padding: '5px 10px', borderLeft: i ? `1px solid ${OG.line}` : 'none', cursor: 'pointer', minWidth: 36, textAlign: 'center' }}>{l as string}</div>)}
           </div>
         </Panel>
-        {editable && <Panel position="top-left"><button style={btn} onClick={doAuto} title="dagre 트리 정렬로 전체 재배치 (저장됨)">⟳ 자동 정렬</button></Panel>}
+        <Panel position="top-left">
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {editable && <button style={btn} onClick={doAuto} title={locked ? '트리 배치로 다시 정렬 + 화면 맞춤' : '트리 배치로 전체 재배치 (자유 배치 좌표 저장)'}>⟳ 자동 정렬</button>}
+            {editable && <Seg value={mode} options={[['locked', '정렬 고정', '조직 트리와 같은 배치를 유지. 노드를 형제 사이에 끌어 놓으면 순서 변경, 다른 노드 위에 놓으면 상위 변경'], ['free', '자유 배치', '노드를 아무 데나 두고 저장(org_unit_layout)']]} onChange={v => switchMode(v as FlowLayoutMode)} />}
+            <Seg value={cardMode} options={[['all', '카드: 전체', '구성원 카드 전부'], ['summary', '단위장 + 요약', "단위장 카드 + '구성원 n명' (클릭 = 그 노드만 펼침)"], ['names', '이름만', '한 줄 행(이름 · 직무)']]} onChange={v => { setCardMode(v as FlowCardMode); setOpenNodes(new Set()) }} />
+          </div>
+        </Panel>
         {editable && selNodes.length > 0 && (
           <Panel position="top-center">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: OG.ink, color: '#fff', borderRadius: 8, fontSize: 12.5, boxShadow: '0 6px 20px rgba(0,0,0,.25)' }}>
@@ -250,7 +308,6 @@ const UnitNode = memo(function UnitNode({ id, selected }: NodeProps) {
   const isOpen = s.expanded.has(id)
   const total = s.totals.get(id) ?? 0
   const benchy = s.inBench.has(id)
-  const visible = cards.length > MAX_VISIBLE ? cards.slice(0, MAX_VISIBLE) : cards
   const depth = useMemo(() => { let d = 0, cur: OrgUnit | undefined = u; while (cur?.parent_unit_id) { d++; cur = s.units.find(x => x.id === cur!.parent_unit_id) } return d }, [u, s.units])
 
   const types = (e: DragEvent) => e.dataTransfer.types
@@ -286,34 +343,57 @@ const UnitNode = memo(function UnitNode({ id, selected }: NodeProps) {
         {benchy && <span style={{ fontSize: 10, color: OG.drop, border: `1px dashed ${OG.drop}`, borderRadius: 4, padding: '0 4px', flexShrink: 0 }} title="상위와 선이 끊긴 단위 — 부모 아래 포트에서 선을 끌어 붙이면 다시 연결">연결 안 됨</span>}
         <small style={{ color: OG.quiet, fontWeight: 400, marginLeft: 'auto', flexShrink: 0 }}>{total}</small>
       </div>
-      {isOpen && cards.length > 0 && (
-        <div className="nodrag" style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 6, cursor: 'default' }}>
-          {visible.map((c, i) => {
-            const r = c.rank_id ? s.ctx.ranks.get(c.rank_id) ?? null : null
-            const prevC = i > 0 ? visible[i - 1] : null
-            const tier = tierLabel(cardLevel(c, s.ctx.ranks, s.ctx.jobs), r)
-            const prevTier = prevC ? tierLabel(cardLevel(prevC, s.ctx.ranks, s.ctx.jobs), prevC.rank_id ? s.ctx.ranks.get(prevC.rank_id) ?? null : null) : null
-            const sep = !!prevC && !c.is_unit_head && !prevC.is_unit_head && prevTier !== tier
-            const pj = primaryJob(c, s.ctx.jobs)
-            const jobs = [pj, ...c.jobs.filter(j => !j.is_primary).map(j => s.ctx.jobs.get(j.job_id))].filter((x): x is OrgJob => !!x)
-            return (
-              <div key={c.id}>
-                {(sep || (!!prevC && prevC.is_unit_head && !c.is_unit_head)) && <div style={{ fontSize: 10, color: OG.quiet, padding: '4px 0 6px 2px', borderTop: `1px dashed ${OG.line}`, marginTop: 2 }}>{tier}</div>}
-                <OrgCardView card={c} person={s.ctx.person(c)} rank={r} jobs={jobs} badge={s.ctx.badge(c)} mismatch={s.ctx.mismatch(c)} dim={s.ctx.dim(c)}
-                             concurrent={s.ctx.concurrent(c)} departedSince={s.ctx.departedSince(c)} hidden={s.ctx.hidden(c)}
-                             selected={s.selectedCard === c.id} checked={s.selectedIds?.has(c.id)} draggable={s.editable} onClick={s.onCardClick} onDragStart={onCardDragStart} />
-              </div>
-            )
-          })}
-          {cards.length > MAX_VISIBLE && <div style={{ fontSize: 11, color: OG.quiet, textAlign: 'center', padding: 4, border: `1px dashed ${OG.line}`, borderRadius: 6 }}>외 {cards.length - MAX_VISIBLE}명 — 단위별 리스트에서 전체 보기</div>}
-        </div>
-      )}
+      {isOpen && cards.length > 0 && (() => {
+        const head = cards.find(c => c.is_unit_head) ?? null
+        const members = cards.filter(c => c !== head)
+        const full = s.cardMode === 'all' || (s.cardMode === 'summary' && s.openNodes.has(id))
+        const cardEl = (c: OrgCard) => {
+          const r = c.rank_id ? s.ctx.ranks.get(c.rank_id) ?? null : null
+          const pj = primaryJob(c, s.ctx.jobs)
+          const jobs = [pj, ...c.jobs.filter(j => !j.is_primary).map(j => s.ctx.jobs.get(j.job_id))].filter((x): x is OrgJob => !!x)
+          return <OrgCardView card={c} person={s.ctx.person(c)} rank={r} jobs={jobs} badge={s.ctx.badge(c)} mismatch={s.ctx.mismatch(c)} dim={s.ctx.dim(c)}
+                              concurrent={s.ctx.concurrent(c)} departedSince={s.ctx.departedSince(c)} hidden={s.ctx.hidden(c)}
+                              selected={s.selectedCard === c.id} checked={s.selectedIds?.has(c.id)} draggable={s.editable} onClick={s.onCardClick} onDragStart={onCardDragStart} />
+        }
+        const rowEl = (c: OrgCard) => {   // [7-F] 이름만: 한 줄 행 (드래그·선택·클릭 동일)
+          const pj = primaryJob(c, s.ctx.jobs); const pv = s.ctx.person(c); const checked = s.selectedIds?.has(c.id)
+          return <div key={c.id} data-card-id={c.id} draggable={s.editable} onDragStart={e => onCardDragStart(e, c)} onClick={e => s.onCardClick(c, e)}
+                      style={{ display: 'flex', justifyContent: 'space-between', gap: 6, padding: '3px 8px', borderRadius: 5, fontSize: 11, cursor: 'pointer', opacity: s.ctx.dim(c) ? .35 : 1,
+                               background: checked ? '#EFF6FF' : s.selectedCard === c.id ? '#F3F4F6' : 'transparent', outline: checked ? `1px solid ${OG.drop}` : 'none', textDecoration: pv.departed ? 'line-through' : 'none' }}>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.is_vacancy ? `(공석) ${c.display_name ?? ''}` : pv.name}{c.is_primary === false ? <span style={{ color: '#3730A3', marginLeft: 4 }}>겸</span> : null}</span>
+            <small style={{ color: OG.quiet, whiteSpace: 'nowrap' }}>{pj?.code ?? ''}</small>
+          </div>
+        }
+        return (
+          <div className="nodrag" style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 6, cursor: 'default' }}>
+            {head && cardEl(head)}
+            {members.length > 0 && s.cardMode === 'summary' && (
+              <div onClick={() => s.onToggleOpen(id)} title={full ? '접기' : '이 노드만 펼치기'} style={{ fontSize: 11, color: OG.drop, cursor: 'pointer', padding: '2px 4px', userSelect: 'none' }}>{full ? '▾' : '▸'} 구성원 {members.filter(c => !c.is_vacancy && c.is_primary !== false && !s.ctx.hidden(c)).length}명{members.some(c => c.is_vacancy) ? ` · 공석 ${members.filter(c => c.is_vacancy).length}` : ''}{members.some(c => c.is_primary === false) ? ` · 겸직 ${members.filter(c => c.is_primary === false).length}` : ''}</div>
+            )}
+            {members.length > 0 && s.cardMode === 'names' && <div style={{ display: 'flex', flexDirection: 'column', gap: 1, borderTop: `1px dashed ${OG.line}`, paddingTop: 4 }}>{members.map(rowEl)}</div>}
+            {members.length > 0 && full && (s.cardMode !== 'names') && (members.length > MAX_VISIBLE ? members.slice(0, MAX_VISIBLE) : members).map((c, i, arr) => {
+              const r = c.rank_id ? s.ctx.ranks.get(c.rank_id) ?? null : null
+              const prevC = i > 0 ? arr[i - 1] : null
+              const tier = tierLabel(cardLevel(c, s.ctx.ranks, s.ctx.jobs), r)
+              const prevTier = prevC ? tierLabel(cardLevel(prevC, s.ctx.ranks, s.ctx.jobs), prevC.rank_id ? s.ctx.ranks.get(prevC.rank_id) ?? null : null) : null
+              const sep = i === 0 || prevTier !== tier
+              return <div key={c.id}>{sep && <div style={{ fontSize: 10, color: OG.quiet, padding: '4px 0 6px 2px', borderTop: `1px dashed ${OG.line}`, marginTop: 2 }}>{tier}</div>}{cardEl(c)}</div>
+            })}
+            {full && members.length > MAX_VISIBLE && s.cardMode !== 'names' && <div style={{ fontSize: 11, color: OG.quiet, textAlign: 'center', padding: 4, border: `1px dashed ${OG.line}`, borderRadius: 6 }}>외 {members.length - MAX_VISIBLE}명 — 단위별 리스트에서 전체 보기</div>}
+          </div>
+        )
+      })()}
       {!benchy && <Handle type="source" position={Position.Bottom} isConnectable={s.editable} style={{ width: 10, height: 10, background: '#fff', border: `2px solid ${OG.drop}`, opacity: s.editable ? 1 : 0 }} title="아래 포트: 여기서 선을 끌어 다른 단위의 위 포트에 놓으면 그 단위가 하위가 됨" />}
       {benchy && <Handle type="source" position={Position.Bottom} isConnectable={s.editable} style={{ width: 10, height: 10, background: '#fff', border: `2px dashed ${OG.drop}`, opacity: s.editable ? 1 : 0 }} />}
     </div>
   )
 })
 
+function Seg({ value, options, onChange }: { value: string; options: [string, string, string?][]; onChange: (v: string) => void }) {
+  return <div style={{ display: 'flex', border: `1px solid ${OG.line}`, borderRadius: 6, overflow: 'hidden', fontSize: 11.5, background: '#fff' }}>
+    {options.map(([v, label, title], i) => <div key={v} title={title} onClick={() => onChange(v)} style={{ padding: '5px 10px', cursor: 'pointer', background: value === v ? OG.ink : '#fff', color: value === v ? '#fff' : OG.quiet, borderLeft: i ? `1px solid ${OG.line}` : 'none', whiteSpace: 'nowrap' }}>{label}</div>)}
+  </div>
+}
 const barBtn: React.CSSProperties = { fontFamily: OG.font, fontSize: 12, padding: '4px 10px', border: '1px solid #374151', borderRadius: 6, background: '#374151', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }
 
 /** 직각 연결선 + 선택 시 중앙 ✕(끊기 → 작업대) */

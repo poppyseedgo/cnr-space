@@ -39,6 +39,8 @@ export interface CanvasActions extends TreeDropHandlers {
   onOutdentUnit?: (u: OrgUnit) => void
   onIndentUnit?:  (u: OrgUnit) => void
   onMoveUnitTo?:  (u: OrgUnit) => void
+  /** [7-F] 노드 캔버스 정렬 고정 모드에서 형제 순서 변경 */
+  onReorderSiblings?: (ids: string[]) => void
   /** [Phase 6] 대규모 개편 — 작업대 · 다중 이동 · 분리/합치기 · 되돌리기 */
   onToBench?:     (cardIds: string[]) => void
   onMoveCardsTo?: (cardIds: string[]) => void
@@ -125,11 +127,8 @@ export function OrgCanvas(p: Props) {
   }, [full])
   useEffect(() => { document.body.style.overflow = full ? 'hidden' : ''; return () => { document.body.style.overflow = '' } }, [full])
   const [roHint, setRoHint] = useState(false)   // 읽기 전용에서 더블클릭 시 헤더 안내 강조
-  // 초안 = 노드 캔버스, 읽기 전용 = 고정 트리. editable 은 잠금 획득 뒤(비동기) true 가 되므로 초기값이 아니라 효과로 전환한다 — 사용자가 뷰를 직접 고르기 전까지만
-  const [view, setViewState] = useState<'tree' | 'flow' | 'list'>('tree')
-  const viewTouched = useRef(false)
-  const setView = (v: 'tree' | 'flow' | 'list') => { viewTouched.current = true; setViewState(v) }
-  useEffect(() => { if (editable && !viewTouched.current) setViewState('flow') }, [editable])
+  // [7-F] 기본 뷰 = 조직 트리(초안 포함). 노드 캔버스는 토글로 진입
+  const [view, setView] = useState<'tree' | 'flow' | 'list'>('tree')
   const [focusTick, setFocusTick] = useState(0)
   const [filter, setFilter] = useState<OrgFilter>('all')
   const [q, setQ] = useState('')
@@ -328,7 +327,7 @@ export function OrgCanvas(p: Props) {
               <option value={2}>펼침 깊이: 본부</option><option value={4}>펼침 깊이: Division</option><option value={99}>펼침 깊이: 전체</option>
             </select>
             <div style={{ marginLeft: 'auto', display: 'flex', border: `1px solid ${OG.line}`, borderRadius: 6, overflow: 'hidden' }}>
-              {(['flow', 'tree', 'list'] as const).map(v => <div key={v} onClick={() => setView(v)} title={v === 'flow' ? '자유 배치 — 개편 작업용 (배치 저장)' : v === 'tree' ? '고정 트리 — 자동 레이아웃, 보기·검토용' : ''} style={{ padding: '6px 10px', fontSize: 12, cursor: 'pointer', background: view === v ? OG.ink : '#fff', color: view === v ? '#fff' : OG.quiet, borderLeft: v !== 'flow' ? `1px solid ${OG.line}` : 'none' }}>{v === 'flow' ? '노드 캔버스' : v === 'tree' ? '조직 트리' : '단위별 리스트'}</div>)}
+              {(['tree', 'flow', 'list'] as const).map(v => <div key={v} onClick={() => setView(v)} title={v === 'flow' ? '자유 배치 — 개편 작업용 (배치 저장)' : v === 'tree' ? '고정 트리 — 자동 레이아웃, 보기·검토용' : ''} style={{ padding: '6px 10px', fontSize: 12, cursor: 'pointer', background: view === v ? OG.ink : '#fff', color: view === v ? '#fff' : OG.quiet, borderLeft: v !== 'tree' ? `1px solid ${OG.line}` : 'none' }}>{v === 'flow' ? '노드 캔버스' : v === 'tree' ? '조직 트리' : '단위별 리스트'}</div>)}
             </div>
           </div>
           {/* 범례 */}
@@ -349,7 +348,7 @@ export function OrgCanvas(p: Props) {
                              onCardClick={onCardClickX} onUnitClick={u => { if (editable) p.onRenameUnit(u); else { setRoHint(true); window.setTimeout(() => setRoHint(false), 1600) } }}
                              drop={{ onDropCard: p.onDropCard, onDropUnit: p.onDropUnit, onDropProfile: p.onDropProfile, onDropCards: p.onDropCards }}
                              layout={p.layout ?? new Map()} onSaveLayout={p.onSaveLayout ?? (() => {})} focusUnit={focusUnit} focusTick={focusTick} highlightUnit={focusUnit}
-                             actions={{ onReparent: (unitId, parentId) => p.onDropUnit(unitId, parentId), onDetachUnit: p.onDetachUnit, onRenameUnit: p.onRenameUnit, onAddUnit: id => p.onAddUnit(id), onMergeUnit: p.onMergeUnit, onMoveUnitTo: p.onMoveUnitTo, onDeleteUnit: p.onDeleteUnit, onSelectUnitCards: selectUnitCards }} />
+                             actions={{ onReparent: (unitId, parentId) => p.onDropUnit(unitId, parentId), onDetachUnit: p.onDetachUnit, onRenameUnit: p.onRenameUnit, onAddUnit: id => p.onAddUnit(id), onMergeUnit: p.onMergeUnit, onMoveUnitTo: p.onMoveUnitTo, onDeleteUnit: p.onDeleteUnit, onSelectUnitCards: selectUnitCards, onReorderSiblings: p.onReorderSiblings }} />
             </div>
           )}
           <div ref={bodyRef} style={{ position: 'absolute', inset: 0, overflow: 'auto', padding: '20px 40px 80px', display: view === 'flow' ? 'none' : 'block' }}>
