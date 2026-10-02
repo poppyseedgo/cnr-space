@@ -1,5 +1,6 @@
 /**
  * OrgFlowCanvas.tsx — 노드 캔버스 (설계서 §14 · Phase 7). Supabase Schema Visualizer 식 자유 배치
+ *  - [2026-10-02 ORG Phase 7-G] 끊긴 단위는 트리 '왼쪽' 열(루트 옆)에 배치 — 루트로 끌어 붙이기 거리 최소화 · 드래그 중 드롭 대상 노드 강조 · 자동 팬 속도 ↑ · 드래그 중 보류 카드 트레이 투명(onDragState)
  *  - [2026-10-02 ORG Phase 7-F] 배치 = 조직 트리와 같은 자체 트리 배치(부모 중앙 · 형제 sort_order · 자식 열은 부모 바로 아래, dagre 제거)
  *    · 정렬 고정(기본): 구조·높이가 바뀌면 자동 재배치. 노드 드래그 = 형제 사이에 끼우면 순서 변경(reorder), 다른 노드 위에 놓으면 상위 변경. 배치 저장 안 함
  *    · 자유 배치: 기존 동작(org_unit_layout 저장). 모드 전환 시 자유 배치 좌표는 보존
@@ -56,6 +57,8 @@ interface FlowShared {
   onUnitClick?: (u: OrgUnit) => void
   drop:         TreeDropHandlers
   highlightUnit?: string | null
+  /** [7-G] 드래그 중 드롭 대상(상위 변경) 노드 */
+  dropTarget?:  string | null
   /** [7-F] 카드 밀도 + 요약 모드에서 개별 펼친 노드 */
   cardMode:     FlowCardMode
   openNodes:    Set<string>
@@ -63,13 +66,15 @@ interface FlowShared {
 }
 const Shared = createContext<FlowShared | null>(null)
 
-interface Props extends Omit<FlowShared, 'totals' | 'inBench' | 'cardsByUnit' | 'cardMode' | 'openNodes' | 'onToggleOpen'> {
+interface Props extends Omit<FlowShared, 'totals' | 'inBench' | 'cardsByUnit' | 'cardMode' | 'openNodes' | 'onToggleOpen' | 'dropTarget'> {
   cardsByUnit:  Map<string, OrgCard[]>
   layout:       Map<string, { x: number; y: number }>
   onSaveLayout: (items: OrgLayoutItem[]) => void
   focusUnit?:   string | null
   focusTick?:   number
   actions?:     FlowActions
+  /** [7-G] 노드 드래그 시작/종료 — OrgCanvas 가 트레이를 투명하게 */
+  onDragState?: (dragging: boolean) => void
 }
 const GAP_X = 20, ROOT_GAP = 40, STEM2 = 56, LOOSE_GAP = 120   // OrgTree 와 같은 간격(형제 10+10, 루트 40, 부모→자식 STEM 28×2)
 
@@ -138,9 +143,11 @@ function Inner(p: Props) {
     for (const r of roots) { calcW(r.id); place(r.id, x, 0); x += widthOf.get(r.id)! + ROOT_GAP }
     const maxX = Math.max(0, x - ROOT_GAP)
     // 연결 안 된 단위(보류 루트 하위) — 각각 작은 트리로 오른쪽 열에 세로 나열
+    // [7-G] 연결 안 된 단위 — 트리 왼쪽 열(x<0), 루트와 같은 높이부터 세로 나열: 루트로 끌어 붙이는 거리가 짧다. 각 끊긴 단위는 자기 하위를 거느린 작은 트리
+    void maxX
     const loose = units.filter(u => inBench.has(u.id) && u.parent_unit_id && units.find(b => b.id === u.parent_unit_id)?.kind === 'bench' && byId.has(u.id)).sort(sortU)
     let ly = 0
-    for (const l of loose) { calcW(l.id); place(l.id, maxX + LOOSE_GAP, ly); let bottom = 0; const walk = (id: string) => { const q = pos.get(id)!; bottom = Math.max(bottom, q.y + size(id).h); kids(id).forEach(k => walk(k.id)) }; walk(l.id); ly = bottom + 24 }
+    for (const l of loose) { const w = calcW(l.id); place(l.id, -(w + LOOSE_GAP), ly); let bottom = 0; const walk = (id: string) => { const q = pos.get(id)!; bottom = Math.max(bottom, q.y + size(id).h); kids(id).forEach(k => walk(k.id)) }; walk(l.id); ly = bottom + 24 }
     return cur.map(n => { const q = pos.get(n.id); return q && (!only || only.has(n.id)) ? { ...n, position: q } : n })
   }, [rf, units, inBench])
 
@@ -177,14 +184,26 @@ function Inner(p: Props) {
     else window.setTimeout(() => relayout(true), 0)
   }
 
-  // 드래그 종료: 자유 배치 = 저장 / 정렬 고정 = 다른 노드 위면 상위 변경, 아니면 형제 사이 순서 변경 → 재배치로 복귀
-  const onDragStop = useCallback((_: unknown, node: Node, dragged: Node[]) => {
-    if (modeRef.current === 'free') { saveAll(dragged); return }
-    const u = unitOf(node.id); if (!u || !act) { relayout(); return }
+  // [7-G] 드래그 중: 포인터(노드 헤더 중심) 아래의 다른 노드 = 상위 변경 대상 → 강조. 드래그 시작/종료를 바깥에 알림(트레이 투명)
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const findTarget = useCallback((node: Node): Node | null => {
+    const u = unitOf(node.id); if (!u) return null
     const w = node.measured?.width ?? NODE_W, h = node.measured?.height ?? 120
     const cx = node.position.x + w / 2, cy = node.position.y + Math.min(h, 60) / 2
     const desc = descendantIds(u.id, units)
-    const target = rf.getNodes().find(n => n.id !== u.id && !desc.has(n.id) && !inBench.has(n.id) && (() => { const nw = n.measured?.width ?? NODE_W, nh = n.measured?.height ?? 120; return cx >= n.position.x && cx <= n.position.x + nw && cy >= n.position.y && cy <= n.position.y + nh })())
+    return rf.getNodes().find(n => n.id !== u.id && !desc.has(n.id) && !inBench.has(n.id) && (() => { const nw = n.measured?.width ?? NODE_W, nh = n.measured?.height ?? 120; return cx >= n.position.x && cx <= n.position.x + nw && cy >= n.position.y && cy <= n.position.y + nh })()) ?? null
+  }, [unitOf, units, inBench, rf])
+  const onDragStart = useCallback(() => { p.onDragState?.(true) }, [p])
+  const onDrag = useCallback((_: unknown, node: Node) => { if (modeRef.current !== 'locked') return; const t = findTarget(node); const id = t && t.id !== unitOf(node.id)?.parent_unit_id ? t.id : null; setDropTarget(prev => prev === id ? prev : id) }, [findTarget, unitOf])
+
+  // 드래그 종료: 자유 배치 = 저장 / 정렬 고정 = 다른 노드 위면 상위 변경, 아니면 형제 사이 순서 변경 → 재배치로 복귀
+  const onDragStop = useCallback((_: unknown, node: Node, dragged: Node[]) => {
+    p.onDragState?.(false); setDropTarget(null)
+    if (modeRef.current === 'free') { saveAll(dragged); return }
+    const u = unitOf(node.id); if (!u || !act) { relayout(); return }
+    const w = node.measured?.width ?? NODE_W
+    const cx = node.position.x + w / 2
+    const target = findTarget(node)
     relayout()   // 드롭 위치에서 즉시 트리 자리로 복귀 (구조가 바뀌면 데이터 갱신 후 한 번 더 재배치, 실패해도 어긋난 채 남지 않음)
     if (target) { if (target.id !== u.parent_unit_id) act.onReparent(u.id, target.id); return }
     // 형제 슬롯: 같은 부모의 다른 형제 중심 x 와 비교
@@ -195,10 +214,10 @@ function Inner(p: Props) {
     const curOrder = [...sib.map(x => x.id)]; const curIdx = units.filter(x => x.parent_unit_id === u.parent_unit_id && x.kind !== 'bench').sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name, 'ko')).findIndex(x => x.id === u.id)
     curOrder.splice(curIdx, 0, u.id)
     if (act.onReorderSiblings && ids.join() !== curOrder.join()) act.onReorderSiblings(ids)
-  }, [saveAll, unitOf, act, units, inBench, rf, relayout])
+  }, [saveAll, unitOf, act, units, rf, relayout, findTarget, p])
   const doAuto = () => { if (locked) { relayout(true); return } const ns = autoLayout(); setNodes(ns); saveAll(ns); window.setTimeout(() => rf.fitView({ padding: 0.1, maxZoom: 1, duration: 300 }), 50) }
 
-  const shared: FlowShared = { ...p, totals, inBench, cardsByUnit, cardMode, openNodes, onToggleOpen }
+  const shared: FlowShared = { ...p, totals, inBench, cardsByUnit, cardMode, openNodes, onToggleOpen, dropTarget }
 
   // 패널 클릭·검색 → 해당 노드 가운데로 (줌 유지)
   useEffect(() => {
@@ -253,7 +272,7 @@ function Inner(p: Props) {
 
   return (
     <Shared.Provider value={shared}>
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChangeX} onEdgesChange={onEdgesChange} onNodeDragStop={onDragStop} onNodeDoubleClick={onNodeDoubleClick}
+      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodesChange={onNodesChangeX} onEdgesChange={onEdgesChange} onNodeDragStart={onDragStart} onNodeDrag={onDrag} onNodeDragStop={onDragStop} autoPanOnNodeDrag autoPanSpeed={28} onNodeDoubleClick={onNodeDoubleClick}
                  nodesDraggable={editable} nodesConnectable={editable} elementsSelectable selectionKeyCode="Shift" multiSelectionKeyCode={['Meta', 'Control']}
                  onConnect={onConnect} isValidConnection={isValid} onReconnect={onReconnect} onReconnectStart={onReconnectStart} onReconnectEnd={onReconnectEnd} edgesReconnectable={editable}
                  onEdgesDelete={onEdgesDelete} deleteKeyCode={editable ? ['Delete', 'Backspace'] : null} onSelectionChange={onSelectionChange}
@@ -333,7 +352,8 @@ const UnitNode = memo(function UnitNode({ id, selected }: NodeProps) {
   return (
     <div data-unit-id={id} onDragOver={onDragOver} onDragLeave={() => setOver(false)} onDrop={onDrop}
          style={{ width: NODE_W, background: benchy ? '#F8FAFF' : '#fff', border: benchy ? `1.5px dashed ${OG.drop}` : `1px solid ${depth <= 1 ? '#C7CDD8' : OG.line}`, borderRadius: 10, boxShadow: selected ? `0 0 0 2px ${OG.drop}` : '0 1px 2px rgba(0,0,0,.05)',
-                  outline: over ? `2px solid ${OG.drop}` : s.highlightUnit === id ? `2px solid ${OG.amber}` : 'none', outlineOffset: 2, fontFamily: OG.font, fontSize: 12.5 }}>
+                  outline: over || s.dropTarget === id ? `3px solid ${OG.drop}` : s.highlightUnit === id ? `2px solid ${OG.amber}` : 'none', outlineOffset: 2, fontFamily: OG.font, fontSize: 12.5,
+                  transform: s.dropTarget === id ? 'scale(1.03)' : undefined, transition: 'transform 120ms' }}>
       <Handle type="target" position={Position.Top} isConnectable={s.editable} style={{ width: 10, height: 10, background: '#fff', border: `2px solid ${OG.drop}`, opacity: s.editable ? 1 : 0 }} title="위 포트: 부모의 아래 포트에서 선을 끌어와 붙이면 상위 변경(연결 안 된 단위도 여기로 붙입니다)" />
       <div className="org-node-header" onClick={() => s.onToggle(id)}
            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderBottom: isOpen && cards.length > 0 ? `1px solid ${OG.line}` : 'none', fontWeight: 600, cursor: s.editable ? 'grab' : 'pointer', userSelect: 'none', color: benchy ? OG.drop : OG.ink }}>

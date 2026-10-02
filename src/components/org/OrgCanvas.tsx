@@ -96,6 +96,7 @@ export function OrgCanvas(p: Props) {
   const [benchOpen, setBenchOpen] = useState(false)
   useEffect(() => { if (benchCount > 0) setBenchOpen(true) }, [benchCount > 0])   // eslint-disable-line react-hooks/exhaustive-deps  — 내용이 생기면 자동 펼침, 비면 알약으로
   const [benchOver, setBenchOver] = useState(false)
+  const [nodeDragging, setNodeDragging] = useState(false)   // [7-G] 노드 드래그 중엔 트레이가 가리지 않게(투명·클릭 통과)
   // [Phase 5-B] 겸직: 사람 키 → 본 카드 단위명 / 겸직 카드 수
   const concurrentOf = useMemo(() => {
     const unitName = new Map(units.map(u => [u.id, u.name]))
@@ -129,6 +130,7 @@ export function OrgCanvas(p: Props) {
   const [roHint, setRoHint] = useState(false)   // 읽기 전용에서 더블클릭 시 헤더 안내 강조
   // [7-F] 기본 뷰 = 조직 트리(초안 포함). 노드 캔버스는 토글로 진입
   const [view, setView] = useState<'tree' | 'flow' | 'list'>('tree')
+  useEffect(() => { if (view === 'flow') setBenchOpen(false) }, [view])   // [7-G] 노드 캔버스 진입 시 트레이는 알약으로(노드를 가리지 않게)
   const [focusTick, setFocusTick] = useState(0)
   const [filter, setFilter] = useState<OrgFilter>('all')
   const [q, setQ] = useState('')
@@ -347,7 +349,7 @@ export function OrgCanvas(p: Props) {
               <OrgFlowCanvas ctx={ctx} units={units} cardsByUnit={cardsByUnit} editable={editable} expanded={expanded} onToggle={toggle} selectedCard={selectedCard} selectedIds={sel}
                              onCardClick={onCardClickX} onUnitClick={u => { if (editable) p.onRenameUnit(u); else { setRoHint(true); window.setTimeout(() => setRoHint(false), 1600) } }}
                              drop={{ onDropCard: p.onDropCard, onDropUnit: p.onDropUnit, onDropProfile: p.onDropProfile, onDropCards: p.onDropCards }}
-                             layout={p.layout ?? new Map()} onSaveLayout={p.onSaveLayout ?? (() => {})} focusUnit={focusUnit} focusTick={focusTick} highlightUnit={focusUnit}
+                             layout={p.layout ?? new Map()} onSaveLayout={p.onSaveLayout ?? (() => {})} focusUnit={focusUnit} focusTick={focusTick} highlightUnit={focusUnit} onDragState={setNodeDragging}
                              actions={{ onReparent: (unitId, parentId) => p.onDropUnit(unitId, parentId), onDetachUnit: p.onDetachUnit, onRenameUnit: p.onRenameUnit, onAddUnit: id => p.onAddUnit(id), onMergeUnit: p.onMergeUnit, onMoveUnitTo: p.onMoveUnitTo, onDeleteUnit: p.onDeleteUnit, onSelectUnitCards: selectUnitCards, onReorderSiblings: p.onReorderSiblings }} />
             </div>
           )}
@@ -362,7 +364,7 @@ export function OrgCanvas(p: Props) {
             <div data-bench-tray onDragOver={onTrayDragOver} onDragLeave={() => setBenchOver(false)} onDrop={onTrayDrop}
                  style={{ position: 'absolute', right: 16, top: 12, zIndex: 6, maxWidth: benchOpen ? 'min(60%, 720px)' : undefined, maxHeight: 'calc(100% - 80px)', display: 'flex', flexDirection: 'column',
                           background: benchOver ? 'rgba(239,246,255,.97)' : 'rgba(255,255,255,.82)', backdropFilter: 'blur(6px)', border: `1.5px dashed ${OG.drop}`, borderRadius: 12,
-                          boxShadow: benchOver ? `0 0 0 3px ${OG.drop}33, 0 8px 24px rgba(0,0,0,.12)` : '0 6px 20px rgba(0,0,0,.10)', opacity: benchOpen || benchOver ? 1 : .85, transition: 'opacity 150ms, box-shadow 150ms' }}
+                          boxShadow: benchOver ? `0 0 0 3px ${OG.drop}33, 0 8px 24px rgba(0,0,0,.12)` : '0 6px 20px rgba(0,0,0,.10)', opacity: nodeDragging ? .15 : benchOpen || benchOver ? 1 : .85, pointerEvents: nodeDragging ? 'none' : 'auto', transition: 'opacity 150ms, box-shadow 150ms' }}
                  onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.opacity = '1' }} onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.opacity = benchOpen || benchOver ? '1' : '.85' }}>
               <div onClick={() => setBenchOpen(o => !o)} title={benchOpen ? '접기' : '펼치기'}
                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: OG.drop, userSelect: 'none', borderBottom: benchOpen ? `1px dashed ${OG.line}` : 'none' }}>
