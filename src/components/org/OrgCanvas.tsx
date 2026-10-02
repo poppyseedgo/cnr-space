@@ -75,6 +75,9 @@ interface Props extends CanvasActions {
   /** [Phase 7] 노드 캔버스 배치(org_unit_layout) + 저장 */
   layout?:      Map<string, { x: number; y: number }>
   onSaveLayout?: (items: OrgLayoutItem[]) => void
+  /** [8-A] 헤더 스텝퍼(초안만) · 진입 시 가운데로 둘 단위('캔버스에서 보기 →') */
+  stepper?:     ReactNode
+  initialFocusUnit?: string | null
 }
 
 export function OrgCanvas(p: Props) {
@@ -265,6 +268,9 @@ export function OrgCanvas(p: Props) {
     requestAnimationFrame(scroll)
   }
 
+  // [8-A] '캔버스에서 보기 →' 로 들어오면 그 단위를 펼치고 가운데로
+  useEffect(() => { if (p.initialFocusUnit) { const t = window.setTimeout(() => focusOn(p.initialFocusUnit!), 80); return () => window.clearTimeout(t) } }, [p.initialFocusUnit])   // eslint-disable-line react-hooks/exhaustive-deps
+
   // [Phase 6-b] 트레이 전체가 드롭 대상 (접힌 알약 포함) — 카드/묶음/단위/미배치 사람 → 작업대
   const trayTypes = (e: DragEvent) => e.dataTransfer.types.some(t => t === DND.card || t === DND.cards || t === DND.unit || t === DND.profile)
   const onTrayDragOver = (e: DragEvent) => { if (!editable || !benchNode || !trayTypes(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (!benchOver) setBenchOver(true); if (!benchOpen) setBenchOpen(true) }
@@ -293,6 +299,7 @@ export function OrgCanvas(p: Props) {
         <h3 style={{ fontSize: 15, margin: 0, cursor: 'pointer' }} onClick={p.onEditMeta} title="이름·적용일·메모 편집">{file.name}</h3>
         <Tag kind={file.status}>{fileStatusLabel(file.status)}</Tag>
         <Tag>{file.effective_on ? `적용일 ${file.effective_on}` : '적용일 미정'}</Tag>
+        {p.stepper}
         {lockHolder && <span style={{ fontSize: 11.5, color: OG.amber }}>● {lockHolder} 편집 중</span>}
         <span style={{ flex: 1 }} />
         {editable && <span style={{ fontSize: 11.5, color: OG.quiet }}>{savedAt ? `자동 저장됨 ${fmtWhen(savedAt)}` : ''}</span>}

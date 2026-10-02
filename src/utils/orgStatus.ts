@@ -283,6 +283,8 @@ const ERR: Record<string, string> = {
   org_cards_file_profile:      '이 조직도에 이미 같은 사람의 카드가 있습니다.',
   org_units_file_code:         '같은 약칭(code)의 단위가 이미 있습니다.',
   org_files_one_active:        'Active 조직도는 하나만 둘 수 있습니다.',
+  // [8-A] RPC 가 아직 없을 때(PostgREST PGRST202) — 최신 마이그레이션 미적용
+  'Could not find the function': 'DB 마이그레이션이 아직 적용되지 않았습니다 — supabase/migrations 의 최신 파일을 먼저 실행하세요.',
 }
 export function orgErrorMessage(err: unknown, fallback = '처리에 실패했습니다. 잠시 후 다시 시도해 주세요.'): string {
   const msg = err instanceof Error ? err.message : String(err ?? '')

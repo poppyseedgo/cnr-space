@@ -22,6 +22,9 @@ export const OG = {
   panelW:   280,
 } as const
 
+/** [8-A] 단위 유형 라벨 — 엑셀 실측 계층 기준(설계서 §15.5 Q5). org_units.unit_type 은 자유 텍스트라 여기만 바꾸면 선택지가 바뀐다 */
+export const ORG_UNIT_TYPES = ['회사', '본부', '실', 'Division', '팀', '파트'] as const
+
 export const btn: CSSProperties = { fontFamily: OG.font, fontSize: 12, padding: '6px 10px', border: `1px solid ${OG.line}`, borderRadius: 6, background: '#fff', color: OG.ink, cursor: 'pointer', whiteSpace: 'nowrap' }
 export const btnPri: CSSProperties = { ...btn, background: OG.ink, color: '#fff', borderColor: OG.ink }
 export const btnDanger: CSSProperties = { ...btn, color: OG.red, borderColor: '#FECACA' }

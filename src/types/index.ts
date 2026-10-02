@@ -713,6 +713,10 @@ export interface OrgUnit {
   sort_order:     number
   /** [ORG Phase 6] 'bench' = 작업대(파일당 1개, 두 번째 루트) — 트리·헤드카운트·Excel·Active diff 제외. 설계서 §13 */
   kind?:          'unit' | 'bench'
+  /** [ORG 8-A] 단위 유형 라벨(회사·본부·실·Division·팀·파트, orgShared.ORG_UNIT_TYPES) · 단위장 포지션 직무(org_jobs) · 메모 — 설계서 §15 */
+  unit_type?:     string | null
+  head_job_id?:   string | null
+  memo?:          string | null
 }
 export interface OrgCard {
   id:                 string

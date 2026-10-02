@@ -1,5 +1,6 @@
 /**
- * OrgAdminPanel.tsx — 어드민 '조직도' 탭 루트: 데이터 소유 + 갤러리(A) ↔ 캔버스(B) 전환 + 모든 저장 경로
+ * OrgAdminPanel.tsx — 어드민 '조직도' 탭 루트: 데이터 소유 + 갤러리(A) ↔ 단계 화면/캔버스(B) 전환 + 모든 저장 경로
+ *  - [2026-10-02 ORG 8-A] 초안은 ① 구조 설계(OrgStructureEditor) 로 열림 · 스텝퍼로 캔버스 전환. 단위 이동/순서/삭제/복제는 RPC(org_place_unit · org_delete_unit · org_duplicate_unit) = 되돌리기 1단계 (설계서 §15)
  *  - [2026-10-01 ORG Phase 7-E] 작업대 개념 제거(UI) — 보류 루트는 DB 상태로만. 토스트/모달 문구 '보류 카드' · '선 끊기' · '연결 안 됨'
  *  - [2026-10-01 ORG Phase 6] 작업대(초안 열 때 ensure) · 다중 이동(org_move_cards) · 분리/합치기 모달 · 떼어내기 · 되돌리기(peek 는 저장마다 갱신) · Excel/CSV/썸네일 작업대 제외 (설계서 §13)
  *  - [2026-10-01 ORG 5-C] 단위 이동(상위로/하위로/이동… 모달) · 재배치 시 형제 끝에 배치 · 전체화면/스크롤은 OrgCanvas
@@ -26,6 +27,7 @@ import {
   setOrgCardHidden, swapOrgPrimaryCard,     // ← [Phase 5-B]
   ensureOrgBench, moveOrgCards, splitOrgUnit, mergeOrgUnit, undoOrgLast, undoOrgPeek, type OrgUndoPeek,   // ← [Phase 6]
   loadOrgLayout, saveOrgLayout,   // ← [Phase 7]
+  placeOrgUnit, duplicateOrgUnit, type OrgUnitPatch,   // ← [8-A]
   type OrgCodes, type OrgFileBundle, type OrgOffboardingTemplate,
 } from '../../lib/orgApi'
 import { orgErrorMessage, orgPersonView, orgStatusBadge, orgExportRows, orgDepartedInfo, isCardHidden, todayKST, descendantIds, splitBench, type OrgDepartedInfo } from '../../utils/orgStatus'
@@ -37,6 +39,8 @@ import { OrgPromptModal, type PromptField } from './OrgPromptModal'
 import { OrgCardDrawer, type CardPatch } from './OrgCardDrawer'   // ← [Phase 4-A]
 import { OrgHistoryDrawer } from './OrgHistoryDrawer'            // ← [Phase 4-A]
 import { OrgCodesPanel } from './OrgCodesPanel'                  // ← [Phase 4-B]
+import { OrgStructureEditor } from './OrgStructureEditor'        // ← [8-A] ① 구조 설계
+import { OrgStepper, type OrgStep } from './OrgStepper'          // ← [8-A]
 import { OG } from './orgShared'
 
 interface Props {
@@ -73,6 +77,8 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   const [undo, setUndo] = useState<OrgUndoPeek | null>(null)   // ← [Phase 6] 되돌리기 가능 여부
   const [layout, setLayout] = useState<Map<string, { x: number; y: number }>>(new Map())   // ← [Phase 7] 노드 캔버스 배치
   const layoutQueue = useRef<Map<string, { x: number; y: number }>>(new Map()); const layoutTimer = useRef<number | null>(null)
+  const [step, setStep] = useState<OrgStep>(1)                      // [8-A] 초안: ① 구조 설계 기본. 'canvas' = 기존 트리/노드/목록
+  const [canvasFocus, setCanvasFocus] = useState<string | null>(null)   // [8-A] '캔버스에서 보기 →' 로 넘어갈 때 가운데로 둘 단위
   const myName = useMemo(() => users.find(u => u.user_id === currentUserId)?.name ?? '관리자', [users, currentUserId])
   const [modal, setModal]       = useState<null | { kind: 'new' } | { kind: 'copy'; src: OrgFileSummary | { id: string; name: string } } | { kind: 'meta' } | { kind: 'unit-new'; parentId: string | null } | { kind: 'unit-rename'; unit: OrgUnit } | { kind: 'unit-move'; unit: OrgUnit } | { kind: 'vacancy'; unitId: string } | { kind: 'person-new'; unitId: string }
     | { kind: 'cards-move'; cardIds: string[] } | { kind: 'split'; cardIds: string[] } | { kind: 'unit-merge'; unit: OrgUnit }>(null)   // ← [Phase 6]
@@ -140,7 +146,7 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
         const b = await loadOrgFileBundle(fileId)
         if (dead) return
         if (!b) { showToast('조직도 파일을 찾을 수 없습니다.'); goGallery(); return }
-        setBundle(b); setSelectedCard(null)
+        setBundle(b); setSelectedCard(null); setStep(b.file.status === 'draft' ? 1 : 'canvas'); setCanvasFocus(null)   // [8-A] 초안은 ① 구조 설계로
         loadOrgLayout(fileId).then(l => !dead && setLayout(l)).catch(() => setLayout(new Map()))   // [Phase 7]
         rosterCheck(fileId).then(r => !dead && setRoster(r)).catch(() => {})
         if (b.file.status === 'draft') {
@@ -209,7 +215,7 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   }
   const onToBench = async (cardIds: string[]) => { try { const r = await moveOrgCards(cardIds, await benchId()); await reloadBundle(); showToast(`카드 ${r.moved}장 보류 — 우상단 보류 카드에서 다시 배치`) } catch (e) { fail(e) } }
   const onDetachUnit = async (u: OrgUnit) => {
-    try { const bid = await benchId(); await updateOrgUnit(u.id, { parent_unit_id: bid, sort_order: bundle!.units.filter(x => x.parent_unit_id === bid).length }); await mergeUnit(u.id); refreshRoster(); showToast(`'${u.name}' 의 상위 선을 끊었습니다 — 연결 안 된 단위로 남아 있습니다 (되돌리기 가능)`) } catch (e) { fail(e) }
+    try { const bid = await benchId(); await placeOrgUnit(u.id, bid, null); await reloadBundle(); showToast(`'${u.name}' 의 상위 선을 끊었습니다 — 연결 안 된 단위로 남아 있습니다 (되돌리기 가능)`) } catch (e) { fail(e) }
   }
   // [Phase 7] 배치 저장 — 300ms 디바운스로 묶어 RPC 1회. 로컬 맵은 즉시 갱신(재진입 시 동일 배치)
   const onSaveLayout = (items: { unit_id: string; x: number; y: number }[]) => {
@@ -230,29 +236,23 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
 
   // ── 드래그 저장 ──
   const onDropCard = async (cardId: string, unitId: string) => { try { await updateOrgCard(cardId, { unit_id: unitId }); await mergeCard(cardId); refreshRoster() } catch (e) { fail(e) } }
-  const onDropUnit = async (unitId: string, parentId: string | null) => {
+  // [8-A] 상위 변경 + 순서 = org_place_unit 한 트랜잭션(되돌리기 1단계). index null = 새 부모의 형제 끝
+  const onPlaceUnit = async (unitId: string, parentId: string | null, index: number | null) => {
     if (!bundle) return
-    try {
-      const sib = bundle.units.filter(u => u.parent_unit_id === parentId && u.id !== unitId)
-      await updateOrgUnit(unitId, { parent_unit_id: parentId, sort_order: sib.length }); await mergeUnit(unitId)   // 새 부모의 형제 끝으로
-    } catch (e) { fail(e) }
+    try { await placeOrgUnit(unitId, parentId, index); await reloadBundle() } catch (e) { fail(e) }
   }
+  const onDropUnit = (unitId: string, parentId: string | null) => onPlaceUnit(unitId, parentId, null)
   // [5-C] 상위로 = 부모의 형제로 (부모 바로 다음) · 하위로 = 앞 형제의 하위 끝 · 이동… = 모달에서 대상 선택
   const onOutdentUnit = async (u: OrgUnit) => {
     if (!bundle) return
     const parent = bundle.units.find(x => x.id === u.parent_unit_id); if (!parent || !parent.parent_unit_id) { showToast('최상위 바로 아래 단위는 더 올릴 수 없습니다.'); return }
-    try {
-      const sib = siblingsOf(parent).filter(x => x.id !== u.id)
-      const i = sib.findIndex(x => x.id === parent.id)
-      const ids = sib.map(x => x.id); ids.splice(i + 1, 0, u.id)
-      await updateOrgUnit(u.id, { parent_unit_id: parent.parent_unit_id, sort_order: i + 1 })
-      await reorderOrgUnits(ids); const b = await loadOrgFileBundle(bundle.file.id); setBundle(b); touch()
-    } catch (e) { fail(e) }
+    const i = siblingsOf(parent).findIndex(x => x.id === parent.id)
+    await onPlaceUnit(u.id, parent.parent_unit_id, i + 1)
   }
   const onIndentUnit = async (u: OrgUnit) => {
     const sib = siblingsOf(u); const i = sib.findIndex(x => x.id === u.id)
     if (i <= 0) { showToast('앞 형제가 없어 내릴 수 없습니다.'); return }
-    await onDropUnit(u.id, sib[i - 1].id)
+    await onPlaceUnit(u.id, sib[i - 1].id, null)
   }
   const onMoveUnitTo = (u: OrgUnit) => setModal({ kind: 'unit-move', unit: u })
   // [7-F] 노드 캔버스(정렬 고정)에서 형제 사이에 끌어 놓음 → 같은 부모 형제 전체 순서 저장
@@ -267,11 +267,29 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   const onMoveUnit = async (u: OrgUnit, dir: -1 | 1) => {
     const sib = siblingsOf(u); const i = sib.findIndex(x => x.id === u.id); const j = i + dir
     if (i < 0 || j < 0 || j >= sib.length) return
-    const ids = sib.map(x => x.id); [ids[i], ids[j]] = [ids[j], ids[i]]
-    try { await reorderOrgUnits(ids); for (const id of ids) await mergeUnit(id) } catch (e) { fail(e) }
+    await onPlaceUnit(u.id, u.parent_unit_id, j)
   }
-  const onDeleteUnit = (u: OrgUnit) => setConfirm({ title: '단위 삭제', message: <>'{u.name}' 단위를 삭제합니다. 하위 단위·카드가 없을 때만 가능합니다.</>, variant: 'danger', label: '삭제',
-    run: async () => { await deleteOrgUnit(u.id); setBundle(b => b ? { ...b, units: b.units.filter(x => x.id !== u.id) } : b); touch() } })
+  // [8-A] 삭제 = org_delete_unit: 하위 단위 없을 때만, 카드는 보류 카드로(한 트랜잭션 = 되돌리기 1단계)
+  const onDeleteUnit = (u: OrgUnit) => {
+    const kids = (bundle?.units ?? []).filter(x => x.parent_unit_id === u.id).length
+    const nCards = (bundle?.cards ?? []).filter(c => c.unit_id === u.id).length
+    if (kids) { showToast(`'${u.name}' 에 하위 단위 ${kids}개가 있습니다 — 먼저 옮기거나 '합치기…' 로 정리하세요.`); return }
+    setConfirm({ title: '단위 삭제', message: <>'{u.name}' 단위를 삭제합니다.{nCards ? <><br />카드 <b>{nCards}장</b>은 보류 카드로 이동합니다(직급·직무·메모 유지, 단위장·보고선 해제).</> : ' 카드는 없습니다.'}<br /><span style={{ color: OG.quiet }}>되돌리기 1단계로 복구할 수 있습니다.</span></>, variant: 'danger', label: '삭제',
+      run: async () => { const r = await deleteOrgUnit(u.id); await reloadBundle(); showToast(`'${r.name}' 삭제${r.cards_to_bench ? ` — 카드 ${r.cards_to_bench}장 보류` : ''} (되돌리기 가능)`) } })
+  }
+  // [8-A] 구조 편집기 전용 저장 경로
+  const onPatchUnit = async (id: string, patch: OrgUnitPatch) => { try { await updateOrgUnit(id, patch); await mergeUnit(id); if ('azure_division' in patch) refreshRoster() } catch (e) { fail(e) } }
+  const onCreateUnit = async (parentId: string | null, name: string, index: number | null): Promise<OrgUnit | null> => {
+    if (!bundle) return null
+    try {
+      const sib = bundle.units.filter(u => u.parent_unit_id === parentId && u.kind !== 'bench').length
+      const u = await insertOrgUnit({ file_id: bundle.file.id, parent_unit_id: parentId, name, sort_order: sib })
+      if (index !== null && index < sib) { await placeOrgUnit(u.id, parentId, index); await reloadBundle() } else await mergeUnit(u.id)
+      return u
+    } catch (e) { fail(e); return null }
+  }
+  const onDuplicateUnit = async (u: OrgUnit) => { try { const id = await duplicateOrgUnit(u.id); await reloadBundle(); showToast(`'${u.name}' 복제 — 바로 뒤에 '${u.name} (복사)' (하위·카드 제외, 되돌리기 가능)`); return id } catch (e) { fail(e); return null } }
+  const openCanvas = (unitId?: string) => { setCanvasFocus(unitId ?? null); setStep('canvas') }
 
   // ── 갤러리 액션 ──
   const onActivate = (f: { id: string; name: string }, force = false) => setConfirm({
@@ -429,10 +447,19 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
     return null
   })()
 
+  const stepper = bundle?.file.status === 'draft' ? <OrgStepper step={step} onChange={s => { if (s === 'canvas') openCanvas(); else setStep(s) }} /> : null
   return (
     <>
-      {fileId && bundle ? (
-        <OrgCanvas file={bundle.file} units={bundle.units} cards={bundle.cards} users={users} ranks={ranks} jobs={jobs} statusTypes={codes.statusTypes}
+      {fileId && bundle && bundle.file.status === 'draft' && step === 1 ? (
+        <OrgStructureEditor file={bundle.file} units={bundle.units} cards={bundle.cards} jobs={codes.jobs} ranks={ranks} person={person} isHidden={isHidden}
+                            editable={editable} isSuper={isSuper} lockHolder={lockHolder} savedAt={savedAt} undo={undo} roster={roster} stepper={stepper}
+                            baseFileName={files.find(f => f.status === 'active')?.name ?? null}
+                            onBack={goGallery} onEditMeta={() => editable ? setModal({ kind: 'meta' }) : showToast('읽기 전용입니다.')} onRoster={() => showRoster(roster)} onHistory={() => setHistory({ file: bundle.file, tab: 'log' })}
+                            onExport={() => onExport(bundle.file)} onCopy={() => setModal({ kind: 'copy', src: bundle.file })} onActivate={() => onActivate(bundle.file)} onOpenCanvas={openCanvas}
+                            onRename={(id, name) => onPatchUnit(id, { name })} onCreate={onCreateUnit} onPlace={onPlaceUnit} onDuplicate={async u => { await onDuplicateUnit(u) }} onDelete={onDeleteUnit}
+                            onPatchUnit={onPatchUnit} onMerge={u => setModal({ kind: 'unit-merge', unit: u })} onUndo={onUndo} />
+      ) : fileId && bundle ? (
+        <OrgCanvas file={bundle.file} units={bundle.units} cards={bundle.cards} users={users} ranks={ranks} jobs={jobs} statusTypes={codes.statusTypes} stepper={stepper} initialFocusUnit={canvasFocus}
                    person={person} badge={badge} categoryOf={categoryOf} roster={roster} editable={editable} isSuper={isSuper} lockHolder={lockHolder} savedAt={savedAt}
                    selectedCard={selectedCard} unassigned={unassigned} departedOf={departedOf} isHidden={isHidden}
                    onBack={goGallery} onCopy={() => setModal({ kind: 'copy', src: bundle.file })} onActivate={() => onActivate(bundle.file)} onRoster={() => showRoster(roster)} onExport={() => onExport(bundle.file)}

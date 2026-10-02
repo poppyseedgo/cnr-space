@@ -62,7 +62,7 @@ function rowToCard(r: any): OrgCard {
 export async function loadOrgTree(fileId: string): Promise<{ units: OrgUnit[]; cards: OrgCard[] }> {
   if (!isSupabaseEnabled) return { units: [], cards: [] }
   const [u, c] = await Promise.all([
-    supabase.from('org_units').select('id, file_id, parent_unit_id, name, code, sort_order, kind, azure_division, head_card_id').eq('file_id', fileId),
+    supabase.from('org_units').select('id, file_id, parent_unit_id, name, code, sort_order, kind, azure_division, head_card_id, unit_type, head_job_id, memo').eq('file_id', fileId),
     supabase.from('org_cards').select('id, file_id, unit_id, is_vacancy, is_primary, hidden_at').eq('file_id', fileId),
   ])
   if (u.error) throw new Error(u.error.message)
@@ -150,23 +150,38 @@ export async function rosterCheck(fileId: string): Promise<OrgRosterCheck> {
 }
 
 // ─── 단위 (직접 쓰기 — 초안만) ───────────────────────────────────────────────
-export async function insertOrgUnit(u: { file_id: string; parent_unit_id: string | null; name: string; code?: string | null; sort_order?: number }): Promise<OrgUnit> {
+export async function insertOrgUnit(u: { file_id: string; parent_unit_id: string | null; name: string; code?: string | null; sort_order?: number; unit_type?: string | null }): Promise<OrgUnit> {
   const { data, error } = await supabase.from('org_units').insert({ ...u, code: u.code ?? null, sort_order: u.sort_order ?? 0 }).select('*').single()
   if (error) throw new Error(error.message)
   return data as OrgUnit
 }
-export async function updateOrgUnit(id: string, patch: Partial<Pick<OrgUnit, 'name' | 'code' | 'azure_division' | 'head_card_id' | 'parent_unit_id' | 'sort_order'>>): Promise<OrgUnit> {
+/** [8-A] 단위 속성 패치 — 유형·단위장 포지션·메모 포함 */
+export type OrgUnitPatch = Partial<Pick<OrgUnit, 'name' | 'code' | 'azure_division' | 'head_card_id' | 'parent_unit_id' | 'sort_order' | 'unit_type' | 'head_job_id' | 'memo'>>
+export async function updateOrgUnit(id: string, patch: OrgUnitPatch): Promise<OrgUnit> {
   const { data, error } = await supabase.from('org_units').update(patch).eq('id', id).select('*').maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) throw new Error('ORG_FILE_NOT_EDITABLE')   // RLS 0행
   return data as OrgUnit
 }
-export async function deleteOrgUnit(id: string): Promise<void> {
-  const { error, count } = await supabase.from('org_units').delete({ count: 'exact' }).eq('id', id)
+/** [8-A] 단위 삭제 — org_delete_unit: 하위 단위 없을 때만, 카드는 보류로(한 트랜잭션 = 되돌리기 1단계) */
+export async function deleteOrgUnit(id: string): Promise<{ deleted: string; name: string; cards_to_bench: number }> {
+  const { data, error } = await supabase.rpc('org_delete_unit', { p_unit_id: id })
   if (error) throw new Error(error.message)
-  if (!count) throw new Error('ORG_FILE_NOT_EDITABLE')
+  return data
 }
-/** 같은 부모 안 순서 일괄 저장 */
+/** [8-A] 상위 변경 + 형제 순서 삽입 — org_place_unit (한 트랜잭션). index null = 끝, parentId null = 루트 층 */
+export async function placeOrgUnit(unitId: string, parentId: string | null, index: number | null): Promise<{ unit_id: string; parent_id: string | null; index: number; updated: number }> {
+  const { data, error } = await supabase.rpc('org_place_unit', { p_unit_id: unitId, p_parent_id: parentId, p_index: index })
+  if (error) throw new Error(error.message)
+  return data
+}
+/** [8-A] 복제 — 같은 층 바로 뒤, 이름 ' (복사)', 하위·카드 제외 */
+export async function duplicateOrgUnit(unitId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('org_duplicate_unit', { p_unit_id: unitId })
+  if (error) throw new Error(error.message)
+  return data as string
+}
+/** 같은 부모 안 순서 일괄 저장 (노드 캔버스 형제 드래그용 — 되돌리기는 변경된 행 수만큼) */
 export async function reorderOrgUnits(ids: string[]): Promise<void> {
   for (let i = 0; i < ids.length; i++) {
     const { error } = await supabase.from('org_units').update({ sort_order: i }).eq('id', ids[i])
