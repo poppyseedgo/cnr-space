@@ -195,6 +195,20 @@ export async function bindApply(fileId: string, items: OrgBindItem[]): Promise<{
   if (error) throw new Error(error.message)
   return data
 }
+/** [8-C] 자동 배치 제안 = 인원 풀(이 파일에 카드 없는 재직 프로필 + 보류 카드 + 기준 파일에만 있는 입사예정자) + 근거(prev 승계 / dept Azure 유일) */
+export interface OrgPlaceSuggestion { profile_id: string | null; person_id: string | null; card_id: string | null; name: string; dept: string | null; unit_id: string | null; unit_name: string | null; reason: 'prev' | 'dept' | null; base_unit_name: string | null }
+export async function placeSuggest(fileId: string, baseFileId: string | null): Promise<OrgPlaceSuggestion[]> {
+  const { data, error } = await supabase.rpc('org_place_suggest', { p_file_id: fileId, p_base_file_id: baseFileId })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as OrgPlaceSuggestion[]
+}
+/** [8-C] 일괄 배치 — profile/person → 카드 생성, card_id → 이동. 한 트랜잭션 = 되돌리기 1단계 */
+export interface OrgPlaceItem { unit_id: string; profile_id?: string | null; person_id?: string | null; card_id?: string | null }
+export async function placeCards(fileId: string, items: OrgPlaceItem[]): Promise<{ inserted: number; moved: number }> {
+  const { data, error } = await supabase.rpc('org_place_cards', { p_file_id: fileId, p_items: items })
+  if (error) throw new Error(error.message)
+  return data
+}
 /** 같은 부모 안 순서 일괄 저장 (노드 캔버스 형제 드래그용 — 되돌리기는 변경된 행 수만큼) */
 export async function reorderOrgUnits(ids: string[]): Promise<void> {
   for (let i = 0; i < ids.length; i++) {

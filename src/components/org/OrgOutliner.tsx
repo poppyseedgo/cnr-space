@@ -1,5 +1,6 @@
 /**
  * OrgOutliner.tsx — ① 구조 설계 좌측 아웃라이너 (단위만, 카드 없음) — 설계서 §15.5 W1
+ *  - [2026-10-02 ORG 8-C] structureLocked(③ 인원 배치용 읽기 트리) · extTypes/onExtDrop(인원 풀·카드 드롭) · rowMeta · filterIds
  *  - [2026-10-02 ORG 8-A] 신규. 접기/펼침 · 인라인 이름(F2/더블클릭) · 인라인 새 단위(Enter = 형제, ⇧Enter = 하위, 끝 유령 행) · 키보드 ↑↓ ←→ ·
  *    Tab/⇧Tab 들여·내어쓰기 · ⌥↑↓ 순서 · ⌘D 복제 · Del 삭제 · 드래그(위/아래 = 형제 사이, 가운데 = 하위 끝) · 검색(일치 경로만)
  *    저장은 모두 부모(OrgStructureEditor → OrgAdminPanel) 의 RPC 로. 여기는 표시·입력만
@@ -30,12 +31,21 @@ interface Props extends OutlinerActions {
   benchId:   string | null
   /** 상세 패널 '+ 하위 단위' → 인라인 생성 행 열기 */
   createReq?: { parentId: string; tick: number } | null
+  /** [8-C] 구조 잠금 — 선택·펼침·검색만. 이름/생성/이동/삭제 키·단위 드래그 비활성 (③ 인원 배치의 저장된 트리) */
+  structureLocked?: boolean
+  /** [8-C] 외부 드롭(인원 풀 항목·카드) — 이 타입들이 오면 행을 드롭 대상으로 */
+  extTypes?: string[]
+  onExtDrop?: (unitId: string, e: DragEvent) => void
+  /** [8-C] 행 오른쪽 추가 표시(단위장 이름 등) · 표시할 행 제한(필터, 조상 포함해서 넘길 것) */
+  rowMeta?: (u: OrgUnit) => React.ReactNode
+  filterIds?: Set<string> | null
 }
 const DND_OUTLINE = 'application/x-org-outline'
 const ROW_H = 26
 
 export function OrgOutliner(p: Props) {
-  const { units, countOf, selected, onSelect, editable, expanded, onToggle, setExpanded, query, benchId } = p
+  const { units, countOf, selected, onSelect, expanded, onToggle, setExpanded, query, benchId, structureLocked, extTypes, filterIds } = p
+  const editable = p.editable && !structureLocked   // 구조 편집 가능 여부(잠금이면 false)
   const [editing, setEditing]   = useState<{ id: string; value: string } | null>(null)
   const [creating, setCreating] = useState<{ parentId: string | null; index: number | null; afterId: string | null; depth: number; value: string } | null>(null)
   const [dragId, setDragId]     = useState<string | null>(null)
@@ -52,20 +62,20 @@ export function OrgOutliner(p: Props) {
     const loose = bench?.children ?? []
     const q = query.trim().toLowerCase()
     const keep = new Set<string>()
-    if (q) {
+    if (q || filterIds) {
       const parent = new Map(units.map(u => [u.id, u.parent_unit_id]))
-      for (const u of units) if (u.kind !== 'bench' && (u.name.toLowerCase().includes(q) || (u.code ?? '').toLowerCase().includes(q))) { let cur: string | null = u.id; while (cur) { keep.add(cur); cur = parent.get(cur) ?? null } }
+      for (const u of units) if (u.kind !== 'bench' && (!filterIds || filterIds.has(u.id)) && (!q || u.name.toLowerCase().includes(q) || (u.code ?? '').toLowerCase().includes(q))) { let cur: string | null = u.id; while (cur) { keep.add(cur); cur = parent.get(cur) ?? null } }
     }
     const rows: OutlinerRow[] = []
     const walk = (n: OrgUnitNode, depth: number, isLoose: boolean, parentId: string | null, index: number, nSib: number) => {
-      if (q && !keep.has(n.unit.id)) return
+      if ((q || filterIds) && !keep.has(n.unit.id)) return
       rows.push({ u: n.unit, depth, hasKids: n.children.length > 0, loose: isLoose, parentId, index, nSib })
-      if (q || expanded.has(n.unit.id)) n.children.forEach((c, i) => walk(c, depth + 1, isLoose, n.unit.id, i, n.children.length))
+      if (q || filterIds || expanded.has(n.unit.id)) n.children.forEach((c, i) => walk(c, depth + 1, isLoose, n.unit.id, i, n.children.length))
     }
     main.forEach((r, i) => walk(r, 0, false, null, i, main.length))
     loose.forEach((r, i) => walk(r, 0, true, bench!.unit.id, i, loose.length))
     return { rows, byId: new Map(units.map(u => [u.id, u])), main, loose, keep }
-  }, [units, expanded, query])
+  }, [units, expanded, query, filterIds])
 
   // 선택 행 보이게 스크롤
   useEffect(() => { if (!selected) return; const el = listRef.current?.querySelector<HTMLElement>(`[data-row="${selected}"]`); el?.scrollIntoView({ block: 'nearest' }) }, [selected])
@@ -119,7 +129,9 @@ export function OrgOutliner(p: Props) {
 
   // ── 드래그 ──
   const onDragStart = (e: DragEvent, r: OutlinerRow) => { if (!editable || editing) { e.preventDefault(); return } e.dataTransfer.setData(DND_OUTLINE, r.u.id); e.dataTransfer.effectAllowed = 'move'; setDragId(r.u.id) }
+  const isExt = (e: DragEvent) => !!extTypes?.length && e.dataTransfer.types.some(t => extTypes.includes(t))
   const onDragOver = (e: DragEvent, r: OutlinerRow) => {
+    if (isExt(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (!over || over.id !== r.u.id || over.zone !== 'into') setOver({ id: r.u.id, zone: 'into' }); return }   // [8-C] 외부 항목은 항상 '하위로'
     if (!dragId || dragId === r.u.id) return
     const desc = descendantIds(dragId, units); if (desc.has(r.u.id)) return
     e.preventDefault(); e.dataTransfer.dropEffect = 'move'
@@ -128,6 +140,7 @@ export function OrgOutliner(p: Props) {
     if (!over || over.id !== r.u.id || over.zone !== zone) setOver({ id: r.u.id, zone })
   }
   const onDrop = (e: DragEvent, r: OutlinerRow) => {
+    if (isExt(e)) { e.preventDefault(); e.stopPropagation(); setOver(null); p.onExtDrop?.(r.u.id, e); return }   // [8-C]
     e.preventDefault(); const id = e.dataTransfer.getData(DND_OUTLINE) || dragId; const z = over?.id === r.u.id ? over.zone : 'into'; setOver(null); setDragId(null)
     if (!id || id === r.u.id) return
     const d = rowOf(id) ?? { parentId: byId.get(id)?.parent_unit_id ?? null, index: siblingIds(byId.get(id)?.parent_unit_id ?? null).indexOf(id) }
@@ -154,9 +167,9 @@ export function OrgOutliner(p: Props) {
 
   const q = query.trim()
   const renderNode = (n: OrgUnitNode, depth: number, isLoose: boolean, parentId: string | null, index: number, nSib: number): React.ReactNode[] => {
-    if (q && !keep.has(n.unit.id)) return []
+    if ((q || filterIds) && !keep.has(n.unit.id)) return []
     const r: OutlinerRow = { u: n.unit, depth, hasKids: n.children.length > 0, loose: isLoose, parentId, index, nSib }
-    const open = r.hasKids && (expanded.has(r.u.id) || !!q)
+    const open = r.hasKids && (expanded.has(r.u.id) || !!q || !!filterIds)
     const sel = r.u.id === selected, isEd = editing?.id === r.u.id, ov = over?.id === r.u.id ? over.zone : null, dragging = dragId === r.u.id
     const out: React.ReactNode[] = [
       <div key={r.u.id} data-row={r.u.id} draggable={editable && !isEd} onDragStart={e => onDragStart(e, r)} onDragOver={e => onDragOver(e, r)} onDragLeave={() => over?.id === r.u.id && setOver(null)} onDrop={e => onDrop(e, r)} onDragEnd={onDragEnd}
@@ -168,6 +181,7 @@ export function OrgOutliner(p: Props) {
         {isEd ? input(editing!.value, v => setEditing({ id: r.u.id, value: v }), commitRename, () => setEditing(null))
               : <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: r.depth === 0 && !r.loose ? 600 : 400, borderBottom: r.loose && r.depth === 0 ? `1px dashed ${OG.faint}` : 'none' }}>{r.u.name}{r.u.code && r.u.code !== 'ROOT' ? <span style={{ color: OG.faint, fontSize: 11, marginLeft: 6 }}>{r.u.code}</span> : null}</span>}
         {typeTag(r.u.unit_type)}
+        {p.rowMeta?.(r.u)}
         <span style={{ fontSize: 11, color: OG.faint, minWidth: 28, textAlign: 'right' }} title="인원(하위 포함, 본 카드·숨김 제외)">{countOf.get(r.u.id) ?? 0}</span>
       </div>,
     ]

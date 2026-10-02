@@ -174,6 +174,15 @@ function addDays(ymd: string, n: number): string { const d = new Date(ymd + 'T00
 /** 사람 키 — 겸직 카드 묶음용 */
 export function cardPersonKey(c: OrgCard): string | null { return c.profile_id ?? (c.person_id ? 'p:' + c.person_id : null) }
 /** 하위 단위 id 집합 (드래그 순환 방지용 — 자기 하위로는 드롭 불가) */
+/** [8-C] 단위별 인원(하위 포함) — 본 카드·공석 제외·숨김 제외. ① 구조 설계·③ 인원 배치 공용 */
+export function subtreeCounts(units: OrgUnit[], cards: OrgCard[], isHidden?: (c: OrgCard) => boolean): Map<string, number> {
+  const byUnit = new Map<string, number>()
+  for (const c of cards) if (!c.is_vacancy && c.is_primary !== false && !(isHidden?.(c))) byUnit.set(c.unit_id, (byUnit.get(c.unit_id) ?? 0) + 1)
+  const out = new Map<string, number>()
+  const walk = (n: OrgUnitNode): number => { const t = (byUnit.get(n.unit.id) ?? 0) + n.children.reduce((s, c) => s + walk(c), 0); out.set(n.unit.id, t); return t }
+  buildUnitTree(units).forEach(walk)
+  return out
+}
 export function descendantIds(unitId: string, units: OrgUnit[]): Set<string> {
   const out = new Set<string>()
   const walk = (id: string) => units.filter(u => u.parent_unit_id === id).forEach(u => { out.add(u.id); walk(u.id) })
@@ -286,6 +295,7 @@ const ERR: Record<string, string> = {
   // [8-B] 단위 바인드
   ORG_BIND_SAME_FILE:          '같은 조직도 안의 단위는 승계(기준)로 쓸 수 없습니다.',
   ORG_BIND_INVALID:            '바인드 항목 형식이 올바르지 않습니다.',
+  ORG_PLACE_INVALID:           '배치 항목 형식이 올바르지 않습니다.',
   // [8-A] RPC 가 아직 없을 때(PostgREST PGRST202) — 최신 마이그레이션 미적용
   'Could not find the function': 'DB 마이그레이션이 아직 적용되지 않았습니다 — supabase/migrations 의 최신 파일을 먼저 실행하세요.',
 }

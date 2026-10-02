@@ -3,6 +3,7 @@
  *  - [2026-10-02 ORG 8-B] 신규. 표 한 장: 새 단위(트리 순) | 이전(기준) 조직도 단위 → 승계 인원 | Azure 부서(일치/불일치) | 단위장 포지션 | 상태(확인 필요/확인됨)
  *    자동 매칭(org_bind_suggest) 제안은 칩으로 — 클릭하면 적용. 셀 편집은 즉시 저장(org_bind_apply, 되돌리기 1단계). '자동 매칭 다시 실행' = 미연결 행 일괄
  *    하단: 승계 인원 합계 · 미승계 단위(이전 조직도에만 있음) · 이전 조직도에만 있는 인원(③ 인원 풀로) · Azure 프로필 미배치
+ *  - [2026-10-02 ORG 8-C] 하단 '③ 인원 배치 →' 활성(onNext)
  */
 import { useMemo, useState } from 'react'
 import type { AppUser, OrgCard, OrgFile, OrgFileSummary, OrgJob, OrgRosterCheck, OrgUnit } from '../../types'
@@ -29,6 +30,7 @@ interface Props extends Omit<StepHeaderProps, 'file' | 'stepper'> {
   stepper:     React.ReactNode
   onApply:     (items: OrgBindItem[]) => Promise<void>
   onAutoMatch: () => void
+  onNext:      () => void   // [8-C] ③ 인원 배치로
 }
 
 const norm = (s?: string | null) => (s ?? '').trim().toLowerCase()
@@ -195,7 +197,7 @@ export function OrgBindTable(p: Props) {
           <span>이전 조직도에만 있는 인원 <b style={{ color: onlyInBasePeople ? OG.amber : OG.ink }}>{onlyInBasePeople}</b> → ③ 인원 풀로</span>
           <span>Azure 프로필 미배치 <b style={{ color: p.roster?.missing_count ? OG.amber : OG.ink }}>{p.roster?.missing_count ?? '–'}</b></span>
           <span style={{ flex: 1 }} />
-          <button style={{ ...btnPri, ...btnDisabled }} disabled title="8-C 준비 중">③ 인원 배치 (준비 중)</button>
+          <button style={btnPri} onClick={p.onNext} title="③ 인원 배치 — 승계·Azure 부서 기준으로 미배치 인원을 단위에 배치">③ 인원 배치 →</button>
         </div>
       </div>
     </div>

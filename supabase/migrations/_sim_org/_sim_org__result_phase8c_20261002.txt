@@ -1,0 +1,19 @@
+# Phase 8-C 시뮬 결과 — 2026-10-02 14:04 KST — orgsim6 (8-B 시뮬 완료 상태) + 20261016_org_phase8c.sql
+=== [8-C] 자동 배치 제안 · 일괄 배치 · 되돌리기 ===
+✅  8C-1 풀 4명: 직원B(미배치) · 고현정(보류 카드) · 조직담당(미배치) · 입사예정자C(기준에만)
+✅  8C-2 직원B → A (승계, 기준 단위 A) 
+✅  8C-3 고현정 보류 카드 → B (승계, card_id 포함) 
+✅  8C-4 조직담당(기준에 없음, dept MS) → B (Azure 부서 유일 매칭) 
+✅  8C-5 입사예정자C → A1 (승계, person_id) 
+✅  8C-6 기준 없이(NULL) 는 dept 근거만 
+✅  8C-7 생성 2 · 이동 1 
+✅  8C-8 배치 후 풀에서 사라짐 
+✅  8C-9 이미 카드 있는 사람 생성 → 거부(이름) 
+✅  8C-10 대상 단위에 같은 사람(겸직) → 이동 거부 
+✅  8C-11 되돌리기 1단계 = 생성 2 삭제 + 이동 복귀 
+✅  8C-12 잘못된 항목 → ORG_PLACE_INVALID 
+✅  8C-13 타 파일 단위 → ORG_UNIT_NOT_FOUND 
+✅  8C-14 타 파일 카드 → ORG_CARD_UNIT_OTHER_FILE 
+✅  8C-15 단위장 카드 이동 → 원 단위 head 해제 · is_unit_head false 
+✅  8C-16 일반 직원 → FORBIDDEN 
+✅  8C-17 Active 파일 배치 → ORG_FILE_NOT_EDITABLE 

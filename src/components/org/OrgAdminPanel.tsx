@@ -1,5 +1,6 @@
 /**
  * OrgAdminPanel.tsx — 어드민 '조직도' 탭 루트: 데이터 소유 + 갤러리(A) ↔ 단계 화면/캔버스(B) 전환 + 모든 저장 경로
+ *  - [2026-10-02 ORG 8-C] ③ 인원 배치(OrgPlaceBoard): org_place_suggest 풀+제안(기준 조직도 승계 · Azure 부서) · org_place_cards 일괄 배치(한 트랜잭션 = 되돌리기 1단계)
  *  - [2026-10-02 ORG 8-B] ② 단위 바인드(OrgBindTable): 기준 조직도(복사 원본 → 활성) 트리 + org_bind_suggest 제안 · org_bind_apply 묶음 저장
  *  - [2026-10-02 ORG 8-A] 초안은 ① 구조 설계(OrgStructureEditor) 로 열림 · 스텝퍼로 캔버스 전환. 단위 이동/순서/삭제/복제는 RPC(org_place_unit · org_delete_unit · org_duplicate_unit) = 되돌리기 1단계 (설계서 §15)
  *  - [2026-10-01 ORG Phase 7-E] 작업대 개념 제거(UI) — 보류 루트는 DB 상태로만. 토스트/모달 문구 '보류 카드' · '선 끊기' · '연결 안 됨'
@@ -30,6 +31,7 @@ import {
   loadOrgLayout, saveOrgLayout,   // ← [Phase 7]
   placeOrgUnit, duplicateOrgUnit, type OrgUnitPatch,   // ← [8-A]
   bindSuggest, bindApply, type OrgBindItem, type OrgBindSuggestion,   // ← [8-B]
+  placeSuggest, placeCards, type OrgPlaceItem, type OrgPlaceSuggestion,   // ← [8-C]
   type OrgCodes, type OrgFileBundle, type OrgOffboardingTemplate,
 } from '../../lib/orgApi'
 import { orgErrorMessage, orgPersonView, orgStatusBadge, orgExportRows, orgDepartedInfo, isCardHidden, todayKST, descendantIds, splitBench, type OrgDepartedInfo } from '../../utils/orgStatus'
@@ -44,6 +46,7 @@ import { OrgCodesPanel } from './OrgCodesPanel'                  // ← [Phase 4
 import { OrgStructureEditor } from './OrgStructureEditor'        // ← [8-A] ① 구조 설계
 import { OrgStepper, type OrgStep } from './OrgStepper'          // ← [8-A]
 import { OrgBindTable } from './OrgBindTable'                    // ← [8-B] ② 단위 바인드
+import { OrgPlaceBoard } from './OrgPlaceBoard'                  // ← [8-C] ③ 인원 배치
 import { OG } from './orgShared'
 
 interface Props {
@@ -87,6 +90,9 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   const [baseTree, setBaseTree] = useState<{ units: OrgUnit[]; cards: OrgCard[] } | null>(null)
   const [suggestions, setSuggestions] = useState<OrgBindSuggestion[] | null>(null)
   const [bindBusy, setBindBusy] = useState(false)
+  // [8-C] ③ 인원 배치 — 풀(미배치 프로필·보류 카드·기준에만 있는 인원) + 자동 제안. ③ 화면일 때만 로드, 카드가 바뀌면(배치·되돌리기·reload) 다시
+  const [placeSugg, setPlaceSugg] = useState<OrgPlaceSuggestion[] | null>(null)
+  const [placeBusy, setPlaceBusy] = useState(false)
   const myName = useMemo(() => users.find(u => u.user_id === currentUserId)?.name ?? '관리자', [users, currentUserId])
   const [modal, setModal]       = useState<null | { kind: 'new' } | { kind: 'copy'; src: OrgFileSummary | { id: string; name: string } } | { kind: 'meta' } | { kind: 'unit-new'; parentId: string | null } | { kind: 'unit-rename'; unit: OrgUnit } | { kind: 'unit-move'; unit: OrgUnit } | { kind: 'vacancy'; unitId: string } | { kind: 'person-new'; unitId: string }
     | { kind: 'cards-move'; cardIds: string[] } | { kind: 'split'; cardIds: string[] } | { kind: 'unit-merge'; unit: OrgUnit }>(null)   // ← [Phase 6]
@@ -222,6 +228,22 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
     }
     if (items.length) void onBindApply(items)
   }
+  // [8-C] 인원 풀 + 자동 배치 제안 로드 — ③ 화면 · 파일 · 기준 · 카드 집합이 바뀔 때
+  useEffect(() => {
+    if (step !== 3 || !fileId || !bundle || bundle.file.status !== 'draft') { setPlaceSugg(null); return }
+    let dead = false
+    ;(async () => {
+      try { const sg = await placeSuggest(fileId, baseFileId && baseFileId !== fileId ? baseFileId : null); if (!dead) setPlaceSugg(sg) }
+      catch (e) { if (!dead) { setPlaceSugg([]); fail(e, '인원 풀을 불러오지 못했습니다.') } }
+    })()
+    return () => { dead = true }
+  }, [step, fileId, baseFileId, bundle?.cards])   // eslint-disable-line react-hooks/exhaustive-deps
+  const onPlaceItems = async (items: OrgPlaceItem[]) => {
+    if (!bundle || !editable || !items.length) return
+    setPlaceBusy(true)
+    try { const r = await placeCards(bundle.file.id, items); await reloadBundle(); showToast(`배치 ${r.inserted + r.moved}명 (생성 ${r.inserted} · 이동 ${r.moved}) — 되돌리기 가능`) } catch (e) { fail(e) } finally { setPlaceBusy(false) }
+  }
+  const profileStatus = useCallback((profileId: string): OrgStatusCategory | null => { const st = statusBySubject.get(profileId); return st ? (statusTypeMap.get(st.status_code)?.category ?? null) : null }, [statusBySubject, statusTypeMap])
 
   // ── 단건 재조회 머지 ──
   const refreshUndo = () => { if (fileId) undoOrgPeek(fileId).then(setUndo).catch(() => {}) }
@@ -510,7 +532,14 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
                       editable={editable} isSuper={isSuper} lockHolder={lockHolder} savedAt={savedAt} undo={undo} roster={roster} stepper={stepper}
                       onBack={goGallery} onEditMeta={() => editable ? setModal({ kind: 'meta' }) : showToast('읽기 전용입니다.')} onRoster={() => showRoster(roster)} onHistory={() => setHistory({ file: bundle.file, tab: 'log' })}
                       onExport={() => onExport(bundle.file)} onCopy={() => setModal({ kind: 'copy', src: bundle.file })} onActivate={() => onActivate(bundle.file)} onUndo={onUndo}
-                      onApply={onBindApply} onAutoMatch={onAutoMatch} />
+                      onApply={onBindApply} onAutoMatch={onAutoMatch} onNext={() => setStep(3)} />
+      ) : fileId && bundle && bundle.file.status === 'draft' && step === 3 ? (
+        <OrgPlaceBoard file={bundle.file} units={bundle.units} cards={bundle.cards} users={users} ranks={ranks} jobs={jobs} person={person} badge={badge} isHidden={isHidden} departedOf={departedOf} profileStatus={profileStatus}
+                       pool={placeSugg} busy={placeBusy} baseFileName={baseFileId && baseFileId !== fileId ? (files.find(f => f.id === baseFileId)?.name ?? null) : null}
+                       editable={editable} isSuper={isSuper} lockHolder={lockHolder} savedAt={savedAt} undo={undo} roster={roster} stepper={stepper}
+                       onBack={goGallery} onEditMeta={() => editable ? setModal({ kind: 'meta' }) : showToast('읽기 전용입니다.')} onRoster={() => showRoster(roster)} onHistory={() => setHistory({ file: bundle.file, tab: 'log' })}
+                       onExport={() => onExport(bundle.file)} onCopy={() => setModal({ kind: 'copy', src: bundle.file })} onActivate={() => onActivate(bundle.file)} onUndo={onUndo}
+                       onPlace={onPlaceItems} onCardClick={c => setSelectedCard(c.id)} onAddVacancy={unitId => setModal({ kind: 'vacancy', unitId })} onAddPerson={unitId => setModal({ kind: 'person-new', unitId })} onOpenCanvas={openCanvas} />
       ) : fileId && bundle ? (
         <OrgCanvas file={bundle.file} units={bundle.units} cards={bundle.cards} users={users} ranks={ranks} jobs={jobs} statusTypes={codes.statusTypes} stepper={stepper} initialFocusUnit={canvasFocus}
                    person={person} badge={badge} categoryOf={categoryOf} roster={roster} editable={editable} isSuper={isSuper} lockHolder={lockHolder} savedAt={savedAt}
