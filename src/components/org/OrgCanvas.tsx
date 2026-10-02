@@ -9,7 +9,7 @@
  *  - [2026-10-01 ORG Phase 5-B] 숨김 카드(수동/자동 7일) 기본 제외 + '숨김 n 보기' 토글 · 겸직 카드 태그(본 소속) · 헤드카운트 = 사람 수
  *  - [2026-10-01 ORG Phase 3] 신규 — 설계서 §6.2. 표시·인터랙션만, 데이터·저장은 OrgAdminPanel
  */
-import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from 'react'
+import { Component, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
 import type { AppUser, OrgCard, OrgFile, OrgJob, OrgRank, OrgRosterCheck, OrgStatusCategory, OrgStatusType, OrgUnit } from '../../types'
 import { buildUnitTree, cardPersonKey, descendantIds, primaryJob, sortCards, type OrgBadgeSpec, type OrgDepartedInfo, type OrgPersonView, type OrgUnitNode } from '../../utils/orgStatus'
 import { OrgTree, DND, type TreeDropHandlers } from './OrgTree'
@@ -346,11 +346,13 @@ export function OrgCanvas(p: Props) {
           <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
           {view === 'flow' && (
             <div style={{ position: 'absolute', inset: 0 }}>
+              <CanvasBoundary onReset={() => setView('tree')}>
               <OrgFlowCanvas ctx={ctx} units={units} cardsByUnit={cardsByUnit} editable={editable} expanded={expanded} onToggle={toggle} selectedCard={selectedCard} selectedIds={sel}
                              onCardClick={onCardClickX} onUnitClick={u => { if (editable) p.onRenameUnit(u); else { setRoHint(true); window.setTimeout(() => setRoHint(false), 1600) } }}
                              drop={{ onDropCard: p.onDropCard, onDropUnit: p.onDropUnit, onDropProfile: p.onDropProfile, onDropCards: p.onDropCards }}
                              layout={p.layout ?? new Map()} onSaveLayout={p.onSaveLayout ?? (() => {})} focusUnit={focusUnit} focusTick={focusTick} highlightUnit={focusUnit} onDragState={setNodeDragging}
                              actions={{ onReparent: (unitId, parentId) => p.onDropUnit(unitId, parentId), onDetachUnit: p.onDetachUnit, onRenameUnit: p.onRenameUnit, onAddUnit: id => p.onAddUnit(id), onMergeUnit: p.onMergeUnit, onMoveUnitTo: p.onMoveUnitTo, onDeleteUnit: p.onDeleteUnit, onSelectUnitCards: selectUnitCards, onReorderSiblings: p.onReorderSiblings }} />
+              </CanvasBoundary>
             </div>
           )}
           <div ref={bodyRef} style={{ position: 'absolute', inset: 0, overflow: 'auto', padding: '20px 40px 80px', display: view === 'flow' ? 'none' : 'block' }}>
@@ -406,6 +408,22 @@ export function OrgCanvas(p: Props) {
   )
 }
 
+/** [7-H] 노드 캔버스 렌더 오류 안전망 — 어드민 전체가 흰 화면이 되지 않게 캔버스 영역만 안내 + 트리 뷰로 복귀 */
+class CanvasBoundary extends Component<{ children: ReactNode; onReset: () => void }, { err: Error | null }> {
+  state = { err: null as Error | null }
+  static getDerivedStateFromError(err: Error) { return { err } }
+  componentDidCatch(err: Error) { console.error('[org canvas]', err) }
+  render() {
+    if (!this.state.err) return this.props.children
+    return (
+      <div style={{ padding: 32, fontFamily: OG.font, fontSize: 13, color: OG.ink }}>
+        <b>노드 캔버스를 그리는 중 오류가 났습니다.</b> 데이터는 저장돼 있습니다.
+        <div style={{ color: OG.quiet, fontSize: 11.5, marginTop: 6, wordBreak: 'break-all' }}>{this.state.err.message}</div>
+        <button style={{ ...btn, marginTop: 12 }} onClick={() => { this.setState({ err: null }); this.props.onReset() }}>조직 트리로 돌아가기</button>
+      </div>
+    )
+  }
+}
 const barBtn: React.CSSProperties = { fontFamily: OG.font, fontSize: 12, padding: '5px 10px', border: '1px solid #374151', borderRadius: 6, background: '#374151', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }
 function badgeBg(cat: OrgStatusCategory) { return cat === 'hire_planned' ? '#CCFBF1' : cat === 'departing' ? '#FEF3C7' : cat === 'return_planned' ? '#E0E7FF' : '#EDE9FE' }
 

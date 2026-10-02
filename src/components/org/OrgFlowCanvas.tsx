@@ -1,5 +1,7 @@
 /**
  * OrgFlowCanvas.tsx — 노드 캔버스 (설계서 §14 · Phase 7). Supabase Schema Visualizer 식 자유 배치
+ *  - [2026-10-02 ORG 7-H] 재배치는 setNodes(prev => …) 함수형으로 — rf.getNodes() 스냅샷으로 setNodes 하면 단위 삭제 직후 옛 노드 목록이 되살아나(유령 노드) 삭제된 단위가 다시 그려졌다
+ *  - [2026-10-02 ORG 7-H] 합치기/삭제/되돌리기로 단위가 사라진 직후 React Flow 가 아직 들고 있던 옛 노드가 렌더되며 `units.find(...)!` 가 undefined → 흰 화면. 노드 컴포넌트에서 없는 단위는 null 렌더(노드 동기화 효과가 곧 제거)
  *  - [2026-10-02 ORG Phase 7-G] 끊긴 단위는 트리 '왼쪽' 열(루트 옆)에 배치 — 루트로 끌어 붙이기 거리 최소화 · 드래그 중 드롭 대상 노드 강조 · 자동 팬 속도 ↑ · 드래그 중 보류 카드 트레이 투명(onDragState)
  *  - [2026-10-02 ORG Phase 7-F] 배치 = 조직 트리와 같은 자체 트리 배치(부모 중앙 · 형제 sort_order · 자식 열은 부모 바로 아래, dagre 제거)
  *    · 정렬 고정(기본): 구조·높이가 바뀌면 자동 재배치. 노드 드래그 = 형제 사이에 끼우면 순서 변경(reorder), 다른 노드 위에 놓으면 상위 변경. 배치 저장 안 함
@@ -125,8 +127,8 @@ function Inner(p: Props) {
   }, [units, inBench, editable, setNodes, setEdges])
 
   // [7-F] 자동 정렬 = 조직 트리와 같은 배치. 부모를 자식 열 가운데 위에, 형제는 sort_order, 자식 열은 부모 바로 아래(실측 높이 + STEM×2). 연결 안 된 단위는 오른쪽 열
-  const autoLayout = useCallback((only?: Set<string>): Node[] => {
-    const cur = rf.getNodes(); const byId = new Map(cur.map(n => [n.id, n]))
+  const autoLayout = useCallback((cur: Node[], only?: Set<string>): Node[] => {
+    const byId = new Map(cur.map(n => [n.id, n]))
     const size = (id: string) => { const n = byId.get(id); return { w: n?.measured?.width ?? NODE_W, h: n?.measured?.height ?? 120 } }
     const sortU = (a: OrgUnit, b: OrgUnit) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name, 'ko')
     const kids = (id: string) => units.filter(u => u.parent_unit_id === id && byId.has(u.id)).sort(sortU)
@@ -149,7 +151,7 @@ function Inner(p: Props) {
     let ly = 0
     for (const l of loose) { const w = calcW(l.id); place(l.id, -(w + LOOSE_GAP), ly); let bottom = 0; const walk = (id: string) => { const q = pos.get(id)!; bottom = Math.max(bottom, q.y + size(id).h); kids(id).forEach(k => walk(k.id)) }; walk(l.id); ly = bottom + 24 }
     return cur.map(n => { const q = pos.get(n.id); return q && (!only || only.has(n.id)) ? { ...n, position: q } : n })
-  }, [rf, units, inBench])
+  }, [units, inBench])
 
   const ready = useNodesInitialized()
   const [mode, setMode] = useState<FlowLayoutMode>('locked')
@@ -161,7 +163,7 @@ function Inner(p: Props) {
   const saveAll = useCallback((ns: Node[]) => { if (editable && modeRef.current === 'free') onSaveLayout(ns.map(n => ({ unit_id: n.id, x: n.position.x, y: n.position.y }))) }, [editable, onSaveLayout])
   const fitted = useRef(false)
   const relayout = useCallback((fit = false) => {
-    const ns = autoLayout(); setNodes(ns)
+    setNodes(prev => autoLayout(prev))   // 함수형: 최신 노드 목록 기준(삭제된 단위가 되살아나지 않음)
     if (fit || !fitted.current) { fitted.current = true; window.setTimeout(() => rf.fitView({ padding: 0.1, maxZoom: 1, duration: fit ? 300 : 0 }), 50) }
   }, [autoLayout, setNodes, rf])
   // 정렬 고정: 노드가 측정될 때마다(구조·카드 밀도·펼침 변화) 재배치. 자유 배치: 배치 없는 노드만 트리 자리로
@@ -171,7 +173,7 @@ function Inner(p: Props) {
     if (needLayout.current.size === 0) return
     const pending = new Set(needLayout.current); needLayout.current.clear()
     const all = layoutRef.current.size === 0 || pending.size === rf.getNodes().length
-    const ns = autoLayout(all ? undefined : pending); setNodes(ns); saveAll(all ? ns : ns.filter(n => pending.has(n.id)))
+    const ns = autoLayout(rf.getNodes(), all ? undefined : pending); setNodes(ns); saveAll(all ? ns : ns.filter(n => pending.has(n.id)))
     if (!fitted.current) { fitted.current = true; window.setTimeout(() => rf.fitView({ padding: 0.1, maxZoom: 1 }), 50) }
   }, [ready, units, locked, cardMode, autoLayout, saveAll, setNodes, rf, relayout])
   const onNodesChangeX: typeof onNodesChange = useCallback(changes => {
@@ -215,7 +217,7 @@ function Inner(p: Props) {
     curOrder.splice(curIdx, 0, u.id)
     if (act.onReorderSiblings && ids.join() !== curOrder.join()) act.onReorderSiblings(ids)
   }, [saveAll, unitOf, act, units, rf, relayout, findTarget, p])
-  const doAuto = () => { if (locked) { relayout(true); return } const ns = autoLayout(); setNodes(ns); saveAll(ns); window.setTimeout(() => rf.fitView({ padding: 0.1, maxZoom: 1, duration: 300 }), 50) }
+  const doAuto = () => { if (locked) { relayout(true); return } const ns = autoLayout(rf.getNodes()); setNodes(ns); saveAll(ns); window.setTimeout(() => rf.fitView({ padding: 0.1, maxZoom: 1, duration: 300 }), 50) }
 
   const shared: FlowShared = { ...p, totals, inBench, cardsByUnit, cardMode, openNodes, onToggleOpen, dropTarget }
 
@@ -321,13 +323,14 @@ function Inner(p: Props) {
 /** 단위 노드 — OrgTree.renderNode 의 노드 프레임과 같은 모양. 헤더만 드래그 핸들, 카드 영역은 nodrag(HTML5 카드 DnD) */
 const UnitNode = memo(function UnitNode({ id, selected }: NodeProps) {
   const s = useContext(Shared)!
-  const u = s.units.find(x => x.id === id)!
+  const u = s.units.find(x => x.id === id)
   const [over, setOver] = useState(false)
   const cards = sortCards(s.cardsByUnit.get(id) ?? [], s.ctx.ranks, s.ctx.jobs, c => s.ctx.person(c).name)
   const isOpen = s.expanded.has(id)
   const total = s.totals.get(id) ?? 0
   const benchy = s.inBench.has(id)
   const depth = useMemo(() => { let d = 0, cur: OrgUnit | undefined = u; while (cur?.parent_unit_id) { d++; cur = s.units.find(x => x.id === cur!.parent_unit_id) } return d }, [u, s.units])
+  if (!u) return null   // [7-H] 삭제된 단위의 잔존 노드 — 다음 효과에서 노드 목록이 갱신된다
 
   const types = (e: DragEvent) => e.dataTransfer.types
   const onDragOver = (e: DragEvent) => {
