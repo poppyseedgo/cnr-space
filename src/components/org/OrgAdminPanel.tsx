@@ -1,5 +1,6 @@
 /**
  * OrgAdminPanel.tsx — 어드민 '조직도' 탭 루트: 데이터 소유 + 갤러리(A) ↔ 단계 화면/캔버스(B) 전환 + 모든 저장 경로
+ *  - [2026-10-02 ORG 8-B] ② 단위 바인드(OrgBindTable): 기준 조직도(복사 원본 → 활성) 트리 + org_bind_suggest 제안 · org_bind_apply 묶음 저장
  *  - [2026-10-02 ORG 8-A] 초안은 ① 구조 설계(OrgStructureEditor) 로 열림 · 스텝퍼로 캔버스 전환. 단위 이동/순서/삭제/복제는 RPC(org_place_unit · org_delete_unit · org_duplicate_unit) = 되돌리기 1단계 (설계서 §15)
  *  - [2026-10-01 ORG Phase 7-E] 작업대 개념 제거(UI) — 보류 루트는 DB 상태로만. 토스트/모달 문구 '보류 카드' · '선 끊기' · '연결 안 됨'
  *  - [2026-10-01 ORG Phase 6] 작업대(초안 열 때 ensure) · 다중 이동(org_move_cards) · 분리/합치기 모달 · 떼어내기 · 되돌리기(peek 는 저장마다 갱신) · Excel/CSV/썸네일 작업대 제외 (설계서 §13)
@@ -28,6 +29,7 @@ import {
   ensureOrgBench, moveOrgCards, splitOrgUnit, mergeOrgUnit, undoOrgLast, undoOrgPeek, type OrgUndoPeek,   // ← [Phase 6]
   loadOrgLayout, saveOrgLayout,   // ← [Phase 7]
   placeOrgUnit, duplicateOrgUnit, type OrgUnitPatch,   // ← [8-A]
+  bindSuggest, bindApply, type OrgBindItem, type OrgBindSuggestion,   // ← [8-B]
   type OrgCodes, type OrgFileBundle, type OrgOffboardingTemplate,
 } from '../../lib/orgApi'
 import { orgErrorMessage, orgPersonView, orgStatusBadge, orgExportRows, orgDepartedInfo, isCardHidden, todayKST, descendantIds, splitBench, type OrgDepartedInfo } from '../../utils/orgStatus'
@@ -41,6 +43,7 @@ import { OrgHistoryDrawer } from './OrgHistoryDrawer'            // ← [Phase 4
 import { OrgCodesPanel } from './OrgCodesPanel'                  // ← [Phase 4-B]
 import { OrgStructureEditor } from './OrgStructureEditor'        // ← [8-A] ① 구조 설계
 import { OrgStepper, type OrgStep } from './OrgStepper'          // ← [8-A]
+import { OrgBindTable } from './OrgBindTable'                    // ← [8-B] ② 단위 바인드
 import { OG } from './orgShared'
 
 interface Props {
@@ -79,6 +82,11 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
   const layoutQueue = useRef<Map<string, { x: number; y: number }>>(new Map()); const layoutTimer = useRef<number | null>(null)
   const [step, setStep] = useState<OrgStep>(1)                      // [8-A] 초안: ① 구조 설계 기본. 'canvas' = 기존 트리/노드/목록
   const [canvasFocus, setCanvasFocus] = useState<string | null>(null)   // [8-A] '캔버스에서 보기 →' 로 넘어갈 때 가운데로 둘 단위
+  // [8-B] ② 단위 바인드 — 기준 조직도(복사 원본 → 없으면 활성) · 기준 트리 · 자동 매칭 제안
+  const [baseFileId, setBaseFileId] = useState<string | null>(null)
+  const [baseTree, setBaseTree] = useState<{ units: OrgUnit[]; cards: OrgCard[] } | null>(null)
+  const [suggestions, setSuggestions] = useState<OrgBindSuggestion[] | null>(null)
+  const [bindBusy, setBindBusy] = useState(false)
   const myName = useMemo(() => users.find(u => u.user_id === currentUserId)?.name ?? '관리자', [users, currentUserId])
   const [modal, setModal]       = useState<null | { kind: 'new' } | { kind: 'copy'; src: OrgFileSummary | { id: string; name: string } } | { kind: 'meta' } | { kind: 'unit-new'; parentId: string | null } | { kind: 'unit-rename'; unit: OrgUnit } | { kind: 'unit-move'; unit: OrgUnit } | { kind: 'vacancy'; unitId: string } | { kind: 'person-new'; unitId: string }
     | { kind: 'cards-move'; cardIds: string[] } | { kind: 'split'; cardIds: string[] } | { kind: 'unit-merge'; unit: OrgUnit }>(null)   // ← [Phase 6]
@@ -147,6 +155,7 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
         if (dead) return
         if (!b) { showToast('조직도 파일을 찾을 수 없습니다.'); goGallery(); return }
         setBundle(b); setSelectedCard(null); setStep(b.file.status === 'draft' ? 1 : 'canvas'); setCanvasFocus(null)   // [8-A] 초안은 ① 구조 설계로
+        setBaseFileId(null)   // [8-B] 기준 조직도는 아래 효과에서 기본값(복사 원본 → 활성) 계산
         loadOrgLayout(fileId).then(l => !dead && setLayout(l)).catch(() => setLayout(new Map()))   // [Phase 7]
         rosterCheck(fileId).then(r => !dead && setRoster(r)).catch(() => {})
         if (b.file.status === 'draft') {
@@ -175,6 +184,44 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
       releaseOrgLock(fileId).catch(() => {})
     }
   }, [fileId])   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // [8-B] 기준 조직도 기본값 = 복사 원본(parent_file_id) → 없으면 활성 조직도. 파일 목록이 늦게 와도 다시 계산
+  useEffect(() => {
+    if (!bundle) return
+    setBaseFileId(cur => {
+      if (cur && cur !== bundle.file.id && files.some(f => f.id === cur)) return cur
+      const parent = bundle.file.parent_file_id && files.some(f => f.id === bundle.file.parent_file_id) ? bundle.file.parent_file_id : null
+      return parent ?? files.find(f => f.status === 'active' && f.id !== bundle.file.id)?.id ?? null
+    })
+  }, [bundle?.file.id, files])   // eslint-disable-line react-hooks/exhaustive-deps
+  // [8-B] 기준 조직도 트리 + 자동 매칭 제안 로드 (기준 변경·파일 변경 시)
+  useEffect(() => {
+    if (!fileId || !baseFileId || baseFileId === fileId) { setBaseTree(null); setSuggestions(null); return }
+    let dead = false
+    ;(async () => {
+      try { const [t, sg] = await Promise.all([loadOrgTree(baseFileId), bindSuggest(fileId, baseFileId)]); if (!dead) { setBaseTree(t); setSuggestions(sg) } }
+      catch (e) { if (!dead) { setBaseTree(null); setSuggestions(null); fail(e, '기준 조직도를 불러오지 못했습니다.') } }
+    })()
+    return () => { dead = true }
+  }, [fileId, baseFileId])   // eslint-disable-line react-hooks/exhaustive-deps
+  const onBindApply = async (items: OrgBindItem[]) => {
+    if (!bundle || !editable) return
+    setBindBusy(true)
+    try { const r = await bindApply(bundle.file.id, items); await reloadBundle(); if (items.length > 1) showToast(`바인드 ${r.updated}건 적용 (되돌리기 가능)`) } catch (e) { fail(e) } finally { setBindBusy(false) }
+  }
+  const onAutoMatch = () => {
+    if (!bundle || !suggestions) return
+    const items: OrgBindItem[] = []
+    for (const s of suggestions) {
+      const u = bundle.units.find(x => x.id === s.unit_id); if (!u) continue
+      const it: OrgBindItem = { unit_id: u.id }
+      if (!u.prev_unit_id && s.prev_unit_id) it.prev_unit_id = s.prev_unit_id
+      if (!u.azure_division && s.suggested_division) it.azure_division = s.suggested_division
+      if (!u.head_job_id && s.suggested_head_job_id) it.head_job_id = s.suggested_head_job_id
+      if (Object.keys(it).length > 1) items.push(it)
+    }
+    if (items.length) void onBindApply(items)
+  }
 
   // ── 단건 재조회 머지 ──
   const refreshUndo = () => { if (fileId) undoOrgPeek(fileId).then(setUndo).catch(() => {}) }
@@ -458,6 +505,12 @@ export function OrgAdminPanel({ users, currentUserId, isSuper, showToast, isMobi
                             onExport={() => onExport(bundle.file)} onCopy={() => setModal({ kind: 'copy', src: bundle.file })} onActivate={() => onActivate(bundle.file)} onOpenCanvas={openCanvas}
                             onRename={(id, name) => onPatchUnit(id, { name })} onCreate={onCreateUnit} onPlace={onPlaceUnit} onDuplicate={async u => { await onDuplicateUnit(u) }} onDelete={onDeleteUnit}
                             onPatchUnit={onPatchUnit} onMerge={u => setModal({ kind: 'unit-merge', unit: u })} onUndo={onUndo} />
+      ) : fileId && bundle && bundle.file.status === 'draft' && step === 2 ? (
+        <OrgBindTable file={bundle.file} units={bundle.units} cards={bundle.cards} users={users} jobs={codes.jobs} files={files} baseFileId={baseFileId} onBaseChange={setBaseFileId} base={baseTree} suggestions={suggestions} busy={bindBusy}
+                      editable={editable} isSuper={isSuper} lockHolder={lockHolder} savedAt={savedAt} undo={undo} roster={roster} stepper={stepper}
+                      onBack={goGallery} onEditMeta={() => editable ? setModal({ kind: 'meta' }) : showToast('읽기 전용입니다.')} onRoster={() => showRoster(roster)} onHistory={() => setHistory({ file: bundle.file, tab: 'log' })}
+                      onExport={() => onExport(bundle.file)} onCopy={() => setModal({ kind: 'copy', src: bundle.file })} onActivate={() => onActivate(bundle.file)} onUndo={onUndo}
+                      onApply={onBindApply} onAutoMatch={onAutoMatch} />
       ) : fileId && bundle ? (
         <OrgCanvas file={bundle.file} units={bundle.units} cards={bundle.cards} users={users} ranks={ranks} jobs={jobs} statusTypes={codes.statusTypes} stepper={stepper} initialFocusUnit={canvasFocus}
                    person={person} badge={badge} categoryOf={categoryOf} roster={roster} editable={editable} isSuper={isSuper} lockHolder={lockHolder} savedAt={savedAt}

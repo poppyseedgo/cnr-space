@@ -1,5 +1,6 @@
 /**
  * OrgStructureEditor.tsx — ① 구조 설계 화면 (설계서 §15.2 flow · §15.5 W1, 2026-10-02 확정)
+ *  - [2026-10-02 ORG 8-B] 헤더를 OrgStepHeader 로 분리(② 와 공용)
  *  - [2026-10-02 ORG 8-A] 신규. 헤더(파일·스텝퍼·되돌리기·검증/히스토리/내보내기/복사/Active) + 좌 아웃라이너(OrgOutliner) + 중앙 단위 상세(OrgUnitDetail) + 우 미니 트리(OrgMiniTree)
  *    사람 카드는 다루지 않는다(인원수만). 저장은 OrgAdminPanel 의 RPC(org_place_unit · org_delete_unit · org_duplicate_unit · updateOrgUnit) — 모두 되돌리기 1단계
  */
@@ -10,7 +11,8 @@ import { buildUnitTree, type OrgPersonView, type OrgUnitNode } from '../../utils
 import { OrgOutliner, kbd, type OutlinerActions } from './OrgOutliner'
 import { OrgUnitDetail } from './OrgUnitDetail'
 import { OrgMiniTree } from './OrgMiniTree'
-import { OG, Tag, btn, btnPri, btnDisabled, fileStatusLabel, fmtWhen } from './orgShared'
+import { OG, btn } from './orgShared'
+import { OrgStepHeader, stepShell } from './OrgStepHeader'
 
 export interface StructureActions extends OutlinerActions {
   onPatchUnit: (id: string, patch: OrgUnitPatch) => Promise<void>
@@ -67,30 +69,13 @@ export function OrgStructureEditor(p: Props) {
   }, [unit, units, cards, countOf, cardsByUnit, isHidden])
   const depth = useMemo(() => { let d = 0; const walk = (n: OrgUnitNode) => { d = Math.max(d, n.depth + 1); n.children.forEach(walk) }; buildUnitTree(units).filter(r => r.unit.kind !== 'bench').forEach(walk); return d }, [units])
   const nUnits = units.filter(u => u.kind !== 'bench').length
-  const rosterTotal = p.roster ? p.roster.missing_count + p.roster.ghost_count + p.roster.division_mismatch_count : 0
   const expandAll = () => setExpanded(new Set(units.map(u => u.id)))
   const collapseAll = () => setExpanded(new Set(units.filter(u => !u.parent_unit_id || u.parent_unit_id === benchId).map(u => u.id)))
 
   return (
-    <div style={{ fontFamily: OG.font, color: OG.ink, display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)', minHeight: 640, background: OG.pageBg, border: `1px solid ${OG.line}`, borderRadius: 12, overflow: 'hidden' }}>
-      {/* 헤더 — OrgCanvas 와 같은 구성 + 스텝퍼 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px', height: 56, background: '#fff', borderBottom: `1px solid ${OG.line}`, flexShrink: 0 }}>
-        <button style={btn} onClick={p.onBack}>← 목록</button>
-        <h3 style={{ fontSize: 15, margin: 0, cursor: 'pointer', whiteSpace: 'nowrap' }} onClick={p.onEditMeta} title="이름·적용일·메모 편집">{file.name}</h3>
-        <Tag kind={file.status}>{fileStatusLabel(file.status)}</Tag>
-        {p.stepper}
-        {p.lockHolder && <span style={{ fontSize: 11.5, color: OG.amber, whiteSpace: 'nowrap' }}>● {p.lockHolder} 편집 중</span>}
-        <span style={{ flex: 1 }} />
-        {editable && <span style={{ fontSize: 11.5, color: OG.quiet, whiteSpace: 'nowrap' }}>{p.savedAt ? `자동 저장됨 ${fmtWhen(p.savedAt)}` : ''}</span>}
-        {!editable && <span style={{ fontSize: 11.5, color: OG.quiet }}>읽기 전용{p.lockHolder ? ' — 잠금 해제 대기 또는 복사' : ''}</span>}
-        {editable && <button style={{ ...btn, ...(p.undo?.available ? {} : btnDisabled) }} disabled={!p.undo?.available} onClick={p.onUndo}
-                 title={p.undo?.available ? `내 마지막 동작 되돌리기 (${p.undo.rows ?? 0}건 · ${p.undo.at ? fmtWhen(p.undo.at) : ''})` : p.undo?.conflict ? '그 뒤에 다른 사용자의 변경이 있어 되돌릴 수 없습니다' : '되돌릴 내 변경이 없습니다'}>↶ 되돌리기{p.undo?.available && p.undo.rows ? ` (${p.undo.rows})` : ''}</button>}
-        <button style={{ ...btn, ...(rosterTotal > 0 ? { borderColor: '#FDE68A', background: '#FFFBEB', color: '#92400E' } : {}) }} onClick={p.onRoster}>검증{p.roster ? ` (${rosterTotal})` : ''}</button>
-        <button style={btn} onClick={p.onHistory}>히스토리</button>
-        <button style={btn} onClick={p.onExport}>내보내기</button>
-        <button style={btn} onClick={p.onCopy}>복사</button>
-        {file.status === 'draft' && <button style={{ ...btnPri, ...(p.isSuper ? {} : btnDisabled) }} disabled={!p.isSuper} title={p.isSuper ? '' : '최고 관리자만 Active 지정'} onClick={p.onActivate}>Active 지정</button>}
-      </div>
+    <div style={stepShell}>
+      <OrgStepHeader file={file} editable={editable} isSuper={p.isSuper} lockHolder={p.lockHolder} savedAt={p.savedAt} undo={p.undo} roster={p.roster} stepper={p.stepper}
+                     onBack={p.onBack} onEditMeta={p.onEditMeta} onRoster={p.onRoster} onHistory={p.onHistory} onExport={p.onExport} onCopy={p.onCopy} onActivate={p.onActivate} onUndo={p.onUndo} />
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0, gap: 12, padding: 12 }}>
         {/* 좌: 아웃라이너 */}

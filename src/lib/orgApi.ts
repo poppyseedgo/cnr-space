@@ -62,8 +62,8 @@ function rowToCard(r: any): OrgCard {
 export async function loadOrgTree(fileId: string): Promise<{ units: OrgUnit[]; cards: OrgCard[] }> {
   if (!isSupabaseEnabled) return { units: [], cards: [] }
   const [u, c] = await Promise.all([
-    supabase.from('org_units').select('id, file_id, parent_unit_id, name, code, sort_order, kind, azure_division, head_card_id, unit_type, head_job_id, memo').eq('file_id', fileId),
-    supabase.from('org_cards').select('id, file_id, unit_id, is_vacancy, is_primary, hidden_at').eq('file_id', fileId),
+    supabase.from('org_units').select('id, file_id, parent_unit_id, name, code, sort_order, kind, azure_division, head_card_id, unit_type, head_job_id, memo, prev_unit_id, bind_checked_at').eq('file_id', fileId),
+    supabase.from('org_cards').select('id, file_id, unit_id, is_vacancy, is_primary, hidden_at, profile_id, person_id, is_unit_head').eq('file_id', fileId),
   ])
   if (u.error) throw new Error(u.error.message)
   if (c.error) throw new Error(c.error.message)
@@ -180,6 +180,20 @@ export async function duplicateOrgUnit(unitId: string): Promise<string> {
   const { data, error } = await supabase.rpc('org_duplicate_unit', { p_unit_id: unitId })
   if (error) throw new Error(error.message)
   return data as string
+}
+/** [8-B] 자동 매칭 제안(읽기) — 약칭 → 이름 경로 → 이름 유일 순. Azure 부서·단위장 포지션 제안 포함 */
+export interface OrgBindSuggestion { unit_id: string; prev_unit_id: string | null; method: 'code' | 'path' | 'name' | null; suggested_division: string | null; division_n: number; suggested_head_job_id: string | null }
+export async function bindSuggest(fileId: string, baseFileId: string): Promise<OrgBindSuggestion[]> {
+  const { data, error } = await supabase.rpc('org_bind_suggest', { p_file_id: fileId, p_base_file_id: baseFileId })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as OrgBindSuggestion[]
+}
+/** [8-B] 바인드 묶음 저장 — 키가 있는 필드만 갱신(null 허용). 한 트랜잭션 = 되돌리기 1단계 */
+export interface OrgBindItem { unit_id: string; prev_unit_id?: string | null; azure_division?: string | null; head_job_id?: string | null; checked?: boolean }
+export async function bindApply(fileId: string, items: OrgBindItem[]): Promise<{ updated: number }> {
+  const { data, error } = await supabase.rpc('org_bind_apply', { p_file_id: fileId, p_items: items })
+  if (error) throw new Error(error.message)
+  return data
 }
 /** 같은 부모 안 순서 일괄 저장 (노드 캔버스 형제 드래그용 — 되돌리기는 변경된 행 수만큼) */
 export async function reorderOrgUnits(ids: string[]): Promise<void> {

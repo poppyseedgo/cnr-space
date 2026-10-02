@@ -1,0 +1,23 @@
+# Phase 8-B 시뮬 결과 — 2026-10-02 13:34 KST — orgsim6 (8-A 시뮬 완료 상태) + 20261015_org_phase8b.sql
+=== [8-B] 승계 바인드 · 자동 매칭 · 묶음 저장 · 복사 · 되돌리기 ===
+✅  8B-1 복사본 단위 5개 모두 원본 승계(prev_unit_id) · 작업대는 NULL 
+✅  8B-2 제안: ROOT=code · A=path · A1=path · X1=name(유일) · B2=없음
+✅  8B-3 제안 prev 가 기준 파일의 같은 이름 단위 
+✅  8B-4 단위장 포지션 제안 = 기준 단위장 카드 대표 직무(A → CPO 없음: 단위장 C1 직무 없음, A1 없음) 
+✅  8B-4b Azure 부서 제안: 빈 초안은 기준 단위 하위 인원 최빈값(A 하위 포함 → CO 3명) 
+✅  8B-5 같은 파일을 기준으로 → ORG_BIND_SAME_FILE 
+✅  8B-6 적용 2건: prev·Azure·포지션·확인 
+✅  8B-7 같은 값 재적용 = 0건(로그 없음) 
+✅  8B-8 같은 파일 단위 승계 거부 
+✅  8B-9 타 파일 단위를 unit_id 로 → ORG_UNIT_NOT_FOUND 
+✅  8B-10 확인 해제 + 빈 Azure → NULL 
+✅  8B-11 되돌리기 1단계 → 확인·Azure 복원 (1건)
+✅  8B-12 prev null 로 해제 
+✅  8B-13 직접 UPDATE 로도 승계 가능(다른 파일) 
+✅  8B-14 직접 UPDATE 같은 파일 → ORG_BIND_SAME_FILE 
+✅  8B-15 작업대는 prev·확인 NULL 고정 
+✅  8B-16 복제 단위는 승계 없음(신설) 
+✅  8B-17 기준 단위 삭제 시 prev_unit_id NULL 
+✅  8B-18 일반 직원 → FORBIDDEN 
+✅  8B-19 Active 파일 apply → ORG_FILE_NOT_EDITABLE 
+✅  8B-20 Active 파일 suggest 는 읽기라 허용 

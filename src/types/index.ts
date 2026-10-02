@@ -717,6 +717,9 @@ export interface OrgUnit {
   unit_type?:     string | null
   head_job_id?:   string | null
   memo?:          string | null
+  /** [ORG 8-B] 승계 바인드 — 기준(이전) 조직도의 단위 · 바인드 행 확인 시각 — 설계서 §15.4 */
+  prev_unit_id?:    string | null
+  bind_checked_at?: string | null
 }
 export interface OrgCard {
   id:                 string
