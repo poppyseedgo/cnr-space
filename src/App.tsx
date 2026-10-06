@@ -2,6 +2,10 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-10-06 ADMIN-GATE 2] 권한 없는 어드민 접근 시 안내 토스트 (고지 요청 — "접근할 수 없습니다" 알림)
+ *      · 기존: 조용히 home 폴백 → 왜 홈으로 왔는지 알 수 없었다 (주소 직접 입력·전달받은 승인요청 링크)
+ *      · 변경: home 폴백과 함께 기존 토스트(error)로 '접근할 수 없습니다. 관리자 전용 페이지입니다.' 1회 표시
+ *      · 판정·폴백 로직은 무변경 (adminGate==='denied' 분기에 showToast 한 줄 추가)
  *  - [2026-10-06 ADMIN-GATE] 어드민 페이지 접근 권한 검사 (10/6 사고 — 일반 사용자가 어드민 화면에서 본인 예약 승인)
  *      · 원인: view==='admin' 이면 권한 확인 없이 AdminView 를 렌더했고, 푸터 '관리자 페이지' 링크가 전 직원에게 노출됐다
  *      · adminGate('checking'|'allowed'|'denied') 신설 — 어드민 뷰 진입 시마다 admin_roles 재조회.
@@ -648,6 +652,7 @@ function AppContent() {
     if (view !== 'admin' || adminGate !== 'denied') return
     if ((sessionStorage.getItem('cnr_deeplink') ?? '').startsWith('admin-booking-')) sessionStorage.removeItem('cnr_deeplink')
     setView('home')
+    showToast('접근할 수 없습니다. 관리자 전용 페이지입니다.', 'error')   // ← [2026-10-06 ADMIN-GATE 2] 폴백 사유 안내 (기존 토스트 컴포넌트·error 스타일)
   }, [view, adminGate])  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (modal?.type === 'new' && authUser) {
