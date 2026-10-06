@@ -2976,9 +2976,12 @@ export async function setNotificationRecipients(
 //   공지를 바꾸려면 배포가 필요했고, 게시 기간이 없어 5/12 핫픽스 안내가
 //   두 달 넘게 떠 있었다. DB 로 옮기고 기간이 지나면 자동으로 내려가게 한다.
 //
-//   ★ "지금 보여줄 공지인가" 판정은 **RLS 가 한다**(20260729_announcements.sql).
+//   ★ "지금 보여줄 공지인가" 판정은 **서버 함수 한 곳**이 한다 — get_active_announcement() (20261019, 서버 시각).
 //     프론트에서 다시 거르지 않는다 — 조건이 두 곳에 생기면 한쪽만 고쳐져
 //     기간이 끝난 공지가 어딘가에서 계속 보인다.
+//     ← [2026-10-06] 종전에는 이 판정을 RLS 에 맡겼다(20260729). RLS 는 "누가 어떤 행을 읽을 수 있나"라서
+//       전체 행을 받는 notice 관리자에게는 기간과 무관한 1건(종료·게시 전 공지)이 배너로 내려갔다.
+//       화면이 무엇을 보여줄지는 조회 함수가, 읽기 권한은 RLS 가 — 역할을 나눴다.
 // ═════════════════════════════════════════════════════════════════════════════
 
 export interface Announcement {
@@ -3051,15 +3054,29 @@ export async function notifyAnnouncementSync(): Promise<void> {
 
 export async function loadActiveAnnouncement(): Promise<Announcement | null> {
   if (!isSupabaseEnabled) return null
-  const { data, error } = await supabase
-    .from('announcements')
-    .select('id, message, bg_color, text_color, starts_at, ends_at, is_active')
-    .eq('is_active', true)
-    .order('starts_at', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(1)
+  // ← [2026-10-06] 테이블 직접 조회(is_active 중 최근 시작 1건) → RPC get_active_announcement (20261019).
+  //   게시 기간(starts_at <= now() <= ends_at)·정렬(최근 시작)·1건 제한을 서버 함수가 판정한다 — 권한과 무관하게 같은 1건.
+  const { data, error } = await supabase.rpc('get_active_announcement')
   if (error) { console.warn('[api] 공지 조회 실패:', error.message); return null }
-  return (data?.[0] as Announcement) ?? null
+  return ((data as Announcement[] | null)?.[0]) ?? null
+}
+
+/**
+ * 공지사항 페이지 — 게시가 시작된 활성 공지 (종료분 포함), 최근 시작순
+ *
+ * ← [2026-10-06] 신설. 종전 AnnouncementsPage 는 announcements 테이블을 직접 읽었는데, 테이블 정책은
+ *   일반 직원에게 "게시 중" 행만 준다 → 지난 공지가 0건으로 보였다(관리자만 전체가 보여 드러나지 않음).
+ *   "무엇이 이력인가"(is_active · 게시 시작 — 예약·철회 제외, 8/19 확정 기준)는 RPC get_announcement_history 가 판정한다.
+ *   기간 창(sinceIso)과 정렬은 화면 요구라 여기서 붙인다.
+ */
+export async function loadAnnouncementHistory(sinceIso: string): Promise<Announcement[]> {
+  if (!isSupabaseEnabled) return []
+  const { data, error } = await supabase
+    .rpc('get_announcement_history')
+    .gte('starts_at', sinceIso)
+    .order('starts_at', { ascending: false })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as Announcement[]
 }
 
 /** 관리자 — 전체 목록 (지난 공지 포함). RLS 가 관리자에게만 전체를 준다 */
