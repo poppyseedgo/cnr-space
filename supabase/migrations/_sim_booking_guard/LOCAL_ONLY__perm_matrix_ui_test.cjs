@@ -147,12 +147,11 @@ const same = (a, b) => JSON.stringify([...a].sort()) === JSON.stringify([...b].s
   check('프로필 메뉴에 "ADMIN" 없음 (MY PAGE 만)', same(o.profileMenu, ['MY PAGE']), o)
   o = await run(browser, { ...USER, url: '#admin', shot: 'user_admin_denied.png', shotAt: 1300 })
   check(`#admin 접근 → 홈 이동 · 어드민 화면 미노출${EXPECT_TOAST ? ' · "접근할 수 없습니다" 토스트' : ''}`, deniedOk(o) && o.errors.length === 0, o)
-  for (const u of ['#admin-tab-approvals', '#admin-tab-users', '#admin-tab-org', '#admin-booking-bMINE_P']) {
+  // #admin-org-{id}: 2026-10-06 ORG-DEEPLINK 수정으로 App 의 해시→뷰 매핑에 들어왔다 → 다른 어드민 주소와 같은 게이트·같은 거부 안내를 받는다.
+  //   (그 전에는 매핑에 없어 게이트를 거치지 않고 홈으로 떨어졌고, 그래서 토스트 대상이 아니었다)
+  for (const u of ['#admin-tab-approvals', '#admin-tab-users', '#admin-tab-org', '#admin-booking-bMINE_P', '#admin-org-1']) {
     o = await run(browser, { ...USER, url: u }); check(`${u} 접근 → 차단`, deniedOk(o) && o.writes.length === 0, o)
   }
-  // #admin-org-{id} 는 App 의 해시→뷰 매핑에 없는 주소라(관리자도 새로고침 시 home — 기존 동작) 어드민 게이트를 거치지 않는다.
-  // 그래서 거부 토스트 대상이 아니고, 확인할 것은 "어드민 화면이 뜨지 않는다" 뿐이다.
-  o = await run(browser, { ...USER, url: '#admin-org-1' }); check('#admin-org-1 접근 → 홈, 어드민 미노출', o.hash === '#home' && o.sawAdmin === false && o.writes.length === 0, o)
   o = await run(browser, { ...USER, url: 'admin' })
   check('/admin 경로(해시 아님) → 홈 화면, 어드민 미노출', o.sawAdmin === false && !o.hash.startsWith('#admin'), o)
   o = await run(browser, { ...USER, url: '#booking-bMINE_P', shot: 'user_detail_own_pending.png' }); check('상세 모달 · 본인 승인 대기 건: [예약 취소]만', same(o.modal, ['예약 취소']), o)
