@@ -2,6 +2,17 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-10-06 ORG-DEEPLINK] 조직도 캔버스 주소(#admin-org-{fileId})에서 새로고침·메일 링크 진입 시 홈으로 튕기던 버그
+ *      · 근본원인: 접두어형 딥링크(admin-tab- / admin-booking- / booking- / workboard-)의 해시→view 매핑이
+ *        ①getViewFromHash ②로그인 effect isValidHash ③딥링크 저장 effect 세 곳에 따로 나열돼 있었고,
+ *        10/1 신설한 admin-org- 가 세 곳 모두에서 빠졌다 (8/21 DIRECT_VIEWS 로 고친 "복붙 배열" 문제의 접두어판).
+ *        ① 초기 렌더가 'home' 을 돌려주고 ② isValidHash=false → setView('home') 이 해시를 #home 으로 덮어썼다.
+ *        조직도 알림 메일의 '조직도 열기'(CTA_ORG_FILE = #admin-org-{id})도 같은 이유로 홈에 떨어졌다
+ *      · 해결: HASH_PREFIX_VIEWS + resolveDeepHash() 로 SSOT 화 — ①②가 같은 함수를 쓴다. admin-org- → 'admin' 추가
+ *      · OAuth 복원: admin-org- 도 cnr_deeplink 저장 대상에 추가하고, 로그인 후 해시가 비어 있으면 해시로 되돌린다
+ *        (AdminView·OrgAdminPanel 은 해시에서 탭/파일을 읽는다). 권한 없는 사용자는 어드민 게이트가 home 으로 보낸다
+ *      · 불변: 기존 접두어·별칭(myloans)·DIRECT_VIEWS 의 판정 순서와 결과 (해시 26종 × 3권한 차등 검증 — admin-org- 만 달라짐)
+ *      · ⭐운영 규칙: 접두어형 딥링크를 새로 만들면 HASH_PREFIX_VIEWS 한 줄만 추가
  *  - [2026-10-06 ADMIN-GATE] 어드민 페이지 접근 권한 검사 (10/6 사고 — 일반 사용자가 어드민 화면에서 본인 예약 승인)
  *      · 원인: view==='admin' 이면 권한 확인 없이 AdminView 를 렌더했고, 푸터 '관리자 페이지' 링크가 전 직원에게 노출됐다
  *      · adminGate('checking'|'allowed'|'denied') 신설 — 어드민 뷰 진입 시마다 admin_roles 재조회.
@@ -419,19 +430,34 @@ function AppContent() {
   //   (myloans 는 view 가 아니라 mypage 로 매핑되는 딥링크 별칭 — 여기 넣지 않는다)
   const DIRECT_VIEWS = ['home','calendar','mypage','admin','library','resources','announcements','release-notes','hr-interview','workboard']  // ← [2026-09-29] workboard 추가 (Work Space)  // ← [2026-09-03] hr-interview 추가 (임시 단독 페이지)
 
+  // ← [2026-10-06 ORG-DEEPLINK] 접두어형 딥링크 → view SSOT.
+  //   종전엔 이 목록이 getViewFromHash / 로그인 effect isValidHash / 딥링크 저장 effect 에 따로 나열돼 있어
+  //   10/1 신설한 admin-org- 가 전부 빠졌고, 조직도 캔버스에서 새로고침하면 홈으로 튕겼다.
+  //   ⭐운영 규칙: 접두어형 딥링크를 새로 만들면 여기 한 줄만 추가 (view 는 DIRECT_VIEWS 에 있는 값).
+  //     · admin-tab-{tab}        어드민 탭
+  //     · admin-booking-{id}     승인요청 메일 CTA → 어드민 승인 관리 + 상세 모달 (AdminView 가 소비)
+  //     · admin-org-{fileId}     조직도 캔버스 (AdminView·OrgAdminPanel 이 해시에서 읽음)   ← [2026-10-06] 추가
+  //     · booking-{id}           예약 메일 CTA → 현재 화면 위 상세 모달 (첫 진입 폴백 home, 2026-05-12)
+  //     · workboard-{task|issue}-{id}  Work Space 메일 CTA (WorkboardPage 가 소비, 2026-09-30)
+  const HASH_PREFIX_VIEWS: [string, string][] = [
+    ['admin-tab-', 'admin'], ['admin-booking-', 'admin'], ['admin-org-', 'admin'],
+    ['booking-', 'home'], ['workboard-', 'workboard'],
+  ]
+  /** 딥링크 해시(접두어형 + 별칭 myloans) → view. 딥링크가 아니면 null. (직접 view 해시는 DIRECT_VIEWS 가 판정) */
+  const resolveDeepHash = (h: string | null | undefined): string | null => {
+    if (!h) return null
+    if (h === 'myloans') return 'mypage'   // ← [2026-08-11] 도서 CTA 별칭 — 마이페이지 진입 (탭 선택은 아래 딥링크 이펙트)
+    const hit = HASH_PREFIX_VIEWS.find(([prefix]) => h.startsWith(prefix))
+    return hit ? hit[1] : null
+  }
+
   const getViewFromHash = (): string => {
     const hash = window.location.hash.replace('#', '')
-    if (hash.startsWith('admin-tab-')) return 'admin'
-    if (hash.startsWith('admin-booking-')) return 'admin'
-    if (hash.startsWith('booking-')) return 'home'  // ← [2026-05-12] mypage → home (앱 첫 진입 폴백)
-    if (hash === 'myloans') return 'mypage'         // ← [2026-08-11 CTA 전수검사] 도서 CTA #myloans — 마이페이지 진입 (탭 선택은 아래 딥링크 이펙트)
-    if (hash.startsWith('workboard-')) return 'workboard'   // ← [2026-09-30 NOTIFY 5-B] #workboard-task-{id} / #workboard-issue-{id} (드로어 오픈은 WorkboardPage 가 소비)
-    // OAuth 리다이렉트 후 해시가 소실된 경우 sessionStorage에서 복원
-    const saved = sessionStorage.getItem('cnr_deeplink')
-    if (saved?.startsWith('admin-booking-')) return 'admin'
-    if (saved?.startsWith('booking-')) return 'home'  // ← [2026-05-12] mypage → home
-    if (saved === 'myloans') return 'mypage'          // ← [2026-08-11] OAuth 복원 경로에도 myloans — home 스침 방지
-    if (saved?.startsWith('workboard-')) return 'workboard'   // ← [5-B] OAuth 복원
+    // 판정 순서는 종전과 동일: ① 현재 해시의 딥링크 ② OAuth 리다이렉트로 해시가 소실된 경우 sessionStorage 복원 ③ 직접 view
+    const fromHash = resolveDeepHash(hash)                                   // ← [2026-10-06 ORG-DEEPLINK] 나열식 if → SSOT
+    if (fromHash) return fromHash
+    const fromSaved = resolveDeepHash(sessionStorage.getItem('cnr_deeplink'))  // ← [2026-10-06 ORG-DEEPLINK] 저장 대상은 아래 저장 effect 가 정한다
+    if (fromSaved) return fromSaved
     return DIRECT_VIEWS.includes(hash) ? hash : 'home'  // ← [2026-08-21] 복붙 배열 → SSOT (resources·announcements 포함)
   }
   const [view, setViewState] = useState<string>(getViewFromHash);
@@ -646,7 +672,7 @@ function AppContent() {
   //   남겨 두면 getViewFromHash 가 새로고침마다 다시 admin 으로 보내 같은 폴백이 반복된다.
   useEffect(() => {
     if (view !== 'admin' || adminGate !== 'denied') return
-    if ((sessionStorage.getItem('cnr_deeplink') ?? '').startsWith('admin-booking-')) sessionStorage.removeItem('cnr_deeplink')
+    if (/^admin-(booking|org)-/.test(sessionStorage.getItem('cnr_deeplink') ?? '')) sessionStorage.removeItem('cnr_deeplink')   // ← [2026-10-06 ORG-DEEPLINK] admin-org- 포함
     setView('home')
   }, [view, adminGate])  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -667,10 +693,7 @@ function AppContent() {
     // 최초 로그인(hash 없을 때)만 홈으로 이동, 새로고침 시 현재 hash 유지
     const currentHash = window.location.hash.replace('#', '');
     const isValidHash = DIRECT_VIEWS.includes(currentHash)  // ← [2026-08-21] 복붙 배열 → SSOT (getViewFromHash 와 동일 근거 — resources·announcements 누락으로 새로고침이 홈 이동하던 버그의 두 번째 지점)
-      || currentHash === 'myloans'                          // ← [2026-08-11] 도서 CTA 딥링크 별칭 (view 아님 — SSOT 밖 유지)
-      || currentHash.startsWith('admin-tab-')
-      || currentHash.startsWith('admin-booking-')
-      || currentHash.startsWith('booking-')
+      || resolveDeepHash(currentHash) !== null              // ← [2026-10-06 ORG-DEEPLINK] 접두어·별칭 나열 → getViewFromHash 와 같은 SSOT (admin-org- 누락으로 조직도 캔버스 새로고침이 홈 이동하던 지점)
       || !!sessionStorage.getItem('cnr_deeplink'); // OAuth 후 deeplink 복원 중이면 홈 이동 차단
     if (!isValidHash) {
       setView('home');
@@ -693,10 +716,21 @@ function AppContent() {
   // admin-booking- 딥링크 해시를 sessionStorage에 저장 (OAuth 리다이렉트 시 소실 방지)
   useEffect(() => {
     const hash = window.location.hash.replace('#', '')
-    if (hash.startsWith('admin-booking-') || hash.startsWith('booking-') || hash === 'myloans' || hash.startsWith('workboard-')) {  // ← [2026-08-11] myloans · [5-B] workboard-* 도 로그인 후 복원 대상
+    if (hash.startsWith('admin-booking-') || hash.startsWith('admin-org-') || hash.startsWith('booking-') || hash === 'myloans' || hash.startsWith('workboard-')) {  // ← [2026-08-11] myloans · [5-B] workboard-* 도 로그인 후 복원 대상  // ← [2026-10-06 ORG-DEEPLINK] admin-org-* 추가 (조직도 메일 CTA)
       sessionStorage.setItem('cnr_deeplink', hash)
     }
   }, [])
+
+  // ← [2026-10-06 ORG-DEEPLINK] 조직도 딥링크 OAuth 복원 — 로그인 리다이렉트로 해시가 사라졌으면 저장해 둔 값을 해시로 되돌린다.
+  //   AdminView(getTabFromHash)·OrgAdminPanel(hashFileId) 은 해시에서 탭/파일을 읽으므로, 해시만 복원하면 나머지는 기존 경로 그대로.
+  //   view 는 getViewFromHash 가 저장값으로 이미 'admin' 을 돌려줬다. 권한 없는 사용자는 어드민 게이트가 home 으로 보내며 저장값을 지운다.
+  useEffect(() => {
+    if (!authUser) return
+    const saved = sessionStorage.getItem('cnr_deeplink') ?? ''
+    if (!saved.startsWith('admin-org-')) return
+    sessionStorage.removeItem('cnr_deeplink')
+    if (!window.location.hash.replace('#', '').startsWith('admin-org-')) window.location.hash = saved
+  }, [authUser?.user_id])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── [2026-08-11 CTA 전수검사] #myloans 딥링크 → 마이페이지 '도서 대여' 탭 ──
   //
