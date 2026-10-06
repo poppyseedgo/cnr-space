@@ -6,6 +6,12 @@
  *      · 기존: 조용히 home 폴백 → 왜 홈으로 왔는지 알 수 없었다 (주소 직접 입력·전달받은 승인요청 링크)
  *      · 변경: home 폴백과 함께 기존 토스트(error)로 '접근할 수 없습니다. 관리자 전용 페이지입니다.' 1회 표시
  *      · 판정·폴백 로직은 무변경 (adminGate==='denied' 분기에 showToast 한 줄 추가)
+ *  - [2026-10-06 NOTICE-READ] 헤더 공지 조회 — 로그인 후에만, "지금 게시 중" 판정은 서버 함수(get_active_announcement, 20261019)
+ *      · 문제 ①: notice 관리자 헤더에 종료된 공지가 떴다 — 배너 조회가 게시 기간을 RLS 에 맡겼는데 RLS 는 관리자에게 전체 행을 준다
+ *      · 문제 ②: 로그인 화면에서도 조회가 나가 anon 요청 오류가 쌓였다(24시간 16건, 검색엔진 봇 포함) — 마운트 시 1회 조회였기 때문
+ *      · 변경: 조회 effect 를 로그인 사용자 기준([authUser?.user_id])으로 — 비로그인이면 조회·구독하지 않고 배너를 비운다.
+ *        로그인 직후(이메일 로그인처럼 새로고침이 없는 경로 포함)에도 조회된다. 판정은 api.loadActiveAnnouncement → RPC
+ *      · 불변: 배너 표시(NoticeBar)·dismiss·리얼타임 재조회 신호. 화면 변경 없음
  *  - [2026-10-06 ORG-DEEPLINK] 조직도 캔버스 주소(#admin-org-{fileId})에서 새로고침·메일 링크 진입 시 홈으로 튕기던 버그
  *      · 근본원인: 접두어형 딥링크(admin-tab- / admin-booking- / booking- / workboard-)의 해시→view 매핑이
  *        ①getViewFromHash ②로그인 effect isValidHash ③딥링크 저장 effect 세 곳에 따로 나열돼 있었고,
@@ -356,7 +362,7 @@ const AdminView  = lazy(() => import('./pages/AdminPage').then(m => ({ default: 
 //   두 달 넘게 헤더에 떠 있었다. 내리는 것을 사람 기억에 맡긴 결과다.
 //
 //   이제 관리는 어드민 '공지 배너' 탭에서 하고, 기간이 지나면 자동으로 사라진다.
-//   "지금 보여줄 공지인가" 판정은 RLS 가 하므로(20260729_announcements.sql)
+//   "지금 보여줄 공지인가" 판정은 서버 함수 get_active_announcement 가 하므로(20261019 — 종전 RLS 겸용에서 분리, 2026-10-06)
 //   여기서 다시 거르지 않는다 — 조건이 두 곳에 있으면 한쪽만 고쳐진다.
 
 // ─── App ──────────────────────────────────────────────────────────────────────
@@ -366,26 +372,7 @@ function AppContent() {
   //   subscribeAnnouncementSync 로 어드민 저장/삭제 Broadcast 신호에 재조회 연결.
   //   판정은 계속 RLS — 신호는 "다시 물어봐라"일 뿐, 무엇을 보여줄지는 서버가 결정.
   const [announcement, setAnnouncement] = useState<AnnouncementConfig | null>(null)
-  useEffect(() => {
-    let cancelled = false
-    const refetch = () => {
-      loadActiveAnnouncement()
-        .then(a => {
-          if (cancelled) return
-          setAnnouncement(a ? {
-            id:        a.id,
-            active:    true,          // RLS 가 이미 걸러 내려주므로 여기서는 항상 true
-            message:   a.message,
-            bgColor:   a.bg_color,
-            textColor: a.text_color,
-          } : null)
-        })
-        .catch(e => console.warn('[App] 공지 조회 실패:', e))
-    }
-    refetch()
-    const unsubscribe = subscribeAnnouncementSync(refetch)   // ← [2026-07-27 공지 리얼타임]
-    return () => { cancelled = true; unsubscribe() }
-  }, [])
+  // ← [2026-10-06 NOTICE-READ] 조회 effect 는 useAuth() 아래로 이동 — 로그인 사용자 기준으로 조회한다 (아래 'NOTICE-READ' 참조)
 
   const [dark, setDark] = useState(() =>
     typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches
@@ -626,6 +613,33 @@ function AppContent() {
   const { currentUser: authUser, logout, isAdmin, loading: authLoading } = useAuth()
   const currentUser = authUser?.name ?? ""
   const currentDept = authUser?.dept ?? ""
+
+  // ← [2026-10-06 NOTICE-READ] 헤더 공지 조회 — 로그인한 사용자가 있을 때만.
+  //   종전에는 마운트 시 1회([]) 조회라 로그인 화면(비로그인)에서도 요청이 나갔다. 공지는 로그인 사용자 전용(20261018)이므로
+  //   비로그인 요청은 의미가 없고, 로그인 직후에는 다시 조회해야 한다 → 의존성을 로그인 사용자 id 로.
+  //   refetch 본문은 종전 그대로. 판정(게시 중·최근 시작 1건)은 서버 함수 — 여기서 거르지 않는다.
+  const noticeUserId = authUser?.user_id ?? null
+  useEffect(() => {
+    if (!noticeUserId) { setAnnouncement(null); return }   // 비로그인·로그아웃: 조회·구독 없음, 배너 비움
+    let cancelled = false
+    const refetch = () => {
+      loadActiveAnnouncement()
+        .then(a => {
+          if (cancelled) return
+          setAnnouncement(a ? {
+            id:        a.id,
+            active:    true,          // 서버 함수가 게시 중인 1건만 내려주므로 여기서는 항상 true
+            message:   a.message,
+            bgColor:   a.bg_color,
+            textColor: a.text_color,
+          } : null)
+        })
+        .catch(e => console.warn('[App] 공지 조회 실패:', e))
+    }
+    refetch()
+    const unsubscribe = subscribeAnnouncementSync(refetch)   // ← [2026-07-27 공지 리얼타임]
+    return () => { cancelled = true; unsubscribe() }
+  }, [noticeUserId])
 
   // ← [2026-08-10 이용제재] 로그인 확정 시 1회 + 새 예약 모달을 열 때마다 재확인
   //   (모달 오픈 직전에 제재가 새로 발생/해제됐을 수 있음 — 낙관적 캐시 금지 원칙과 동일 취지)
