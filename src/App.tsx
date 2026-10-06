@@ -2,6 +2,10 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-10-06 ADMIN-GATE 2] 권한 없는 어드민 접근 시 안내 토스트 (고지 요청 — "접근할 수 없습니다" 알림)
+ *      · 기존: 조용히 home 폴백 → 왜 홈으로 왔는지 알 수 없었다 (주소 직접 입력·전달받은 승인요청 링크)
+ *      · 변경: home 폴백과 함께 기존 토스트(error)로 '접근할 수 없습니다. 관리자 전용 페이지입니다.' 1회 표시
+ *      · 판정·폴백 로직은 무변경 (adminGate==='denied' 분기에 showToast 한 줄 추가)
  *  - [2026-10-06 NOTICE-READ] 헤더 공지 조회 — 로그인 후에만, "지금 게시 중" 판정은 서버 함수(get_active_announcement, 20261019)
  *      · 문제 ①: notice 관리자 헤더에 종료된 공지가 떴다 — 배너 조회가 게시 기간을 RLS 에 맡겼는데 RLS 는 관리자에게 전체 행을 준다
  *      · 문제 ②: 로그인 화면에서도 조회가 나가 anon 요청 오류가 쌓였다(24시간 16건, 검색엔진 봇 포함) — 마운트 시 1회 조회였기 때문
@@ -688,6 +692,7 @@ function AppContent() {
     if (view !== 'admin' || adminGate !== 'denied') return
     if (/^admin-(booking|org)-/.test(sessionStorage.getItem('cnr_deeplink') ?? '')) sessionStorage.removeItem('cnr_deeplink')   // ← [2026-10-06 ORG-DEEPLINK] admin-org- 포함
     setView('home')
+    showToast('접근할 수 없습니다. 관리자 전용 페이지입니다.', 'error')   // ← [2026-10-06 ADMIN-GATE 2] 폴백 사유 안내 (기존 토스트 컴포넌트·error 스타일)
   }, [view, adminGate])  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (modal?.type === 'new' && authUser) {
