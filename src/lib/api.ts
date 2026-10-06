@@ -3132,10 +3132,21 @@ export const toKstDayStr = (iso: string) =>
 
 /** 내 역할 — admin_roles SELECT 정책이 본인 것은 항상 허용한다 */
 export async function loadMyAdminRoles(userId: string): Promise<string[]> {
+  // ← [2026-10-06 ADMIN-GATE] 조회 본체를 loadMyAdminRolesStrict 로 분리 — 이 함수의 동작(실패 시 경고 + [])은 그대로
+  try { return await loadMyAdminRolesStrict(userId) }
+  catch (e: any) { console.warn('[api] 내 권한 조회 실패:', e?.message); return [] }
+}
+
+/**
+ * ← [2026-10-06 ADMIN-GATE] 내 역할 조회 (엄격판) — 조회 실패를 [] 로 삼키지 않고 throw.
+ *   어드민 접근 게이트는 '역할 없음'(닫아야 함)과 '조회 실패'(이미 통과한 관리자를 내쫓으면 안 됨)를
+ *   구분해야 하는데, loadMyAdminRoles 는 둘 다 [] 라 구분이 안 된다.
+ */
+export async function loadMyAdminRolesStrict(userId: string): Promise<string[]> {
   if (!isSupabaseEnabled || !userId) return []
   const { data, error } = await supabase
     .from('admin_roles').select('role').eq('user_id', userId)
-  if (error) { console.warn('[api] 내 권한 조회 실패:', error.message); return [] }
+  if (error) throw new Error(error.message)
   return (data ?? []).map((r: any) => r.role)
 }
 
