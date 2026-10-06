@@ -2,6 +2,14 @@
  * AdminPage.tsx — 어드민 페이지 (대시보드 / 예약 / 승인 관리 / 회의실 / 사용자)
  *
  * ✅ 변경 이력
+ *  - [2026-10-06 ADMIN-GATE] AdminView 접근·탭 게이트 보강 (10/6 사고 — 역할 0개 사용자에게 대시보드·승인 관리가 그대로 렌더)
+ *    · 원인 ①: 역할 0개면 TABS=[] 인데 "아래에서 안내 화면" 주석만 있고 화면이 없어, 사이드 메뉴만 숨고 본문은 렌더됐다
+ *    · 원인 ②: 탭 본문 렌더 조건이 activeTab 뿐이라 권한 없는 탭도 setTab/딥링크로 열렸다
+ *    · initialRoles prop — App 이 접근 판정에 쓴 역할을 받아 첫 렌더부터 탭을 확정 (로딩 중 '전체 탭' 구간 제거)
+ *    · onNoAccess prop — 역할 0개(진입 후 회수 포함)면 App 에 알려 home 폴백
+ *    · tabReady(역할 확정 AND 현재 탭 보유)일 때만 탭 본문 렌더
+ *    · setTab — 보유하지 않은 탭으로는 전환하지 않음 (대시보드 '승인 대기' 카드 등)
+ *    · #admin-booking-{id} 딥링크 — 승인 관리 탭이 있을 때만 탭 전환 (상세 모달은 그대로 연다)
  *  - [2026-09-29 WORKBOARD P2] 역할 카탈로그에 일반 뷰 역할(workboard) 추가에 따른 정합 2곳
  *    · '전 역할 보유' 정리 배너 판정: rs.length === NORMAL_ROLES.length → TAB_ROLES 전부 포함 (분모 고정)
  *    · 역할 체크박스 보조 라벨: tab===null → view 있으면 '일반 뷰', 없으면 '미구현'
@@ -66,7 +74,7 @@ import { UserNotificationPrefs } from '../components/common/UserNotificationPref
 // ← [2026-07-24] 관리자 권한 Phase 1 — 역할 카탈로그 + 부여 API
 import { ADMIN_ROLES, GRANTABLE_ROLES, NORMAL_ROLES, SUPER_ROLE, TAB_ROLES,
          visibleTabs, roleSummary } from '../data/adminRoles'  // ← [2026-09-29 WORKBOARD P2] TAB_ROLES — '전 역할' 판정 분모
-import { loadMyAdminRoles, loadAllUserRoles, setUserAdminRoles, loadRoleGrantLog, type RoleGrantLog } from '../lib/api'
+import { loadMyAdminRoles, loadMyAdminRolesStrict, loadAllUserRoles, setUserAdminRoles, loadRoleGrantLog, type RoleGrantLog } from '../lib/api'  // ← [2026-10-06 ADMIN-GATE] Strict 추가 (AdminView 재조회 — 조회 실패 구분)
 // ← [2026-08-05] 노쇼 관리 패널 — bookings 탭 하위 뷰 (기간 프리셋 + 해제/영구삭제)
 import { NoshowAdminPanel } from '../components/admin/NoshowAdminPanel'
 import { ResourceAdminPanel } from '../components/admin/ResourceAdminPanel'  // ← [2026-08-19] 자원 관리 (Phase 3)
@@ -783,16 +791,16 @@ function DetailDrawer({ type, rooms, users, initFrom, initTo, initialSortKey, in
 // ─── AdminView ─────────────────────────────────────────────────────────────────
 // ← [2026-05-06 Admin Phase C] currentUserId/currentUserEmail 추가 — AdminApprovalTable 내 BookingStatusBadge 판정용
 // ← [2026-05-06 사이드 sticky 핫픽스] headerHeight 추가 — 사이드 네비 fixed top 위치 계산용
-export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject, onForceCancel, onDetail, currentUserId = '', currentUserEmail = '', headerHeight = 0 }) {
+export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUsers, showToast, isMobile, isTablet, onApprove, onReject, onForceCancel, onDetail, currentUserId = '', currentUserEmail = '', headerHeight = 0, initialRoles = null, onNoAccess = undefined }: any) {  // ← [2026-10-06 ADMIN-GATE] initialRoles · onNoAccess 추가
   // ── 내 역할 (← [2026-07-24] Phase 1) ────────────────────────────────────
   //   역할이 없는 탭은 사이드 네비에서 숨기고, 해시 딥링크로도 못 들어가게 막는다.
   //   숨기기만 하고 라우팅을 안 막으면 #admin-tab-books 로 우회된다.
-  const [myRoles, setMyRoles] = useState<string[] | null>(null)   // null = 아직 로딩 중
+  const [myRoles, setMyRoles] = useState<string[] | null>(initialRoles ?? null)   // null = 아직 로딩 중  // ← [2026-10-06 ADMIN-GATE] App 이 판정에 쓴 역할로 시작 — 첫 렌더부터 탭 확정
   useEffect(() => {
     let cancelled = false
-    loadMyAdminRoles(currentUserId)
+    loadMyAdminRolesStrict(currentUserId)   // ← [2026-10-06 ADMIN-GATE] 실패 시 throw → 아래 catch 가 기존 역할 유지
       .then(r => { if (!cancelled) setMyRoles(r) })
-      .catch(() => { if (!cancelled) setMyRoles([]) })
+      .catch(() => { if (!cancelled) setMyRoles(prev => prev ?? []) })   // ← [2026-10-06 ADMIN-GATE] 재조회 실패 시 App 이 넘겨준 역할은 유지 (없을 때만 기존대로 [])
     return () => { cancelled = true }
   }, [currentUserId])
 
@@ -800,15 +808,18 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
   // 메뉴가 통째로 사라졌다가 다시 나타나 깜빡인다.
   const ALL_TABS = ['dashboard','bookings','approvals','rooms','users','visitors','books','notifications','notices','canteen-dp','kb','resources','org']  // ← [2026-10-01] org(조직도) 추가  // ← [2026-09-08] canteen-dp(CANTEEN DP) 추가  // ← [2026-08-19] resources(자원 관리) 추가
   const TABS = myRoles === null ? ALL_TABS : (visibleTabs(myRoles) as string[])  // ← [2026-07-10] visitors / [2026-07-23] books(도서 관리) + notifications(알림 설정) 추가
+  // ← [2026-10-06 ADMIN-GATE] 탭 본문 렌더 조건 — 역할 확정(null 아님) AND 현재 탭 보유. 판정은 activeTab 선언 뒤(아래 tabReady)
   const getTabFromHash = () => {
     const hash = window.location.hash.replace('#', '')
-    if (hash.startsWith('admin-booking-')) return 'approvals'  // 딥링크: 승인 관리 탭으로
+    if (hash.startsWith('admin-booking-')) return TABS.includes('approvals') ? 'approvals' : 'dashboard'  // 딥링크: 승인 관리 탭으로  // ← [2026-10-06 ADMIN-GATE] 승인 관리 탭 보유 시에만
     if (hash.startsWith('admin-org-')) return TABS.includes('org') ? 'org' : 'dashboard'  // ← [2026-10-01 ORG Phase 3] 딥링크 #admin-org-{fileId} = 조직도 캔버스
     const t = hash.replace('admin-tab-','')
     return TABS.includes(t) ? t : 'dashboard'
   }
   const [activeTab, setActiveTab] = useState(getTabFromHash)
+  const tabReady = myRoles !== null && TABS.includes(activeTab)   // ← [2026-10-06 ADMIN-GATE] 이 값이 true 일 때만 탭 본문 렌더
   const setTab = (t: string) => {
+    if (!TABS.includes(t)) return   // ← [2026-10-06 ADMIN-GATE] 보유하지 않은 탭으로는 전환하지 않는다 (대시보드 카드·내부 이동 경로 포함)
     setActiveTab(t)
     window.location.hash = `admin-tab-${t}`
   }
@@ -829,7 +840,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
   //   해시 딥링크로 직접 들어온 경우도 여기서 걸린다.
   useEffect(() => {
     if (myRoles === null) return
-    if (TABS.length === 0) return           // 역할 0개 — 아래에서 안내 화면
+    if (TABS.length === 0) { onNoAccess?.(); return }   // 역할 0개 = 어드민 진입 불가 → App 이 home 으로 보낸다  // ← [2026-10-06 ADMIN-GATE] 주석만 있던 '안내 화면' 자리
     if (!TABS.includes(activeTab)) setTab(TABS[0])
   }, [myRoles, activeTab])   // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -844,10 +855,11 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
     const bookingId = raw.replace('admin-booking-', '')
     const target = bookings.find((b: any) => b.id === bookingId)
     if (target) {
-      setActiveTab('approvals')
+      const hasApprovalsTab = TABS.includes('approvals')   // ← [2026-10-06 ADMIN-GATE] 승인 관리 탭 보유 여부
+      if (hasApprovalsTab) setActiveTab('approvals')       // ← [2026-10-06 ADMIN-GATE] 탭 전환은 보유 시에만 (상세 모달은 그대로 연다)
       onDetail(target)
       // 딥링크 소비 후 정리
-      window.location.hash = 'admin-tab-approvals'
+      window.location.hash = hasApprovalsTab ? 'admin-tab-approvals' : `admin-tab-${activeTab}`   // ← [2026-10-06 ADMIN-GATE]
       sessionStorage.removeItem('cnr_deeplink')
     }
   }, [bookings])
@@ -1003,6 +1015,8 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
 
         {/* ── 콘텐츠 영역 ──────────────────────────────────────────── */}
         <div style={{ minWidth: 0 /* ← overflow 안전장치 */ }}>
+      {/* ← [2026-10-06 ADMIN-GATE] 역할이 확정됐고 현재 탭을 보유했을 때만 본문 렌더 (아래 탭별 분기는 무수정) */}
+      {tabReady && <>
       {activeTab==='dashboard' && <AdminDashboard bookings={bookings} rooms={rooms} users={users} isMobile={isMobile} onDetail={onDetail} onGoApprovals={() => setTab('approvals')} onGoNoshowAdmin={() => { setTab('bookings'); setBookingsView('noshow') }} currentUserId={currentUserId} currentUserEmail={currentUserEmail}/>/* ← [2026-05-28] currentUserId/Email 전달 — DetailDrawer 내 BookingStatusBadge 'mine' 칩 판정용  ← [2026-06-10] onGoApprovals 추가 — 승인 대기 카드 클릭 시 '승인 관리' 탭으로 이동 */}
       {activeTab==='bookings'  && <>
         {/* ← [2026-08-05] 하위 뷰 토글 — 예약 목록 / 노쇼 관리 */}
@@ -1059,6 +1073,7 @@ export function AdminView({ bookings, setBookings, rooms, setRooms, users, setUs
       {activeTab==='resources' && <ResourceAdminPanel users={users} currentUserId={currentUserId} showToast={showToast} isMobile={isMobile}/>}
       {/* ← [2026-10-01 ORG Phase 3] 조직도 — 갤러리(파일) ↔ 캔버스(조직 트리). isSuper = Active 지정 게이트(DB org_assert_super 와 동일 판정) */}
       {activeTab==='org' && <OrgAdminPanel users={users} currentUserId={currentUserId} isSuper={!!myRoles?.includes('super')} showToast={showToast} isMobile={isMobile}/>}
+      </>}{/* ← [2026-10-06 ADMIN-GATE] tabReady 닫기 */}
         </div>
       </div>
     </>

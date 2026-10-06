@@ -2,6 +2,10 @@
  * AppFooter.tsx — 서비스 사이트맵 푸터 (Figma 3134:986 전면 재작성)
  *
  * ✅ 변경 이력
+ *  - [2026-10-06 ADMIN-GATE] '관리자 페이지' 링크를 관리자(isAdmin)에게만 노출
+ *      · 8/20 재작성 때 권한 조건 없이 전 직원에게 노출돼 일반 사용자가 어드민 화면에 진입한 경로(10/6 사고)
+ *      · isAdmin prop 신설 — ProfileDropdown·AppDrawer 의 관리자 메뉴와 같은 기준(profiles.role='ADMIN')
+ *      · 관리자 화면은 변화 없음. 일반 사용자는 '기타 서비스' 에 공지사항·Release Note 2개만 보인다
  *  - [2026-07-30] 최초 작성 (서비스 나열형)
  *  - [2026-08-19] sticky footer 대응 — marginTop 160 제거 (간격은 App 스페이서 단일 책임)
  *  - [2026-08-19] Figma 3134:986 신규 디자인 전면 재작성 (고지 확정, 미리보기 승인)
@@ -40,6 +44,8 @@ function IcoArrowOutward({ size }: { size: number }) {
 
 interface AppFooterProps {
   isMobile:   boolean
+  /** ← [2026-10-06 ADMIN-GATE] 관리자 여부 — '관리자 페이지' 링크 노출 조건 */
+  isAdmin:    boolean
   onSetView:  (v: string) => void
   /** 마이페이지 특정 탭으로 이동 (노쇼/회의실=room · 자원=resource · 도서=book) */
   onGoMyPage: (tab: 'room' | 'book' | 'resource') => void
@@ -48,7 +54,7 @@ interface AppFooterProps {
 interface FooterLink { label: string; go: () => void }
 interface FooterSection { title: string; links: FooterLink[] }
 
-export function AppFooter({ isMobile, onSetView, onGoMyPage }: AppFooterProps) {
+export function AppFooter({ isMobile, isAdmin, onSetView, onGoMyPage }: AppFooterProps) {  // ← [2026-10-06 ADMIN-GATE] isAdmin 추가
   /* 담당자 블록 — Figma 3136:7675~ */
   const CONTACTS: { role: string; names: string[] }[] = [
     { role: 'Super Admin',              names: ['김기남', '송보람'] },
@@ -84,7 +90,7 @@ export function AppFooter({ isMobile, onSetView, onGoMyPage }: AppFooterProps) {
     title: '기타 서비스', links: [
       { label: '공지사항',      go: () => onSetView('announcements') },
       { label: 'Release Note',  go: () => onSetView('release-notes') },
-      { label: '관리자 페이지', go: () => onSetView('admin') },
+      ...(isAdmin ? [{ label: '관리자 페이지', go: () => onSetView('admin') }] : []),  // ← [2026-10-06 ADMIN-GATE] 관리자에게만 노출
     ],
   }
 

@@ -2,6 +2,17 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-10-06 ADMIN-GATE] 어드민 페이지 접근 권한 검사 (10/6 사고 — 일반 사용자가 어드민 화면에서 본인 예약 승인)
+ *      · 원인: view==='admin' 이면 권한 확인 없이 AdminView 를 렌더했고, 푸터 '관리자 페이지' 링크가 전 직원에게 노출됐다
+ *      · adminGate('checking'|'allowed'|'denied') 신설 — 어드민 뷰 진입 시마다 admin_roles 재조회.
+ *        통과 조건 = 열 수 있는 어드민 탭 1개 이상(visibleTabs) — DB 가 profiles.role='ADMIN' 을 같은 조건으로 재계산하므로 'ADMIN 전원' 과 동일 집합.
+ *        isAdmin 을 직접 쓰지 않는다: 세션 직후 role='USER' 로 먼저 렌더돼 관리자가 새로고침 시 home 으로 튕긴다.
+ *        로그인 때 받아 둔 역할로 이미 통과면 즉시 표시 + 백그라운드 재확인(관리자 진입 지연 없음),
+ *        아니면 재조회가 끝날 때까지 AdminSkeleton. 조회 실패는 닫힘 쪽.
+ *      · denied → home 폴백 (#workboard 게이트와 같은 패턴). 저장된 #admin-booking- 딥링크도 함께 정리
+ *      · AdminView 에 initialRoles(로딩 구간 없이 탭 확정) · onNoAccess(진입 후 역할 0개가 되면 닫기) 전달
+ *      · AppFooter 에 isAdmin 전달 — '관리자 페이지' 링크는 관리자에게만
+ *      · 최종 방어는 DB(20261017_booking_write_guard) — 이 게이트는 화면 접근 차단 담당
  *  - [2026-09-30 NOTIFY 5-B] Work Space 딥링크 — #workboard-task-{id}/#workboard-issue-{id} → view 'workboard' (OAuth 복원 cnr_deeplink 포함),
  *      알림벨 onOpenWorkboard → wbDeepLink 상태 → WorkboardPage deepLink prop (소비 후 비움)
  *  - [2026-09-29 WORKBOARD P3-A] WorkboardPage 에 users·authUserId·showToast 전달 (보드 구현)
@@ -289,8 +300,8 @@ import type { Booking, Room, AppUser, ModalState, Toast, AppView, CalViewType } 
 import { HomeView } from './components/room/HomeView'
 import { LibraryPage } from './pages/LibraryPage'  // ← [2026-07-16] 도서관 모듈 추가
 import { WorkboardPage, type WbDeepLink } from './pages/WorkboardPage'  // ← [2026-09-29 WORKBOARD P2] Work Space 임시 페이지 (#workboard) · [5-B] WbDeepLink
-import { loadMyAdminRoles } from './lib/api'        // ← [2026-09-29 WORKBOARD P2] 내 admin_roles — 일반 뷰 권한 게이트용
-import { canSeeView, canSeeTab } from './data/adminRoles'       // ← [2026-09-29 WORKBOARD P2] 역할 → 일반 뷰 판정 SSOT  // ← [2026-10-01 ORG] canSeeTab — 드로어 '조직도' 진입 게이트
+import { loadMyAdminRoles, loadMyAdminRolesStrict } from './lib/api'        // ← [2026-09-29 WORKBOARD P2] 내 admin_roles — 일반 뷰 권한 게이트용  // ← [2026-10-06 ADMIN-GATE] Strict — 조회 실패 구분
+import { canSeeView, canSeeTab, visibleTabs } from './data/adminRoles'       // ← [2026-09-29 WORKBOARD P2] 역할 → 일반 뷰 판정 SSOT  // ← [2026-10-01 ORG] canSeeTab — 드로어 '조직도' 진입 게이트  // ← [2026-10-06 ADMIN-GATE] visibleTabs — 어드민 뷰 접근 판정
 import { ReleaseNotesPage } from './pages/ReleaseNotesPage'  // ← [2026-08-03] Release Note + Hotfix 페이지 추가
 import HrInterviewPage from './pages/HrInterviewPage'  // ← [2026-09-03] 근태 APP 내재화 HR 1차 인터뷰 임시 단독 페이지 (#hr-interview)
 import { RoomDetailModal } from './components/room/RoomDetailModal'
@@ -605,6 +616,39 @@ function AppContent() {
     if (view !== 'workboard' || myAdminRoles === null) return
     if (!canSeeView(myAdminRoles, 'workboard')) setView('home')
   }, [view, myAdminRoles])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ← [2026-10-06 ADMIN-GATE] 어드민 페이지 접근 권한 검사 — 진입할 때마다 내 admin_roles 를 다시 읽어 판정한다.
+  //   통과 = 열 수 있는 어드민 탭 1개 이상(visibleTabs). DB 가 profiles.role='ADMIN' 을 이 조건으로 재계산하므로
+  //   (admin_set_user_roles) 'ADMIN 전원' 과 같은 집합이다. isAdmin 을 직접 쓰지 않는 이유: useAuth 가 세션 직후
+  //   role='USER' 로 먼저 렌더하고 프로필 조회 뒤 ADMIN 으로 보정하므로, isAdmin 으로 판정하면 관리자가
+  //   어드민 화면에서 새로고침할 때 home 으로 튕긴다 (#workboard 게이트가 역할만 보는 것과 같은 이유).
+  //   · 로그인 때 받아 둔 역할(myAdminRoles)로 이미 통과면 즉시 'allowed' — 관리자는 기존처럼 지연 없이 열린다.
+  //     백그라운드 재확인 결과가 다르면(권한 회수) 그때 'denied' 로 바뀐다.
+  //   · 통과가 아니면 재조회가 끝날 때까지 'checking'(AdminSkeleton) — 일반 사용자에게 어드민 화면이 한 프레임도 뜨지 않는다.
+  //   · 조회 실패(loadMyAdminRolesStrict throw): 이미 통과 상태면 유지(순간 네트워크 오류로 관리자를 내쫓지 않음), 아니면 닫힘.
+  //   myAdminRoles 는 의존성에서 제외 — 재확인 결과(setMyAdminRoles)를 다시 트리거로 쓰면 재조회가 반복된다.
+  const [adminGate, setAdminGate] = useState<'checking' | 'allowed' | 'denied'>('checking')
+  useEffect(() => {
+    if (view !== 'admin' || !authUser) { setAdminGate('checking'); return }
+    setAdminGate(myAdminRoles !== null && visibleTabs(myAdminRoles).length > 0 ? 'allowed' : 'checking')
+    let cancelled = false
+    loadMyAdminRolesStrict(authUser.user_id)
+      .then(r => {
+        if (cancelled) return
+        setMyAdminRoles(r)
+        setAdminGate(visibleTabs(r).length > 0 ? 'allowed' : 'denied')
+      })
+      .catch(() => { if (!cancelled) setAdminGate(prev => prev === 'allowed' ? 'allowed' : 'denied') })
+    return () => { cancelled = true }
+  }, [view, authUser?.user_id])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ← [2026-10-06 ADMIN-GATE] 권한 없음 → home 폴백. 저장된 관리자 딥링크(#admin-booking-…)도 지운다 —
+  //   남겨 두면 getViewFromHash 가 새로고침마다 다시 admin 으로 보내 같은 폴백이 반복된다.
+  useEffect(() => {
+    if (view !== 'admin' || adminGate !== 'denied') return
+    if ((sessionStorage.getItem('cnr_deeplink') ?? '').startsWith('admin-booking-')) sessionStorage.removeItem('cnr_deeplink')
+    setView('home')
+  }, [view, adminGate])  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (modal?.type === 'new' && authUser) {
       fetchMyNoshowPenalty().then(setMyNoshowPenalty).catch(() => {})
@@ -2030,7 +2074,10 @@ function AppContent() {
       {/* ← [2026-04-24 P8-B] AdminView onForceCancel도 공통 다이얼로그 경유로 통일 */}
       {/* ← [2026-05-06 Admin Phase C] currentUserId/currentUserEmail 전달 — AdminApprovalTable 내 BookingStatusBadge 판정용 */}
       {/* ← [2026-05-06 사이드 sticky 핫픽스] headerHeight 전달 — 사이드 네비 fixed 위치 계산용 (헤더와 동일 패턴) */}
-      {view==="admin" && <LazyErrorBoundary><Suspense fallback={<AdminSkeleton />}><AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={confirmAndAdminForceCancel} onDetail={b=>setModal({type:'detail',data:b})} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} headerHeight={headerHeight} /></Suspense></LazyErrorBoundary>}
+      {/* ← [2026-10-06 ADMIN-GATE] 접근 권한 통과(adminGate) 시에만 AdminView — 판정 중·거부는 스켈레톤(거부는 곧 home 폴백) */}
+      {view==="admin" && (adminGate === 'allowed'
+        ? <LazyErrorBoundary><Suspense fallback={<AdminSkeleton />}><AdminView bookings={bookings} setBookings={setBookings} rooms={rooms} setRooms={setRooms} users={users} setUsers={setUsers} showToast={showToast} isMobile={isMobile} isTablet={isTablet} onApprove={approvePendingBooking} onReject={rejectPendingBooking} onForceCancel={confirmAndAdminForceCancel} onDetail={b=>setModal({type:'detail',data:b})} currentUserId={authUser?.user_id ?? ''} currentUserEmail={authUser?.email ?? ''} headerHeight={headerHeight} initialRoles={myAdminRoles} onNoAccess={() => setAdminGate('denied')} /></Suspense></LazyErrorBoundary>
+        : <AdminSkeleton />)}
       {view==="library" && <LibraryPage isAdmin={isAdmin} users={users} authUserId={authUser?.user_id ?? ''} showToast={showToast} onGoMyLoans={() => { setMyPageInitialTab('book'); setView('mypage') }} />}{/* ← [2026-07-16] 도서관 모듈 추가 */}
       {view==="resources" && <ResourcePage users={users} authUserId={authUser?.user_id ?? ''} showToast={showToast} isMobile={isMobile} onGoMyResources={() => { setMyPageInitialTab('resource'); setView('mypage') }} />}{/* ← [2026-08-19] 자원예약 Phase 2A — 카드+Figma 모달, 2B(타임라인·캘린더) 예정 */}
       {view==="announcements" && <AnnouncementsPage showToast={showToast} />}{/* ← [2026-08-19] 공지사항 — 헤더 배너 이력, RLS 20260749 필요 */}
@@ -2197,7 +2244,7 @@ function AppContent() {
             푸터 fixed 오버레이가 아니라 문서 흐름 유지 — 콘텐츠를 가리지 않는 근본 해법 */}
       <div style={{ flexGrow: 1, minHeight: 160 }} aria-hidden="true" />
       {/* ── Footer — ← [2026-07-30] 서비스 나열 푸터로 교체 (AppFooter) ── */}
-      <AppFooter isMobile={isMobile} onSetView={setView} onGoMyPage={(t) => { setMyPageInitialTab(t); setView('mypage') }} />{/* ← [2026-08-19] 신규 푸터 — 마이페이지 탭 정확 이동 */}
+      <AppFooter isMobile={isMobile} isAdmin={isAdmin} onSetView={setView} onGoMyPage={(t) => { setMyPageInitialTab(t); setView('mypage') }} />{/* ← [2026-08-19] 신규 푸터 — 마이페이지 탭 정확 이동 */}{/* ← [2026-10-06 ADMIN-GATE] isAdmin — '관리자 페이지' 링크 관리자 한정 */}
 
       {/* ── 전역 사이드 드로어 — ← [2026-07-30] ── */}
       <AppDrawer
