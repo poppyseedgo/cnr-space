@@ -1,19 +1,22 @@
 /**
  * AnnouncementsPage.tsx — 공지사항 페이지 (2026-08-19 고지 확정, 미리보기 승인분)
  *
- * 데이터: announcements 테이블 그대로 (헤더 배너 NoticeBar 와 동일 원천).
+ * 데이터: announcements (헤더 배너 NoticeBar 와 동일 원천) — RPC get_announcement_history 경유.
  *  - 게시중: is_active + 기간 내 — 관리자가 지정한 배너 색으로 강조
  *  - 지난 공지: 게시가 시작됐던 활성 공지 중 기간 종료분 (최근 시작순, 6개월)
- *  - 철회(is_active=false)·예약(미래 시작) 공지는 RLS 가 숨긴다 (20260749)
+ *  - 철회(is_active=false)·예약(미래 시작) 공지는 서버 함수가 제외한다 (20261019)
  *  - 상세·검색 없음 — 한 줄 공지 특성상 목록이 전부 (승인분)
  *
  * ✅ 변경 이력
+ *  - [2026-10-06] 일반 직원에게 목록이 비어 보이던 버그 — 테이블 직접 조회 → loadAnnouncementHistory(RPC, 20261019)
+ *      · 원인: 테이블 정책은 일반 직원에게 "게시 중" 행만 준다(이력 열람용 20260749 는 운영 미반영). 관리자만 전체가 보여 드러나지 않았다
+ *      · 관리자에게 예약·철회 공지가 '지난 공지'로 섞여 보이던 것도 함께 해소 (권한과 무관하게 같은 목록)
+ *      · 화면(마크업·문구·스타일) 변경 없음
  *  - [2026-08-19] 최초 작성
  */
 
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
-import type { Announcement } from '../lib/api'
+import { loadAnnouncementHistory, type Announcement } from '../lib/api'   // ← [2026-10-06] supabase 직접 조회 → api 함수(RPC)
 
 const FONT = "'Pretendard', -apple-system, sans-serif"
 
@@ -33,20 +36,14 @@ export function AnnouncementsPage({ showToast }: Props) {
 
   useEffect(() => {
     const since = new Date(Date.now() - 183 * 24 * 3600 * 1000).toISOString()  // 최근 6개월
-    supabase
-      .from('announcements')
-      .select('*')
-      .gte('starts_at', since)
-      .order('starts_at', { ascending: false })
-      .then(({ data, error }) => {
-        if (error) showToast(error.message)
-        else setRows((data ?? []) as Announcement[])
-        setLoading(false)
-      })
+    loadAnnouncementHistory(since)                                            // ← [2026-10-06] 테이블 직접 조회 → RPC (게시 시작 + 활성, 종료분 포함)
+      .then(data => setRows(data))
+      .catch(e => showToast(e instanceof Error ? e.message : String(e)))
+      .finally(() => setLoading(false))
   }, [showToast])
 
   const now = Date.now()
-  // RLS 가 활성+게시시작분만 주지만, 방어적으로 클라에서도 동일 기준 분류
+  // 서버 함수가 활성+게시시작분만 주지만, 방어적으로 클라에서도 동일 기준 분류
   const active = rows.filter(a => a.is_active && Date.parse(a.starts_at) <= now && now <= Date.parse(a.ends_at))
   const past   = rows.filter(a => !active.includes(a))
 
