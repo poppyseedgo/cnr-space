@@ -5,6 +5,11 @@
  *  - [2026-07-30] 신규 — CTA 확인 UX 전수 검사 후속.
  *      파편화의 근본 원인이 "공용 확인 컴포넌트 부재"(커스텀 4종 + native confirm
  *      10곳 각자 구현)였으므로, "확인만 필요한 자리"의 표준을 하나 세운다.
+ *  - [2026-10-08 조직도 버그픽스] zIndex 1200 → 3000 — 조직도 카드 드로어(1250)·코드 패널(1250)·
+ *      도서 폼 모달(2000) 등 zIndex 1200 이상 서피스 위에서 열면 확인 다이얼로그가 dim 뒤에 묻혀
+ *      클릭 불가(상태 라벨 변경 불가의 근본 원인). 전역 공용 확인은 정의상 모든 서피스(모달·드로어
+ *      1000~2000대)보다 위여야 하므로 전용 최상위 레이어 3000 으로 올린다.
+ *      (DatePicker·드롭다운 등 일시 팝업 9000대는 그 위 유지 — 확인창과 동시 노출 없음)
  *
  * 📌 사용 원칙
  *    · 사용자 노출 화면의 불가역 액션 = 이 컴포넌트 (native confirm 금지 —
@@ -48,7 +53,7 @@ export function ConfirmDialog({
         style={{
           position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)',
           backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center',
-          justifyContent: 'center', zIndex: 1200, padding: 16,
+          justifyContent: 'center', zIndex: 3000, padding: 16,   // ← [2026-10-08] 1200 → 3000: 드로어(1250)·모달(2000) 위 확인 전용 최상위 레이어
         }}>
         <div
           className="anm"

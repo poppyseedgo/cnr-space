@@ -4,6 +4,11 @@
  *  - [2026-10-01 ORG Phase 5-B] ②-b '이 사람의 카드' 섹션: 본/겸직 카드 목록 · 겸직 카드 추가(단위 선택) · 승격 · 숨김/해제 (퇴사일 경과 라벨)
  *  - [2026-10-01 ORG Phase 5] 헤더에 '조직도 표기 이름' 편집(사람 단위 · 파일 무관 · org 역할) — Azure 이름은 보조 표기
  *  - [2026-10-01 ORG Phase 4-B] ④ 반납 체크리스트 아래 "시스템 잔여"(도서·자원·어드민 권한·회의실) — org_offboarding_system_check RPC
+ *  - [2026-10-08 조직도 버그픽스] ①퇴사 완료자 체크리스트 폴백 — 퇴사 실행 시 org_person_status 가
+ *      ended_reason='departed' 로 종료돼 활성 status 가 사라지며 ④ 섹션이 통째로 숨던 문제.
+ *      이력에서 마지막 '퇴사예정' 상태를 찾아 반납 체크리스트(반납 이력)를 계속 표시·편집(RLS 는 상태 종료와 무관)
+ *      ②ESC 가드 — ConfirmDialog 열림 중 ESC 가 드로어를 먼저 닫아 확인창이 함께 언마운트되던 문제
+ *      ③사용자 관리(profiles.employment_status='departing')에서만 퇴사예정 지정된 경우 안내 배너 — 조직도 상태 미등록이면 체크리스트가 생성되지 않음을 명시
  *
  *  섹션(위→아래): ①프로필 헤더(live) ②배치(단위·직급·직무 복수·보고선·단위장·고용형태·근무지·FTE)
  *                 ③상태(활성 라벨 + 상태 변경 폼 — category 별 필수값) ④반납 체크리스트(퇴사예정일 때)
@@ -12,7 +17,7 @@
  *  상태 변경만 ConfirmDialog — profiles.employment_status 동기화(외부 영향) 때문
  *  Active·Archived 파일에서는 배치 섹션 읽기 전용, 상태 섹션은 사람 소속이라 편집 가능(org 역할)
  */
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'   // ← [2026-10-08] useRef 추가 (ESC 가드)
 import { X } from 'lucide-react'
 import type { AppUser, OrgCard, OrgJob, OrgOffboardingItem, OrgPersonStatus, OrgRank, OrgStatusType, OrgUnit, OrgEmploymentType } from '../../types'
 import { ModalPortal } from '../common/ModalPortal'
@@ -70,7 +75,8 @@ export function OrgCardDrawer(p: Props) {
   const { card, person, units, cards, ranks, jobs, statusTypes, templates, status, editable, personName } = p
   const [entered, setEntered] = useState(false)
   useEffect(() => { const t = requestAnimationFrame(() => setEntered(true)); return () => cancelAnimationFrame(t) }, [])
-  useEffect(() => { const h = (e: KeyboardEvent) => { if (e.key === 'Escape') p.onClose() }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h) }, [p.onClose])  // eslint-disable-line react-hooks/exhaustive-deps
+  const confirmOpenRef = useRef(false)   // ← [2026-10-08] ConfirmDialog 열림 여부 — ESC 가 드로어보다 확인창을 먼저 닫도록
+  useEffect(() => { const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !confirmOpenRef.current) p.onClose() }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h) }, [p.onClose])  // eslint-disable-line react-hooks/exhaustive-deps  // ← [2026-10-08] 확인창 열림 중 ESC 무시
 
   const [saving, setSaving] = useState(false)
   const [memo, setMemo] = useState(card.memo ?? '')
@@ -106,6 +112,7 @@ export function OrgCardDrawer(p: Props) {
   const canStatus = !card.is_vacancy && (card.profile_id || card.person_id)
   const [stForm, setStForm] = useState<null | { code: string; start_on: string; end_on: string; return_on: string; departure_on: string; planned: string; note: string; applicable: Set<string> }>(null)
   const [confirmSt, setConfirmSt] = useState<null | { title: string; message: React.ReactNode; variant: 'warn' | 'danger' | 'neutral'; run: () => Promise<void> }>(null)
+  confirmOpenRef.current = !!confirmSt   // ← [2026-10-08] 렌더마다 동기화 — ESC 핸들러가 ref 로 최신값 읽음
   const [busy, setBusy] = useState(false)
   const openStForm = () => setStForm({ code: statusTypes.find(t => t.is_active && (card.person_id ? t.category === 'hire_planned' : t.category !== 'hire_planned'))?.code ?? '', start_on: '', end_on: '', return_on: '', departure_on: '', planned: 'parental_leave', note: '', applicable: new Set() })
   const stType = stForm ? typeMap.get(stForm.code) : null
@@ -133,8 +140,22 @@ export function OrgCardDrawer(p: Props) {
   const runConfirm = async () => { if (!confirmSt) return; setBusy(true); try { await confirmSt.run(); setConfirmSt(null) } catch (e) { p.showToast(orgErrorMessage(e)) } finally { setBusy(false) } }
 
   // ── 체크리스트 ──
+  // [2026-10-08 버그픽스] 퇴사 완료자 폴백 — 퇴사 실행 훅(20261006)이 활성 상태를 ended_reason='departed' 로 종료하므로
+  // status(활성만 로드)가 null 이 되어 체크리스트가 통째로 사라졌음. 항목 자체는 보존되므로("퇴사 실행 후에도 보존(반납 이력)" — 20261005 테이블 주석)
+  // 이력에서 마지막 '퇴사예정' 상태를 찾아 계속 표시한다. 편집도 유지(RLS org_offboarding_items_update 는 has_admin_role('org') 만 요구)
+  const [endedDeparting, setEndedDeparting] = useState<OrgPersonStatus | null>(null)   // ← [2026-10-08]
+  useEffect(() => {   // ← [2026-10-08] 신규 effect
+    const isDeparted = person.departed || !!p.departedInfo?.departed
+    if (!status && isDeparted && (card.profile_id || card.person_id)) {
+      loadOrgStatusHistory(card.profile_id, card.person_id)
+        .then(h => setEndedDeparting(h.find(s => typeMap.get(s.status_code)?.category === 'departing') ?? null))   // 최신순(DESC) 첫 매치 = 마지막 퇴사예정
+        .catch(() => setEndedDeparting(null))
+    } else setEndedDeparting(null)
+  }, [status?.id, card.id, person.departed, p.departedInfo?.departed])  // eslint-disable-line react-hooks/exhaustive-deps
+  /** [2026-10-08] 체크리스트 기준 상태 — 활성 퇴사예정 우선, 없으면(퇴사 완료) 마지막 퇴사예정 이력 */
+  const checklistStatus = (status && curType?.category === 'departing') ? status : endedDeparting
   const [items, setItems] = useState<OrgOffboardingItem[]>([])
-  useEffect(() => { if (status && curType?.category === 'departing') loadOffboardingItems(status.id).then(setItems).catch(() => setItems([])); else setItems([]) }, [status?.id, curType?.category])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (checklistStatus) loadOffboardingItems(checklistStatus.id).then(setItems).catch(() => setItems([])); else setItems([]) }, [checklistStatus?.id])  // eslint-disable-line react-hooks/exhaustive-deps  // ← [2026-10-08] status → checklistStatus 로 교체
   const toggleItem = async (it: OrgOffboardingItem, patch: { checked?: boolean; applicable?: boolean }) => {
     try { await setOffboardingItem(it.id, patch, p.currentUserId); setItems(await loadOffboardingItems(it.status_id)) } catch (e) { p.showToast(orgErrorMessage(e)) }
   }
@@ -256,6 +277,13 @@ export function OrgCardDrawer(p: Props) {
               {!stForm && !person.departed && <button style={btn} onClick={openStForm}>상태 변경</button>}
               {status && !stForm && <button style={btnDanger} onClick={endStatus}>상태 종료</button>}
             </div>
+            {/* [2026-10-08] 사용자 관리에서만 퇴사예정 지정된 경우(조직도 상태 미등록) 안내 — 체크리스트는 조직도 '퇴사예정' 등록 시 생성됨(org_set_person_status 가 템플릿 복제) */}
+            {!status && !person.departed && azureUser?.employment_status === 'departing' && (
+              <div style={{ marginTop: 8, fontSize: 11.5, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 6, padding: '6px 9px', lineHeight: 1.5 }}>
+                사용자 관리에서 퇴사예정으로 지정된 사용자입니다{azureUser.departure_scheduled_on ? ` (예정일 ${azureUser.departure_scheduled_on})` : ''}.
+                여기 <b>상태 변경 → 퇴사예정</b> 으로 등록해야 반납 체크리스트가 생성됩니다.
+              </div>
+            )}
             {status && <div style={{ fontSize: 11.5, color: OG.quiet, marginTop: 6 }}>
               {status.start_on && <span>시작 {status.start_on} </span>}{status.end_on && <span>· 종료 {status.end_on} </span>}{status.return_on && <span>· 복귀 예정 {status.return_on} </span>}
               <span>· 등록 {fmtWhen(status.created_at)} {nameOf(status.created_by)}</span>
@@ -296,9 +324,9 @@ export function OrgCardDrawer(p: Props) {
             )}
           </>}
 
-          {/* ④ 반납 체크리스트 */}
-          {status && curType?.category === 'departing' && <>
-            {sec(`반납 체크리스트 ${doneCnt}/${applicableItems.length}`)}
+          {/* ④ 반납 체크리스트 — [2026-10-08] 조건을 checklistStatus 로 교체: 퇴사 완료자도 반납 이력 표시 */}
+          {checklistStatus && <>
+            {sec(`반납 체크리스트 ${doneCnt}/${applicableItems.length}${checklistStatus.ended_at ? ' — 반납 이력(퇴사 완료)' : ''}`)}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {items.map(it => (
                 <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, opacity: it.applicable ? 1 : .45 }}>
@@ -313,6 +341,8 @@ export function OrgCardDrawer(p: Props) {
             </div>
 
             {/* [Phase 4-B] 시스템 잔여 — 퇴사 실행(process_departure) 시 강제 회수되지만, 사전에 사람이 정리할 수 있도록 표시 */}
+            {/* [2026-10-08] 활성 퇴사예정일 때만 — 퇴사 완료자는 이미 강제 회수됐고 profiles 부재로 RPC 도 조회 불가 */}
+            {!checklistStatus.ended_at && (
             <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 8, background: sysTotal > 0 ? '#FEF2F2' : '#F8FAFC', border: `1px solid ${sysTotal > 0 ? '#FECACA' : OG.line}` }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: sysTotal > 0 ? OG.red : OG.ink, marginBottom: 4 }}>
                 시스템 잔여 {sysCheck === null ? (card.profile_id ? '확인 중…' : '— 프로필 없음(입사예정자)') : sysCheck === 'error' ? '— 조회 실패' : sysTotal === 0 ? '없음 ✓' : `${sysTotal}건`}
@@ -327,6 +357,7 @@ export function OrgCardDrawer(p: Props) {
               )}
               <div style={{ fontSize: 11, color: OG.faint, marginTop: 4 }}>퇴사 실행 시 도서·자원·회의실 예약은 자동 해제되고 어드민 권한은 회수됩니다. 가능하면 사전에 정리하세요.</div>
             </div>
+            )}{/* ← [2026-10-08] 활성 퇴사예정 전용 블록 닫힘 */}
           </>}
 
           {/* ②-b [Phase 5-B] 이 사람의 카드 — 본/겸직 · 숨김 */}
