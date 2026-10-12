@@ -5,6 +5,12 @@
  * 방금 생성한 예약의 요약 정보를 표시 (회의실, 시간, 예약자, 참석자 등).
  *
  * ✅ 변경 이력
+ *  - [2026-10-12 날짜 양식 통일] 날짜 필드에 요일 풀네임 추가 (고지 요청)
+ *    · 표시 형식: "2026년 10월 12일" → "2026년 10월 12일 월요일"
+ *    · 예약 모달(fmtDateFull + N요일)·예약 상세 DetailModal(fmtTSDateFullWithDayFull,
+ *      2026-05-16 통일분)과 동일 양식 — DetailModal과 같은 SSOT 헬퍼 사용
+ *    · import 정리: fmtDateFull/tsDate(이 줄에서만 사용) → fmtTSDateFullWithDayFull 교체
+ *    · 무수정: 레이아웃/스타일(labelStyle·valueStyle)·다른 필드 일체
  *  - [2026-05-12 체크인 활성 5분 전 핫픽스] 안내 박스 텍스트 신규 정책 문구로 교체
  *    · 기존: "회의 시작 후 10분 이내 체크인하세요. 체크인하지 않으면 자동취소(노쇼) 됩니다."
  *    · 변경: "회의 시작 5분 전부터 체크인 가능합니다. 체크인하지 않으면 회의 시작 10분 후
@@ -58,7 +64,7 @@ import { useBreakpoint } from '../../hooks/useBreakpoint'
 // ← [2026-04-25] lucide 아이콘 제거 (피그마 디자인은 라벨 옆 아이콘 없음)
 // ← [2026-04-25] time.ts import 정리 — 신규 디자인에서 실제 사용하는 함수만
 // ← [2026-04-30] todayStr import 제거 — 체크인 안내 조건 제거로 더 이상 사용처 없음
-import { tsDate, tsMin, fmtDateFull, fmtTSRangeFull, CHECKIN_WINDOW_MIN, CHECKIN_EARLY_MIN } from '../../utils/time'
+import { tsMin, fmtTSDateFullWithDayFull, fmtTSRangeFull, CHECKIN_WINDOW_MIN, CHECKIN_EARLY_MIN } from '../../utils/time' // ← [2026-10-12 날짜 양식 통일] tsDate·fmtDateFull(날짜 줄 전용이던 것) 제거 → fmtTSDateFullWithDayFull 교체 (DetailModal 동일 헬퍼)
 import { getFloor } from '../../data/floors'
 import { UserChip } from '../common/UserChip'
 import { AttendeeChip } from '../common/AttendeeChip'
@@ -186,10 +192,12 @@ export function BookingDoneModal({booking:b, onClose, rooms:rp=[], users:up=[]})
           <div style={valueStyle}>{floor?.floor_name ?? ''}</div>
         </div>
 
-        {/* 날짜   ← [2026-04-25] tsDate 슬라이스("YYYY-MM-DD") → fmtDateFull로 "YYYY년 M월 D일" 표기 */}
+        {/* 날짜   ← [2026-04-25] tsDate 슬라이스("YYYY-MM-DD") → fmtDateFull로 "YYYY년 M월 D일" 표기
+              ← [2026-10-12 날짜 양식 통일] 요일 풀네임 추가 — "2026년 10월 12일 월요일",
+                 예약 모달·DetailModal(2026-05-16 통일분)과 동일 양식 (SSOT: fmtTSDateFullWithDayFull) */}
         <div style={rowStyle}>
           <div style={labelStyle}>날짜</div>
-          <div style={valueStyle}>{fmtDateFull(tsDate(b.start_at))}</div>
+          <div style={valueStyle}>{fmtTSDateFullWithDayFull(b.start_at)}</div>
         </div>
 
         {/* 시간 + duration chip   ← [2026-04-25 피그마 272:810 StatusBadge-XS]
