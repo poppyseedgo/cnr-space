@@ -2,6 +2,25 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-10-12 IME 핫픽스] 참석자/예약자 검색 — 선택 후 한글 조합 글자 잔존 버그 근본 수정
+ *      · 증상: "김수빈" 검색 후 Enter/클릭으로 추가하면 마지막 조합 글자 "빈"이 input에 남고
+ *              드롭다운이 다시 열림 ("임지원" → "원" 동일)
+ *      · 원인 1: onAttendeeKeyDown(핫픽스 v14)에 한글 IME isComposing 가드 누락 —
+ *               조합 확정용 Enter(keydown isComposing=true)가 addAttendee를 조기 실행,
+ *               직후 IME가 조합 글자를 커밋하며 input 이벤트 발생 → onChange가 attendeeQ를
+ *               "빈"으로 재주입 + setAttendeeFocus(true)로 드롭다운 재오픈.
+ *               (blurOnEnter/titleKeyDown은 2026-07-27부터 가드 보유 — 동일 규약 누락분)
+ *      · 원인 2: addAttendee/pickBooker가 state만 ""로 초기화 — DOM의 IME 조합 세션은
+ *               살아있어 조합 중 선택(클릭 포함) 시 미확정 글자가 onChange로 되살아남.
+ *      · 해결: ① onAttendeeKeyDown 최상단 isComposing(+keyCode 229) 가드 — 조합 중
+ *               키 입력은 IME에 위임 (조합 확정 Enter 1회 + 선택 Enter 1회 = 표준 한글 UX)
+ *             ② addAttendee/pickBooker에서 state 초기화 전에 해당 input을 blur로 조합
+ *               종결 후 DOM value 직접 초기화 — 커밋 input 이벤트가 먼저 발생해도
+ *               이후 실행되는 setAttendeeQ("")/setBookerQ("")가 최종값이 되어 잔존 불가
+ *      · attendeeRef 타입 명시(useRef<HTMLDivElement>) — querySelector('input') 접근용
+ *      · 검증/판단 로직 무변경 (검색 필터·중복 방지·키보드 네비 ↓/↑/Esc 동작 그대로)
+ *      · [전수검사 동반 수정] 데스크톱 메모 카운터 경고색 조건 > 100 → >= 100
+ *        (maxLength=100이라 초과 불가 → 경고색 영구 미발동이던 버그, 모바일 기준과 통일)
  *  - [2026-08-10 이용제재 Phase 2] 노쇼 제재 사전 안내 배너 (고지 확정 프리뷰 1:1)
  *      · penalty prop(MyNoshowPenaltyState) 신규 — App.tsx가 my_noshow_penalty_state 조회값 전달
  *      · penaltyBlocked = 신규 예약 && penalty.blocked — 예약 변경(editBooking) 경로는 미적용(D6: 기존 예약 유지)
@@ -1081,7 +1100,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   });
   const pickerRef    = useRef(null);
   const pickerRef2   = useRef(null);
-  const attendeeRef  = useRef(null);
+  const attendeeRef  = useRef<HTMLDivElement>(null); // ← [2026-10-12 IME 핫픽스] 타입 명시 — addAttendee에서 querySelector('input') 접근
   const [attendeeQ,  setAttendeeQ]  = useState("");
   const [attendeeFocus, setAttendeeFocus] = useState(false);
   // ← [2026-05-04 핫픽스 v14] 키보드 네비게이션 — 하이라이트 인덱스 state
@@ -1339,6 +1358,14 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   const addAttendee = (u) => {
     if (form.attendees.find(a => a.user_id === u.user_id)) return;
     set("attendees", [...form.attendees, { ...u, role: "ATTENDEE" }]);
+    // ← [2026-10-12 IME 핫픽스] state만 비우면 한글 IME 조합 세션이 살아남아 미확정 글자("빈")를
+    //   onChange로 재주입 → blur로 조합을 먼저 종결시키고 DOM value를 직접 초기화한다.
+    //   (blur가 커밋 input 이벤트를 동기 발생시켜도, 이후 실행되는 setAttendeeQ("")가 최종값)
+    const inputEl = attendeeRef.current?.querySelector('input'); // ← 모바일/데스크톱 배타 마운트 — 활성 input 1개만 존재
+    if (inputEl) {
+      if (document.activeElement === inputEl) { inputEl.blur(); inputEl.focus(); } // ← 포커스 중(Enter 경로)이면 blur로 조합 종결 후 포커스 복원 — 연속 추가 UX(기존 동작) 유지
+      inputEl.value = '';                                        // ← DOM 잔존 텍스트 직접 제거 (클릭 경로는 이미 blur 완료 상태)
+    }
     setAttendeeQ("");
     setAttendeeFocus(false);
   };
@@ -1361,6 +1388,10 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
 
   //   2) 키보드 이벤트 핸들러 (모바일/데스크톱 input 공통)
   const onAttendeeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // ← [2026-10-12 IME 핫픽스] 한글 조합 중 키 입력은 IME에 위임 — blurOnEnter/titleKeyDown과 동일 규약.
+    //   가드 없으면: 조합 확정용 Enter가 addAttendee를 조기 실행 → IME가 조합 글자를 커밋하며
+    //   onChange("빈")로 검색어가 되살아나는 잔존 버그 발생 (keyCode 229 = 구형 브라우저 IME 폴백)
+    if ((e.nativeEvent as KeyboardEvent).isComposing || e.keyCode === 229) return;
     const items = attendeeSuggestions;
     if (!attendeeFocus || items.length === 0) {
       // Enter만 특별 처리 — 결과 0 + Enter는 무시 (input 기본 동작 차단)
@@ -1488,6 +1519,12 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
 
   const pickBooker = (u: AppUser) => {                  // ← 요청자 선택
     set("bookerOverride", { user_id: u.user_id, name: u.name, email: u.email, dept: u.dept ?? '', avatar_url: (u as any).avatar_url ?? null });
+    // ← [2026-10-12 IME 핫픽스] addAttendee와 동일 패턴 — 조합 중 선택 시 미확정 글자 잔존 방지
+    const inputEl = bookerRef.current?.querySelector('input'); // ← 예약자 검색 input (선택 시 섹션이 ov 뷰로 전환돼 unmount — 전환 전 조합 종결)
+    if (inputEl) {
+      if (document.activeElement === inputEl) inputEl.blur();  // ← 조합 종결 (선택 후 input 자체가 사라지므로 포커스 복원 불필요)
+      inputEl.value = '';                                      // ← DOM 잔존 텍스트 직접 제거
+    }
     setBookerQ("");
     setBookerFocus(false);
   };
@@ -2976,7 +3013,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
                   fontWeight:500,
                   fontSize:10,
                   lineHeight:1.5,
-                  color: form.memo.length > 100 ? "#EF4444" : "#d1d9e7",
+                  color: form.memo.length >= 100 ? "#EF4444" : "#d1d9e7", // ← [2026-10-12 전수검사] > 100 → >= 100 — maxLength=100이라 length가 100을 초과할 수 없어 경고색이 영구 미발동이던 버그 수정 (모바일 L2179 기준과 통일)
                 }}>
                   {form.memo.length}/100
                 </span>
