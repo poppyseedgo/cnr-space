@@ -1,9 +1,16 @@
 // @ts-nocheck
 /**
- * sync-all-users Edge Function v10
+ * sync-all-users Edge Function v11
  * Microsoft Graph API User.Read.All (Application 권한)
  *
  * ✅ 변경 이력
+ *  - v11 [2026-10-14] 퇴사예정(departing) 조기 퇴사 가드 (10/8 전수조사 M2) + auth 삭제 실패 노출 (H1③)
+ *      · 퇴사 감지 제외 조건에 "departing AND 예정일 ≥ 오늘(KST)" 추가 —
+ *        IT 가 예정일 전에 AD 를 먼저 잠그면 sync 가 즉시 퇴사 처리해
+ *        "마지막 근무일까지 사용 보장" 확정 정책을 위반하던 경로 차단.
+ *        예정일 경과자는 sync 도 처리 가능(process-scheduled-departures cron 과 이중 안전망)
+ *      · fetchAllProfiles select 에 departure_scheduled_on 추가 (판정용)
+ *      · executeDeparture 의 authDeleteError(H1③) 를 리포트 로그에 노출
  *  - v10 [2026-10-01] Azure 프로필 전체 필드 저장 (20261011 짝 배포 — profiles.azure_extra jsonb · azure_synced_at · azure_user_id)
  *      · Graph $select 확장: givenName,surname,jobTitle,officeLocation,mobilePhone,businessPhones,employeeId,employeeType,employeeHireDate,
  *        companyName,city,country,usageLocation,preferredLanguage,createdDateTime + $expand=manager(id,displayName,mail)
@@ -168,9 +175,10 @@ async function fetchAllProfiles(): Promise<{
   id: string; name: string; email: string; dept: string
   employee_id: string; role: string; avatar_url: string | null
   employment_status: string // ← [v8] 휴직 가드 판정용 (20260735 신설 컬럼)
+  departure_scheduled_on: string | null // ← [v11 M2] 퇴사예정 조기 퇴사 가드 판정용
 }[]> {
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/profiles?select=id,name,email,dept,employee_id,role,avatar_url,employment_status`, // ← [v8] employment_status 추가
+    `${SUPABASE_URL}/rest/v1/profiles?select=id,name,email,dept,employee_id,role,avatar_url,employment_status,departure_scheduled_on`, // ← [v11 M2] departure_scheduled_on 추가
     { headers: sbHeaders }
   )
   if (!res.ok) throw new Error(`profiles 조회 실패 (${res.status}): ${await res.text()}`)
@@ -189,6 +197,11 @@ async function fetchAllProfiles(): Promise<{
 //   퇴사자 이메일은 신규 INSERT 에서 제외한다. N일 경과 후 동일 이메일은
 //   재입사자로 간주해 정상 INSERT (이메일 재사용 정책 유지).
 const RESURRECT_GUARD_DAYS = 14
+
+// ← [v11 M2] KST 오늘 날짜 (YYYY-MM-DD) — process-scheduled-departures·도서 알림과 동일 설계 (시각 성분 배제)
+function todayKST(): string {
+  return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)
+}
 
 async function fetchRecentDepartedEmails(): Promise<Set<string>> {
   const since = new Date(Date.now() - RESURRECT_GUARD_DAYS * 86400_000).toISOString()
@@ -437,7 +450,18 @@ Deno.serve(async (req) => {
       p => p.employee_id
         && !azUPNSet.has(p.employee_id.toLowerCase())
         && p.employment_status !== 'leave' // ← [v8] 휴직자 퇴사 감지 제외
+        // ← [v11 M2] 퇴사예정자는 예정일(마지막 근무일)까지 보호 — AD 선잠금 시 조기 퇴사 차단.
+        //   예정일 경과(< 오늘)면 sync 도 처리 가능(예정일 cron 과 이중 안전망).
+        //   예정일 null 인 departing 은 비정상 데이터 — 보수적으로 보호(퇴사 미처리) 후 로그
+        && !(p.employment_status === 'departing'
+             && (p.departure_scheduled_on == null || p.departure_scheduled_on >= todayKST()))
     )
+    // ← [v11 M2] 비정상 departing(예정일 없음) 관측 로그 — 처리 안 하고 알리기만
+    for (const p of profiles) {
+      if (p.employment_status === 'departing' && p.departure_scheduled_on == null && p.employee_id && !azUPNSet.has(p.employee_id.toLowerCase())) {
+        console.warn(`[sync] departing 인데 예정일 없음 — 퇴사 보류 (${p.email}). 사용자 관리에서 예정일을 지정하세요.`)
+      }
+    }
 
     // 안전장치: 퇴사자 30% 초과 시 싱크 중단
     const employeeProfiles = profiles.filter(p => p.employee_id)
@@ -464,6 +488,7 @@ Deno.serve(async (req) => {
       if (r.error) console.error(`[sync] 퇴사 처리 실패 (${p.email}):`, r.error)
       else {
         cancelledCount += r.cancelledBookings
+        if (r.authDeleteError) console.error(`[sync] 퇴사 DB 처리됐으나 auth 삭제 실패 (${p.email}):`, r.authDeleteError) // ← [v11 H1③] 고아 재발 즉시 노출
         console.log(`[sync] 퇴사 처리 완료 (${p.email})`, JSON.stringify(r.rpc))
       }
     }

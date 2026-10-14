@@ -4,6 +4,9 @@
  *  - [2026-10-01 ORG Phase 5-B] ②-b '이 사람의 카드' 섹션: 본/겸직 카드 목록 · 겸직 카드 추가(단위 선택) · 승격 · 숨김/해제 (퇴사일 경과 라벨)
  *  - [2026-10-01 ORG Phase 5] 헤더에 '조직도 표기 이름' 편집(사람 단위 · 파일 무관 · org 역할) — Azure 이름은 보조 표기
  *  - [2026-10-01 ORG Phase 4-B] ④ 반납 체크리스트 아래 "시스템 잔여"(도서·자원·어드민 권한·회의실) — org_offboarding_system_check RPC
+ *  - [2026-10-14] 퇴사예정 알림 + 퇴사자 표기 이름 수기 입력 (고지 확정)
+ *      · 상태 등록/종료가 departing 계열이면 notifyDepartureSchedule 발사 — 등록/변경(기존 departing 활성 → 재등록)/철회 (ADMIN 전원, fire-and-forget)
+ *      · '표기 이름' 버튼을 퇴사자 카드에도 허용 — 이름 소스가 없는 익명 고아 카드를 수기로 복구 (20261021 FK 제거 짝 배포)
  *  - [2026-10-08 조직도 버그픽스] ①퇴사 완료자 체크리스트 폴백 — 퇴사 실행 시 org_person_status 가
  *      ended_reason='departed' 로 종료돼 활성 status 가 사라지며 ④ 섹션이 통째로 숨던 문제.
  *      이력에서 마지막 '퇴사예정' 상태를 찾아 반납 체크리스트(반납 이력)를 계속 표시·편집(RLS 는 상태 종료와 무관)
@@ -29,6 +32,7 @@ import {
   offboardingSystemCheck,   // ← [Phase 4-B]
   type OrgOffboardingTemplate, type OrgStatusPayload, type OrgChangeLogRow, type OrgSystemCheck,
 } from '../../lib/orgApi'
+import { notifyDepartureSchedule } from '../../lib/api'   // ← [2026-10-14] 퇴사예정 알림 (등록/변경/철회 — ADMIN 전원)
 import { ORG_EMPLOYMENT_TYPE_LABEL, ORG_DEPARTED_HIDE_DAYS, cardPersonKey, orgErrorMessage, orgStatusBadge, type OrgDepartedInfo, type OrgPersonView } from '../../utils/orgStatus'
 import { OG, Tag, btn, btnPri, btnDanger, btnDisabled, fmtWhen } from './orgShared'
 
@@ -129,13 +133,31 @@ export function OrgCardDrawer(p: Props) {
     const sync = stType.category === 'departing' ? '퇴사예정(departing) + 예정일' : ['leave', 'return_planned'].includes(stType.category) ? '휴직(leave)' : '변경 없음'
     setConfirmSt({ title: `상태 등록 — ${stType.label}`, variant: 'warn',
       message: <>{person.name} 님에게 <b>{stType.label}</b> 상태를 등록합니다.<br />사용자 관리의 재직 상태(profiles.employment_status)도 함께 바뀝니다: <b>{sync}</b>.{status && <><br />기존 활성 상태 '{typeMap.get(status.status_code)?.label ?? status.status_code}' 는 종료됩니다.</>}</>,
-      run: async () => { await setOrgPersonStatus(card.profile_id, card.person_id, stForm.code, payload); setStForm(null); await p.onStatusChanged(); p.showToast(`${stType.label} 상태를 등록했습니다.`) } })
+      run: async () => {
+        await setOrgPersonStatus(card.profile_id, card.person_id, stForm.code, payload); setStForm(null); await p.onStatusChanged(); p.showToast(`${stType.label} 상태를 등록했습니다.`)
+        // ← [2026-10-14] 퇴사예정 알림 — 기존 활성 상태가 departing 이었으면 '변경', 아니면 '등록' (fire-and-forget, ADMIN 전원)
+        if (stType.category === 'departing' && card.profile_id) {
+          const wasDeparting = !!status && typeMap.get(status.status_code)?.category === 'departing'
+          const prevDate = wasDeparting ? (status?.end_on ?? null) : null
+          notifyDepartureSchedule(wasDeparting ? 'rescheduled' : 'scheduled',
+            { userId: card.profile_id, name: person.name, dept: person.dept || azureUser?.dept },
+            { dateOn: stForm.departure_on || null, prevDateOn: prevDate }, 'org')
+        }
+      } })
   }
   const endStatus = () => {
     if (!status || !curType) return
     const after = curType.category === 'departing' ? '재직(active) 으로 복귀 — 퇴사 예정 철회' : ['leave', 'return_planned'].includes(curType.category) ? '복직(returned) — 30일 후 라벨 자동 소멸' : '변경 없음'
     setConfirmSt({ title: `상태 종료 — ${curType.label}`, variant: 'danger', message: <>'{curType.label}' 상태를 종료합니다. 재직 상태: <b>{after}</b>.</>,
-      run: async () => { await endOrgPersonStatus(status.id, 'manual'); await p.onStatusChanged(); p.showToast('상태를 종료했습니다.') } })
+      run: async () => {
+        await endOrgPersonStatus(status.id, 'manual'); await p.onStatusChanged(); p.showToast('상태를 종료했습니다.')
+        // ← [2026-10-14] 퇴사예정 철회 알림 (fire-and-forget, ADMIN 전원)
+        if (curType.category === 'departing' && card.profile_id) {
+          notifyDepartureSchedule('cancelled',
+            { userId: card.profile_id, name: person.name, dept: person.dept || azureUser?.dept },
+            { dateOn: status.end_on ?? null }, 'org')
+        }
+      } })
   }
   const runConfirm = async () => { if (!confirmSt) return; setBusy(true); try { await confirmSt.run(); setConfirmSt(null) } catch (e) { p.showToast(orgErrorMessage(e)) } finally { setBusy(false) } }
 
@@ -213,13 +235,13 @@ export function OrgCardDrawer(p: Props) {
                 ? <input value={dname} disabled={ro} onChange={e => setDname(e.target.value)} onBlur={() => dname !== (card.display_name ?? '') && save({ display_name: dname.trim() || '공석' })} style={{ ...inp, fontWeight: 600, fontSize: 15 }} placeholder="공석 표기" />
                 : dnEdit !== null
                   ? <div style={{ display: 'flex', gap: 4 }}>
-                      <input autoFocus value={dnEdit} disabled={dnBusy} onChange={e => setDnEdit(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveDisplayName(); if (e.key === 'Escape') setDnEdit(null) }} style={{ ...inp, fontWeight: 600, fontSize: 15 }} placeholder={azureUser?.name ?? ''} />
+                      <input autoFocus value={dnEdit} disabled={dnBusy} onChange={e => setDnEdit(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveDisplayName(); if (e.key === 'Escape') setDnEdit(null) }} style={{ ...inp, fontWeight: 600, fontSize: 15 }} placeholder={azureUser?.name ?? (person.departed ? '퇴사자 이름 입력' : '')} /> {/* ← [2026-10-14] 퇴사자 placeholder */}
                       <button style={btnPri} disabled={dnBusy} onClick={saveDisplayName}>저장</button>
                       <button style={btn} disabled={dnBusy} onClick={() => setDnEdit(null)}>취소</button>
                     </div>
                   : <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                       <span style={{ fontWeight: 600, fontSize: 16, textDecoration: person.departed ? 'line-through' : 'none' }}>{person.name}</span>
-                      {azureUser && p.onDisplayName && <button title="조직도 표기 이름 편집 (Azure 이름은 유지)" style={{ ...btn, fontSize: 10.5, padding: '1px 6px' }} onClick={() => setDnEdit(person.azureName ? person.name : '')}>표기 이름</button>}
+                      {(azureUser || person.departed) && card.profile_id && p.onDisplayName && <button title={person.departed ? '퇴사자 표기 이름 입력 — 이름 소스가 없는 고아 카드의 이름을 수기로 고정합니다' : '조직도 표기 이름 편집 (Azure 이름은 유지)'} style={{ ...btn, fontSize: 10.5, padding: '1px 6px' }} onClick={() => setDnEdit(person.azureName ? person.name : person.departed && person.name !== '(퇴사자)' ? person.name : '')}>표기 이름</button>}{/* ← [2026-10-14] 퇴사자 수기 입력 허용 — 익명 고아 카드 복구 경로 (20261021 FK 제거 짝) */}
                     </div>}
               <div style={{ fontSize: 11.5, color: OG.quiet, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{person.email || (card.person_id ? '입사 예정자' : card.is_vacancy ? '공석(TO)' : '')}{person.departed && ' · 퇴사 완료'}</div>
               {person.azureName && dnEdit === null && <div style={{ fontSize: 11, color: OG.faint }}>Azure: {person.azureName}</div>}

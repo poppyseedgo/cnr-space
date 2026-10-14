@@ -3,6 +3,7 @@
  * depart-user Edge Function — 수동 퇴사 처리 (Phase 2)
  *
  * ✅ 변경 이력
+ *  - [2026-10-14] 첫 운영 배포 (10/8 전수조사 C1 — 7/30 작성본이 미배포 상태였음) + _shared/departure.ts H1③ 동반
  *  - [2026-07-30] 신규 — 수동 퇴사 UI 백엔드 (확정 요구사항 ③)
  *      · 기존 api.ts manualDepartUser(클라 직접 4단계, 비원자적·미사용)를 대체
  *      · DB 처리는 process_departure RPC 단일 트랜잭션 / auth 삭제는 여기서

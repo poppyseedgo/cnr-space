@@ -2,6 +2,7 @@
  * NotificationBell.tsx — 헤더 알림 벨 + 알림 패널
  *
  * ✅ 변경 이력
+ *  - [2026-10-14] 퇴사예정 알림 3종(departure_*) 클릭 분기 — #admin-tab-users 해시 딥링크
  *  - [2026-05-04] App.tsx에서 분리 (Phase 1+2 Step 3)
  *      · App.tsx 영역 통합 이동:
  *        - state: notifications, showNotifPanel
@@ -174,6 +175,11 @@ export function NotificationBell({
                       // ← [2026-10-01 ORG Phase 4-B] 조직도: booking_id = 'org-{fileId}'
                       const m = /^org-([0-9a-f-]{36})$/i.exec(n.booking_id ?? '')
                       if (m) onOpenOrgFile?.(m[1])
+                    } else if (n.type?.startsWith('departure_')) {
+                      // ← [2026-10-14] 퇴사예정 3종: booking_id = 'departure-{userId}' — 상세 모달이 없는 타입이라
+                      //   onOpenBookingDetail 로 보내면 bookings.find 실패 → 빈 모달(7/21 도서 분기와 동일 함정).
+                      //   어드민 사용자 관리 탭 해시 딥링크로 이동 (AdminPage 가 #admin-tab-users 를 따라간다)
+                      window.location.hash = 'admin-tab-users'
                     } else if (n.booking_id) {
                       if (n.type?.startsWith('book_')) onOpenBookLoanDetail?.(n.booking_id)
                       else                             onOpenBookingDetail(n.booking_id)

@@ -50,7 +50,7 @@ export interface NotifCatalogItem {
   type:      string
   label:     string
   /** 화면 그룹 */
-  group:     '회의실 예약' | '체크인·노쇼' | '노쇼 제재' | '도서관' | '연체 제재' | '자원예약' | 'Work Space' | '조직도'  // ← [2026-08-19 Phase 4] · [2026-09-30 5-B] · [2026-10-01 ORG]
+  group:     '회의실 예약' | '체크인·노쇼' | '노쇼 제재' | '도서관' | '연체 제재' | '자원예약' | 'Work Space' | '조직도' | '퇴사'  // ← [2026-08-19 Phase 4] · [2026-09-30 5-B] · [2026-10-01 ORG] · [2026-10-14 퇴사예정]
   /** 언제 나가는가 (사람이 읽는 문장) */
   trigger:   string
   audience:  NotifAudience
@@ -217,11 +217,24 @@ export const NOTIFICATION_CATALOG: NotifCatalogItem[] = [
   { type: 'org_activated',     label: '조직도 Active 전환', group: '조직도',
     trigger: '최고 관리자가 초안을 Active 로 지정한 즉시',  audience: 'admins_only',
     channels: ['email','inapp'], toAdmins: true, note: '조직도(org) 역할 보유자 전원. 본문에 파일명·적용일·이전 Active 대비 변경 건수.' },
+  // ── 퇴사 (← [2026-10-14] 고지 확정: 등록·변경·철회 모두 ADMIN 전원) ────────
+  //   자격 = notification_required_roles ELSE NULL → profiles ADMIN 전원. 지정 수신자로 좁힐 수 있다.
+  { type: 'departure_scheduled',   label: '퇴사 예정 등록',    group: '퇴사',
+    trigger: '퇴사예정 라벨 등록 즉시 (조직도 카드 / 사용자 관리)', audience: 'admins_only',
+    channels: ['email','inapp'], toAdmins: true, note: '관리자 전원. 본문에 대상자·퇴사 예정일·등록자. 즉시 퇴사는 기존대로 미발송.' },
+  { type: 'departure_rescheduled', label: '퇴사 예정일 변경',  group: '퇴사',
+    trigger: '퇴사 예정일이 바뀐 즉시',                          audience: 'admins_only',
+    channels: ['email','inapp'], toAdmins: true, note: '관리자 전원. 본문에 변경 전→후 예정일·변경자.' },
+  { type: 'departure_cancelled',   label: '퇴사 예정 철회',    group: '퇴사',
+    trigger: '퇴사예정 상태 종료(재직 복귀) 즉시',               audience: 'admins_only',
+    channels: ['email','inapp'], toAdmins: true, note: '관리자 전원. 본문에 철회된 예정일·철회자.' },
 ]
 
 /** 화면 그룹 표시 순서 */
+// ← [2026-10-14 BUGFIX] 자원예약·Work Space·조직도 그룹이 ORDER 에 누락돼 알림 설정 탭에서
+//   해당 섹션이 통째로 렌더되지 않던 잠복 버그 수정 (패널은 ORDER 에 있는 그룹만 그림) + 신규 '퇴사' 그룹 추가
 export const NOTIF_GROUP_ORDER: NotifCatalogItem['group'][] =
-  ['회의실 예약', '체크인·노쇼', '노쇼 제재', '도서관', '연체 제재']
+  ['회의실 예약', '체크인·노쇼', '노쇼 제재', '도서관', '연체 제재', '자원예약', 'Work Space', '조직도', '퇴사']
 
 /** 수신자 규칙 → 화면 표기 */
 export const AUDIENCE_LABEL: Record<NotifAudience, string> = {

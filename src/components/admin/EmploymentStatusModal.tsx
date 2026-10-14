@@ -2,6 +2,10 @@
  * EmploymentStatusModal — 재직 상태 변경 + 즉시 퇴사 모달 (AdminUsers 전용)
  *
  * ✅ 변경 이력
+ *  - [2026-10-14] 퇴사예정 알림 발사 — 등록/변경/철회 시 notifyDepartureSchedule (고지 확정: ADMIN 전원)
+ *      · 판정: 이전 상태(user.employment_status·departure_scheduled_on) 대비 diff 로 action 결정
+ *      · fire-and-forget — 알림 실패가 상태 저장을 막지 않는다
+ *      · '알림 미발송' 확정 정책은 즉시 퇴사(runDepart)에만 유지 — 예정 라벨 3종은 2026-10-14 확정으로 발송
  *  - [2026-07-30] 신규 — 퇴사자 정책 개편 Phase 3 묶음②
  *      · 상태 변경: 재직/휴직/복직/퇴사예정(예정일 필수) — admin_set_employment_status RPC
  *      · 즉시 퇴사: depart-user Edge Function — 실행 전 프리뷰(미래 예약 N건 취소,
@@ -11,7 +15,7 @@
  *
  * 📌 확정 정책 반영
  *    · 복구 기능 없음 — 즉시 퇴사에 되돌리기 경로를 만들지 않는다
- *    · 알림 미발송 — 이 모달은 send-notification 을 호출하지 않는다
+ *    · 알림 미발송은 즉시 퇴사 한정 — 퇴사예정 등록/변경/철회는 발송 (← [2026-10-14] 정책 갱신)
  *    · 복직 라벨은 30일 후 서버 cron 이 자동 소멸 (클라 관여 없음)
  */
 
@@ -23,6 +27,7 @@ import { UserAvatar } from '../common/UserAvatar'
 import { EmploymentBadge } from '../common/EmploymentBadge'
 import {
   setEmploymentStatus, departUser, countFutureBookings, countActiveBookLoans,
+  notifyDepartureSchedule, // ← [2026-10-14] 퇴사예정 알림
 } from '../../lib/api'
 import {
   employmentStatusErrorMessage, departUserErrorMessage,
@@ -81,6 +86,19 @@ export function EmploymentStatusModal({ user, showToast, onClose, onStatusChange
         departure_scheduled_on: res.departure_scheduled_on,
         returned_on:            res.returned_on,
       })
+      // ← [2026-10-14] 퇴사예정 알림 — 이전 상태 대비 diff 로 등록/변경/철회 판정 (fire-and-forget)
+      {
+        const prevStatus = user.employment_status ?? 'active'
+        const prevDate   = user.departure_scheduled_on ?? null
+        const target     = { userId: user.user_id, name: user.name, dept: user.dept }
+        if (status === 'departing' && prevStatus !== 'departing') {
+          notifyDepartureSchedule('scheduled', target, { dateOn: res.departure_scheduled_on }, 'admin')
+        } else if (status === 'departing' && prevStatus === 'departing' && res.departure_scheduled_on !== prevDate) {
+          notifyDepartureSchedule('rescheduled', target, { dateOn: res.departure_scheduled_on, prevDateOn: prevDate }, 'admin')
+        } else if (status !== 'departing' && prevStatus === 'departing') {
+          notifyDepartureSchedule('cancelled', target, { dateOn: prevDate }, 'admin')
+        }
+      }
       showToast('재직 상태를 변경했습니다.', 'success')
       onClose()
     } catch (e) {
