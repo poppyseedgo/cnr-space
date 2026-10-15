@@ -3,6 +3,10 @@
  * _shared/departure.ts — 퇴사 실행 공용 모듈 (Phase 2)
  *
  * ✅ 변경 이력
+ *  - [2026-10-14] H1③ — auth.users DELETE 실패를 결과 객체로 승격 (authDeleteError)
+ *      · 기존엔 console.error 만 남아 호출자(sync 리포트·depart-user 응답)가 실패를 모름
+ *        → audit_log FK 차단으로 고아 36건이 조용히 누적된 관측 경로. FK 는 20261020 이 수정,
+ *        이 필드는 재발 시 즉시 드러나게 하는 안전망
  *  - [2026-07-30] 신규 — 퇴사 파이프라인 일원화
  *      · DB 측 처리는 전부 process_departure RPC(20260735, 단일 트랜잭션)가 담당
  *      · 이 모듈은 "RPC 호출 + auth.users 삭제(admin API — SQL 불가)"만 수행
@@ -20,6 +24,7 @@ export interface DepartureResult {
   rpc:                Record<string, unknown>   // process_departure 반환 jsonb
   cancelledBookings:  number
   authDeleted:        boolean
+  authDeleteError?:   string                    // ← [2026-10-14 H1③] auth 삭제 실패 사유 (성공·대상 없음이면 부재)
   error?:             string
 }
 
@@ -89,6 +94,7 @@ export async function executeDeparture(
 
   // ② auth.users 삭제 — 이메일 재사용 보장 (동일 이메일 재입사 = 완전 새 계정)
   let authDeleted = false
+  let authDeleteError: string | undefined                      // ← [2026-10-14 H1③]
   const map    = authMap ?? await fetchAuthEmailMap(supabaseUrl, serviceKey)
   const authId = map.get((email ?? '').toLowerCase())
   if (authId) {
@@ -100,7 +106,10 @@ export async function executeDeparture(
       }
     )
     authDeleted = delRes.ok
-    if (!delRes.ok) console.error(`[departure] auth.users DELETE 실패 (${email}):`, await delRes.text())
+    if (!delRes.ok) {
+      authDeleteError = `auth.users DELETE 실패 (${delRes.status}): ${(await delRes.text()).slice(0, 300)}`   // ← [2026-10-14 H1③] 결과 객체 승격 — 호출자 리포트에 노출
+      console.error(`[departure] ${authDeleteError} (${email})`)
+    }
   }
   // authId 없음 = 한 번도 로그인 안 한 계정 → 정상 skip
 
@@ -109,5 +118,6 @@ export async function executeDeparture(
     rpc,
     cancelledBookings: Number(rpc?.cancelled_bookings ?? 0),
     authDeleted,
+    ...(authDeleteError ? { authDeleteError } : {}),           // ← [2026-10-14 H1③]
   }
 }

@@ -1,6 +1,11 @@
 /**
  * api.ts — Supabase 기반 데이터 레이어
  *
+ * [2026-10-14] 퇴사예정 알림 3종 + 퇴사자 아바타
+ *   · notifyDepartureSchedule — 퇴사예정 등록/변경/철회 시 ADMIN 전원 알림 (send-notification, fire-and-forget)
+ *     발사 지점 2곳(EmploymentStatusModal·OrgCardDrawer) 공용 SSOT. 행위자 이름은 내부에서 본인 프로필 조회
+ *   · loadDepartedUsers select 에 avatar_url 추가 — 조직도 퇴사자 카드 아바타 미표시 버그 수정
+ *
  * [2026-07-27 KB] GA 챗봇 지식베이스 — loadKbChunks / saveKbChunk / deleteKbChunk
  *   · RLS(has_admin_role('kb')) 직접 접근, RPC 없음 / updated_* 는 DB 트리거 담당
  *
@@ -1434,13 +1439,62 @@ export async function loadDepartedUsers(): Promise<import('../types').DepartedUs
   try {
     const { data, error } = await supabase
       .from('departed_users')
-      .select('id, name, email, dept, employee_id, departed_at')
+      .select('id, name, email, dept, employee_id, departed_at, avatar_url') // ← [2026-10-14] avatar_url 추가 — 조직도 퇴사자 카드 아바타 폴백(타입·사용처는 이미 참조 중이었으나 select 누락)
       .order('departed_at', { ascending: false })
     if (error) throw error
     return data ?? []
   } catch (e) {
     console.error('[api] loadDepartedUsers 실패:', e)
     return []
+  }
+}
+
+// ── 퇴사예정 알림 (← [2026-10-14]) ──────────────────────────────────────────
+//   고지 확정: 라벨 등록·예정일 변경·철회 모두 ADMIN 전원 메일+인앱.
+//   org_activated 패턴 — RPC 성공 직후 프론트가 발사(fire-and-forget), 수신자는 DB 가 결정.
+//   발사 지점 2곳(사용자 관리 모달 / 조직도 카드 드로어)이 이 함수 하나를 공유한다 (SSOT).
+export type DepartureNotifyAction = 'scheduled' | 'rescheduled' | 'cancelled'
+export async function notifyDepartureSchedule(
+  action:  DepartureNotifyAction,
+  target:  { userId: string; name: string; dept?: string | null },
+  dates:   { dateOn?: string | null; prevDateOn?: string | null },
+  source:  'org' | 'admin',
+): Promise<void> {
+  if (!isSupabaseEnabled) return
+  try {
+    // 행위자 이름 — 본인 프로필 live 조회 (이름 비교 금지 원칙과 무관: 표시용 스냅샷)
+    let actorName = '관리자'
+    try {
+      const { data: auth } = await supabase.auth.getUser()
+      if (auth?.user?.id) {
+        const { data: me } = await supabase.from('profiles').select('name').eq('id', auth.user.id).maybeSingle()
+        if (me?.name) actorName = me.name
+      }
+    } catch { /* 행위자 조회 실패는 알림을 막지 않는다 */ }
+
+    const type = action === 'scheduled' ? 'departure_scheduled'
+               : action === 'rescheduled' ? 'departure_rescheduled'
+               : 'departure_cancelled'
+    supabase.functions.invoke('send-notification', {
+      body: {
+        type,
+        booking: {
+          id:    `departure-${target.userId}`,   // NotificationBell → #admin-tab-users 딥링크 판별자
+          title: target.name,                     // 메일 제목 {title} 슬롯 = 대상자 이름
+          departure: {
+            target_name:  target.name,
+            target_dept:  target.dept ?? null,
+            date_on:      dates.dateOn ?? null,       // 이미 KST 날짜 문자열(YYYY-MM-DD) — 재변환 금지
+            prev_date_on: dates.prevDateOn ?? null,
+            actor_name:   actorName,
+            source,
+          },
+        },
+      },
+    }).then(({ error }) => { if (error) console.warn('[api] 퇴사예정 알림 발송 실패:', error.message) })
+      .catch(err => console.warn('[api] 퇴사예정 알림 발송 예외:', err))
+  } catch (e) {
+    console.warn('[api] notifyDepartureSchedule 예외:', e)   // 알림 실패가 상태 저장을 막지 않는다
   }
 }
 

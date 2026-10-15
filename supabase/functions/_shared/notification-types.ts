@@ -13,6 +13,11 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * 변경 이력
  * ═══════════════════════════════════════════════════════════════════════════
+ * [2026-10-14] 퇴사예정 알림 3종 (departure_scheduled · departure_rescheduled · departure_cancelled)
+ *   · 수신자 admins_only = required_roles ELSE NULL → profiles ADMIN 전원 (고지 확정 — 'org_' 접두어 금지)
+ *   · 본문 재료 payload.booking.departure { target_name, target_dept, date_on, prev_date_on, actor_name, source }
+ *   · CTA_DEPARTURE → {APP_URL}#admin-tab-users (정적 딥링크)
+ *
  * [2026-09-30 Phase 5-B] Work Space 알림 5종 (wb_task_assigned · wb_comment_added · wb_issue_created · wb_issue_resolved · wb_daily_digest)
  *   · RecipientRule 'wb_recipients' — 수신자는 DB wb_notification_recipients(20261004) 가 결정, 본문 재료는 wb_notification_context
  *   · CTA 딥링크 {APP_URL}#workboard-task-{id} / #workboard-issue-{id} / #workboard
@@ -138,6 +143,14 @@ export type NotificationType =
   // ── [2026-10-01 ORG Phase 4-B] 조직도 ──────────────────────────────────────
   //   수신자 규칙 admins_only — 자격 = notification_required_roles 'org_%' → org (20261006). 본문 재료는 payload.booking.org (RPC org_activate_file 반환값)
   | 'org_activated'        // Active 전환 → org 역할 보유자 (프론트가 전환 성공 직후 발사)
+  // ── [2026-10-14] 퇴사예정 (고지 확정: 등록·변경·철회 모두 어드민 전원 메일) ──
+  //   수신자 규칙 admins_only — 자격 = notification_required_roles ELSE NULL → profiles ADMIN 전원.
+  //   ⚠ 'org_' 접두어 금지 — 붙이면 required_roles LIKE 'org\_%' 에 걸려 org 역할 보유자로 좁혀진다.
+  //   본문 재료는 payload.booking.departure (프론트가 RPC 성공 직후 발사 — org_activated 패턴).
+  //   즉시 퇴사(depart-user)는 기존 '알림 미발송' 확정 정책 유지 — 이 3종은 예정 라벨 전용.
+  | 'departure_scheduled'    // 퇴사예정 등록 (조직도 카드 드로어 / 사용자 관리 모달)
+  | 'departure_rescheduled'  // 퇴사 예정일 변경
+  | 'departure_cancelled'    // 퇴사예정 철회 (상태 종료·재직 복귀)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 2. 수신자 규칙
@@ -281,6 +294,7 @@ const CTA_WB_COMMENT = { label: '댓글 확인하기',   urlTemplate: '{APP_URL}
 const CTA_WB_ISSUE   = { label: '이슈 확인하기',   urlTemplate: '{APP_URL}#workboard-{BOOKING_ID}', color: COLORS.INDIGO }
 const CTA_WB_HOME    = { label: 'Work Space 열기', urlTemplate: '{APP_URL}#workboard',              color: COLORS.INDIGO }
 const CTA_ORG_FILE   = { label: '조직도 열기',      urlTemplate: '{APP_URL}#admin-{BOOKING_ID}',      color: COLORS.GREEN }   // ← [2026-10-01 ORG] BOOKING_ID = 'org-{fileId}' → #admin-org-{fileId}
+const CTA_DEPARTURE  = { label: '사용자 관리 열기',  urlTemplate: '{APP_URL}#admin-tab-users',         color: COLORS.AMBER }   // ← [2026-10-14] 퇴사예정 3종 공용 — 정적 딥링크(BOOKING_ID 미사용)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 7. 정책 정의 — 이벤트별 전체 매트릭스
@@ -1218,6 +1232,51 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
     contextBanner: { admin: { ...BANNER_PRESETS.info, title: '이 조직도가 현재 반영본입니다.', body: '이전 Active 는 지난 조직도로 보존되며, 변경 내역은 히스토리 → Active diff 에서 확인할 수 있습니다.' } },
     cta: { admin: CTA_ORG_FILE },
     isCancelledStyle: false,
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // 퇴사예정 3종 (← [2026-10-14] 고지 확정: 등록·변경·철회 → ADMIN 전원)
+  //   제목의 {title} 슬롯에는 대상자 이름이 들어간다 (프론트가 booking.title 로 전달)
+  // ──────────────────────────────────────────────────────────────────────
+
+  departure_scheduled: {
+    subjectTag:         '[퇴사예정]',
+    headerLabel:        '퇴사 예정이 등록되었습니다',
+    headerColor:        COLORS.AMBER,
+    recipients:         'admins_only',              // 자격 = required_roles NULL → profiles ADMIN 전원
+    inappType:          'departure_scheduled',
+    inappTitleBooker:   '',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '퇴사 예정이 등록되었습니다',
+    contextBanner: { admin: { ...BANNER_PRESETS.warning, title: '마지막 근무일까지 서비스 사용이 보장됩니다.', body: '예정일 익일 00시에 자동 퇴사 처리되며, 미래 예약 취소·대여 반납·권한 회수가 함께 실행됩니다.' } },
+    cta: { admin: CTA_DEPARTURE },
+    isCancelledStyle: false,
+  },
+  departure_rescheduled: {
+    subjectTag:         '[퇴사일변경]',
+    headerLabel:        '퇴사 예정일이 변경되었습니다',
+    headerColor:        COLORS.AMBER,
+    recipients:         'admins_only',
+    inappType:          'departure_rescheduled',
+    inappTitleBooker:   '',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '퇴사 예정일이 변경되었습니다',
+    contextBanner: { admin: { ...BANNER_PRESETS.warning, title: '자동 퇴사 처리일이 바뀌었습니다.', body: '변경된 예정일 익일 00시에 자동 퇴사 처리됩니다.' } },
+    cta: { admin: CTA_DEPARTURE },
+    isCancelledStyle: false,
+  },
+  departure_cancelled: {
+    subjectTag:         '[퇴사예정철회]',
+    headerLabel:        '퇴사 예정이 철회되었습니다',
+    headerColor:        COLORS.GRAY,
+    recipients:         'admins_only',
+    inappType:          'departure_cancelled',
+    inappTitleBooker:   '',
+    inappTitleAttendee: '',
+    inappTitleAdmin:    '퇴사 예정이 철회되었습니다',
+    contextBanner: { admin: { ...BANNER_PRESETS.neutral, title: '재직 상태로 복귀했습니다.', body: '예약·대여 등 서비스 사용 제한이 해제됩니다.' } },
+    cta: { admin: CTA_DEPARTURE },
+    isCancelledStyle: true,
   },
 }
 

@@ -8,6 +8,9 @@
  *      · 카드 정렬: 단위장 → 직급 level ↓ → 대표 직무 level ↓ → 이름
  *      · 트리 빌드: org_units.parent_unit_id 기준, sort_order → name
  *      · 퇴사 판정: profile_id 있는데 users 에 없음 (departed_users 존재 여부는 표시 보조)
+ *  - [2026-10-14] 퇴사자 익명처리 수정 — orgPersonView 퇴사 폴백을 표기 이름(org_display_names) 우선으로 보강
+ *      · 체인: 표기 이름 → departed_users.name → card.display_name(스냅샷) → '(퇴사자)'
+ *      · 20261021 짝 배포 (FK 제거로 퇴사 후에도 표기 이름 보존 + profiles DELETE 스냅샷 트리거)
  *  - [2026-10-01 ORG Phase 5-B] orgDepartedInfo(퇴사 판정 2종 + 7일 자동 숨김) · isCardHidden · 겸직(is_primary) 헤드카운트/CSV 반영
  *  - [2026-10-01 ORG Phase 5] orgPersonView displayNames(조직도 표기 이름) 우선 · CSV 'Azure 이름' 열
  *  - [2026-10-01 ORG Phase 6] splitBench(작업대 분리) · ERR 작업대/분리/합치기/되돌리기 코드
@@ -82,7 +85,8 @@ export function orgPersonView(card: OrgCard, users: AppUser[], persons: Map<stri
       return { name: dn || u.name, azureName: dn && dn !== u.name ? u.name : null, dept: u.dept, email: u.email, avatarUrl: u.avatar_url ?? null, departed: false, user: u }
     }
     const d = departed.get(card.profile_id)
-    return { name: d?.name ?? card.display_name ?? '(퇴사자)', azureName: null, dept: '', email: '', avatarUrl: d?.avatar_url ?? null, departed: true, user: null }
+    const ddn = displayNames?.get(card.profile_id)?.display_name   // ← [2026-10-14] 퇴사 후에도 표기 이름 우선 (20261021 FK 제거로 보존)
+    return { name: ddn || d?.name || card.display_name || '(퇴사자)', azureName: null, dept: '', email: '', avatarUrl: d?.avatar_url ?? null, departed: true, user: null }   // ← [2026-10-14] 폴백 체인 보강
   }
   if (card.person_id) {
     const p = persons.get(card.person_id)

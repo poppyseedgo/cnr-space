@@ -7,6 +7,11 @@
  * 변경 이력
  * ═══════════════════════════════════════════════════════════════════════════
  *
+ * [2026-10-14] 퇴사예정 알림 3종 (departure_scheduled · departure_rescheduled · departure_cancelled)
+ *   · payload.booking = { id:'departure-{userId}', title: 대상자 이름, departure: { target_name, target_dept, date_on, prev_date_on?, actor_name, source } }
+ *   · 수신자 admins_only (자격 required_roles NULL → profiles ADMIN 전원) · 이메일 대상자/예정일/처리자 행 · CTA #admin-tab-users
+ *   · 인앱 booking_id = 'departure-{userId}' → 프론트 NotificationBell 이 #admin-tab-users 로 연다
+ *
  * [2026-09-30 5-B] Work Space 알림 5종 (wb_task_assigned · wb_comment_added · wb_issue_created · wb_issue_resolved · wb_daily_digest)
  *   · payload.booking 은 { id:'task-{uuid}'|'issue-{uuid}'|'digest-{date}', wb_target_type, wb_target_id, wb_actor_id, wb_added_ids?, wb_comment_id?, wb_digest? }
  *
@@ -149,12 +154,22 @@ interface EmailBookingData {
   wb?: WbContext
   // ← [2026-10-01 ORG Phase 4-B] 조직도 Active 전환 — RPC org_activate_file 반환값(프론트가 그대로 전달). 있으면 org 렌더 분기
   org?: OrgActivatedCtx
+  // ← [2026-10-14] 퇴사예정 3종 — 프론트가 RPC 성공 직후 전달. 있으면 departure 렌더 분기
+  departure?: DepartureCtx
 }
 type InAppBookingData = EmailBookingData
 /** ← [2026-10-01 ORG Phase 4-B] org_activate_file 반환 + 프론트 보강(파일명·행위자) */
 interface OrgActivatedCtx {
   file_name: string; effective_on?: string | null; prev_file_name?: string | null
   diff_count: number; diff?: Record<string, number>; actor_name?: string; units?: number; cards?: number
+}
+/** ← [2026-10-14] 퇴사예정 본문 재료 — date_on 은 이미 KST 날짜 문자열(YYYY-MM-DD), 재변환 금지 */
+interface DepartureCtx {
+  target_name: string; target_dept?: string | null
+  date_on?: string | null        // 퇴사 예정일 (철회 알림에선 철회된 예정일)
+  prev_date_on?: string | null   // 변경 알림 전용 — 변경 전 예정일
+  actor_name?: string            // 등록/변경/철회한 관리자
+  source?: 'org' | 'admin'       // 조직도 카드 드로어 / 사용자 관리 모달
 }
 const ORG_DIFF_LABEL: Record<string, string> = { hired: '입사·신규', departed: '제외', moved: '이동', promoted: '직급', job_changed: '직무', head_changed: '단위장', unit_created: '단위 신설', unit_removed: '단위 폐지', concurrent_added: '겸직 추가', concurrent_removed: '겸직 해제', hidden_removed: '숨김 제거' }
 function orgDiffSummary(d?: Record<string, number>): string {
@@ -513,6 +528,7 @@ function renderEmail(input: EmailRenderInput): string {
 
   const isBook    = !!(booking.book_title || booking.due_date_kst)
   const isOrg     = !!booking.org && type.startsWith('org_')   // ← [2026-10-01 ORG Phase 4-B]
+  const isDeparture = !!booking.departure && type.startsWith('departure_')   // ← [2026-10-14] 퇴사예정 3종
   const isResource = !!booking.resource_label   // ← [2026-08-19 Phase 4]
   const isPenalty = !!booking.penalty_ends_kst && (type === 'noshow_penalty_applied' || type === 'noshow_penalty_cleared')
   const pText = purposeText(booking.purpose, booking.purpose_detail)
@@ -554,6 +570,18 @@ function renderEmail(input: EmailRenderInput): string {
     if (typeof o.units === 'number' && typeof o.cards === 'number') rows.push(infoRow('SIZE', esc(`단위 ${o.units} · 인원 ${o.cards}`)))
     rows.push(infoRow('CHANGES', esc(o.diff_count > 0 ? `${o.diff_count}건 — ${orgDiffSummary(o.diff)}` : '이전 Active 대비 변경 없음 (또는 첫 Active)')))
     if (o.actor_name) rows.push(infoRow('지정자', personHtml(o.actor_name, '', creatorInfo?.avatar_url)))
+  } else if (isDeparture && booking.departure) {   // ← [2026-10-14] 퇴사예정 분기 — 대상자/예정일/처리자
+    const d = booking.departure
+    rows.push(infoRow('대상자', personHtml(d.target_name, d.target_dept ?? '')))
+    if (type === 'departure_rescheduled') {
+      if (d.prev_date_on) rows.push(infoRow('변경 전', esc(d.prev_date_on)))
+      if (d.date_on)      rows.push(infoRow('변경 후', esc(d.date_on)))
+    } else if (d.date_on) {
+      rows.push(infoRow(type === 'departure_cancelled' ? '철회된 예정일' : '퇴사 예정일', esc(d.date_on)))
+    }
+    if (d.actor_name) rows.push(infoRow(
+      type === 'departure_scheduled' ? '등록자' : type === 'departure_rescheduled' ? '변경자' : '철회자',
+      personHtml(d.actor_name, '')))
   } else if (isResource) {   // ← [2026-08-19 Phase 4] 자원 분기 — 사용시간/반납일/연체/사유/예약자
     if (booking.use_time_kst)    rows.push(infoRow('USE', esc(booking.use_time_kst)))
     if (booking.return_due_kst)  rows.push(infoRow('DUE', esc(booking.return_due_kst)))
@@ -854,6 +882,15 @@ function buildEmailItems(
 // ═══════════════════════════════════════════════════════════════════════════
 
 function buildInAppBody(type: NotificationType, d: InAppBookingData): string {
+  // ← [2026-10-14] 퇴사예정 — "이름 부서 · 퇴사 예정일 YYYY-MM-DD · 등록: 처리자" (date_on 은 서버 완성 문자열 — 재변환 금지)
+  if (d.departure && type.startsWith('departure_')) {
+    const dep = d.departure
+    const parts: string[] = [[dep.target_name, dep.target_dept ?? ''].filter(Boolean).join(' ')]
+    if (type === 'departure_rescheduled' && dep.prev_date_on && dep.date_on) parts.push(`${dep.prev_date_on} → ${dep.date_on}`)
+    else if (dep.date_on) parts.push(`${type === 'departure_cancelled' ? '철회된 예정일' : '퇴사 예정일'} ${dep.date_on}`)
+    if (dep.actor_name) parts.push(`${type === 'departure_scheduled' ? '등록' : type === 'departure_rescheduled' ? '변경' : '철회'}: ${dep.actor_name}`)
+    return parts.filter(Boolean).join(' · ')
+  }
   // ← [2026-10-01 ORG Phase 4-B] 조직도 — "파일명 · 적용일 YYYY-MM-DD · 변경 N건"
   if (d.org && type.startsWith('org_')) {
     const o = d.org

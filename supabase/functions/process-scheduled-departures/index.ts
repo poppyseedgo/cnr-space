@@ -3,6 +3,7 @@
  * process-scheduled-departures Edge Function — 예약 퇴사 자동 실행 (Phase 2)
  *
  * ✅ 변경 이력
+ *  - [2026-10-14] 첫 운영 배포 (10/8 전수조사 C1 — 7/30 작성본이 미배포 상태, cron 36 이 매일 404) + _shared/departure.ts H1③ 동반
  *  - [2026-07-30] 신규 — 퇴사 예정(departing) 자동 처리 (확정 요구사항 ①)
  *      · 대상: employment_status='departing' AND departure_scheduled_on < 오늘(KST)
  *        → "예정일 익일" 처리 = 마지막 근무일 자정까지 사용 보장 (확정 정책)

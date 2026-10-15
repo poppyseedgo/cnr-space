@@ -1,0 +1,25 @@
+# 시뮬 결과 — 2026-10-14 (PG16.15 로컬, 스텁=운영 실측 1:1)
+# 적용: 20261020_departure_fixes.sql → 20261021_org_departed_names.sql → 시나리오 전체 통과
+psql:20261020_departure_fixes.sql:251: NOTICE:  trigger "on_profile_deleted" for relation "public.profiles" does not exist, skipping
+psql:20261020_departure_fixes.sql:252: NOTICE:  function public.handle_user_deletion() does not exist, skipping
+psql:20261020_departure_fixes.sql:276: NOTICE:  [20261020] 검증 통과 — C2·H1·H2·M3·M1 반영 완료
+psql:20261021_org_departed_names.sql:31: NOTICE:  constraint "org_display_names_profile_id_fkey" of relation "org_display_names" does not exist, skipping
+psql:20261021_org_departed_names.sql:92: NOTICE:  [20261021 백필] 고아 카드 이름 복구 0건 (재실행 시 0건 정상)
+psql:20261021_org_departed_names.sql:106: NOTICE:  [20261021] 검증 통과 — FK 제거·스냅샷 트리거·백필 완료
+
+## 시나리오 (fresh DB 재실행)
+ ✅ S1 통과 — 진행 중 자원대여 강제 반납 + 퇴사 성공
+ ✅ S1b 통과 — profiles 삭제·departed_users 기록
+psql:_sim_departure_20261014/_sim__10_simulate.sql:94: NOTICE:  ✅ S2 통과 — 직접 반납확인 차단 유지
+ ✅ S3 통과 — 대체 super 존재 시 전 역할 회수 + 감사 2건
+psql:_sim_departure_20261014/_sim__10_simulate.sql:105: WARNING:  퇴사자(a0000000-0000-0000-0000-00000000000a)가 마지막 super 입니다. 회수하지 않았습니다 — 다른 사람에게 부여 후 정리하세요.
+ ✅ S4 통과 — 마지막 super 보존(수정 전엔 ⑦이 무조건 삭제)
+ ✅ S5 통과 — pending 신청·미시작 예약 모두 취소
+ ✅ S6 통과 — 구 트리거 제거로 cancelled_by=system 오염 없음
+ ✅ S8 통과 — 퇴사 후 표기 이름 보존
+ ✅ S9a 통과 — 표기 이름 우선 스냅샷 (Active 파일 가드 통과)
+ ✅ S9b 통과 — Azure 이름 폴백 스냅샷
+ ✅ S9c 통과 — 수기값 보존(덮어쓰지 않음)
+ ✅ S9d 통과 — org.lifecycle GUC 복원
+ ✅ S7 통과 — auth 삭제 성공 · actor_id NULL · 이름 스냅샷 보존
+ ✅ S10 통과 — 재호출 멱등
