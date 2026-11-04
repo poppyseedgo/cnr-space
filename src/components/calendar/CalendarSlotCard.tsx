@@ -1,4 +1,16 @@
 // ─── 변경 이력 ───────────────────────────────────────────────────────────────
+// [2026-11-04] 참석자 예약에 '참석자' 뱃지 표시 (A안+①, 고지 확정)
+//   · 배경: '내 예약' 필터가 참석자 예약을 포함하도록 수정(PR #8)됐으나 슬롯 뱃지는
+//           isBooker 기준이라 참석자 예약에 뱃지가 안 붙음 → 필터 결과와 카드 표시 불일치
+//   · 변경:
+//     - import isAttendee 추가 (bookingOwnership SSOT)
+//     - isAttendeeOnly = !isOwner && isAttendee(b, currentUserEmail)
+//       (정책 §1.3 상호 배타: 예약자면 isAttendee 무관하게 '내 예약' 우선 — BookingStatusBadge와 동일)
+//     - resolveBadges 시그니처에 isAttendeeOnly 추가, 'mine'과 동일 가드(!autoCancelled && !rejected)로 'attendee' push
+//   · 스타일: CalendarSlotBadge attendee = mine 동일(bg #fff / text #000), 사용 중(흰 배경) 카드에서도
+//           기존 '내 예약'과 동일하게 테두리 없음 (①기존대로)
+//   · 로직·props·API 무변경 — 뱃지 결정 분기 1개 추가만. 컴팩트(15분) 모드는 기존대로 칩 row 숨김
+//
 // [2026-04-24 P5] 캘린더 슬롯 이름 live + 뱃지 판정 UUID/email 전환
 //   · 이름 live 표시 (2곳):
 //     - L155 노쇼 박제 슬롯 예약자 이름
@@ -36,12 +48,13 @@
 //     · 15분 초과 폭:        기존 풀 구조 (제목 + 시간 + 이름 + 칩 row)
 //
 //   ─── 칩 구성 (Figma 242:427 chip div 순서) ─────────────────────────────
-//     조기반납 → 사용완료 → 승인완료 → 내 예약 (우측 정렬, justify-end)
+//     조기반납 → 사용완료 → 승인완료 → 내 예약|참석자 (우측 정렬, justify-end)  ← [2026-11-04] 참석자 추가
 //     어떤 칩이 나오는지는 상태 조합에 따라 결정:
 //       · 조기반납/사용완료 세트: earlyEnded → 조기반납 + 사용완료
 //                                · earlyEnded=false + isPast: 사용완료만
 //       · 승인완료: 에메랄드룸 + confirmed + !autoCancelled
 //       · 내 예약: 본인 소유 + !cancelled + !rejected
+//       · 참석자: 본인이 참석자(예약자 아님) + !cancelled + !rejected  ← [2026-11-04] 내 예약과 동일 가드, 둘은 상호 배타
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -51,7 +64,7 @@ import type { Booking, Room, AppUser } from '../../types'  // ← [2026-04-24 P5
 import { fmtTSRange, tsDate, todayStr } from '../../utils/time'
 import { getSlotState } from './slotHelpers'
 import { CalendarSlotBadge, type DailySlotBadgeType } from './CalendarSlotBadge'
-import { isBooker } from '../../utils/bookingOwnership'  // ← [2026-04-24 P5] isOwner 판정 UUID/email OR 기반
+import { isBooker, isAttendee } from '../../utils/bookingOwnership'  // ← [2026-11-04] isAttendee 추가 — '참석자' 뱃지 분기 / [2026-04-24 P5] isOwner 판정 UUID/email OR 기반
 
 // ── 상수 ───────────────────────────────────────────────────────────────────
 const BG_ACTIVE   = '#FFFFFF'
@@ -90,8 +103,8 @@ export interface CalendarSlotCardProps {
   onMouseLeave?: (e: ReactMouseEvent) => void
 }
 
-/** 이 예약에 표시할 칩 타입들을 결정 (Figma 순서: 조기반납 → 사용완료 → 승인완료 → 내 예약) */
-function resolveBadges(b: Booking, isOwner: boolean, isAdminRoom: boolean, isPast: boolean): DailySlotBadgeType[] {
+/** 이 예약에 표시할 칩 타입들을 결정 (Figma 순서: 조기반납 → 사용완료 → 승인완료 → 내 예약|참석자) */
+function resolveBadges(b: Booking, isOwner: boolean, isAdminRoom: boolean, isPast: boolean, isAttendeeOnly: boolean = false): DailySlotBadgeType[] {  // ← [2026-11-04] isAttendeeOnly 파라미터 추가 (기본값 false — 기존 호출 호환)
   const badges: DailySlotBadgeType[] = []
 
   // 조기반납: 조기반납 + 사용완료 세트로 표시
@@ -111,6 +124,11 @@ function resolveBadges(b: Booking, isOwner: boolean, isAdminRoom: boolean, isPas
   // 내 예약: 본인 소유 + 취소/거절 아님
   if (isOwner && !b.autoCancelled && b.status !== 'rejected') {
     badges.push('mine')
+  }
+  // ← [2026-11-04] 참석자: 본인이 참석자(예약자 아님) + 취소/거절 아님 — 내 예약과 동일 가드
+  //   isOwner와 isAttendeeOnly는 호출부에서 상호 배타로 계산되므로 둘 다 push되는 경우 없음
+  else if (isAttendeeOnly && !b.autoCancelled && b.status !== 'rejected') {
+    badges.push('attendee')
   }
 
   return badges
@@ -203,11 +221,13 @@ export function CalendarSlotCard({
   //   기존: const isOwner = !!currentUser && b.user === currentUser
   //   변경: isBooker 헬퍼 — user_id/user_email 중 하나라도 일치 → "내 예약" 뱃지 불변 표시
   const isOwner = isBooker(b, currentUserId, currentUserEmail)
+  // ← [2026-11-04] 참석자 판정 — 예약자가 아닐 때만 (정책 §1.3 상호 배타, BookingStatusBadge isAttendeeOnly와 동일 공식)
+  const isAttendeeOnly = !isOwner && isAttendee(b, currentUserEmail)
   const isAdminRoom = !!room?.is_admin_only
   const isFuture = tsDate(b.start_at) > todayStr() || (isToday && st.sm > now)
   const isPast = !isAct && !isFuture && !b.autoCancelled
                   && b.status !== 'pending' && b.status !== 'rejected'
-  const badges = isCompact ? [] : resolveBadges(b, isOwner, isAdminRoom, isPast)
+  const badges = isCompact ? [] : resolveBadges(b, isOwner, isAdminRoom, isPast, isAttendeeOnly)  // ← [2026-11-04] isAttendeeOnly 전달
 
   return (
     <div

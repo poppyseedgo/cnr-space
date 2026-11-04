@@ -1,4 +1,12 @@
 // ─── 변경 이력 ───────────────────────────────────────────────────────────────
+// [2026-11-04] '참석자' 뱃지 타입(attendee) 추가
+//   배경: 캘린더 '내 예약' 필터에 참석자 예약이 포함되면서(PR #8) 슬롯 카드에도
+//         본인이 참석자인 예약임을 표시할 뱃지 필요. 전역 BookingStatusBadge는 이미
+//         "예약자 → 내 예약 / 참석자 → 참석자" 를 chip-mine 동일 스타일로 분기 중
+//   결정(고지 2026-11-04, A안+①): mine과 동일 스타일(bg #fff / text #000), 라벨만 '참석자'.
+//         사용 중(흰 배경) 카드에서도 기존 '내 예약'과 동일하게 테두리 없음 유지
+//   변경: DailySlotBadgeType에 'attendee' 추가, STYLE_MAP에 attendee 항목 추가. 렌더 로직 무변경
+//
 // [2026-04-23] 신규 — 캘린더 Daily 뷰 슬롯 전용 상태 뱃지
 //   배경: 전역 BookingStatusBadge는 홈/마이페이지/룸상세 등 모든 화면 공통 사용
 //         Daily 슬롯만을 위한 Figma 신규 스펙(242:427 컨텐츠 + 242:608 내 예약 +
@@ -19,6 +27,7 @@ import type { CSSProperties, ReactNode } from 'react'
 
 export type DailySlotBadgeType =
   | 'mine'        // 내 예약
+  | 'attendee'    // 참석자  ← [2026-11-04] 본인이 참석자인 예약 (mine과 동일 스타일, 라벨만 분기)
   | 'done'        // 사용완료
   | 'earlyEnd'    // 조기반납
   | 'approved'    // 승인완료
@@ -27,6 +36,7 @@ export type DailySlotBadgeType =
 // 뱃지 타입별 색상 정의 (Figma 스펙)
 const STYLE_MAP: Record<DailySlotBadgeType, { bg: string; text: string; label: string }> = {
   mine:     { bg: '#FFFFFF', text: '#000000', label: '내 예약'   },
+  attendee: { bg: '#FFFFFF', text: '#000000', label: '참석자'    },  // ← [2026-11-04] mine과 동일 스타일 (BookingStatusBadge chip-mine 선례)
   done:     { bg: '#C4EDFF', text: '#000000', label: '사용완료'  },
   earlyEnd: { bg: '#EDE9FE', text: '#7C3AED', label: '조기반납'  },
   approved: { bg: '#E6FFB0', text: '#000000', label: '승인완료'  },
