@@ -2,6 +2,15 @@
  * CalendarShell.tsx — 캘린더 뷰 (Daily / Weekly / Monthly)
  *
  * ✅ 변경 이력
+ *  - [2026-11-04] '내 예약' 필터에 참석자 예약 누락 수정 — isBooker → isMyBooking
+ *    · 증상: 캘린더 '내 예약' 토글 시 본인이 예약자인 건만 표시, 참석자로 등록된 건은 제외됨
+ *    · 원인: 2026-04-24 P5(이름 비교 → UUID/email 전환) 때 필터가 isBooker로 교체되며
+ *      참석자 분기(isAttendee)가 빠짐. 같은 날 HomeView·DetailModal은 isMyBooking으로 통일됐는데
+ *      캘린더 필터만 누락 → 설계 규칙(bookingOwnership.ts §3 "예약자 OR 참석자 = 동일 권한")과 불일치
+ *    · 변경: filteredBks 필터 isBooker → isMyBooking(= isBooker OR isAttendee), import 교체
+ *    · 데이터: loadBookings가 booking_attendees join으로 attendees를 항상 채우고 Realtime/탭복귀/백업
+ *      sync 전부 loadBookings 전체 재조회 경로라 attendees 누락 케이스 없음 → DB/API 무변경
+ *    · 범위: 필터 판정 1줄만. 슬롯 뱃지(CalendarSlotCard resolveBadges)의 isBooker 기준은 별건으로 분리
  *  - [2026-08-25] MonthlyView 셀 오버플로 근본 수정 — 노출 카드 수 자동 계산 + "+N건 더보기" 칩 + 팝오버
  *    · 증상: 셀 높이는 뷰포트/주 수(4~6)에 따라 유동(grid 1fr)인데 노출 수는 4 고정 → 5주 월에서
  *      "+N개" 텍스트가 셀 하단에서 잘리고(overflow:hidden), 나머지 예약에 접근할 진입점이 사라짐
@@ -84,7 +93,7 @@ import { CalendarSlotCard } from '../calendar/CalendarSlotCard'  // ← [2026-04
 import { CalendarCompactCard } from '../calendar/CalendarCompactCard'  // ← [2026-04-24] Weekly/Monthly 공용 컴팩트 카드
 import { MonthlyDayPopover } from '../calendar/MonthlyDayPopover'      // ← [2026-08-25] 월간 셀 "+N건 더보기" 팝오버
 import { getSlotState, isShownInDailyView, isShownInCalendar } from '../calendar/slotHelpers'
-import { isBooker } from '../../utils/bookingOwnership'  // ← [2026-04-24 P5] filterMine 필터 UUID/email OR 판정
+import { isMyBooking } from '../../utils/bookingOwnership'  // ← [2026-11-04] isBooker → isMyBooking (참석자 포함) / [2026-04-24 P5] filterMine 필터 UUID/email OR 판정
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { useBlockedTooltip } from '../../hooks/useBlockedTooltip'  // ← [2026-04-23] 차단 영역 마우스 추적 툴팁
 import {
@@ -344,11 +353,14 @@ export function CalendarShell({
     ro.observe(el)
     return () => ro.disconnect()
   }, [measureFilterPill])
+  // ← [2026-11-04] isBooker → isMyBooking — 참석자로 등록된 예약도 '내 예약'에 포함
+  //   기존: isBooker(b, ...) — 예약자만 통과, 참석자 예약 누락 (설계 규칙 위반)
+  //   변경: isMyBooking(b, ...) = isBooker OR isAttendee — HomeView/DetailModal/MyPage와 동일 기준(SSOT)
   // ← [2026-04-24 P5] filterMine 필터 이름 비교 → isBooker(UUID OR email)
   //   기존: floorFilteredBks.filter(b => b.user === currentUser) — 이름 변경 시 매칭 실패
   //   변경: isBooker 헬퍼 — 이름 변경에도 본인 예약 정확히 필터링
   const filteredBks = filterMine
-    ? roomFilteredBks.filter(b => isBooker(b, currentUserId, currentUserEmail))
+    ? roomFilteredBks.filter(b => isMyBooking(b, currentUserId, currentUserEmail))  // ← [2026-11-04] isBooker → isMyBooking
     : roomFilteredBks
 
   // ── 뷰별 데이터 ──
