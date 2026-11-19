@@ -1,6 +1,10 @@
 // ============================================================
 // ShippingPage — 운송내역서 임시 등록 (단독 페이지, #shipping)
 // [2026-11-19] 신규 — 그룹웨어 이관 기간(2026-11-23~) 대체. 고지 확정 "SPACE 내 단독 페이지로 구현"
+// [2026-11-19 전화번호 표기 설계 반영] 고지 확정 (「운송내역서 전화번호 하이픈 표기 설계」 권장안)
+//   · 전화번호가 나오는 모든 곳이 같은 규칙(utils/phone)을 거친다: 수정 화면으로 불러올 때 · 라벨 인쇄 · 관리자 목록 · 관리자 상세 창.
+//     (엑셀은 utils/shippingExcel 에서 같은 함수) 출력은 displayKoreanPhone — 완성 번호만 하이픈, 그 외는 저장된 그대로.
+//   · 화면 배치 · DB · 저장 방식(하이픈 표기로 저장)은 그대로
 // [2026-11-19 관리자 상세 · 헤더 프로필] 고지 요청
 //   · 운송내역서(관리자) 목록의 줄을 누르면(또는 Enter) 그 건의 상세 창 — 목록 24열에 없는 비고·우편번호·등록 시각까지 한 화면.
 //     이미 조회해 둔 줄 데이터를 그대로 보여준다(추가 조회 없음). 읽기 전용(관리자 = 조회 + 엑셀, 불변).
@@ -45,7 +49,7 @@ import {
   fetchMyShipping, fetchAllShipping, createShipping, updateShipping, deleteShipping, fetchShippingIsAdmin,
 } from '../lib/shippingApi'
 import { downloadShippingExcel } from '../utils/shippingExcel'
-import { formatKoreanPhone } from '../utils/phone'                                   // ← [2026-11-19] 전화번호 하이픈
+import { formatKoreanPhone, displayKoreanPhone } from '../utils/phone'               // ← [2026-11-19] 전화번호 하이픈 · [표기 설계] 출력용 displayKoreanPhone
 import { loadKakaoPostcode, embedKakaoPostcode, kakaoBaseAddress, type KakaoPostcodeData } from '../utils/kakaoPostcode'  // ← [2026-11-19] 주소 검색
 import './ShippingPage.css'
 
@@ -80,9 +84,9 @@ function formFromRecord(r: ShippingRecord): FormState {
     direction: r.direction, unit: r.unit ?? '', quantity: String(r.quantity),
     contents: r.contents, tracking_no: r.tracking_no, region: r.region, note: r.note,
     senderKey: preset ? preset.key : SHIPPING_SENDER_CUSTOM,
-    sender_company: r.sender_company, sender_name: r.sender_name, sender_phone: r.sender_phone,
+    sender_company: r.sender_company, sender_name: r.sender_name, sender_phone: formatKoreanPhone(r.sender_phone),   // ← [2026-11-19 표기 설계] 불러올 때 규칙 적용
     sender_addr1: r.sender_addr1, sender_addr2: r.sender_addr2,
-    receiver_company: r.receiver_company, receiver_name: r.receiver_name, receiver_phone: r.receiver_phone,
+    receiver_company: r.receiver_company, receiver_name: r.receiver_name, receiver_phone: formatKoreanPhone(r.receiver_phone),   // ← [2026-11-19 표기 설계]
     receiver_addr1: r.receiver_addr1, receiver_addr2: r.receiver_addr2,
     sender_zip: r.sender_zip ?? '', receiver_zip: r.receiver_zip ?? '',   // ← [2026-11-19 주소 검색]
   }
@@ -681,11 +685,11 @@ function LabelSheet({ r }: { r: ShippingRecord }) {
   return (
     <div className="shp-sheet" style={{ width: `${L.pageWidthMm}mm`, height: `${L.pageHeightMm}mm`, fontSize: `${L.fontPt}pt`, ['--shp-pitch' as any]: `${L.linePitchMm}mm` }}>
       <div className="shp-sheet-blk" style={{ left: `${L.senderLeftMm}mm`, top: `${L.senderTopMm}mm`, width: `${L.numberLeftMm - L.senderLeftMm - 3}mm` }}>
-        {block('보내는 사람', joinAddress(r.sender_addr1, r.sender_addr2), r.sender_company, r.sender_name, r.sender_phone)}
+        {block('보내는 사람', joinAddress(r.sender_addr1, r.sender_addr2), r.sender_company, r.sender_name, displayKoreanPhone(r.sender_phone))}{/* ← [2026-11-19 표기 설계] */}
       </div>
       <div className="shp-sheet-blk" style={{ left: `${L.numberLeftMm}mm`, top: `${L.numberTopMm}mm` }}>{r.shipping_no}</div>
       <div className="shp-sheet-blk" style={{ left: `${L.receiverLeftMm}mm`, top: `${L.receiverTopMm}mm`, width: `${L.pageWidthMm - L.receiverLeftMm - 5}mm` }}>
-        {block('받는 사람', joinAddress(r.receiver_addr1, r.receiver_addr2), r.receiver_company, r.receiver_name, r.receiver_phone)}
+        {block('받는 사람', joinAddress(r.receiver_addr1, r.receiver_addr2), r.receiver_company, r.receiver_name, displayKoreanPhone(r.receiver_phone))}{/* ← [2026-11-19 표기 설계] */}
       </div>
     </div>
   )
@@ -812,9 +816,9 @@ function AdminView({ onError }: { onError: (m: string) => void }) {
   }
 
   const cells = (r: ShippingRecord, n: number): (string | number)[] => [
-    n, r.user_name, r.employee_no, r.shipping_no, r.receiver_company, r.receiver_name, r.receiver_phone,
+    n, r.user_name, r.employee_no, r.shipping_no, r.receiver_company, r.receiver_name, displayKoreanPhone(r.receiver_phone),   // ← [2026-11-19 표기 설계]
     joinAddress(r.receiver_addr1, r.receiver_addr2), directionLabel(r.direction), itemTypeLabel(r.item_type), unitLabel(r.unit),
-    r.contents, r.quantity, r.sender_company, r.sender_name, r.sender_phone, joinAddress(r.sender_addr1, r.sender_addr2),
+    r.contents, r.quantity, r.sender_company, r.sender_name, displayKoreanPhone(r.sender_phone), joinAddress(r.sender_addr1, r.sender_addr2),   // ← [2026-11-19 표기 설계]
     r.requested_on, regionLabel(r.region), r.amount, r.weight_g, r.tracking_no, r.project_no, billableMark(r.billable),
   ]
   const LONG = [7, 11, 16]         // 주소·내용물 — 말줄임
@@ -961,10 +965,11 @@ function AdminDetailModal({ r, n, onClose }: { r: ShippingRecord; n: number; onC
             <div className="wide"><dt>{L.note}</dt><dd>{dash(r.note)}</dd></div>
           </dl>
 
+          {/* ← [2026-11-19 표기 설계] 전화번호는 displayKoreanPhone 경유 */}
           <div className="shp-dt-parties">
-            <Party title="발신처" company={r.sender_company} name={r.sender_name} phone={r.sender_phone} zip={r.sender_zip ?? ''} addr1={r.sender_addr1} addr2={r.sender_addr2} />
+            <Party title="발신처" company={r.sender_company} name={r.sender_name} phone={displayKoreanPhone(r.sender_phone)} zip={r.sender_zip ?? ''} addr1={r.sender_addr1} addr2={r.sender_addr2} />
             <div className="shp-dt-arrow" aria-hidden="true">→</div>
-            <Party title="수신처" company={r.receiver_company} name={r.receiver_name} phone={r.receiver_phone} zip={r.receiver_zip ?? ''} addr1={r.receiver_addr1} addr2={r.receiver_addr2} />
+            <Party title="수신처" company={r.receiver_company} name={r.receiver_name} phone={displayKoreanPhone(r.receiver_phone)} zip={r.receiver_zip ?? ''} addr1={r.receiver_addr1} addr2={r.receiver_addr2} />
           </div>
 
           <p className="shp-dt-foot">등록 {stamp(r.created_at)}{edited ? ` · 수정 ${stamp(r.updated_at)}` : ''}</p>

@@ -2,6 +2,8 @@
  * shippingExcel.ts — 운송내역서(관리자) 엑셀 다운로드
  *
  * ✅ 변경 이력
+ *  - [2026-11-19 전화번호 표기 설계 반영] E·O 열(수신인·발신인 전화번호)을 displayKoreanPhone 으로 출력 — 화면과 같은 규칙(utils/phone).
+ *      저장값이 숫자만이어도 완성 번호면 하이픈 표기로 내려간다. 열 구성·서식은 그대로.
  *  - [2026-11-19] 신규 — '5. 일양택배 운송내역서 다운로드용 서식.xlsx' 와 같은 모양으로 만든다.
  *
  * 서식(실측):
@@ -16,6 +18,7 @@ import type { ShippingRecord } from '../types/shipping'
 import {
   SHIPPING_EXCEL, joinAddress, directionLabel, itemTypeLabel, unitLabel, regionLabel, billableMark,
 } from '../data/shipping'
+import { displayKoreanPhone } from './phone'   // ← [2026-11-19 표기 설계] 전화번호 표기 규칙(SSOT)
 
 /** 한 건 → 엑셀 24칸 (A~X). 전부 문자열 */
 export function shippingExcelRow(r: ShippingRecord): string[] {
@@ -24,7 +27,7 @@ export function shippingExcelRow(r: ShippingRecord): string[] {
     r.employee_no,                                      // B 사원ID (사번)
     r.receiver_company,                                 // C 수신처
     r.receiver_name,                                    // D 수신인
-    r.receiver_phone,                                   // E 수신인 전화번호
+    displayKoreanPhone(r.receiver_phone),               // E 수신인 전화번호   ← [2026-11-19 표기 설계]
     joinAddress(r.receiver_addr1, r.receiver_addr2),    // F 수신인 주소
     r.shipping_no,                                      // G 수발신번호
     directionLabel(r.direction),                        // H 수발 형태
@@ -34,7 +37,7 @@ export function shippingExcelRow(r: ShippingRecord): string[] {
     String(r.quantity),                                 // L 수량
     r.sender_company,                                   // M 발신처
     r.sender_name,                                      // N 발신인
-    r.sender_phone,                                     // O 발신인 전화번호
+    displayKoreanPhone(r.sender_phone),                 // O 발신인 전화번호   ← [2026-11-19 표기 설계]
     joinAddress(r.sender_addr1, r.sender_addr2),        // P 발신인 주소
     r.requested_on,                                     // Q 신청 일자
     regionLabel(r.region),                              // R 지역
