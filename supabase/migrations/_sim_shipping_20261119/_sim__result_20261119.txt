@@ -6,7 +6,7 @@ PASS N1-4 A 우편 첫 건 → 우편-20261119-001
 PASS N1-5 등록일=KST 오늘, 신청일자 공란→오늘 → 2026-11-19|2026-11-19
 PASS N1-6 신청일자 지정(등록일과 다름) → 택배-20261119-003|2026-12-01
 == N2 삭제한 번호는 다시 쓰지 않는다
-PASS N2-1 A 가 003 삭제 → OK:328d2be7-3e27-418c-997d-02c1407c4cc0
+PASS N2-1 A 가 003 삭제 → OK:cb66d57a-163f-487e-b236-058a5f3ad186
 PASS N2-2 삭제 후 새 등록 = 004 → 택배-20261119-004
 PASS N2-3 삭제 건은 본인 목록에서 사라짐 → 0
 PASS N2-4 행은 보존(postgres 직접 조회) → true|true
@@ -86,13 +86,15 @@ PASS N10-1 B 건 보존 + user_id NULL + 이름·사번 스냅샷 유지 → 21|
 PASS N10-2 GA 는 퇴사자 건도 조회 → t
 == N11 순번 1000 이상에서도 번호가 잘리지 않는다
 PASS N11-1 1000번째 → 우편-20261119-1000
+== Z 우편번호 (20261024) — 저장 전용 칸
+PASS Z1 우편번호 없이 등록(이전 화면 호환) → 빈 값 → [][]
+PASS Z2 우편번호 5자리 저장 → 06236|48733
+PASS Z3 한쪽만 있어도 저장 → []|13494
+PASS Z4 4자리 거부 → INVALID:receiver_zip
+PASS Z5 문자 섞임 거부 → INVALID:sender_zip
+PASS Z6 구 우편번호(6자리, 하이픈) 거부 → INVALID:receiver_zip
+PASS Z7 수정으로 우편번호 변경·비우기 → []|04524
+PASS Z8 수정 시 형식 검사 동일 → INVALID:receiver_zip
+PASS Z9 권한 그대로: 직접 UPDATE 로 우편번호 변경 불가 → permission denied for table shipping_records
 
-결과: 77/77 PASS
-
-── 실행 정보 ──────────────────────────────────────────────
-로컬 PostgreSQL 16.15 · 스텁 = 운영 2026-11-19 실측 정의(admin_set_user_roles prosrc md5 3e6aaf80edd47d74431a8070457c81dd 일치 확인)
-20261023_shipping_temp.sql 2회 연속 적용(멱등) 후 실행. 롤백(_rollback_20261023) → 재적용도 통과, 롤백 뒤 admin_set_user_roles md5 = 운영 원본과 동일
-엑셀: buildShippingWorkbook 출력물을 '5. 일양택배 운송내역서 다운로드용 서식.xlsx' 와 49셀(제목·헤더 24·데이터 24) 비교 — 값·문자형·글꼴·정렬·테두리·바탕·열 너비·병합·행 높이 차이 0
-라벨: 인쇄 PDF(A4 가로)의 글자 위치를 그룹웨어 인쇄물과 비교 — 각 줄 위쪽 좌표 차이 0.13mm 이내, 둘째 단 x=262.5pt 동일 (보내는 사람 x 만 의도적으로 5mm)
-화면 흐름: 헤드리스 크롬 33항목(등록·계속등록·수정·삭제·인쇄·관리자·모바일 폭) 통과
-진입 경로: _sim__route_result_20261119.txt (수정 전·후 빌드 비교 43항목)
+결과: 86/86 PASS

@@ -1,6 +1,13 @@
 // ============================================================
 // ShippingPage — 운송내역서 임시 등록 (단독 페이지, #shipping)
 // [2026-11-19] 신규 — 그룹웨어 이관 기간(2026-11-23~) 대체. 고지 확정 "SPACE 내 단독 페이지로 구현"
+// [2026-11-19 주소 검색 · 전화번호] 고지 확정 (GA 요청 — 주소 수기 입력 · 하이픈 없는 전화번호)
+//   · 발신처·수신처 주소 줄에 [주소 검색] + 우편번호 칸 — 카카오(다음) 우편번호 서비스(utils/kakaoPostcode).
+//     결과를 고르면 우편번호·기본주소가 채워지고 상세주소 칸으로 이동. 검색 후에도 기본주소는 직접 수정 가능(해외·신축 주소).
+//     우편번호는 저장만 한다(20261024) — 라벨 인쇄·엑셀·관리자 목록에는 내보내지 않는다. 기본주소를 비우면 우편번호도 비운다.
+//   · 전화번호 2칸 — 번호만 쳐도 하이픈이 들어간다(utils/phone, 규칙 SSOT). 커서가 끝에 있을 때와 칸을 벗어날 때 적용,
+//     저장 직전에도 한 번 더 적용. 국제번호·내선 표기처럼 규칙 밖의 값은 입력한 그대로 둔다.
+//   · 불변: 번호 발급·필수 검증·당일 수정 규칙, 조회·인쇄·관리자 화면, 엑셀 24열, 라벨 배치
 //
 // 구성 (그룹웨어 '확장기능 > 운송내역서' 3메뉴와 동일)
 //   · 운송내역서 조회   본인 등록 건 목록(최신순) → [등록하기] / 수발신번호 클릭 → 신청 화면
@@ -14,7 +21,7 @@
 // 의존: useAuth().currentUser / shippingApi / data/shipping(SSOT) / utils/shippingExcel
 // 종료 시: 이 파일 + ShippingPage.css + shippingApi + shippingExcel + data·types/shipping, App.tsx 의 #shipping 블록 제거
 // ============================================================
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'  // ← [2026-11-19 주소 검색] useRef
 import { createPortal } from 'react-dom'
 import { useAuth } from '../hooks/useAuth'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
@@ -32,6 +39,8 @@ import {
   fetchMyShipping, fetchAllShipping, createShipping, updateShipping, deleteShipping, fetchShippingIsAdmin,
 } from '../lib/shippingApi'
 import { downloadShippingExcel } from '../utils/shippingExcel'
+import { formatKoreanPhone } from '../utils/phone'                                   // ← [2026-11-19] 전화번호 하이픈
+import { loadKakaoPostcode, embedKakaoPostcode, kakaoBaseAddress, type KakaoPostcodeData } from '../utils/kakaoPostcode'  // ← [2026-11-19] 주소 검색
 import './ShippingPage.css'
 
 type Tab = 'list' | 'form' | 'print' | 'admin'
@@ -54,6 +63,7 @@ function emptyForm(): FormState {
     contents: '', tracking_no: '', region: '', note: '',
     senderKey: p.key, sender_company: p.company, sender_name: '', sender_phone: '', sender_addr1: p.addr1, sender_addr2: p.addr2,
     receiver_company: '', receiver_name: '', receiver_phone: '', receiver_addr1: '', receiver_addr2: '',
+    sender_zip: p.zip, receiver_zip: '',   // ← [2026-11-19 주소 검색] 발신처는 기본 회사(본사)의 우편번호, 수신처는 주소 검색으로 채운다
   }
 }
 
@@ -68,12 +78,14 @@ function formFromRecord(r: ShippingRecord): FormState {
     sender_addr1: r.sender_addr1, sender_addr2: r.sender_addr2,
     receiver_company: r.receiver_company, receiver_name: r.receiver_name, receiver_phone: r.receiver_phone,
     receiver_addr1: r.receiver_addr1, receiver_addr2: r.receiver_addr2,
+    sender_zip: r.sender_zip ?? '', receiver_zip: r.receiver_zip ?? '',   // ← [2026-11-19 주소 검색]
   }
 }
 
 function toPayload(f: FormState): ShippingPayload {
   const { senderKey: _omit, ...rest } = f
-  return rest
+  // ← [2026-11-19] 칸을 벗어나지 않고 바로 등록을 눌러도 하이픈 표기로 저장되게 한다
+  return { ...rest, sender_phone: formatKoreanPhone(rest.sender_phone), receiver_phone: formatKoreanPhone(rest.receiver_phone) }
 }
 
 /** 화면 안내용 검증 — DB shipping_fill 과 같은 목록·식 */
@@ -340,9 +352,32 @@ function FormView({ userName, target, onList, onSaved, onError }: {
   const pickSender = (key: string) => {
     const p = presetOf(key)
     setF(prev => p
-      ? { ...prev, senderKey: key, sender_company: p.company, sender_addr1: p.addr1, sender_addr2: p.addr2 }
-      : { ...prev, senderKey: SHIPPING_SENDER_CUSTOM, sender_company: '', sender_addr1: '', sender_addr2: '' })
+      ? { ...prev, senderKey: key, sender_company: p.company, sender_addr1: p.addr1, sender_addr2: p.addr2, sender_zip: p.zip }   // ← [2026-11-19 주소 검색] 회사를 바꾸면 우편번호도 그 회사 값으로
+      : { ...prev, senderKey: SHIPPING_SENDER_CUSTOM, sender_company: '', sender_addr1: '', sender_addr2: '', sender_zip: '' })
   }
+
+  // ── [2026-11-19 주소 검색] ──
+  type AddrSide = 'sender' | 'receiver'
+  const [addrSide, setAddrSide] = useState<AddrSide | null>(null)      // 열려 있는 주소 검색 창 (null = 닫힘)
+  const detailRef = { sender: useRef<HTMLInputElement>(null), receiver: useRef<HTMLInputElement>(null) }
+  /** 검색 결과 선택 → 우편번호·기본주소 채움, 상세주소는 비우고 그 칸으로 이동 */
+  const onAddrPicked = (side: AddrSide, d: KakaoPostcodeData) => {
+    setF(prev => ({ ...prev, [`${side}_zip`]: d.zonecode ?? '', [`${side}_addr1`]: kakaoBaseAddress(d), [`${side}_addr2`]: '' }))
+    setAddrSide(null)
+    window.setTimeout(() => detailRef[side].current?.focus(), 0)
+  }
+  /** 기본주소 직접 수정 — 허용(해외·신축 주소). 다 지우면 우편번호도 비운다 */
+  const onAddr1 = (side: AddrSide, v: string) => {
+    setF(prev => ({ ...prev, [`${side}_addr1`]: v, ...(v.trim() === '' ? { [`${side}_zip`]: '' } : {}) }))
+  }
+
+  // ── [2026-11-19 전화번호] 번호만 쳐도 하이픈 — 커서가 끝에 있을 때만 즉시 적용(중간 수정 시 커서가 튀지 않게), 칸을 벗어나면 확정 ──
+  const onPhone = (k: 'sender_phone' | 'receiver_phone') => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const el = e.target
+    const atEnd = el.selectionStart === null || el.selectionStart === el.value.length
+    set(k, atEnd ? formatKoreanPhone(el.value) : el.value)
+  }
+  const onPhoneBlur = (k: 'sender_phone' | 'receiver_phone') => () => setF(prev => ({ ...prev, [k]: formatKoreanPhone(prev[k]) }))
 
   const submit = async (keep: boolean) => {
     if (busy || ro) return
@@ -361,7 +396,8 @@ function FormView({ userName, target, onList, onSaved, onError }: {
       if (keep) {
         // 계속등록 — 발신처만 남기고 비운다
         setF(prev => ({ ...emptyForm(), senderKey: prev.senderKey, sender_company: prev.sender_company,
-          sender_name: prev.sender_name, sender_phone: prev.sender_phone, sender_addr1: prev.sender_addr1, sender_addr2: prev.sender_addr2 }))
+          sender_name: prev.sender_name, sender_phone: prev.sender_phone, sender_addr1: prev.sender_addr1, sender_addr2: prev.sender_addr2,
+          sender_zip: prev.sender_zip }))   // ← [2026-11-19 주소 검색] 발신처 우편번호도 함께 유지
         setErrors({})
         window.scrollTo({ top: 0 })
       }
@@ -481,13 +517,14 @@ function FormView({ userName, target, onList, onSaved, onError }: {
           </div>
           <div className="shp-f">
             <label className="req" htmlFor="shp-sphone">전화번호</label>
-            <input id="shp-sphone" value={f.sender_phone} onChange={e => set('sender_phone', e.target.value)} />
+            <input id="shp-sphone" type="tel" inputMode="tel" autoComplete="off" value={f.sender_phone} onChange={onPhone('sender_phone')} onBlur={onPhoneBlur('sender_phone')} placeholder="번호만 입력 (예: 01012345678)" />{/* ← [2026-11-19] 하이픈 자동 */}
             <E k="sender_phone" />
           </div>
           <div />
-          <div className="shp-f shp-span2"><label htmlFor="shp-saddr1">주소</label><input id="shp-saddr1" value={f.sender_addr1} onChange={e => set('sender_addr1', e.target.value)} placeholder="기본주소" /></div>
-          <div className="shp-f"><label htmlFor="shp-saddr2">상세주소</label><input id="shp-saddr2" value={f.sender_addr2} onChange={e => set('sender_addr2', e.target.value)} /></div>
         </div>
+        {/* ← [2026-11-19 주소 검색] 우편번호 + [주소 검색] + 주소 + 상세주소 */}
+        <AddressRow side="sender" zip={f.sender_zip} addr1={f.sender_addr1} addr2={f.sender_addr2} detailRef={detailRef.sender} disabled={ro || busy}
+          onSearch={() => setAddrSide('sender')} onAddr1={v => onAddr1('sender', v)} onAddr2={v => set('sender_addr2', v)} />
 
         <h3 className="shp-h">수신처</h3>
         <div className="shp-grid">
@@ -499,13 +536,23 @@ function FormView({ userName, target, onList, onSaved, onError }: {
           </div>
           <div className="shp-f">
             <label className="req" htmlFor="shp-rphone">전화번호</label>
-            <input id="shp-rphone" value={f.receiver_phone} onChange={e => set('receiver_phone', e.target.value)} />
+            <input id="shp-rphone" type="tel" inputMode="tel" autoComplete="off" value={f.receiver_phone} onChange={onPhone('receiver_phone')} onBlur={onPhoneBlur('receiver_phone')} placeholder="번호만 입력 (예: 01012345678)" />{/* ← [2026-11-19] 하이픈 자동 */}
             <E k="receiver_phone" />
           </div>
-          <div className="shp-f shp-span2"><label htmlFor="shp-raddr1">주소</label><input id="shp-raddr1" value={f.receiver_addr1} onChange={e => set('receiver_addr1', e.target.value)} placeholder="기본주소 (자세하고 정확하게)" /></div>
-          <div className="shp-f"><label htmlFor="shp-raddr2">상세주소</label><input id="shp-raddr2" value={f.receiver_addr2} onChange={e => set('receiver_addr2', e.target.value)} /></div>
         </div>
+        {/* ← [2026-11-19 주소 검색] */}
+        <AddressRow side="receiver" zip={f.receiver_zip} addr1={f.receiver_addr1} addr2={f.receiver_addr2} detailRef={detailRef.receiver} disabled={ro || busy}
+          onSearch={() => setAddrSide('receiver')} onAddr1={v => onAddr1('receiver', v)} onAddr2={v => set('receiver_addr2', v)} />
+        <p className="shp-hint">[주소 검색]으로 고르면 우편번호와 주소가 채워집니다. 해외 주소처럼 검색되지 않으면 주소 칸에 직접 입력할 수 있습니다.</p>
       </fieldset>
+
+      {addrSide && (
+        <AddressSearchModal
+          label={addrSide === 'sender' ? '발신처' : '수신처'}
+          onPick={d => onAddrPicked(addrSide, d)}
+          onClose={() => setAddrSide(null)}
+        />
+      )}
 
       <aside className="shp-guide" aria-label="참고사항">
         <h3>참고사항</h3>
@@ -519,6 +566,87 @@ function FormView({ userName, target, onList, onSaved, onError }: {
         ))}
       </aside>
     </section>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// [2026-11-19 주소 검색] 주소 줄 · 주소 검색 창
+// ─────────────────────────────────────────────────────────────
+/** 우편번호(읽기 전용) + [주소 검색] + 주소(직접 수정 가능) + 상세주소 */
+function AddressRow({ side, zip, addr1, addr2, detailRef, disabled, onSearch, onAddr1, onAddr2 }: {
+  side: 'sender' | 'receiver'; zip: string; addr1: string; addr2: string
+  detailRef: React.RefObject<HTMLInputElement>; disabled: boolean
+  onSearch: () => void; onAddr1: (v: string) => void; onAddr2: (v: string) => void
+}) {
+  const id = side === 'sender' ? 'shp-s' : 'shp-r'
+  return (
+    <div className="shp-addr">
+      <div className="shp-f shp-addr-zip">
+        <label htmlFor={`${id}zip`}>우편번호</label>
+        <div className="shp-addr-zipbox">
+          <input id={`${id}zip`} value={zip} readOnly tabIndex={-1} placeholder="검색 시 자동" />
+          <button type="button" className="shp-btn shp-btn-search" onClick={onSearch} disabled={disabled}>주소 검색</button>
+        </div>
+      </div>
+      <div className="shp-f shp-addr-main">
+        <label htmlFor={`${id}addr1`}>주소</label>
+        <input id={`${id}addr1`} value={addr1} onChange={e => onAddr1(e.target.value)} placeholder="[주소 검색]으로 선택하거나 직접 입력" />
+      </div>
+      <div className="shp-f shp-addr-detail">
+        <label htmlFor={`${id}addr2`}>상세주소</label>
+        <input id={`${id}addr2`} ref={detailRef} value={addr2} onChange={e => onAddr2(e.target.value)} placeholder="동·호수, 층 등" />
+      </div>
+    </div>
+  )
+}
+
+/** 주소 검색 창 — 안쪽은 카카오(다음) 우편번호 서비스 화면(iframe). 우리가 정하는 것은 창 크기·제목·닫기뿐이다 */
+function AddressSearchModal({ label, onPick, onClose }: {
+  label: string; onPick: (d: KakaoPostcodeData) => void; onClose: () => void
+}) {
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const pickRef = useRef(onPick); pickRef.current = onPick
+
+  useEffect(() => {
+    let alive = true
+    loadKakaoPostcode()
+      .then(() => {
+        if (!alive || !boxRef.current) return
+        embedKakaoPostcode(boxRef.current, d => pickRef.current(d))
+        setState('ready')
+      })
+      .catch(() => { if (alive) setState('error') })
+    return () => { alive = false }
+  }, [])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return createPortal(
+    <div className="shp-modal-dim" onClick={onClose}>
+      <div className="shp-modal" role="dialog" aria-modal="true" aria-label={`${label} 주소 검색`} onClick={e => e.stopPropagation()}>
+        <div className="shp-modal-head">
+          <b>주소 검색</b><span>{label}</span>
+          <button type="button" className="shp-btn shp-btn-sm shp-right" onClick={onClose}>닫기</button>
+        </div>
+        <div className="shp-modal-body">
+          {state === 'loading' && <div className="shp-modal-skel" aria-busy="true"><div className="sk-block" /><div className="sk-block" /><div className="sk-block" /></div>}
+          {state === 'error' && (
+            <div className="shp-modal-err">
+              <p>주소 검색을 불러오지 못했습니다.</p>
+              <p>인터넷 연결을 확인하거나, 창을 닫고 주소 칸에 직접 입력해 주세요.</p>
+              <button type="button" className="shp-btn" onClick={onClose}>닫고 직접 입력</button>
+            </div>
+          )}
+          <div ref={boxRef} className="shp-modal-embed" style={{ display: state === 'ready' ? 'block' : 'none' }} />
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }
 

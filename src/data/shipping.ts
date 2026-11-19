@@ -2,6 +2,7 @@
  * shipping.ts — 운송내역서 임시 등록 페이지(#shipping) 판정·라벨 SSOT
  *
  * ✅ 변경 이력
+ *  - [2026-11-19 주소 검색] 우편번호 칸 라벨(sender_zip · receiver_zip) 추가 — 저장 전용(20261024). 엑셀·라벨·관리자 목록 정의는 그대로(우편번호 미노출)
  *  - [2026-11-19] 신규 — 그룹웨어 이관 기간(2026-11-23~) 대체 페이지 (고지 확정 "SPACE 내 단독 페이지로 구현")
  *
  * 📌 원칙
@@ -58,10 +59,11 @@ export const joinAddress = (addr1: string, addr2: string) => `${addr1 ?? ''} ${a
  * 발신처 회사 선택지 — 그룹웨어의 본사/부산지사 선택 + 직접 입력.
  * 선택 시 회사명·주소를 채운다(채운 뒤 수정 가능).
  */
-export interface ShippingSenderPreset { key: string; company: string; addr1: string; addr2: string }
+export interface ShippingSenderPreset { key: string; company: string; zip: string; addr1: string; addr2: string }   // ← [2026-11-19 주소 검색] zip
 export const SHIPPING_SENDER_PRESETS: ShippingSenderPreset[] = [
-  { key: 'hq',    company: '씨엔알리서치(본사)',     addr1: '서울특별시 강남구 역삼로 412',   addr2: '' },
-  { key: 'busan', company: '씨엔알리서치(부산지사)', addr1: '부산광역시 동구 중앙대로 216',   addr2: '교원빌딩 17층' },   // 2026-11-19 고지 제공값
+  // ← [2026-11-19 주소 검색] zip 추가 — 카카오 우편번호 서비스에서 두 주소를 직접 검색해 확인한 값(2026-11-19)
+  { key: 'hq',    company: '씨엔알리서치(본사)',     zip: '06199', addr1: '서울특별시 강남구 역삼로 412',   addr2: '' },
+  { key: 'busan', company: '씨엔알리서치(부산지사)', zip: '48733', addr1: '부산광역시 동구 중앙대로 216',   addr2: '교원빌딩 17층' },   // 2026-11-19 고지 제공값
 ]
 export const SHIPPING_SENDER_CUSTOM = 'custom'
 export const SHIPPING_DEFAULT_SENDER = 'hq'
@@ -75,6 +77,7 @@ export const SHIPPING_FIELD_LABELS: Record<string, string> = {
   sender_addr1: '발신처 주소', sender_addr2: '발신처 상세주소',
   receiver_company: '수신처 회사', receiver_name: '수신처 담당자', receiver_phone: '수신처 전화번호',
   receiver_addr1: '수신처 주소', receiver_addr2: '수신처 상세주소',
+  sender_zip: '발신처 우편번호', receiver_zip: '수신처 우편번호',   // ← [2026-11-19 주소 검색]
 }
 
 /** 필수 칸 — DB shipping_fill 과 같은 목록(서버가 최종 판정, 화면은 안내용) */
