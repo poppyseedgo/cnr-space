@@ -2,6 +2,13 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-11-19 SHIPPING] 운송내역서 임시 등록 단독 페이지 (#shipping) — 그룹웨어 이관 기간(11/23~) 대체 (고지 확정)
+ *      · DIRECT_VIEWS += 'shipping' + 렌더 분기 1줄 (#hr-interview 와 같은 풀블리드 단독 트리 — 헤더·푸터·드로어·loading 게이트 앞)
+ *      · 로그인 전 진입 복원: 전 직원이 공지 링크(#shipping)로 들어오는데 OAuth 리다이렉트(redirectTo=origin)가 해시를 지워
+ *        로그인 후 홈에 떨어진다(단독 페이지라 드로어에 진입점도 없다). RESTORE_DIRECT_VIEWS 를 cnr_deeplink 저장·복원 대상에 추가.
+ *        resolveDeepHash 가 저장값을 view 로 돌려주고(초기 렌더), 로그인 완료 effect 가 해시를 되돌린 뒤 저장값을 지운다
+ *      · 불변: 기존 접두어·별칭·DIRECT_VIEWS 의 판정 순서와 결과 (해시 'shipping' 한 종만 추가)
+ *      · 종료 시: 이 블록의 4곳(import · DIRECT_VIEWS/RESTORE_DIRECT_VIEWS · 복원 effect · 렌더 분기) 제거
  *  - [2026-10-06 ADMIN-GATE 2] 권한 없는 어드민 접근 시 안내 토스트 (고지 요청 — "접근할 수 없습니다" 알림)
  *      · 기존: 조용히 home 폴백 → 왜 홈으로 왔는지 알 수 없었다 (주소 직접 입력·전달받은 승인요청 링크)
  *      · 변경: home 폴백과 함께 기존 토스트(error)로 '접근할 수 없습니다. 관리자 전용 페이지입니다.' 1회 표시
@@ -325,6 +332,7 @@ import { loadMyAdminRoles, loadMyAdminRolesStrict } from './lib/api'        // �
 import { canSeeView, canSeeTab, visibleTabs } from './data/adminRoles'       // ← [2026-09-29 WORKBOARD P2] 역할 → 일반 뷰 판정 SSOT  // ← [2026-10-01 ORG] canSeeTab — 드로어 '조직도' 진입 게이트  // ← [2026-10-06 ADMIN-GATE] visibleTabs — 어드민 뷰 접근 판정
 import { ReleaseNotesPage } from './pages/ReleaseNotesPage'  // ← [2026-08-03] Release Note + Hotfix 페이지 추가
 import HrInterviewPage from './pages/HrInterviewPage'  // ← [2026-09-03] 근태 APP 내재화 HR 1차 인터뷰 임시 단독 페이지 (#hr-interview)
+import ShippingPage from './pages/ShippingPage'  // ← [2026-11-19 SHIPPING] 운송내역서 임시 등록 단독 페이지 (#shipping)
 import { RoomDetailModal } from './components/room/RoomDetailModal'
 import { CalendarSkeleton, MyPageSkeleton, AdminSkeleton } from './components/skeleton'
 import { initGlobalRipple } from './hooks/useGlobalRipple'
@@ -419,7 +427,11 @@ function AppContent() {
   //   해결: 상수 하나로 통일 — 두 판정이 같은 배열을 참조하므로 어긋날 방법이 사라진다.
   //   ⭐운영 규칙: 새 페이지(view) 추가 시 렌더 분기와 함께 이 배열에만 추가하면 끝.
   //   (myloans 는 view 가 아니라 mypage 로 매핑되는 딥링크 별칭 — 여기 넣지 않는다)
-  const DIRECT_VIEWS = ['home','calendar','mypage','admin','library','resources','announcements','release-notes','hr-interview','workboard']  // ← [2026-09-29] workboard 추가 (Work Space)  // ← [2026-09-03] hr-interview 추가 (임시 단독 페이지)
+  const DIRECT_VIEWS = ['home','calendar','mypage','admin','library','resources','announcements','release-notes','hr-interview','workboard','shipping']  // ← [2026-11-19 SHIPPING] shipping 추가 (운송내역서 임시 단독 페이지)  // ← [2026-09-29] workboard 추가 (Work Space)  // ← [2026-09-03] hr-interview 추가 (임시 단독 페이지)
+
+  // ← [2026-11-19 SHIPPING] 로그인 전 진입 시 OAuth 뒤에 되돌려 줄 직접 view — 공지 링크로 전 직원이 들어오는 단독 페이지용.
+  //   (다른 직접 view 는 헤더·드로어로 다시 갈 수 있어 복원하지 않는다 — 기존 동작 유지)
+  const RESTORE_DIRECT_VIEWS = ['shipping']
 
   // ← [2026-10-06 ORG-DEEPLINK] 접두어형 딥링크 → view SSOT.
   //   종전엔 이 목록이 getViewFromHash / 로그인 effect isValidHash / 딥링크 저장 effect 에 따로 나열돼 있어
@@ -438,6 +450,7 @@ function AppContent() {
   const resolveDeepHash = (h: string | null | undefined): string | null => {
     if (!h) return null
     if (h === 'myloans') return 'mypage'   // ← [2026-08-11] 도서 CTA 별칭 — 마이페이지 진입 (탭 선택은 아래 딥링크 이펙트)
+    if (RESTORE_DIRECT_VIEWS.includes(h)) return h   // ← [2026-11-19 SHIPPING] 로그인 복원 대상 직접 view (저장값 → view)
     const hit = HASH_PREFIX_VIEWS.find(([prefix]) => h.startsWith(prefix))
     return hit ? hit[1] : null
   }
@@ -735,7 +748,7 @@ function AppContent() {
   // admin-booking- 딥링크 해시를 sessionStorage에 저장 (OAuth 리다이렉트 시 소실 방지)
   useEffect(() => {
     const hash = window.location.hash.replace('#', '')
-    if (hash.startsWith('admin-booking-') || hash.startsWith('admin-org-') || hash.startsWith('booking-') || hash === 'myloans' || hash.startsWith('workboard-')) {  // ← [2026-08-11] myloans · [5-B] workboard-* 도 로그인 후 복원 대상  // ← [2026-10-06 ORG-DEEPLINK] admin-org-* 추가 (조직도 메일 CTA)
+    if (hash.startsWith('admin-booking-') || hash.startsWith('admin-org-') || hash.startsWith('booking-') || hash === 'myloans' || hash.startsWith('workboard-') || RESTORE_DIRECT_VIEWS.includes(hash)) {  // ← [2026-11-19 SHIPPING] #shipping 도 로그인 리다이렉트 뒤 복원  // ← [2026-08-11] myloans · [5-B] workboard-* 도 로그인 후 복원 대상  // ← [2026-10-06 ORG-DEEPLINK] admin-org-* 추가 (조직도 메일 CTA)
       sessionStorage.setItem('cnr_deeplink', hash)
     }
   }, [])
@@ -749,6 +762,16 @@ function AppContent() {
     if (!saved.startsWith('admin-org-')) return
     sessionStorage.removeItem('cnr_deeplink')
     if (!window.location.hash.replace('#', '').startsWith('admin-org-')) window.location.hash = saved
+  }, [authUser?.user_id])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ← [2026-11-19 SHIPPING] 단독 페이지(#shipping) OAuth 복원 — 로그인 리다이렉트로 사라진 해시를 되돌리고 저장값을 지운다.
+  //   view 는 getViewFromHash 가 저장값으로 이미 'shipping' 을 돌려줬다. 로그인 상태로 들어온 경우에도 저장값만 정리된다(해시는 그대로).
+  useEffect(() => {
+    if (!authUser) return
+    const saved = sessionStorage.getItem('cnr_deeplink') ?? ''
+    if (!RESTORE_DIRECT_VIEWS.includes(saved)) return
+    sessionStorage.removeItem('cnr_deeplink')
+    if (window.location.hash.replace('#', '') !== saved) window.location.hash = saved
   }, [authUser?.user_id])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── [2026-08-11 CTA 전수검사] #myloans 딥링크 → 마이페이지 '도서 대여' 탭 ──
@@ -1864,6 +1887,11 @@ function AppContent() {
   //    bookings/users 등 앱 마스터 데이터를 쓰지 않고 자체 API(hrInterviewApi)만 사용하므로 loading 게이트 앞에 둔다.
   //    로그인 게이트(authUser) 뒤라 Microsoft OAuth 세션은 그대로 승계. 종료 시 이 블록 + import + DIRECT_VIEWS 항목만 제거.
   if (view === 'hr-interview') return <HrInterviewPage />
+
+  // ── [2026-11-19 SHIPPING] 운송내역서 임시 등록 단독 페이지 (#shipping) ──
+  //    hr-interview 와 같은 풀블리드 트리 — 자체 API(shippingApi)만 쓰므로 loading 게이트 앞. 로그인 사용자 전원 접근,
+  //    관리자 메뉴·전체 조회는 admin_roles 'shipping'(DB has_admin_role) 이 지킨다.
+  if (view === 'shipping') return <ShippingPage />
 
   // ── 데이터 로딩 중 ──
   if (loading) {
