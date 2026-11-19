@@ -1,6 +1,11 @@
 // ============================================================
 // ShippingPage — 운송내역서 임시 등록 (단독 페이지, #shipping)
 // [2026-11-19] 신규 — 그룹웨어 이관 기간(2026-11-23~) 대체. 고지 확정 "SPACE 내 단독 페이지로 구현"
+// [2026-11-19 관리자 상세 · 헤더 프로필] 고지 요청
+//   · 운송내역서(관리자) 목록의 줄을 누르면(또는 Enter) 그 건의 상세 창 — 목록 24열에 없는 비고·우편번호·등록 시각까지 한 화면.
+//     이미 조회해 둔 줄 데이터를 그대로 보여준다(추가 조회 없음). 읽기 전용(관리자 = 조회 + 엑셀, 불변).
+//   · 헤더 로그인 표시: 이름 글자 → 프로필 이미지 + 이름. SPACE 헤더(ProfileDropdown)와 같은 공용 UserAvatar · 같은 값(36px, #000/#fff, 16px/400).
+//   · 불변: 목록 열·정렬·엑셀·검색·페이지, 조회·신청·인쇄 화면
 // [2026-11-19 주소 검색 · 전화번호] 고지 확정 (GA 요청 — 주소 수기 입력 · 하이픈 없는 전화번호)
 //   · 발신처·수신처 주소 줄에 [주소 검색] + 우편번호 칸 — 카카오(다음) 우편번호 서비스(utils/kakaoPostcode).
 //     결과를 고르면 우편번호·기본주소가 채워지고 상세주소 칸으로 이동. 검색 후에도 기본주소는 직접 수정 가능(해외·신축 주소).
@@ -25,7 +30,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useAuth } from '../hooks/useAuth'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
-import { todayStr } from '../utils/time'
+import { UserAvatar } from '../components/common/UserAvatar'   // ← [2026-11-19 헤더 프로필] SPACE 헤더와 같은 공용 아바타
+import { todayStr, tsDate, tsTime } from '../utils/time'      // ← [2026-11-19 관리자 상세] tsDate · tsTime (등록 시각 KST 표기)
 import type { ShippingRecord, ShippingPayload, ShippingAdminFilter } from '../types/shipping'
 import {
   SHIPPING_ITEM_TYPES, SHIPPING_DIRECTIONS, SHIPPING_UNITS, SHIPPING_REGIONS,
@@ -171,7 +177,13 @@ export default function ShippingPage() {
             <span className="shp-chip">임시 등록</span>
           </div>
           <div className="shp-top-right">
-            <span className="shp-me">{currentUser?.name ?? ''}</span>
+            {/* ← [2026-11-19 헤더 프로필] 프로필 이미지 + 이름. 아바타 값은 SPACE 헤더(ProfileDropdown desktop)와 동일 */}
+            {currentUser && (
+              <span className="shp-me">
+                <UserAvatar name={currentUser.name} avatarUrl={currentUser.avatar_url} size={36} bgColor="#000" textColor="#fff" fontSize={16} fontWeight={400} />
+                <span className="shp-me-name">{currentUser.name}</span>
+              </span>
+            )}
             <button type="button" className="shp-btn shp-btn-ghost" onClick={goSpace}>C&amp;R SPACE로 이동</button>
           </div>
         </div>
@@ -767,9 +779,10 @@ function AdminView({ onError }: { onError: (m: string) => void }) {
   const [page, setPage] = useState(1)
   const [size, setSize] = useState(PAGE_SIZES[0])
   const [exporting, setExporting] = useState(false)
+  const [detail, setDetail] = useState<{ r: ShippingRecord; n: number } | null>(null)   // ← [2026-11-19 관리자 상세] 열려 있는 상세 창 (n = 순번)
 
   const search = useCallback(async (f: ShippingAdminFilter) => {
-    setRows(null); setLoadErr(null); setPage(1); setApplied(f)
+    setRows(null); setLoadErr(null); setPage(1); setApplied(f); setDetail(null)
     try {
       setRows(await fetchAllShipping(f))
     } catch (e) {
@@ -851,13 +864,16 @@ function AdminView({ onError }: { onError: (m: string) => void }) {
         : rows.length === 0 ? <div className="shp-empty"><p>조건에 맞는 운송내역서가 없습니다.</p></div>
         : (
           <>
-            <p className="shp-count">조회 {total}건 · 엑셀은 조회된 전체 건이 내려받아집니다</p>
+            <p className="shp-count">조회 {total}건 · 줄을 누르면 상세 내역이 열립니다 · 엑셀은 조회된 전체 건이 내려받아집니다</p>{/* ← [2026-11-19 관리자 상세] 안내 */}
             <div className="shp-scroll">
               <table className="shp-table shp-table-admin">
                 <thead><tr>{SHIPPING_ADMIN_COLUMNS.map(c => <th key={c}>{c}</th>)}</tr></thead>
                 <tbody>
                   {view.map((r, i) => (
-                    <tr key={r.id}>
+                    // ← [2026-11-19 관리자 상세] 줄 클릭 · Enter/Space → 상세 창
+                    <tr key={r.id} className="shp-row-click" tabIndex={0} aria-label={`${r.shipping_no} 상세 보기`}
+                      onClick={() => setDetail({ r, n: (page - 1) * size + i + 1 })}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetail({ r, n: (page - 1) * size + i + 1 }) } }}>
                       {cells(r, (page - 1) * size + i + 1).map((v, ci) => (
                         <td key={ci} className={`${LONG.includes(ci) ? 'long' : ''} ${NUM.includes(ci) ? 'num' : ''}`} title={LONG.includes(ci) ? String(v) : undefined}>{v}</td>
                       ))}
@@ -878,6 +894,83 @@ function AdminView({ onError }: { onError: (m: string) => void }) {
             </div>
           </>
         )}
+      {detail && <AdminDetailModal r={detail.r} n={detail.n} onClose={() => setDetail(null)} />}{/* ← [2026-11-19 관리자 상세] */}
     </section>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// [2026-11-19 관리자 상세] 운송내역서 1건 상세 창 — 읽기 전용
+// ─────────────────────────────────────────────────────────────
+/** 값이 비면 '-' */
+const dash = (v: string | number | null | undefined) => (v === null || v === undefined || String(v).trim() === '' ? '-' : String(v))
+
+function AdminDetailModal({ r, n, onClose }: { r: ShippingRecord; n: number; onClose: () => void }) {
+  const closeRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    const prev = document.activeElement as HTMLElement | null      // 창을 연 줄 — 닫으면 그 줄로 돌아간다
+    closeRef.current?.focus()
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey); prev?.focus?.() }
+  }, [onClose])
+
+  const stamp = (ts: string) => (ts ? `${tsDate(ts)} ${tsTime(ts)}` : '-')
+  const edited = !!r.updated_at && stamp(r.updated_at) !== stamp(r.created_at)
+  const L = SHIPPING_FIELD_LABELS
+
+  /** 발신처·수신처 한 칸 */
+  const Party = ({ title, company, name, phone, zip, addr1, addr2 }: { title: string; company: string; name: string; phone: string; zip: string; addr1: string; addr2: string }) => (
+    <div className="shp-dt-party">
+      <h4>{title}</h4>
+      <p className="shp-dt-who"><b>{dash(name)}</b><span>{dash(company)}</span></p>
+      <dl>
+        <div><dt>전화번호</dt><dd>{dash(phone)}</dd></div>
+        <div><dt>주소</dt><dd>{zip ? <span className="shp-dt-zip">{zip}</span> : null}{dash(`${addr1} ${addr2}`.trim())}</dd></div>
+      </dl>
+    </div>
+  )
+
+  return createPortal(
+    <div className="shp-modal-dim" onClick={onClose}>
+      <div className="shp-modal shp-modal-detail" role="dialog" aria-modal="true" aria-label={`${r.shipping_no} 상세 내역`} onClick={e => e.stopPropagation()}>
+        <div className="shp-modal-head">
+          <b className="shp-dt-no">{r.shipping_no}</b>
+          <span className="shp-dt-tags">
+            <span className="shp-dt-tag">{itemTypeLabel(r.item_type)}</span>
+            <span className="shp-dt-tag">{directionLabel(r.direction)}</span>
+          </span>
+          <button type="button" ref={closeRef} className="shp-btn shp-btn-sm shp-right" onClick={onClose}>닫기</button>
+        </div>
+
+        <div className="shp-dt-scroll">
+          <dl className="shp-dt-grid">
+            <div><dt>순번</dt><dd>{n}</dd></div>
+            <div><dt>사원명</dt><dd>{dash(r.user_name)}</dd></div>
+            <div><dt>사원ID</dt><dd>{dash(r.employee_no)}</dd></div>
+            <div><dt>프로젝트 번호</dt><dd>{dash(r.project_no)}</dd></div>
+            <div><dt>{L.billable}</dt><dd>{billableMark(r.billable)}</dd></div>
+            <div><dt>{L.requested_on}</dt><dd>{dash(r.requested_on)}</dd></div>
+            <div><dt>{L.unit}</dt><dd>{dash(unitLabel(r.unit))}</dd></div>
+            <div><dt>{L.quantity}</dt><dd>{r.quantity}</dd></div>
+            <div><dt>{L.region}</dt><dd>{regionLabel(r.region)}</dd></div>
+            <div><dt>{L.tracking_no}</dt><dd>{dash(r.tracking_no)}</dd></div>
+            <div><dt>사용금액</dt><dd>{r.amount.toLocaleString('ko-KR')}</dd></div>
+            <div><dt>무게(g)</dt><dd>{r.weight_g.toLocaleString('ko-KR')}</dd></div>
+            <div className="wide"><dt>{L.contents}</dt><dd>{dash(r.contents)}</dd></div>
+            <div className="wide"><dt>{L.note}</dt><dd>{dash(r.note)}</dd></div>
+          </dl>
+
+          <div className="shp-dt-parties">
+            <Party title="발신처" company={r.sender_company} name={r.sender_name} phone={r.sender_phone} zip={r.sender_zip ?? ''} addr1={r.sender_addr1} addr2={r.sender_addr2} />
+            <div className="shp-dt-arrow" aria-hidden="true">→</div>
+            <Party title="수신처" company={r.receiver_company} name={r.receiver_name} phone={r.receiver_phone} zip={r.receiver_zip ?? ''} addr1={r.receiver_addr1} addr2={r.receiver_addr2} />
+          </div>
+
+          <p className="shp-dt-foot">등록 {stamp(r.created_at)}{edited ? ` · 수정 ${stamp(r.updated_at)}` : ''}</p>
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }
