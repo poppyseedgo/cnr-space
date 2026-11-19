@@ -1,6 +1,9 @@
 // ============================================================
 // ShippingPage — 운송내역서 임시 등록 (단독 페이지, #shipping)
 // [2026-11-19] 신규 — 그룹웨어 이관 기간(2026-11-23~) 대체. 고지 확정 "SPACE 내 단독 페이지로 구현"
+// [2026-11-19 전화번호 입력 칸 안내] 표기 설계 「규칙 밖의 값」 · 확정 1-가(안내만, 등록 허용)
+//   · 발신처·수신처 전화번호 칸 아래에 한 줄 안내 — 자릿수 부족 · 초과 · 없는 앞자리 · 지역번호 없음. 문구는 utils/phone(SSOT).
+//     치는 동안에는 띄우지 않고 칸을 벗어난 뒤에만 보인다. 등록·저장 동작은 그대로(막지 않는다).
 // [2026-11-19 전화번호 표기 설계 반영] 고지 확정 (「운송내역서 전화번호 하이픈 표기 설계」 권장안)
 //   · 전화번호가 나오는 모든 곳이 같은 규칙(utils/phone)을 거친다: 수정 화면으로 불러올 때 · 라벨 인쇄 · 관리자 목록 · 관리자 상세 창.
 //     (엑셀은 utils/shippingExcel 에서 같은 함수) 출력은 displayKoreanPhone — 완성 번호만 하이픈, 그 외는 저장된 그대로.
@@ -49,7 +52,7 @@ import {
   fetchMyShipping, fetchAllShipping, createShipping, updateShipping, deleteShipping, fetchShippingIsAdmin,
 } from '../lib/shippingApi'
 import { downloadShippingExcel } from '../utils/shippingExcel'
-import { formatKoreanPhone, displayKoreanPhone } from '../utils/phone'               // ← [2026-11-19] 전화번호 하이픈 · [표기 설계] 출력용 displayKoreanPhone
+import { formatKoreanPhone, displayKoreanPhone, koreanPhoneHint } from '../utils/phone'               // ← [2026-11-19] 전화번호 하이픈 · [표기 설계] 출력용 displayKoreanPhone
 import { loadKakaoPostcode, embedKakaoPostcode, kakaoBaseAddress, type KakaoPostcodeData } from '../utils/kakaoPostcode'  // ← [2026-11-19] 주소 검색
 import './ShippingPage.css'
 
@@ -393,7 +396,13 @@ function FormView({ userName, target, onList, onSaved, onError }: {
     const atEnd = el.selectionStart === null || el.selectionStart === el.value.length
     set(k, atEnd ? formatKoreanPhone(el.value) : el.value)
   }
-  const onPhoneBlur = (k: 'sender_phone' | 'receiver_phone') => () => setF(prev => ({ ...prev, [k]: formatKoreanPhone(prev[k]) }))
+  const onPhoneBlur = (k: 'sender_phone' | 'receiver_phone') => () => { setPhoneFocus(null); setF(prev => ({ ...prev, [k]: formatKoreanPhone(prev[k]) })) }   // ← [2026-11-19 입력 칸 안내] 초점 해제
+  // ── [2026-11-19 입력 칸 안내] 치는 중인 칸은 안내를 띄우지 않는다 ──
+  const [phoneFocus, setPhoneFocus] = useState<'sender_phone' | 'receiver_phone' | null>(null)
+  const PhoneHint = ({ k }: { k: 'sender_phone' | 'receiver_phone' }) => {
+    const msg = phoneFocus === k || errors[k] ? '' : koreanPhoneHint(f[k])
+    return msg ? <p className="shp-hint shp-hint-warn" role="status">{msg}</p> : null
+  }
 
   const submit = async (keep: boolean) => {
     if (busy || ro) return
@@ -533,8 +542,9 @@ function FormView({ userName, target, onList, onSaved, onError }: {
           </div>
           <div className="shp-f">
             <label className="req" htmlFor="shp-sphone">전화번호</label>
-            <input id="shp-sphone" type="tel" inputMode="tel" autoComplete="off" value={f.sender_phone} onChange={onPhone('sender_phone')} onBlur={onPhoneBlur('sender_phone')} placeholder="번호만 입력 (예: 01012345678)" />{/* ← [2026-11-19] 하이픈 자동 */}
+            <input id="shp-sphone" type="tel" inputMode="tel" autoComplete="off" value={f.sender_phone} onChange={onPhone('sender_phone')} onFocus={() => setPhoneFocus('sender_phone')} onBlur={onPhoneBlur('sender_phone')} placeholder="번호만 입력 (예: 01012345678)" />{/* ← [2026-11-19] 하이픈 자동 */}
             <E k="sender_phone" />
+            <PhoneHint k="sender_phone" />{/* ← [2026-11-19 입력 칸 안내] */}
           </div>
           <div />
         </div>
@@ -552,8 +562,9 @@ function FormView({ userName, target, onList, onSaved, onError }: {
           </div>
           <div className="shp-f">
             <label className="req" htmlFor="shp-rphone">전화번호</label>
-            <input id="shp-rphone" type="tel" inputMode="tel" autoComplete="off" value={f.receiver_phone} onChange={onPhone('receiver_phone')} onBlur={onPhoneBlur('receiver_phone')} placeholder="번호만 입력 (예: 01012345678)" />{/* ← [2026-11-19] 하이픈 자동 */}
+            <input id="shp-rphone" type="tel" inputMode="tel" autoComplete="off" value={f.receiver_phone} onChange={onPhone('receiver_phone')} onFocus={() => setPhoneFocus('receiver_phone')} onBlur={onPhoneBlur('receiver_phone')} placeholder="번호만 입력 (예: 01012345678)" />{/* ← [2026-11-19] 하이픈 자동 */}
             <E k="receiver_phone" />
+            <PhoneHint k="receiver_phone" />{/* ← [2026-11-19 입력 칸 안내] */}
           </div>
         </div>
         {/* ← [2026-11-19 주소 검색] */}

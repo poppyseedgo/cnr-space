@@ -2,6 +2,7 @@
  * phone.ts — 대한민국 전화번호 하이픈 표기 (규칙 SSOT)
  *
  * ✅ 변경 이력
+ *  - [2026-11-19 입력 칸 안내] koreanPhoneHint 추가 — 완성되지 않은 번호를 입력 칸 아래에서 한 줄로 알린다(안내만, 등록은 막지 않음 · 확정 1-가).
  *  - [2026-11-19 설계 반영] 「운송내역서 전화번호 하이픈 표기 설계」(고지 확정 2026-11-19, 권장안 3건) 대로 다시 작성.
  *      · 식별번호를 목록(KOREAN_PHONE_PREFIXES)으로 판정 — 이전에는 0 으로 시작하는 세 자리면 모두 묶었다(없는 지역번호 034 도 묶임).
  *      · 010·070 은 11자리만 완성, 처음부터 4자리씩 끊는다 — 이전에는 10자리도 010-XXX-XXXX 로 완성처럼 묶었다.
@@ -134,4 +135,19 @@ export function formatKoreanPhone(raw: string | null | undefined): string {
 export function displayKoreanPhone(stored: string | null | undefined): string {
   const r = analyzeKoreanPhone(stored)
   return r.status === 'complete' ? r.text : (stored ?? '')
+}
+
+/** 입력 칸 아래 안내 문구 (SSOT). 안내가 필요 없으면 '' — 완성 · 빈 값 · 일부러 그렇게 적은 값(해외 번호 · 글자가 섞인 값) */
+const PHONE_HINTS: Record<KoreanPhoneOutside, string> = {
+  too_long: '자릿수가 많습니다. 번호를 확인해 주세요.',
+  unknown_prefix: '앞자리를 확인해 주세요.',
+  no_area_code: '지역번호부터 넣어 주세요. (예: 02, 031)',
+  foreign: '',
+  text: '',
+}
+export function koreanPhoneHint(raw: string | null | undefined): string {
+  const r = analyzeKoreanPhone(raw)
+  if (r.status === 'partial') return '자릿수가 모자랍니다. 번호를 확인해 주세요.'
+  if (r.status === 'outside' && r.reason) return PHONE_HINTS[r.reason]
+  return ''
 }
