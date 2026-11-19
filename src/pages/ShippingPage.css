@@ -3,6 +3,7 @@
    [2026-11-19] 신규. 단독 페이지(앱 헤더·푸터 없음)라 라이트 고정 — 색은 index.css 라이트 토큰 값과 동일
    접두어 shp- (다른 화면과 충돌 없음). 인쇄 규칙은 html.shp-printing 일 때만 적용된다
    [2026-11-19 주소 검색] 주소 줄(.shp-addr) · 검색 창(.shp-modal) 추가
+   [2026-11-19 관리자 상세 · 헤더 프로필] 상세 창(.shp-modal-detail · .shp-dt-*) · 줄 클릭(.shp-row-click) · 헤더 프로필(.shp-me) 추가
    ============================================================ */
 
 .shp-root { min-height: 100vh; background: #F5F7F9; color: #0F172A; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; }
@@ -14,7 +15,8 @@
 .shp-brand b { font-weight: 700; }
 .shp-chip { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #FEF3C7; color: #92400E; }
 .shp-top-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
-.shp-me { font-size: 13px; color: #64748B; }
+.shp-me { display: inline-flex; align-items: center; gap: 8px; }                         /* ← [2026-11-19 헤더 프로필] 프로필 이미지 + 이름 */
+.shp-me-name { font-size: 14px; font-weight: 500; color: #111; white-space: nowrap; }
 
 .shp-main { max-width: 1280px; margin: 0 auto; padding: 20px 24px 64px; }
 
@@ -95,6 +97,34 @@
 .shp-modal-err p { margin: 0; }
 .shp-modal-err .shp-btn { margin-top: 16px; }
 
+/* ── [2026-11-19 관리자 상세] 상세 창 ── */
+.shp-modal-detail { max-width: 760px; padding: 22px 24px 20px; display: flex; flex-direction: column; max-height: calc(100vh - 32px); }
+.shp-modal-detail .shp-modal-head { margin-bottom: 16px; flex: none; }
+.shp-modal-head b.shp-dt-no { font-size: 20px; letter-spacing: -.2px; white-space: nowrap; }
+.shp-modal-head span.shp-dt-tags { display: inline-flex; gap: 6px; }
+.shp-modal-head span.shp-dt-tag { white-space: nowrap; padding: 3px 10px; border-radius: 999px; background: #F1F5F9; color: #334155; font-size: 12px; font-weight: 600; }
+.shp-dt-scroll { overflow-y: auto; min-height: 0; }
+.shp-dt-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 20px; margin: 0; border-top: 1px solid #E2E8F0; }
+.shp-dt-grid > div { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid #F1F5F9; min-width: 0; }
+.shp-dt-grid > div.wide { grid-column: 1 / -1; }
+.shp-dt-grid dt, .shp-dt-party dt { flex: none; width: 84px; font-size: 12px; font-weight: 600; color: #64748B; line-height: 20px; }
+.shp-dt-grid dd, .shp-dt-party dd { margin: 0; font-size: 14px; color: #0F172A; line-height: 20px; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.shp-dt-parties { display: flex; align-items: stretch; gap: 10px; margin-top: 16px; }
+.shp-dt-party { flex: 1; min-width: 0; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; }
+.shp-dt-party h4 { margin: 0 0 8px; font-size: 12px; font-weight: 700; color: #1D4ED8; }
+.shp-dt-who { margin: 0 0 10px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.shp-dt-who b { font-size: 16px; font-weight: 700; }
+.shp-dt-who span { font-size: 13px; color: #475569; }
+.shp-dt-party dl { margin: 0; }
+.shp-dt-party dl > div { display: flex; gap: 10px; padding: 3px 0; }
+.shp-dt-party dt { width: 56px; }
+.shp-dt-zip { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 4px; background: #E2E8F0; color: #334155; font-size: 12px; font-weight: 600; line-height: 18px; vertical-align: 1px; }
+.shp-dt-arrow { flex: none; align-self: center; color: #94A3B8; font-size: 18px; }
+.shp-dt-foot { margin: 14px 0 0; font-size: 12px; color: #94A3B8; text-align: right; }
+.shp-row-click { cursor: pointer; }
+.shp-table tbody tr.shp-row-click:hover { background: #F1F5F9; }
+.shp-row-click:focus-visible { outline: 2px solid #111; outline-offset: -2px; }
+
 /* ── 표 ── */
 .shp-scroll { overflow-x: auto; border: 1px solid #E2E8F0; border-radius: 12px; }
 .shp-table { width: 100%; border-collapse: collapse; font-size: 13px; white-space: nowrap; }
@@ -161,7 +191,15 @@
   .shp-grid > div:empty { display: none; }
   .shp-top-in, .shp-main { padding-left: 16px; padding-right: 16px; }
   .shp-card { padding: 16px; }
-  .shp-me { display: none; }
+  .shp-me-name { display: none; }   /* ← [2026-11-19 헤더 프로필] 좁은 화면: 이미지만 (SPACE 헤더와 같음) */
   .shp-addr { flex-direction: column; align-items: stretch; }   /* ← [2026-11-19 주소 검색] 좁은 화면: 세로로 */
+  .shp-dt-grid { grid-template-columns: 1fr; }                   /* ← [2026-11-19 관리자 상세] 좁은 화면: 한 줄에 한 항목 */
+  .shp-dt-parties { flex-direction: column; }
+  .shp-modal-detail { padding: 18px 16px 16px; }
+  .shp-modal-detail .shp-modal-head { flex-wrap: wrap; row-gap: 8px; }   /* 번호 + [닫기] 한 줄, 항목·수발형태는 다음 줄 */
+  .shp-modal-head b.shp-dt-no { order: 1; flex: 1; font-size: 18px; }
+  .shp-modal-detail .shp-modal-head .shp-btn { order: 2; }
+  .shp-modal-head span.shp-dt-tags { order: 3; flex-basis: 100%; }
+  .shp-dt-arrow { transform: rotate(90deg); }
   .shp-addr-detail { width: auto; }
 }

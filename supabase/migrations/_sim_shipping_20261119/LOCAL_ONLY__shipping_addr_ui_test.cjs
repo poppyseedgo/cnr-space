@@ -8,7 +8,7 @@ const { chromium } = require('/opt/npm-tools/node_modules/playwright')
 const out = process.env.SHOTS_DIR || '/tmp/shp-shots'
 const R = []; const ok = (n, c, extra = '') => { R.push(!!c); console.log((c ? 'PASS' : 'FAIL'), n, extra) }
 ;(async () => {
-  const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox'], proxy: { server: 'http://127.0.0.1:37849', bypass: 'localhost,127.0.0.1' } })
+  const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox'], proxy: { server: process.env.HTTPS_PROXY, bypass: 'localhost,127.0.0.1' } })
   const ctx = await browser.newContext({ viewport: { width: 1360, height: 900 }, acceptDownloads: true })
   const page = await ctx.newPage(); global.__page = page
   const errs = []; const reqs = []
