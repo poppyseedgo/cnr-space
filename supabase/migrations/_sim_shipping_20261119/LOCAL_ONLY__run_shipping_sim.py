@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ⚠ LOCAL_ONLY — 로컬 PG 시뮬 전용. 운영 실행 금지.
-# 사용: python3 LOCAL_ONLY__run_shipping_sim.py  (로컬 PG: -h /tmp/pgsim -p 55432, DB simship 에 스텁+20261023 적용 후)
+# 사용: python3 LOCAL_ONLY__run_shipping_sim.py  (로컬 PG: -h /tmp/pgsim -p 55432, DB simship 에 스텁+20261023+20261024 적용 후)
 import subprocess, json, sys, datetime, concurrent.futures as cf
 PSQL = ["psql", "-h", "/tmp/pgsim", "-p", "55432", "-U", "postgres", "-d", "simship", "-At", "-v", "ON_ERROR_STOP=1", "-q"]
 A, B, GA, SUPER, NOSABUN = [f"00000000-0000-0000-0000-00000000000{c}" for c in "abcde"]
@@ -42,7 +42,7 @@ def errcode(res):  # 예외 메시지에서 코드만
         if "ERROR:" in line: return line.split("ERROR:")[1].strip()
     return out
 
-kst = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y%m%d")
+kst = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)).strftime("%Y%m%d")
 kst_d = kst[:4] + "-" + kst[4:6] + "-" + kst[6:]
 
 print("== N1 번호 발급: 항목별·등록일별 001부터")
@@ -153,6 +153,18 @@ check("N10-2 GA 는 퇴사자 건도 조회", run("SELECT count(*) > 0 FROM ship
 print("== N11 순번 1000 이상에서도 번호가 잘리지 않는다")
 run("UPDATE shipping_no_counters SET last_seq = 999 WHERE item_type='post'", role=None)
 check("N11-1 1000번째", create(A, item_type="post")[1], f"우편-{kst}-1000")
+
+print("== Z 우편번호 (20261024) — 저장 전용 칸")
+check("Z1 우편번호 없이 등록(이전 화면 호환) → 빈 값", run(f"SELECT '['||sender_zip||']['||receiver_zip||']' FROM shipping_create('{payload()}'::jsonb)", A)[1], "[][]")
+check("Z2 우편번호 5자리 저장", run(f"SELECT sender_zip||'|'||receiver_zip FROM shipping_create('{payload(sender_zip='06236', receiver_zip='48733')}'::jsonb)", A)[1], "06236|48733")
+check("Z3 한쪽만 있어도 저장", run(f"SELECT '['||sender_zip||']|'||receiver_zip FROM shipping_create('{payload(receiver_zip='13494')}'::jsonb)", A)[1], "[]|13494")
+check("Z4 4자리 거부", errcode(create(A, receiver_zip='1234')), "INVALID:receiver_zip")
+check("Z5 문자 섞임 거부", errcode(create(A, sender_zip='0623A')), "INVALID:sender_zip")
+check("Z6 구 우편번호(6자리, 하이픈) 거부", errcode(create(A, receiver_zip='135-080')), "INVALID:receiver_zip")
+ridz = run(f"SELECT id FROM shipping_records WHERE receiver_zip='48733'", A)[1]
+check("Z7 수정으로 우편번호 변경·비우기", run(f"SELECT '['||sender_zip||']|'||receiver_zip FROM shipping_update('{ridz}', '{payload(sender_zip='', receiver_zip='04524')}'::jsonb)", A)[1], "[]|04524")
+check("Z8 수정 시 형식 검사 동일", errcode(run(f"SELECT shipping_update('{ridz}', '{payload(receiver_zip='abcde')}'::jsonb)", A)), "INVALID:receiver_zip")
+check("Z9 권한 그대로: 직접 UPDATE 로 우편번호 변경 불가", errcode(run("UPDATE shipping_records SET receiver_zip='00000'", A)), lambda s: "permission denied" in s)
 
 print()
 print(f"결과: {sum(results)}/{len(results)} PASS")

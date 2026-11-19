@@ -1,6 +1,7 @@
 // ============================================================
 // shipping.ts — 운송내역서 임시 등록 페이지(#shipping) 타입
 // [2026-11-19] 신규 — DB public.shipping_records (20261023_shipping_temp.sql) 와 1:1 (snake_case)
+// [2026-11-19 주소 검색] sender_zip / receiver_zip 추가 (20261024_shipping_zip.sql) — 저장 전용, 라벨·엑셀에는 내보내지 않는다
 // ============================================================
 import type { ShippingItemType, ShippingDirection, ShippingUnit, ShippingRegion } from '../data/shipping'
 
@@ -37,6 +38,8 @@ export interface ShippingRecord {
   receiver_phone:   string
   receiver_addr1:   string
   receiver_addr2:   string
+  sender_zip:       string             // ← [2026-11-19 주소 검색] 우편번호 5자리 또는 '' (저장 전용)
+  receiver_zip:     string             // ← [2026-11-19 주소 검색]
   created_at:       string
   updated_at:       string
   deleted_at:       string | null
@@ -65,6 +68,8 @@ export interface ShippingPayload {
   receiver_phone:   string
   receiver_addr1:   string
   receiver_addr2:   string
+  sender_zip:       string             // ← [2026-11-19 주소 검색] 우편번호 5자리 또는 '' (저장 전용)
+  receiver_zip:     string             // ← [2026-11-19 주소 검색]
 }
 
 /** 관리자 화면 검색 조건 */
