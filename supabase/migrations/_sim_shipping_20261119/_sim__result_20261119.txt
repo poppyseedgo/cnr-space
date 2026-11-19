@@ -1,0 +1,98 @@
+== N1 번호 발급: 항목별·등록일별 001부터
+PASS N1-1 A 택배 첫 건 → 택배-20261119-001
+PASS N1-2 B 택배 둘째 → 택배-20261119-002
+PASS N1-3 A 퀵 첫 건 → 퀵-20261119-001
+PASS N1-4 A 우편 첫 건 → 우편-20261119-001
+PASS N1-5 등록일=KST 오늘, 신청일자 공란→오늘 → 2026-11-19|2026-11-19
+PASS N1-6 신청일자 지정(등록일과 다름) → 택배-20261119-003|2026-12-01
+== N2 삭제한 번호는 다시 쓰지 않는다
+PASS N2-1 A 가 003 삭제 → OK:328d2be7-3e27-418c-997d-02c1407c4cc0
+PASS N2-2 삭제 후 새 등록 = 004 → 택배-20261119-004
+PASS N2-3 삭제 건은 본인 목록에서 사라짐 → 0
+PASS N2-4 행은 보존(postgres 직접 조회) → true|true
+PASS N2-5 이미 삭제한 건 재삭제 → NOT_FOUND
+== N3 필수·형식 검증 (실패 시 번호를 소모하지 않는다)
+PASS N3 project_no 공란 → REQUIRED:project_no
+PASS N3 sender_name 공란 → REQUIRED:sender_name
+PASS N3 sender_phone 공란 → REQUIRED:sender_phone
+PASS N3 receiver_name 공란 → REQUIRED:receiver_name
+PASS N3 receiver_phone 공란 → REQUIRED:receiver_phone
+PASS N3 item_type 공란 → REQUIRED:item_type
+PASS N3 direction 공란 → REQUIRED:direction
+PASS N3 region 공란 → REQUIRED:region
+PASS N3 quantity 공란 → REQUIRED:quantity
+PASS N3 청구여부 미선택 → REQUIRED:billable
+PASS N3 청구여부 문자열 → REQUIRED:billable
+PASS N3 수량 문자 → INVALID:quantity
+PASS N3 수량 0 → INVALID:quantity
+PASS N3 수량 소수 → INVALID:quantity
+PASS N3 항목 엉뚱한 값 → INVALID:item_type
+PASS N3 지역 엉뚱한 값 → INVALID:region
+PASS N3 단위 엉뚱한 값 → INVALID:unit
+PASS N3 신청일자 형식 → INVALID:requested_on
+PASS N3 신청일자 없는 날짜 → INVALID:requested_on
+PASS N3 단위 공란 허용 → True
+PASS N3 실패 20건은 순번 미소모(성공 1건만 +1) → 4->5
+== N4 등록자 정보는 서버가 profiles 에서 채운다
+PASS N4-1 이름·사번·메일 스냅샷 → 시뮬B_Sim B_DM|20990002|b@sim.local
+PASS N4-2 payload 로 등록자 위조 불가 → 시뮬A|20990001|true
+PASS N4-3 사번 없는 직원도 등록(사번 빈칸) → 시뮬사번없음|[]
+== N5 조회 권한 (RLS)
+PASS N5-1 A 는 본인 건만 → 6
+PASS N5-2 A 는 B 건을 못 본다 → 0
+PASS N5-3 GA(역할 없음)는 본인 건 0 → 0
+PASS N5-4 super 가 GA 에게 shipping 부여 → {shipping}
+PASS N5-5 GA(shipping) 전체 조회 → 8
+PASS N5-6 super 전체 조회 → 8
+PASS N5-7 비로그인(anon) 조회 거부 → permission denied for table shipping_records
+PASS N5-8 로그인 사용자도 순번표는 못 읽는다 → permission denied for table shipping_no_counters
+== N6 직접 쓰기 차단 (RPC 만 허용)
+PASS N6-1 직접 INSERT → permission denied for table shipping_records
+PASS N6-2 직접 UPDATE → permission denied for table shipping_records
+PASS N6-3 직접 DELETE → permission denied for table shipping_records
+PASS N6-4 GA(shipping)도 직접 UPDATE 불가 → permission denied for table shipping_records
+PASS N6-5 순번표 직접 조작 불가 → permission denied for table shipping_no_counters
+PASS N6-6 내부 함수 직접 호출 불가 → permission denied for function shipping_fill
+PASS N6-7 anon RPC 호출 불가 → permission denied for function shipping_create
+PASS N6-8 sub 없는 세션은 NOT_AUTHENTICATED → NOT_AUTHENTICATED
+== N7 수정: 본인 · 당일 · 항목 잠금
+PASS N7-1 본인 당일 수정 → 택배-20261119-001|5|박변경|box
+PASS N7-2 항목 변경 시도 → ITEM_TYPE_LOCKED
+PASS N7-3 타인 건 수정 → NOT_OWNER
+PASS N7-4 타인 건 삭제 → NOT_OWNER
+PASS N7-5 GA(shipping)도 타인 건 수정 불가 → NOT_OWNER
+PASS N7-6 수정 시 필수 검증 동일 → REQUIRED:region
+PASS N7-7 없는 id → NOT_FOUND
+PASS N7-8 다음 날 수정 → EDIT_WINDOW_CLOSED
+PASS N7-9 다음 날 삭제 → EDIT_WINDOW_CLOSED
+PASS N7-10 수정 실패는 값을 바꾸지 않는다 → 5|박변경
+== N8 admin_set_user_roles 재계산 (shipping 은 ADMIN 을 만들지 않는다)
+PASS N8-1 shipping 만 → USER → USER
+PASS N8-2 shipping+workboard → USER → USER
+PASS N8-3 workboard 만 → USER (기존 동작) → USER
+PASS N8-4 shipping+book → ADMIN → ADMIN
+PASS N8-5 book 만 → ADMIN (기존 동작) → ADMIN
+PASS N8-6 역할 0개 → USER (기존 동작) → USER
+PASS N8-7 비 super 호출 거부 (기존 동작) → NOT_SUPER
+PASS N8-8 본인 super 회수 금지 (기존 동작) → CANNOT_REVOKE_OWN_SUPER
+PASS N8-9 감사 로그 기록 (기존 동작) → grant:shipping,revoke:shipping,grant:shipping,revoke:shipping
+PASS N8-10 CHECK 기존 허용값 보존 + shipping → CHECK ((role = ANY (ARRAY['shipping'::text, 'org'::text, 'workboard'::text, 'dashboard'::text, 'booking'::text, 'approval'::text, 'room'::text, 'user'::text, 'v…
+PASS N8-11 없는 역할은 여전히 거부 → new row for relation "admin_roles" violates check constraint "admin_roles_role_check"
+== N9 동시 등록 40건 — 번호 중복·누락 없음
+PASS N9-1 40건 전부 성공 → 40
+PASS N9-2 번호가 연속이고 중복 없음 → True
+== N10 퇴사(profiles DELETE) 후에도 기록 보존
+PASS N10-1 B 건 보존 + user_id NULL + 이름·사번 스냅샷 유지 → 21|0|시뮬B_Sim B_DM|20990002
+PASS N10-2 GA 는 퇴사자 건도 조회 → t
+== N11 순번 1000 이상에서도 번호가 잘리지 않는다
+PASS N11-1 1000번째 → 우편-20261119-1000
+
+결과: 77/77 PASS
+
+── 실행 정보 ──────────────────────────────────────────────
+로컬 PostgreSQL 16.15 · 스텁 = 운영 2026-11-19 실측 정의(admin_set_user_roles prosrc md5 3e6aaf80edd47d74431a8070457c81dd 일치 확인)
+20261023_shipping_temp.sql 2회 연속 적용(멱등) 후 실행. 롤백(_rollback_20261023) → 재적용도 통과, 롤백 뒤 admin_set_user_roles md5 = 운영 원본과 동일
+엑셀: buildShippingWorkbook 출력물을 '5. 일양택배 운송내역서 다운로드용 서식.xlsx' 와 49셀(제목·헤더 24·데이터 24) 비교 — 값·문자형·글꼴·정렬·테두리·바탕·열 너비·병합·행 높이 차이 0
+라벨: 인쇄 PDF(A4 가로)의 글자 위치를 그룹웨어 인쇄물과 비교 — 각 줄 위쪽 좌표 차이 0.13mm 이내, 둘째 단 x=262.5pt 동일 (보내는 사람 x 만 의도적으로 5mm)
+화면 흐름: 헤드리스 크롬 33항목(등록·계속등록·수정·삭제·인쇄·관리자·모바일 폭) 통과
+진입 경로: _sim__route_result_20261119.txt (수정 전·후 빌드 비교 43항목)
