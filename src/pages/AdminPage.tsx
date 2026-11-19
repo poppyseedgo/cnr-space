@@ -2,6 +2,8 @@
  * AdminPage.tsx — 어드민 페이지 (대시보드 / 예약 / 승인 관리 / 회의실 / 사용자)
  *
  * ✅ 변경 이력
+ *  - [2026-11-19] 사용자 상세 모달 — 사번(읽기 전용) 칸 추가 (이메일 아래, 이메일 칸과 같은 스타일. 없으면 '미등록')
+ *    · editUser.employee_no 를 그대로 표시 — form 상태 · saveEdit · updateProfile 무수정 (사번은 저장 대상 아님)
  *  - [2026-10-06 ADMIN-GATE] AdminView 접근·탭 게이트 보강 (10/6 사고 — 역할 0개 사용자에게 대시보드·승인 관리가 그대로 렌더)
  *    · 원인 ①: 역할 0개면 TABS=[] 인데 "아래에서 안내 화면" 주석만 있고 화면이 없어, 사이드 메뉴만 숨고 본문은 렌더됐다
  *    · 원인 ②: 탭 본문 렌더 조건이 activeTab 뿐이라 권한 없는 탭도 setTab/딥링크로 열렸다
@@ -4534,6 +4536,11 @@ export function AdminUsers({ users, setUsers, rooms = [], showToast, isMobile, c
                 <div style={{ marginBottom:14 }}>
                   <label style={{ fontSize:11, fontWeight:600, color:'#94A3B8', display:'block', marginBottom:5 }}>이메일</label>
                   <input value={form.email || ''} readOnly style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:'1px solid #F1F5F9', fontSize:14, background:'#F8FAFC', outline:'none', color:'#94A3B8', boxSizing:'border-box' }}/>
+                </div>
+                {/* 사번 (읽기 전용) — ← [2026-11-19] 이메일 칸과 같은 스타일. 미등록 계정(공용 · 회의실 등)은 '미등록' */}
+                <div style={{ marginBottom:14 }}>
+                  <label style={{ fontSize:11, fontWeight:600, color:'#94A3B8', display:'block', marginBottom:5 }}>사번</label>
+                  <input value={editUser.employee_no || '미등록'} readOnly style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:'1px solid #F1F5F9', fontSize:14, background:'#F8FAFC', outline:'none', color:'#94A3B8', boxSizing:'border-box' }}/>
                 </div>
                 {/* ── 관리자 권한 (← [2026-07-24] Phase 1) ─────────────────────
                       USER/ADMIN 토글을 역할 체크박스 그리드로 교체.
