@@ -66,6 +66,7 @@ export interface AppUser {
   azure_user_id?:   string | null                 // ← [2026-10-01 v10] Azure object id
   azure_extra?:     Record<string, unknown> | null // ← [2026-10-01 v10] Graph /users 전체 필드 원본 (조직도 드로어 'Azure 프로필')
   azure_synced_at?: string | null
+  employee_no?:     string | null                 // ← [2026-11-19] 사번(profiles.employee_no, 20261022). employee_id 는 사번이 아니라 Entra 로그인 ID — 혼동 주의
 }
 
 export interface DepartedUser {

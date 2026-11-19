@@ -1,0 +1,53 @@
+# 시뮬 결과 — 2026-11-19 (PG16 로컬, 스텁=_sim_departure_20261014/_sim__00_stub_prod.sql 재사용)
+# 적용: 스텁 → 20261020 → 20261021 → 20261022 → 20261022(재실행·멱등) → 기존 퇴사 회귀 → 사번 N1~N9 → 롤백 → 재적용
+# 참고: 1차 실행에서 N9(NULL 다수 허용)가 실패 — 코드 결함이 아니라 시드 부족(앞 시나리오들이 퇴사시켜 NULL 행이 1명만 남음).
+#       판정식은 그대로 두고 N9 전용 NULL 시드 2행(97·98)을 추가해 재실행.
+
+## 마이그레이션
+[exit 0] _sim_departure_20261014/_sim__00_stub_prod.sql
+[exit 0] 20261020_departure_fixes.sql
+[exit 0] 20261021_org_departed_names.sql
+psql:20261022_profiles_employee_no.sql:67: NOTICE:  trigger "trg_profiles_employee_no_client_lock" for relation "public.profiles" does not exist, skipping
+psql:20261022_profiles_employee_no.sql:241: NOTICE:  [20261022] 검증 통과 — 사번 칸 · 유일 인덱스 · 잠금 트리거 · 퇴사 스냅샷 반영 완료
+[exit 0] 20261022_profiles_employee_no.sql
+psql:20261022_profiles_employee_no.sql:36: NOTICE:  column "employee_no" of relation "profiles" already exists, skipping
+psql:20261022_profiles_employee_no.sql:37: NOTICE:  column "employee_no" of relation "departed_users" already exists, skipping
+psql:20261022_profiles_employee_no.sql:48: NOTICE:  relation "profiles_employee_no_key" already exists, skipping
+psql:20261022_profiles_employee_no.sql:241: NOTICE:  [20261022] 검증 통과 — 사번 칸 · 유일 인덱스 · 잠금 트리거 · 퇴사 스냅샷 반영 완료
+[exit 0] 20261022_profiles_employee_no.sql
+
+## 기존 퇴사 시나리오 회귀 (_sim_departure_20261014/_sim__10_simulate.sql)
+ ✅ S1 통과 — 진행 중 자원대여 강제 반납 + 퇴사 성공
+ ✅ S1b 통과 — profiles 삭제·departed_users 기록
+✅ S2 통과 — 직접 반납확인 차단 유지
+ ✅ S3 통과 — 대체 super 존재 시 전 역할 회수 + 감사 2건
+ ✅ S4 통과 — 마지막 super 보존(수정 전엔 ⑦이 무조건 삭제)
+ ✅ S5 통과 — pending 신청·미시작 예약 모두 취소
+ ✅ S6 통과 — 구 트리거 제거로 cancelled_by=system 오염 없음
+ ✅ S8 통과 — 퇴사 후 표기 이름 보존
+ ✅ S9a 통과 — 표기 이름 우선 스냅샷 (Active 파일 가드 통과)
+ ✅ S9b 통과 — Azure 이름 폴백 스냅샷
+ ✅ S9c 통과 — 수기값 보존(덮어쓰지 않음)
+ ✅ S9d 통과 — org.lifecycle GUC 복원
+ ✅ S7 통과 — auth 삭제 성공 · actor_id NULL · 이름 스냅샷 보존
+ ✅ S10 통과 — 재호출 멱등
+[exit 0] _sim_departure_20261014/_sim__10_simulate.sql
+
+## 사번 시나리오 (LOCAL_ONLY__20_simulate_employee_no.sql)
+✅ N1 통과 — 사번 스냅샷 + profiles 삭제
+✅ N2 통과 — 사번 없는 직원 퇴사 성공(스냅샷 NULL)
+✅ N3 통과 — 사번 없이 재퇴사해도 기존 사번 유지
+ ✅ N4 통과 — 새 사번으로 갱신 · departed_at 최초 유지
+✅ N5 통과 — 클라이언트 사번 변경 차단 (42501)
+✅ N6 통과 — 다른 칸 변경은 통과 · 사번 불변
+✅ N7 통과 — sync PATCH 뒤 사번 불변
+✅ N8 통과 — postgres 경로 사번 채움
+✅ N9 통과 — 중복 거절 · NULL/빈 값 다수 허용
+== 사번 시뮬 N1~N9 전체 통과 ==
+[exit 0] _sim_employee_no_20261119/LOCAL_ONLY__20_simulate_employee_no.sql
+
+## 롤백 → 재적용
+[exit 0] _rollback_20261022_profiles_employee_no.sql
+process_departure md5 (롤백 뒤, 20261020 배포본 = 8a40119d896d445bb7d1e4e26dcccc18): 8a40119d896d445bb7d1e4e26dcccc18
+[exit 0] 20261022_profiles_employee_no.sql
+process_departure md5 (재적용 뒤, 운영 적용본 = 43203dbcd6167803c0d5ef36a31517ea): 43203dbcd6167803c0d5ef36a31517ea

@@ -1,6 +1,9 @@
 /**
  * api.ts — Supabase 기반 데이터 레이어
  *
+ * [2026-11-19] 사번 표시 — loadUsers select · 매핑에 employee_no 추가 (profiles.employee_no, 20261022)
+ *   · 읽기 전용 — updateProfile 은 그대로(name · dept 만 전송), 사번은 클라이언트에서 쓰지 않는다
+ *
  * [2026-10-14] 퇴사예정 알림 3종 + 퇴사자 아바타
  *   · notifyDepartureSchedule — 퇴사예정 등록/변경/철회 시 ADMIN 전원 알림 (send-notification, fire-and-forget)
  *     발사 지점 2곳(EmploymentStatusModal·OrgCardDrawer) 공용 SSOT. 행위자 이름은 내부에서 본인 프로필 조회
@@ -925,7 +928,7 @@ export async function loadUsers(): Promise<AppUser[]> {
     const data = await withRetry(async () => {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, employee_id, name, dept, role, email, is_active, avatar_url, employment_status, departure_scheduled_on, returned_on, azure_user_id, azure_extra, azure_synced_at') // ← [2026-07-30] 3필드 추가 · [2026-10-01] Azure 전체 필드 3개
+        .select('id, employee_id, name, dept, role, email, is_active, avatar_url, employment_status, departure_scheduled_on, returned_on, azure_user_id, azure_extra, azure_synced_at, employee_no') // ← [2026-07-30] 3필드 추가 · [2026-10-01] Azure 전체 필드 3개 · [2026-11-19] employee_no(사번)
         .neq('is_active', false) // ← [2026-05-14] 퇴사자 제외 — 시스템 전반 일관성
         .order('name')
       if (error) throw error
@@ -947,6 +950,7 @@ export async function loadUsers(): Promise<AppUser[]> {
       azure_user_id:          row.azure_user_id          ?? null,                                          // ← [2026-10-01]
       azure_extra:            row.azure_extra            ?? null,
       azure_synced_at:        row.azure_synced_at        ?? null,
+      employee_no:            row.employee_no            ?? null,                                          // ← [2026-11-19] 사번
     }))
   } catch (e) {
     // ← [2026-04-23] 재시도 3회 모두 실패 시 도달 — 기존대로 빈 배열 반환 (호환성 유지)
