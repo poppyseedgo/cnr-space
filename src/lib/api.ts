@@ -1,6 +1,10 @@
 /**
  * api.ts — Supabase 기반 데이터 레이어
  *
+ * [2026-11-23] insertBooking — 승인룸 직전 신청 차단 에러(APPROVAL_ROOM_LEAD_TIME) 원문 유지
+ *   · DB 트리거 trg_bookings_approval_lead_time(20261123)이 던진 에러를 '예약 저장 중 오류' 로 뭉개지 않고
+ *     그대로 올려, 호출부(App.tsx addBooking)가 한글 문구로 변환하게 한다. 그 외 분기 무변경
+ *
  * [2026-11-19] 사번 표시 — loadUsers select · 매핑에 employee_no 추가 (profiles.employee_no, 20261022)
  *   · 읽기 전용 — updateProfile 은 그대로(name · dept 만 전송), 사번은 클라이언트에서 쓰지 않는다
  *
@@ -419,6 +423,11 @@ export async function insertBooking(
     // DB Exclusion Constraint 위반 (23P01) — 동시 요청으로 인한 더블부킹 차단
     if (error.code === '23P01' || error.message.includes('exclusion')) {
       throw new Error('해당 시간에 이미 예약이 있습니다. 다른 시간을 선택해 주세요.')
+    }
+    // ← [2026-11-23] 승인룸 직전 신청 차단(DB 트리거 trg_bookings_approval_lead_time)은 원문 유지
+    //   호출부(App.tsx addBooking)의 approvalLeadErrorMessage 가 한글 문구로 변환한다.
+    if (error.message.includes('APPROVAL_ROOM_LEAD_TIME')) {
+      throw new Error(error.message)
     }
     // 기타 DB 오류
     throw new Error('예약 저장 중 오류가 발생했습니다. 다시 시도해 주세요.')

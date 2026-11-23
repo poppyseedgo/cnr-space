@@ -5,6 +5,11 @@
  * 방금 생성한 예약의 요약 정보를 표시 (회의실, 시간, 예약자, 참석자 등).
  *
  * ✅ 변경 이력
+ *  - [2026-11-23] '승인 요청 완료' 문구는 실제 승인 대기(status='pending')일 때만 (고지 확정)
+ *    · 배경: 관리자 본인 예약을 승인룸에서도 즉시 확정하기로 함(대리 예약과 같은 원칙).
+ *            기존 판정(status==='pending' || 승인룸)은 승인룸이면 확정 건도 '승인 요청 완료!' 로 표시했다
+ *            (대리 예약 확정 건도 같은 문구가 나오던 상태).
+ *    · 변경: isPending = b.status === 'pending' — 방이 아니라 예약 상태로 판정. 그 외 무수정.
  *  - [2026-10-12 날짜 양식 통일] 날짜 필드에 요일 풀네임 추가 (고지 요청)
  *    · 표시 형식: "2026년 10월 12일" → "2026년 10월 12일 월요일"
  *    · 예약 모달(fmtDateFull + N요일)·예약 상세 DetailModal(fmtTSDateFullWithDayFull,
@@ -75,7 +80,7 @@ export function BookingDoneModal({booking:b, onClose, rooms:rp=[], users:up=[]})
   const { isMobile } = useBreakpoint();
   const r = rp.find(r=>r.room_id===b.room_id);
   const floor = getFloor(r?.floor_id);
-  const isPending = b.status === 'pending' || r?.is_admin_only
+  const isPending = b.status === 'pending'   // ← [2026-11-23] 승인룸 여부(r.is_admin_only) 제거 — 관리자·대리 예약은 승인룸도 즉시 확정
 
   // ← [2026-04-25] duration 분 → "N시간 M분" 텍스트 (피그마 272:810 StatusBadge-XS chip 표시용)
   //   엣지: 0시간일 때 "M분", M=0일 때 "N시간", 둘 다일 때 "N시간 M분"

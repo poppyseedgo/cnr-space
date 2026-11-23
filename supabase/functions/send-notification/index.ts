@@ -7,6 +7,9 @@
  * 변경 이력
  * ═══════════════════════════════════════════════════════════════════════════
  *
+ * [2026-11-23] Teams 카드 제목 pending_expiring '승인 기한 10분 전' → '5분 전' (고지 확정 — 승인 마감 임박 알림 5분 전으로 변경)
+ *   · 그 외 로직 무변경. 정책 문구는 _shared/notification-types.ts 참조
+ *
  * [2026-10-14] 퇴사예정 알림 3종 (departure_scheduled · departure_rescheduled · departure_cancelled)
  *   · payload.booking = { id:'departure-{userId}', title: 대상자 이름, departure: { target_name, target_dept, date_on, prev_date_on?, actor_name, source } }
  *   · 수신자 admins_only (자격 required_roles NULL → profiles ADMIN 전원) · 이메일 대상자/예정일/처리자 행 · CTA #admin-tab-users
@@ -308,7 +311,7 @@ async function sendTeamsCard(type: string, booking: any): Promise<void> {
     noshow:           '⚠️ 노쇼 자동취소',
     updated:          '📝 예약이 변경되었습니다',
     owner_changed:    '🔁 예약자가 변경되었습니다',   // ← [2026-06-12]
-    pending_expiring: '⏰ 에메랄드 룸 승인 기한 10분 전',
+    pending_expiring: '⏰ 에메랄드 룸 승인 기한 5분 전',   // ← [2026-11-23] 10분 → 5분
     pending_expired:  '❌ 승인 기한 초과 — 자동 취소 처리됨',
   }
   const cardTitle = titleMap[type] ?? '예약 알림'

@@ -2,6 +2,19 @@
  * App.tsx — C&R Space 루트 컴포넌트
  *
  * ✅ 변경 이력
+ *  - [2026-11-23 EMERALD-EXPIRY] 에메랄드 '기한초과 취소' 깜빡임 근본 수정 + 직전 신청 차단 (고지 확정)
+ *      · 증상: 기한초과 취소된 에메랄드 예약이 화면에서 "기한초과 ↔ 승인 대기(점유)" 를 반복
+ *      · 원인(운영 실측): cron ③ 이 4/23 부터 정지 → DB 에는 pending 그대로. 10초 tick 블록②가 state 만
+ *              cancelled/system 으로 바꾸고, loadBookings(Realtime·탭 복귀·10분 동기화)가 올 때마다 원복.
+ *              판정 주체가 DB(원본)·브라우저(임시) 두 곳이었다.
+ *      · 변경 ①: tick 블록②(pending 기한초과 낙관 마킹) 삭제 — 기록은 DB 함수 expire_pending_bookings()
+ *                (pg_cron 매분, 20261123) 한 곳. 화면은 Realtime 으로 받은 DB 값을 그대로 표시.
+ *      · 변경 ②: 관리자 본인 예약은 승인룸도 즉시 confirmed (대리 예약·관리자 변경과 같은 원칙)
+ *                — 알림도 'pending'(승인 요청) 대신 'created'
+ *      · 변경 ③: 직전 신청 차단 — 승인룸 신규 예약은 일반 15분 전 / 관리자 1분 전까지.
+ *                addBooking·updateBooking(비관리자가 승인룸으로 이동·시각 변경) 사전 검사 + DB 에러 문구 변환.
+ *                최종 강제는 DB 트리거 trg_bookings_approval_lead_time. 판정식 SSOT = utils/pendingStatus.ts
+ *      · 불변: 노쇼 블록①, 승인/거절/취소 핸들러, 대리 예약, 반복 예약 생성 로직
  *  - [2026-11-19 SHIPPING] 운송내역서 임시 등록 단독 페이지 (#shipping) — 그룹웨어 이관 기간(11/23~) 대체 (고지 확정)
  *      · DIRECT_VIEWS += 'shipping' + 렌더 분기 1줄 (#hr-interview 와 같은 풀블리드 단독 트리 — 헤더·푸터·드로어·loading 게이트 앞)
  *      · 로그인 전 진입 복원: 전 직원이 공지 링크(#shipping)로 들어오는데 OAuth 리다이렉트(redirectTo=origin)가 해시를 지워
@@ -321,6 +334,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from './utils/time'
 import { employmentErrorMessage } from './utils/employment' // ← [2026-07-30] 서버 재직 가드 에러 한글 매핑
 import { noshowPenaltyErrorMessage } from './utils/noshowPenalty' // ← [2026-08-10] 노쇼 이용 제재(20260743) 차단 에러 한글 매핑
+import { isApprovalRequestClosed, approvalLeadMessage, approvalLeadErrorMessage } from './utils/pendingStatus' // ← [2026-11-23] 승인룸 직전 신청 차단 (판정 SSOT + DB 에러 문구 변환)
 import { getFloor } from './data/floors'
 import { loadBookings, saveBookings, insertBooking, updateBooking as apiUpdateBooking, cancelBooking as apiCancelBooking, markNoshow, subscribeBookings, loadRooms, saveRooms, loadUsers, saveUsers, loadRoomImages, insertAuditLog, buildBookingDiff, approveBooking, rejectBooking, upsertBookingAttendees, getBookingAttendees, insertNotification, adminForceCancel, changeBookingOwner } from './lib/api'  // ← [2026-06-12] changeBookingOwner 추가 (관리자 예약자 변경)  // ← [2026-05-04] loadNotifications/markNotificationRead/markAllNotificationsRead/subscribeNotifications/AppNotification 제거 (NotificationBell 분리 / Phase 1+2 Step 3) — insertNotification은 sendNotification에서 사용 중이라 유지
 import { supabase } from './lib/supabase'
@@ -1019,6 +1033,16 @@ function AppContent() {
       }
       // is_admin_only 회의실은 pending 상태로 생성 (아래 isAdminOnlyRoom 변수로 처리)
 
+      // ← [2026-11-23] 승인룸 직전 신청 차단 — 일반 15분 전 / 관리자 1분 전까지 (고지 확정)
+      //   첫 회차(d)만 검사한다: 반복 예약의 나머지 회차는 내일 이후라 해당 없음.
+      //   UI(BookingModal)가 먼저 막지만 모달을 열어둔 채 시간이 흐른 경우를 여기서 한 번 더 막는다.
+      //   최종 강제는 DB 트리거(서버 시계).
+      if (rooms.find(r => r.room_id === form.room_id)?.is_admin_only
+          && isApprovalRequestClosed(makeTZ(d, form.start), isAdmin)) {
+        showToast(approvalLeadMessage(isAdmin), "error");
+        return false;
+      }
+
       // ── 반복 날짜 목록 생성 ──
       // ← [2026-05-28] 반복 종료일 정책: today+1개월 → 올해 12/31 (어드민 전용 기능, recurPreview와 동일)
       const maxD = new Date(); maxD.setMonth(11, 31); // ← 11=12월, 31일 → 올해 마지막날(연도 불변)
@@ -1088,7 +1112,7 @@ function AppContent() {
           dept:         onBehalf ? onBehalf.dept : currentDept,   // ← [2026-06-12 대리예약] 요청자 부서
           checkedIn:    false,
           autoCancelled:false,
-          status:       onBehalf ? 'confirmed' : (isAdminOnlyRoom ? 'pending' : 'confirmed'),  // ← [2026-06-12 대리예약] 관리자 권한으로 즉시 확정(에메랄드 포함)
+          status:       (onBehalf || isAdmin) ? 'confirmed' : (isAdminOnlyRoom ? 'pending' : 'confirmed'),  // ← [2026-06-12 대리예약] 관리자 권한으로 즉시 확정(에메랄드 포함)  // ← [2026-11-23] 관리자 본인 예약도 즉시 확정 (고지 확정)
           createdAt,
           recurGroupId,  // null이면 단건, 값이 있으면 반복 그룹
         };
@@ -1112,7 +1136,7 @@ function AppContent() {
         //   LEAVE_CANNOT_CREATE / AFTER_DEPARTURE_DATE 원문 노출 방지. 그 외는 기존 동작.
         // ← [2026-08-10 이용제재] 노쇼 제재 차단(NOSHOW_PENALTY_BLOCKED) 매핑을 최우선 —
         //   서버 트리거(20260743)가 유일한 강제 지점, 프론트는 문구 변환만 담당
-        showToast(noshowPenaltyErrorMessage(err) ?? employmentErrorMessage(err) ?? err.message ?? "예약 저장에 실패했습니다.", "error");
+        showToast(noshowPenaltyErrorMessage(err) ?? approvalLeadErrorMessage(err) ?? employmentErrorMessage(err) ?? err.message ?? "예약 저장에 실패했습니다.", "error");  // ← [2026-11-23] 승인룸 직전 신청 차단(APPROVAL_ROOM_LEAD_TIME) 문구 변환 추가
         return false;
       }
 
@@ -1149,7 +1173,7 @@ function AppContent() {
             user_dept:  currentDept,
             room_name:  roomNameForNotif,
           }
-          if (isAdminOnlyRoom) {
+          if (isAdminOnlyRoom && !isAdmin) {   // ← [2026-11-23] 관리자 본인 예약은 즉시 확정 → 승인 요청 알림 대신 'created'
             // 승인 요청 — admin emails는 Edge Fn이 DB에서 직접 조회
             sendNotification('pending', notifPayload)
           } else {
@@ -1165,7 +1189,7 @@ function AppContent() {
           floor: getFloor(rooms.find(r => r.room_id === form.room_id)?.floor_id),
         }});
         // 반복 예약 이메일 알림 — 1회 발송 (recurBookings에 전체 일정 포함)
-        const notifType = isAdminOnlyRoom ? 'pending' : 'created'
+        const notifType = (isAdminOnlyRoom && !isAdmin) ? 'pending' : 'created'   // ← [2026-11-23] 관리자 반복 예약은 즉시 확정 → 'created'
         const bkRoom = rooms.find(r => r.room_id === form.room_id)
         sendNotification(notifType, {
           ...newBookings[0],
@@ -1591,6 +1615,18 @@ function AppContent() {
     const newRoom = rooms.find(r => r.room_id === form.room_id)
     const newStatus = isAdmin ? 'confirmed' : (newRoom?.is_admin_only ? 'pending' : 'confirmed')
 
+    // ← [2026-11-23] 승인룸 직전 신청 차단 — 비관리자가 방·시작시각을 바꿔 승인룸 승인 대기가 되는 경우
+    //   (일반 회의실 예약을 시작 직전에 에메랄드로 옮기면 만들자마자 기한초과가 되는 우회로)
+    //   관리자 변경은 대상 아님 — DB 트리거(guard_approval_room_lead_time)와 같은 조건.
+    if (!isAdmin && newRoom?.is_admin_only) {
+      const newStartAt = makeTZ(date, form.start)
+      const moved = originalBooking?.room_id !== form.room_id
+                 || new Date(originalBooking?.start_at ?? 0).getTime() !== new Date(newStartAt).getTime()
+      if (moved && isApprovalRequestClosed(newStartAt, false)) {
+        showToast(approvalLeadMessage(false), "error"); return false;
+      }
+    }
+
     const changes = {
       room_id:   form.room_id,
       title:     form.title,
@@ -1702,7 +1738,7 @@ function AppContent() {
       // 실패 시 원복
       const latest = await loadBookings();
       setBookings(latest);
-      showToast(err.message ?? "예약 변경에 실패했습니다.", "error");
+      showToast(approvalLeadErrorMessage(err) ?? err.message ?? "예약 변경에 실패했습니다.", "error");  // ← [2026-11-23] 승인룸 직전 신청 차단(DB 트리거) 문구 변환
     }
     return true;
   }, [bookings, showToast, isAdmin]);  // ← [2026-09-29] isAdmin 의존성 추가 (승인룸 변경 허용/상태 판정에 사용)
@@ -1771,52 +1807,17 @@ function AppContent() {
       })
     }
 
-    // ② pending 승인 기한 초과: start_at 1분 전 이후 경과
-    //
-    // ← [2026-04-19 P2 v6] 프론트 DB 쓰기 제거 — Race Condition 근본 해결
-    //   문제 진단 (DB 쿼리 검증 완료):
-    //     · 프론트 useEffect가 start_at - 1분에 expirePendingBooking() 호출
-    //       → DB에 auto_cancelled=true로 저장 (status는 pending 그대로)
-    //     · auto-cancel-bookings cron은 `auto_cancelled=false` 필터로 쿼리
-    //       → 프론트가 먼저 처리한 건은 cron 쿼리에서 **완전 배제**
-    //     · 결과: send-notification('pending_expired') 호출 안 됨 → 이메일/인앱 누락
-    //     · 증거: bookings 테이블에 status=pending + auto_cancelled=true인 행 17건 누적,
-    //              notifications 테이블 pending_expired 알림 04-18 이후 0건
-    //   해결:
-    //     · 프론트는 낙관적 UI만 담당 (setBookings로 state만 업데이트)
-    //     · DB 상태 변경은 auto-cancel-bookings cron이 단독 수행
-    //     · cron이 처리 후 send-notification이 이메일+인앱 자동 발송
-    //     · Realtime 구독(subscribeBookings)이 cron 결과를 프론트에 푸시하여 최종 동기화
-    //   차이:
-    //     · 노쇼(①)는 start_at + 10분 시점에 감지 → 그사이 cron이 먼저 돌아 문제 없음
-    //     · pending_expired는 start_at - 1분 시점에 감지 → 프론트가 cron보다 먼저 선점
-    //   최악 지연: 5분 (cron 주기). 이미 기한 초과된 상태이므로 업무상 허용 가능
-    const pendingExpired = bookings.filter(b =>
-      b.status === 'pending' && !b.autoCancelled &&
-      b.room_id === 3 &&  // ← [변경] pending은 admin only 룸(room_id=3)에서만 발생
-      nowMs >= new Date(b.start_at).getTime() - 60_000
-    );
-    if(pendingExpired.length > 0){
-      const expiredIds = new Set(pendingExpired.map(b => b.id));
-      // 낙관적 UI: state만 업데이트
-      // ← [변경] status:'cancelled' 추가 — isExpiredPending 공식과 일치
-      //   (status='cancelled' && cancelledBy='system' && room_id=3)
-      // ← [2026-04-30 Step 2] state 가드 4종 추가 — DB 쓰기 없는 단독 방어
-      //   배경: pending_expired는 cron 단독 DB 처리(P2 v6) 구조라 대칭할 DB 가드 없음.
-      //         setBookings만 단독 방어 — admin 승인 덮어쓰기 등 잘못된 마킹 차단.
-      //   메모리 원칙: pending에선 checkedIn/earlyEnded 의미 없음 → 가드에 추가 금지
-      //               ("defensive bloat" 금지 원칙)
-      setBookings(prev => prev.map(b => {
-        if (!expiredIds.has(b.id))   return b
-        if (b.room_id !== 3)         return b   // ★ 에메랄드 룸 외엔 pending_expired 자체가 불가
-        if (b.status !== 'pending')  return b   // ★ admin 승인/사용자 취소/거절 덮어쓰기 차단
-        if (b.autoCancelled)         return b   // 중복 마킹 방지 (멱등성)
-        if (b.cancelledBy != null)   return b   // 누군가 처리한 건 보호
-        return {...b, autoCancelled:true, cancelledBy:'system', status:'cancelled'}
-      }));
-      // ← expirePendingBooking() 호출 제거
-      //   DB 쓰기는 auto-cancel-bookings cron이 단독 처리 (경쟁 조건 방지)
-    }
+    // ② pending 승인 기한 초과 — ← [2026-11-23] 낙관 마킹 블록 삭제 (깜빡임 근본 수정)
+    //   종전: 마감(시작 1분 전)이 지난 에메랄드 승인 대기를 state 에서만
+    //         {autoCancelled:true, cancelledBy:'system', status:'cancelled'} 로 바꿨다 (DB 쓰기 없음, P2 v6).
+    //   문제: DB 에 기록하는 주체(cron ③)가 2026-04-23 부터 정지 상태라 DB 는 계속 pending.
+    //         loadBookings(Realtime·탭 복귀·10분 동기화)가 올 때마다 state 가 원본으로 덮여
+    //         "승인 대기(점유)" 로 돌아갔다가, 다음 tick(최대 10초)에 다시 "기한초과" 가 되는 것을 반복.
+    //         화면이 풀려 보여도 DB 겹침 제약은 pending 을 점유로 봐서 그 시간 예약은 계속 거절됐다.
+    //   변경: 기록은 DB 함수 expire_pending_bookings()(pg_cron 매분, 20261123) 한 곳.
+    //         마감 시각에 DB 가 status='cancelled' + cancelled_by='system' 으로 바꾸면
+    //         Realtime(subscribeBookings)이 모든 화면에 같은 값을 전달한다 — 되돌아갈 원본이 없다.
+    //   ※ 노쇼(①)는 서버 시계로 판정하는 RPC(mark_noshow)를 거치므로 그대로 둔다.
   }, [tick]);
 
   const { isMobile, isTablet } = useBreakpoint();
