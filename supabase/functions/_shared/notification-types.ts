@@ -13,6 +13,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * 변경 이력
  * ═══════════════════════════════════════════════════════════════════════════
+ * [2026-11-23] 승인 마감 임박 알림(pending_expiring) 문구 10분 → 5분 (고지 확정)
+ *   · headerLabel · inappTitleAdmin · 배너 제목. 발송 시점은 auto-cancel-bookings 가 승인 마감 5분 전으로 결정
+ *   · pending_expired(기한초과 취소) 정책은 무변경 — 발송 경로만 auto-cancel-bookings 에서 재가동
+ *
  * [2026-10-14] 퇴사예정 알림 3종 (departure_scheduled · departure_rescheduled · departure_cancelled)
  *   · 수신자 admins_only = required_roles ELSE NULL → profiles ADMIN 전원 (고지 확정 — 'org_' 접두어 금지)
  *   · 본문 재료 payload.booking.departure { target_name, target_dept, date_on, prev_date_on, actor_name, source }
@@ -87,7 +91,7 @@ export type NotificationType =
   | 'approved'                // 관리자 승인
   // 자동 처리
   | 'noshow'                  // 노쇼 자동취소
-  | 'pending_expiring'        // 승인 기한 10분 전 (Admin 알림)
+  | 'pending_expiring'        // 승인 기한 5분 전 (Admin 알림)  ← [2026-11-23] 10분 → 5분
   | 'pending_expired'         // 승인 기한 초과 자동취소
   // 체크인 관련
   // ← [2026-05-12 체크인 활성 5분 전 핫픽스]
@@ -543,15 +547,15 @@ export const POLICIES: Record<NotificationType, NotificationPolicy> = {
 
   pending_expiring: {
     subjectTag:         '[승인기한임박]',
-    headerLabel:        '에메랄드 룸 승인 기한이 10분 후 만료됩니다',
+    headerLabel:        '에메랄드 룸 승인 기한이 5분 후 만료됩니다',   // ← [2026-11-23] 10분 → 5분 (고지 확정)
     headerColor:        COLORS.AMBER,
     recipients:         'admins_only',
     inappType:          'booking_pending_expiring',
     inappTitleBooker:   '',
     inappTitleAttendee: '',
-    inappTitleAdmin:    '에메랄드 룸 승인 기한이 10분 후 만료됩니다',
+    inappTitleAdmin:    '에메랄드 룸 승인 기한이 5분 후 만료됩니다',   // ← [2026-11-23] 10분 → 5분
     contextBanner: {
-      admin: { ...BANNER_PRESETS.warning, title: '10분 내에 승인 또는 거절하지 않으면 예약이 자동 취소됩니다.', body: '지금 바로 처리해 주세요.' },
+      admin: { ...BANNER_PRESETS.warning, title: '5분 내에 승인 또는 거절하지 않으면 예약이 자동 취소됩니다.', body: '지금 바로 처리해 주세요.' },   // ← [2026-11-23] 10분 → 5분
     },
     cta: {
       admin: CTA_ADMIN_APPR,

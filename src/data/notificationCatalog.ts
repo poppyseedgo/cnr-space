@@ -2,6 +2,8 @@
  * notificationCatalog.ts — 알림 전수 목록 (어드민 '알림 설정' 화면의 원장)
  *
  * [2026-07-23] 신규
+ * [2026-11-23] pending_expiring · pending_expired 발송 재가동 반영 — trigger 문구 갱신, '발송 멈춤' note 삭제
+ *              (기한초과 전환은 DB expire_pending_bookings, 알림은 auto-cancel-bookings — 20261123)
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * 이 파일이 존재하는 이유
@@ -107,13 +109,11 @@ export const NOTIFICATION_CATALOG: NotifCatalogItem[] = [
     trigger: '관리자가 거절한 즉시',                 audience: 'booker_and_attendees',
     channels: ['email','inapp','teams'], toAdmins: false },
   { type: 'pending_expiring',   label: '승인 만료 임박',   group: '회의실 예약',
-    trigger: '승인 기한 임박 (auto-cancel 배치)',    audience: 'admins_only',
-    channels: ['email','inapp','teams'], toAdmins: true,
-    note: '현재 auto-cancel-bookings 의 해당 블록이 주석 처리되어 실제 발송은 멈춰 있다(v3 재설계 대기).' },
+    trigger: '승인 마감(시작 1분 전) 5분 전',         audience: 'admins_only',   // ← [2026-11-23] 10분 전 → 5분 전, 발송 재가동
+    channels: ['email','inapp','teams'], toAdmins: true },                      // ← [2026-11-23] '발송 멈춤' note 삭제
   { type: 'pending_expired',    label: '승인 만료',        group: '회의실 예약',
-    trigger: '승인 기한 경과 (auto-cancel 배치)',    audience: 'booker_attendees_admins',
-    channels: ['email','inapp','teams'], toAdmins: true,
-    note: 'pending_expiring 과 동일하게 발송 경로가 주석 처리된 상태.' },
+    trigger: '승인 마감(시작 1분 전) 경과 직후',      audience: 'booker_attendees_admins',   // ← [2026-11-23] 발송 재가동
+    channels: ['email','inapp','teams'], toAdmins: true },                                  // ← [2026-11-23] '발송 멈춤' note 삭제
 
   // ── 체크인·노쇼 ─────────────────────────────────────────────────────────
   { type: 'checkin_before_5',   label: '체크인 5분 전',    group: '체크인·노쇼',

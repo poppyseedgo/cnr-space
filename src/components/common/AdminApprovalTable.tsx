@@ -2,6 +2,12 @@
  * AdminApprovalTable — Admin 페이지 "승인 관리" 테이블
  *
  * ✅ 변경 이력
+ *  - [2026-11-23] classify '기한 초과' 에 DB 기록 형태 추가 (에메랄드 기한초과 깜빡임 근본 수정의 짝)
+ *    · 배경: 기한초과를 이제 DB 함수 expire_pending_bookings()(20261123)가
+ *            status='cancelled' + cancelled_by='system' 으로 기록한다 (slotHelpers 2026-04-29 재정립 식과 동일).
+ *            기존 분류는 옛 형태(pending && autoCancelled)만 봐서, 그대로 두면 기록된 건이 'other' 로 빠져
+ *            '기한 초과' 탭이 항상 비게 된다.
+ *    · 변경: classify 첫 줄에 isSystemExpired(b) → 'expired' 한 줄 추가. 나머지 분기·순서 무변경.
  *  - [2026-05-06 Admin Phase C] 신규 — Figma node 451:3534 1:1 반영
  *    · Phase B 공통 컴포넌트(DateRangeFilter / SegmentTabBar / DataTable) 사용
  *    · 기존 AdminApprovals 데이터 로직(classify / loadBookingsByRange / canApprove) 그대로 보존
@@ -17,7 +23,8 @@
  *
  * 📌 데이터 정의 (기존 AdminApprovals 로직 보존)
  *  · classify(b):
- *    - 'expired'   = pending && autoCancelled (기한 초과 — Emerald 룸 자동 만료)
+ *    - 'expired'   = (status='cancelled' && cancelledBy='system' && 승인룸)  ← [2026-11-23] DB 기록 형태
+ *                    또는 pending && autoCancelled (옛 형태 — 과거 데이터)
  *    - 'pending'   = pending && !autoCancelled (승인 대기)
  *    - 'confirmed' = status='confirmed' (승인 완료)
  *    - 'rejected'  = status='rejected' (거절)
@@ -40,6 +47,7 @@ import {
   todayStr, objToStr,
 } from '../../utils/time'
 import { BookingStatusBadge } from './BookingStatusBadge'
+import { isSystemExpired } from '../../utils/pendingStatus'  // ← [2026-11-23] DB 가 기록한 기한초과 건 판정 SSOT
 import { UserAvatar } from './UserAvatar'
 // ← [2026-05-06 핫픽스 v3] UserChip 제거 — 처리자도 예약자와 동일하게 UserAvatar+이름 직접 구성
 import { MetaBadge } from './MetaBadge'
@@ -57,7 +65,8 @@ const PAGE_SIZE = 15
 // ← [2026-05-06 사용자 요청] 'cancelled' 분기 추가
 //    정의: cancelled_by='user' (사용자 직접 취소). 노쇼/기한초과/관리자 취소는 별개
 function classify(b: Booking): 'pending' | 'confirmed' | 'rejected' | 'expired' | 'cancelled' | 'other' {
-  if (b.status === 'pending' && b.autoCancelled)  return 'expired'   // 기한 초과 (Emerald 자동 만료)
+  if (isSystemExpired(b))                         return 'expired'   // ← [2026-11-23] 기한 초과 — DB 기록 형태 (cancelled + system, 승인룸)
+  if (b.status === 'pending' && b.autoCancelled)  return 'expired'   // 기한 초과 (Emerald 자동 만료) — 옛 형태, 과거 데이터용
   if (b.status === 'pending' && !b.autoCancelled) return 'pending'   // 승인 대기
   if (b.status === 'confirmed')                   return 'confirmed' // 승인 완료
   if (b.status === 'rejected')                    return 'rejected'  // 거절

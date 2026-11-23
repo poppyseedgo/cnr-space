@@ -2,6 +2,17 @@
  * BookingModal.tsx — 예약 생성/수정 모달
  *
  * ✅ 변경 이력
+ *  - [2026-11-23 EMERALD-EXPIRY] 승인룸(에메랄드) 직전 신청 차단 + 관리자 즉시 확정 (고지 확정)
+ *      · 배경: 운영에 남은 기한초과 건 2건이 모두 "시작 1분 이내에 만든 승인 대기" — 만들자마자 기한초과.
+ *      · 규칙: 승인룸 신규 예약은 일반 사용자 = 시작 15분 전까지 / 관리자 = 시작 1분 전까지.
+ *              판정 SSOT = utils/pendingStatus.ts isApprovalRequestClosed, 최종 강제는 DB 트리거(20261123).
+ *      · 변경 ①: leadClosedRoomIds — 마감이 지난 승인룸을 availableRooms → unavailableRooms 로 이동.
+ *                기존 '선택 불가' 카드(모바일 RoomGrid2 · 데스크톱) 그대로 사용, 배지 문구만 "신청 마감".
+ *                canSubmit·자동 해제는 기존 isSelectedRoomAvailable 흐름을 그대로 탄다 (식 무변경).
+ *      · 변경 ②: getRoomUnavailStatus 첫 분기에 "신청 마감" 추가.
+ *      · 변경 ③: isApprovalRoom 에 !isAdmin — 관리자 본인 예약은 승인룸도 즉시 확정되므로
+ *                CTA "승인 요청"·모바일 승인 안내 박스는 일반 사용자에게만.
+ *      · 불변: 카드 마크업·스타일, 시간 충돌 판정(getAvailableRooms), 반복 예약, 제재 잠금
  *  - [2026-10-12 IME 핫픽스] 참석자/예약자 검색 — 선택 후 한글 조합 글자 잔존 버그 근본 수정
  *      · 증상: "김수빈" 검색 후 Enter/클릭으로 추가하면 마지막 조합 글자 "빈"이 input에 남고
  *              드롭다운이 다시 열림 ("임지원" → "원" 동일)
@@ -581,6 +592,7 @@ import { todayStr, nowMinutes, tsDate, tsTime, tsMin, fmtTime, fmtTS, fmtRange,
   fmt2, makeTZ, getRoomStatus, hasTimeConflict, isRoomAvailable, getAvailableRooms,
   fmtDateFull, // ← [Phase C] 날짜 풀 표기 ("2026년 5월 1일")
   DAY_NAMES, MONTH_NAMES, HOURS, CHECKIN_WINDOW_MIN } from '../../utils/time'
+import { isApprovalRequestClosed } from '../../utils/pendingStatus'  // ← [2026-11-23] 승인룸 직전 신청 차단 판정 SSOT
 import { getFloor } from '../../data/floors'
 // [2026-04-17 Step 3] searchGraphUsers import 제거 — 참석자 검색을 DB 호출에서 메모리 필터링(usersProp 기반)으로 전환
 // import { searchGraphUsers } from '../../lib/api'
@@ -1214,7 +1226,7 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   const durMin      = timeToMin(form.end) - timeToMin(form.start);
   const allRooms = roomsProp;
   const selectedRoom     = form.room_id ? allRooms.find(r=>r.room_id===form.room_id) : null;
-  const isApprovalRoom   = !editBooking && (selectedRoom?.is_admin_only ?? false);  // Admin 포함 모두 승인 요청
+  const isApprovalRoom   = !editBooking && !isAdmin && (selectedRoom?.is_admin_only ?? false);  // ← [2026-11-23] 관리자 제외 — 관리자 본인 예약은 승인룸도 즉시 확정(고지 확정). 일반 사용자만 '승인 요청'
   const selectedFloor    = selectedRoom  ? getFloor(selectedRoom.floor_id) : null;
   const selectedFeatures = selectedRoom?.features ?? [];
 
@@ -1224,9 +1236,46 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
     : bookings;
 
   // ── 중앙화된 가용 회의실 검증 ──
+  // ← [2026-11-23] 승인룸 직전 신청 차단 (고지 확정) — 일반 15분 전 / 관리자 1분 전까지
+  //   · 마감이 지난 승인룸은 '선택 불가' 카드로 내려 보낸다 (배지 "신청 마감").
+  //     기존 흐름을 그대로 탄다: isSelectedRoomAvailable=false → canSubmit=false, 시간 변경 시 자동 해제.
+  //   · 적용: 신규 예약(관리자 포함) + 비관리자의 예약 변경.
+  //     비관리자 변경에서 방·시작시각이 원본 그대로면 제외 (DB 트리거 guard_approval_room_lead_time 과 같은 조건).
+  //   · leadTick: 모달을 열어둔 채 시간이 흘러 마감을 넘기는 경우를 반영 (20초 간격 재평가).
+  //   · 최종 강제는 DB 트리거 — 여기는 사전 안내.
+  const [leadTick, setLeadTick] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => setLeadTick(t => t + 1), 20_000);
+    return () => clearInterval(iv);
+  }, []);
+  const leadClosedRoomIds = useMemo(() => {
+    const ids = new Set<number>();
+    if (editBooking && isAdmin) return ids;                         // 관리자 변경은 대상 아님
+    if (!bookingDate || !form.start) return ids;
+    const startAt = makeTZ(bookingDate, form.start);
+    if (!isApprovalRequestClosed(startAt, isAdmin)) return ids;     // 마감 전
+    const sameStart = !!editBooking && new Date(editBooking.start_at).getTime() === new Date(startAt).getTime();
+    for (const r of allRooms) {
+      if (!r.is_admin_only) continue;
+      if (editBooking && sameStart && editBooking.room_id === r.room_id) continue;  // 방·시작시각 그대로인 변경
+      ids.add(r.room_id);
+    }
+    return ids;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allRooms, bookingDate, form.start, isAdmin, editBooking, leadTick]);
+
   const { available: availableRooms, unavailable: unavailableRooms } = useMemo(
-    () => getAvailableRooms(allRooms, bookingsForCheck, bookingDate, form.start, form.end, isAdmin),
-    [bookingsForCheck, bookingDate, form.start, form.end, isAdmin]
+    () => {
+      const base = getAvailableRooms(allRooms, bookingsForCheck, bookingDate, form.start, form.end, isAdmin);
+      if (leadClosedRoomIds.size === 0) return base;                // ← [2026-11-23] 해당 없으면 기존 결과 그대로
+      // 마감된 승인룸을 available → unavailable 로 이동 (이미 unavailable 이면 그대로)
+      const moved = base.available.filter(r => leadClosedRoomIds.has(r.room_id));
+      return {
+        available:   base.available.filter(r => !leadClosedRoomIds.has(r.room_id)),
+        unavailable: [...base.unavailable, ...moved],
+      };
+    },
+    [bookingsForCheck, bookingDate, form.start, form.end, isAdmin, leadClosedRoomIds]  // ← [2026-11-23] leadClosedRoomIds 추가
   );
 
   // 선택된 회의실이 현재 시간 기준으로 여전히 가용한지 실시간 검증
@@ -1631,6 +1680,8 @@ export function BookingModal({prefill, date:initDate, editBooking=null, onClose,
   // ── 공통: 회의실 카드 그리드 ────────────────────────────────────────────────
   // 회의실별 상태 판별 (unavailable room용)
   const getRoomUnavailStatus = (rid) => {
+    // ← [2026-11-23] 승인룸 직전 신청 마감 — 시간 충돌보다 먼저 판정 (충돌이 없어도 선택 불가인 유일한 경우)
+    if (leadClosedRoomIds.has(rid)) return { label:"신청 마감", color:"#DC2626", bg:"#FEF2F2" };
     const now = nowMinutes();
     const isToday = bookingDate === todayStr();
     const dayBks = bookings.filter(b => b.room_id===rid && tsDate(b.start_at)===bookingDate && !b.autoCancelled);

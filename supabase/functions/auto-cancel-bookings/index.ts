@@ -6,8 +6,8 @@
  * 처리 항목:
  *   1. 노쇼 자동 취소   — confirmed 예약 중 start_at + 10분 초과 & 미체크인
  *   4. 노쇼 이용 제재 통지 — 발생/해제 미통지분 폴링 발송 (← [2026-08-10] 20260745)
- *   2. 승인 기한 10분 전 알림 — pending 예약 start_at 9~11분 전 (Admin 알림)
- *   3. 승인 기한 초과 자동 취소 — pending 예약 start_at 1분 전까지 미승인 시 자동 취소
+ *   2. 승인 마감 5분 전 알림 — 에메랄드 승인 대기 건, 승인 마감(시작 1분 전)의 5분 전부터 (Admin 알림)
+ *   3. 기한초과 취소 알림 — DB(expire_pending_bookings)가 기한초과로 기록한 건의 메일·인앱 발송
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * 변경 이력
@@ -69,13 +69,31 @@
  *     · 영구 실패: DB가 정직하게 미발송 상태 유지, 운영자 로그로 인지 가능
  *     · 멱등성 유지: 성공 마킹된 건은 다음 cron 쿼리에서 배제됨
 
+ * [2026-11-23] 에메랄드 기한초과 — ②③ 재가동 (역할 재정의)
+ *   · 배경: 2026-04-23 HOTFIX 로 ②③ 이 정지된 뒤 기한초과 전환을 DB 에 기록하는 주체가 없었다.
+ *     프론트 10초 tick 이 화면에서만 임시 마킹 → DB 를 다시 읽을 때마다 원복되어
+ *     "기한초과 ↔ 승인 대기" 가 반복되는 깜빡임 발생 (운영 실측 2026-11-23).
+ *   · 변경: 기한초과 "전환(기록)" 은 DB 함수 expire_pending_bookings()(pg_cron 매분, 20261123)
+ *     한 곳이 전담한다. 이 함수는 더 이상 pending 예약의 상태를 바꾸지 않는다 — 알림만 보낸다.
+ *       ② 승인 마감 임박 알림: 10분 전 → 5분 전 (고지 확정)
+ *       ③ 기한초과 알림: status='cancelled' ∧ cancelled_by='system' ∧ room_id=3 ∧
+ *          pending_expired_notified=false ∧ 시작 1시간 이내 건
+ *   · 중복 방지: 표식을 먼저 선점(false→true 조건부 UPDATE)한 뒤 발송, 실패하면 표식을 되돌려
+ *     다음 호출에서 재시도. (매분 깨움과 15분 정기 실행이 겹쳐도 한 건은 한 번만 발송)
+ *   · 호출 2경로: (1) expire_pending_bookings 가 알림 대상이 있을 때 body {"task":"pending"} 로 깨움
+ *     → ②③ 만 실행하고 종료  (2) 기존 15분 정기 실행 → ②③ + ① 노쇼 + ④ 제재 통지
+ *   · (1-b) 노쇼 알림 조회에 status='confirmed' 추가 — 기한초과 건(cancelled/system, auto_cancelled=true)이
+ *     시작 10~25분 뒤 정기 실행에서 '노쇼' 알림 대상으로 잡히는 것을 막는다 (노쇼 확정룰과 같은 조건)
+ *   · 4/23 사고(진행 중 회의·체크인 건이 취소로 덮어써짐) 재발 방지: 이 파일에서 pending 관련
+ *     bookings 쓰기는 알림 표식 2개(approval_reminder_sent · pending_expired_notified)뿐이다.
+ *
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * 배포 규칙
  * ═══════════════════════════════════════════════════════════════════════════
  *   · send-notification 호출 시 Bearer: ANON_KEY 사용 (SERVICE_KEY X)
  *
- * Cron: 매 5분 (pg_cron job id=13)
+ * Cron: 15분 주기 10,25,40,55분 (pg_cron auto-cancel-bookings) + expire_pending_bookings 의 깨움 호출
  * 배포: supabase functions deploy auto-cancel-bookings --no-verify-jwt
  */
 
@@ -189,10 +207,114 @@ async function buildPayload(booking: any): Promise<any> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 에메랄드 승인 대기 알림 (← [2026-11-23] 신규 — 상태 전환은 DB, 여기는 알림만)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 승인룸 ID — DB approval_room_id() · 프론트 APPROVAL_ROOM_ID 와 같은 값 */
+const APPROVAL_ROOM_ID = 3
+/** 승인 마감 = 시작 1분 전 — DB approval_deadline_minutes() 와 같은 값 */
+const APPROVAL_DEADLINE_MS = 1 * 60 * 1000
+/** 승인 마감 임박 알림 = 마감 5분 전 — DB approval_reminder_minutes() 와 같은 값 */
+const APPROVAL_REMINDER_MS = 5 * 60 * 1000
+/** 기한초과 알림 대상 = 시작한 지 1시간 이내 (뒤늦은 메일 방지 — DB 깨움 조건과 같은 값) */
+const EXPIRED_NOTIFY_WINDOW_MS = 60 * 60 * 1000
+
+/**
+ * 표식 선점 → 발송 → 실패 시 되돌림.
+ * 선점은 "아직 false 이고 상태가 그대로일 때만 true" 조건부 UPDATE 라서
+ * 동시에 두 번 호출돼도 한쪽만 1행을 얻는다 (중복 발송 방지).
+ * @returns 발송 성공 여부 (선점 실패 = 다른 실행이 처리 중 → false)
+ */
+async function claimAndSend(
+  booking: any,
+  flag: 'approval_reminder_sent' | 'pending_expired_notified',
+  status: 'pending' | 'cancelled',
+  type: 'pending_expiring' | 'pending_expired',
+): Promise<boolean> {
+  const { data: claimed, error: claimErr } = await supabase
+    .from('bookings')
+    .update({ [flag]: true })
+    .eq('id',     booking.id)
+    .eq(flag,     false)
+    .eq('status', status)          // 그 사이 승인·거절·취소된 건은 선점하지 않는다
+    .select('id')
+
+  if (claimErr) {
+    console.error(`[auto-cancel] ${type} 선점 실패 (${booking.id}):`, claimErr)
+    return false
+  }
+  if (!claimed || claimed.length === 0) return false   // 다른 실행이 선점 또는 상태 변경
+
+  const payload = await buildPayload(booking)
+  const sent = await callSendNotification(type, payload)
+  if (sent) return true
+
+  // 발송 실패 → 표식 되돌림 (다음 호출에서 재시도)
+  const { error: revertErr } = await supabase
+    .from('bookings')
+    .update({ [flag]: false })
+    .eq('id', booking.id)
+  if (revertErr) console.error(`[auto-cancel] ${type} 표식 되돌리기 실패 (${booking.id}):`, revertErr)
+  console.warn(`[auto-cancel] ${type} 발송 실패 — 재시도 대기: ${booking.id} (${booking.title})`)
+  return false
+}
+
+/** ② 승인 마감 5분 전 알림 (Admin) — 마감 5분 전 ≤ now < 마감 */
+async function notifyPendingExpiring(now: Date, stats: any): Promise<void> {
+  // 마감 = start_at − 1분.  now ≥ 마감 − 5분  ⇔ start_at ≤ now + 6분
+  //                        now <  마감        ⇔ start_at >  now + 1분
+  const startGt  = new Date(now.getTime() + APPROVAL_DEADLINE_MS).toISOString()
+  const startLte = new Date(now.getTime() + APPROVAL_DEADLINE_MS + APPROVAL_REMINDER_MS).toISOString()
+
+  const { data: targets, error } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('status',                 'pending')
+    .eq('room_id',                APPROVAL_ROOM_ID)
+    .eq('approval_reminder_sent', false)
+    .is('cancelled_by',           null)
+    .gt('start_at',               startGt)
+    .lte('start_at',              startLte)
+
+  if (error) { console.error('[auto-cancel] pending_expiring 조회 실패:', error); return }
+
+  for (const booking of (targets ?? [])) {
+    if (booking.auto_cancelled === true) continue     // 판정식 !auto_cancelled (NULL 은 미취소로 본다)
+    const ok = await claimAndSend(booking, 'approval_reminder_sent', 'pending', 'pending_expiring')
+    if (!ok) continue
+    stats.reminderSent++
+    console.log(`[auto-cancel] pending_expiring 발송: ${booking.id} (${booking.title})`)
+  }
+}
+
+/** ③ 기한초과 취소 알림 (예약자·참석자·Admin) — DB 가 기한초과로 기록한 건 */
+async function notifyPendingExpired(now: Date, stats: any): Promise<void> {
+  const lowerBound = new Date(now.getTime() - EXPIRED_NOTIFY_WINDOW_MS).toISOString()
+
+  const { data: targets, error } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('status',                   'cancelled')
+    .eq('cancelled_by',             'system')
+    .eq('room_id',                  APPROVAL_ROOM_ID)
+    .eq('pending_expired_notified', false)
+    .gte('start_at',                lowerBound)
+
+  if (error) { console.error('[auto-cancel] pending_expired 조회 실패:', error); return }
+
+  for (const booking of (targets ?? [])) {
+    const ok = await claimAndSend(booking, 'pending_expired_notified', 'cancelled', 'pending_expired')
+    if (!ok) continue
+    stats.pendingExpired++
+    console.log(`[auto-cancel] pending_expired 발송: ${booking.id} (${booking.title})`)
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 메인 핸들러
 // ═══════════════════════════════════════════════════════════════════════════
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {   // ← [2026-11-23] req 수신 — body.task 로 호출 경로 구분
   const corsHeaders = {
     'Access-Control-Allow-Origin':  '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -202,6 +324,28 @@ Deno.serve(async () => {
   try {
     const now = new Date()
     const stats = { noshow: 0, reminderSent: 0, pendingExpired: 0, penaltyApplied: 0, penaltyCleared: 0 }  // ← [2026-08-10 이용제재 알림] 카운터 2종 추가
+
+    // ← [2026-11-23] 호출 경로 구분
+    //   {"task":"pending"} = expire_pending_bookings(DB, 매분)의 깨움 → ②③ 만 실행하고 종료
+    //   그 외(15분 정기 실행) = ②③ + ① 노쇼 + ④ 제재 통지
+    let task = 'all'
+    try {
+      const body = await req.json()
+      if (body && body.task === 'pending') task = 'pending'
+    } catch (_) { /* body 없음 = 정기 실행 */ }
+
+    // ─── 2·3. 에메랄드 승인 대기 알림 (상태 전환은 DB 담당 — 여기서는 알림만) ───
+    //   독립 try/catch — 이 배치의 실패가 노쇼 배치를 막지 않는다.
+    try { await notifyPendingExpiring(now, stats) } catch (e) { console.error('[auto-cancel] pending_expiring 처리 오류:', e) }
+    try { await notifyPendingExpired(now, stats) }  catch (e) { console.error('[auto-cancel] pending_expired 처리 오류:', e) }
+
+    if (task === 'pending') {
+      console.log('[auto-cancel] pending 알림 실행 완료:', JSON.stringify(stats))
+      return new Response(
+        JSON.stringify({ success: true, task, ...stats, at: now.toISOString() }),
+        { headers: corsHeaders }
+      )
+    }
 
     // ─── 1. 노쇼 자동 취소 + 이메일 발송 ──────────────────────────────────
     //
@@ -278,6 +422,7 @@ Deno.serve(async () => {
     const { data: noshowToNotify, error: notifyErr } = await supabase
       .from('bookings')
       .select('*')
+      .eq('status',            'confirmed')   // ← [2026-11-23] 노쇼 확정룰(status='confirmed')과 일치 — 기한초과(cancelled/system)가 노쇼 알림 대상에 섞이는 것 차단
       .eq('checked_in',        false)
       .eq('auto_cancelled',    true)
       .eq('cancelled_by',      'system')
@@ -321,126 +466,9 @@ Deno.serve(async () => {
       console.log(`[auto-cancel] noshow 알림 발송 성공 + 마킹 완료: ${booking.id} (${booking.title})`)
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // ← [2026-04-23 HOTFIX] ②번 리마인더 + ③번 기한초과 로직 정지
-    // ═══════════════════════════════════════════════════════════════════════
-    // 증상: 진행 중 회의를 기한초과로 오인식 + 체크인된 예약이 사용자 취소로 덮어써짐
-    //       (cancelled_by='user' 오염, 추적 트리거 emergency_log_user_cancel로 경로 추적 중)
-    // 조치: 파괴적 로직 차단 — ②번과 ③번 블록 주석 처리
-    //   · ①번 노쇼 자동 처리는 유지 (cron 15분 오프셋 주기에 최적화됨)
-    //   · ②번 리마인더 정지 (임시)
-    //   · ③번 기한초과 자동 취소 정지 (파괴 근본 원인 추정, 분리 후 재설계)
-    // 복구 예정: auto-cancel-bookings를 3개 Edge Function으로 분리 후 야간 배포
-    //   · process-noshow/            ← 유지 (이미 정상 작동)
-    //   · send-pending-reminder/     ← 복구 예정
-    //   · process-pending-expired/   ← 근본 원인 해결 후 재가동
-    // ═══════════════════════════════════════════════════════════════════════
-    /*
-    // ─── 2. 승인 기한 10분 전 알림 (Admin 전용) ────────────────────────
-    // ← [2026-04-17] start_at 범위 양방향 제한
-    const reminderWindowStart = new Date(now.getTime() + 9  * 60 * 1000).toISOString()
-    const reminderWindowEnd   = new Date(now.getTime() + 11 * 60 * 1000).toISOString()
-
-    const { data: reminderTargets, error: reminderErr } = await supabase
-      .from('bookings')
-      .select('*')
-      .eq('status',                 'pending')
-      .eq('room_id',                3)           // ← [변경] pending은 admin only 룸(room_id=3)에서만 발생
-      .eq('approval_reminder_sent', false)
-      .gte('start_at', reminderWindowStart)
-      .lte('start_at', reminderWindowEnd)
-
-    if (reminderErr) {
-      console.error('[auto-cancel] pending_expiring 조회 실패:', reminderErr)
-    }
-
-    for (const booking of (reminderTargets ?? [])) {
-      // 중복 발송 방지 플래그 먼저 세팅 (알림 실패해도 재발송 없음 — 의도된 설계)
-      const { error: flagErr } = await supabase
-        .from('bookings')
-        .update({ approval_reminder_sent: true })
-        .eq('id', booking.id)
-
-      if (flagErr) {
-        console.error(`[auto-cancel] approval_reminder_sent 업데이트 실패 (${booking.id}):`, flagErr)
-        continue
-      }
-
-      // ← [P2] Admin 인앱 알림은 send-notification 내부에서 담당 (중복 제거)
-      const payload = await buildPayload(booking)
-      await callSendNotification('pending_expiring', payload)
-
-      stats.reminderSent++
-      console.log(`[auto-cancel] pending_expiring 발송: ${booking.id} (${booking.title})`)
-    }
-
-    // ─── 3. 승인 기한 초과 자동 취소 ───────────────────────────────────
-    // pending 예약 중 start_at이 현재+1분 이내면 자동 취소 (승인 안 됨)
-    //
-    // ← [2026-04-29] 쿼리/UPDATE 정비
-    //   (1) room_id=3 추가 — pending은 admin only 룸에서만 발생
-    //   (2) .or(cancelled_by) → .is('cancelled_by', null) 단순화
-    //       App.tsx 낙관적 업데이트가 status:'cancelled'도 세팅하므로
-    //       App.tsx 처리 건은 status='pending' 쿼리에서 이미 배제됨
-    //       → cancelled_by='system' 허용 조건이 불필요해짐
-    //   (3) UPDATE에 room_id=3 + cancelled_by IS NULL 가드 추가
-    //   isExpiredPending 공식: status='cancelled' && cancelledBy='system' && room_id=3
-    //
-    // ← [2026-04-19 P2 v6] auto_cancelled=false 필터 제거 + UPDATE 원자성 강화
-    // ← [2026-04-17] start_at lower bound 추가 (과거 1시간만 스캔)
-    const expireDeadline     = new Date(now.getTime() + 1 * 60 * 1000).toISOString()
-    const expireLowerBound   = new Date(now.getTime() - 60 * 60 * 1000).toISOString()
-
-    const { data: expiredTargets, error: expiredErr } = await supabase
-      .from('bookings')
-      .select('*')
-      .eq('status',    'pending')
-      .eq('room_id',   3)                 // ← [변경] admin only 룸 조건 추가
-      .is('cancelled_by', null)           // ← [변경] .or() 단순화 — null만 허용
-      .gte('start_at', expireLowerBound)
-      .lt('start_at',  expireDeadline)
-
-    if (expiredErr) {
-      console.error('[auto-cancel] pending_expired 조회 실패:', expiredErr)
-    }
-
-    for (const booking of (expiredTargets ?? [])) {
-      // ← [P2 v6] 원자적 조건부 UPDATE — pending일 때만 cancelled로 바꿈
-      // ← [2026-04-29] room_id=3 + cancelled_by IS NULL 가드 추가
-      const { data: updated, error: upErr } = await supabase
-        .from('bookings')
-        .update({
-          status:         'cancelled',
-          auto_cancelled: true,
-          cancelled_by:   'system',
-        })
-        .eq('id',       booking.id)
-        .eq('status',   'pending')        // 원자성: pending일 때만 UPDATE
-        .eq('room_id',  3)                // ← [변경] admin only 룸 가드
-        .is('cancelled_by', null)         // ← [변경] 이미 취소 처리된 건 덮어쓰기 방지
-        .select('id')
-
-      if (upErr) {
-        console.error(`[auto-cancel] pending_expired 업데이트 실패 (${booking.id}):`, upErr)
-        continue
-      }
-
-      // ← [P2 v6] UPDATE 0 rows → 이미 처리됨 (재발송 방지)
-      if (!updated || updated.length === 0) {
-        console.log(`[auto-cancel] pending_expired skip (이미 처리됨): ${booking.id}`)
-        continue
-      }
-
-      // ← [P2] 이메일 + 인앱 모두 send-notification이 담당
-      //        기존 3중 INSERT (Admin/예약자/참석자) 모두 제거됨
-      //        POLICIES.pending_expired: recipients=booker_attendees_admins
-      const payload = await buildPayload(booking)
-      await callSendNotification('pending_expired', payload)
-
-      stats.pendingExpired++
-      console.log(`[auto-cancel] pending_expired 처리: ${booking.id} (${booking.title})`)
-    }
-    */
+    // ← [2026-11-23] 구 ②(승인 기한 10분 전 알림)·③(기한초과 자동 취소) 주석 블록 삭제.
+    //   ③ 의 상태 전환은 DB 함수 expire_pending_bookings()(20261123)로 이전, 알림은 위
+    //   notifyPendingExpiring / notifyPendingExpired 가 담당한다. (구 코드는 git 이력 참조)
     // ═══════════════════════════════════════════════════════════════════════
     // 4. 노쇼 이용 제재 통지 (← [2026-08-10] 20260745, Phase 2-2)
     //
@@ -523,11 +551,6 @@ Deno.serve(async () => {
     } catch (e) {
       console.error('[auto-cancel] 제재 해제 통지 처리 오류:', e)
     }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // ← [2026-04-23 HOTFIX] ②+③ 정지 상태 로그 (모니터링 용이)
-    // ═══════════════════════════════════════════════════════════════════════
-    console.log('[auto-cancel] ⚠️ pending_expiring + pending_expired 정지 (2026-04-23 HOTFIX)')
 
     console.log('[auto-cancel] 전체 완료:', JSON.stringify(stats))
     return new Response(
